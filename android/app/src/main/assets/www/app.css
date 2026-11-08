@@ -88,3 +88,13 @@ pre.log{font-size:.7rem;white-space:pre-wrap;word-break:break-all;max-height:60v
 code{background:var(--accbg);padding:1px 5px;border-radius:5px}
 .leaflet-container{font:inherit}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Erzählung */
+.stl .stev{display:flex;gap:12px;margin:0 0 18px;cursor:pointer}
+.stl .stm{min-width:70px;text-align:right}.stl .stm small{display:block}
+.stl .sbody{flex:1;border-left:3px solid var(--line,#ccc);padding-left:12px}
+.stl .stt{font-size:17px}.stl .splc{font-size:13px;min-height:1em}
+.sph-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.sph{position:relative;border:0;padding:0;background:none}.sph img{height:90px;min-width:64px;background:#8883;border-radius:8px;display:block}
+.sph b{position:absolute;right:3px;bottom:3px;background:#000a;color:#fff;border-radius:10px;padding:1px 6px;font-size:12px}
+.scm{font-size:13px;margin-top:4px}.scm2{margin:6px 0;padding:6px 10px;border-radius:8px;background:rgba(128,128,128,.12)}

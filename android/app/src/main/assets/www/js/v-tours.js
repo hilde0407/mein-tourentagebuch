@@ -118,6 +118,7 @@ Views['/tour'] = async (root, [id]) => {
     const it = (ico, tx, fn) => h('button', { class: 'li', onclick: () => { s.close(); fn(); } }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, tx)));
     const s = sheet('Tour', h('div', { class: 'list' },
       it('✏️', 'Umbenennen', rename),
+      it('📖', 'Erzählung', () => Nav.go('/story/' + id)),
       it('🏷️', 'Sportart ändern', changeSport),
       it('📤', 'Als GPX speichern', exportGpx),
       it('🔗', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),

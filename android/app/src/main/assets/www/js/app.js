@@ -16,7 +16,7 @@ const Nav = {
     const root = $('#view'); root.innerHTML = ''; root.scrollTop = 0;
     Nav.cur = key;
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.p === key || (key === '/tour' && a.dataset.p === '/')));
-    $('#tabs').classList.toggle('hide', ['/tour', '/settings', '/stats', '/import', '/sources'].includes(key));
+    $('#tabs').classList.toggle('hide', ['/tour', '/story', '/settings', '/stats', '/import', '/sources'].includes(key));
     try { Nav.cleanup = await route(root, parts.slice(1).map(decodeURIComponent)); }
     catch (e) { root.append(h('div', { class: 'empty' }, h('h2', null, 'Das hat nicht geklappt'), h('p', null, String(e.message || e)))); console.error(e); }
   },
@@ -40,7 +40,7 @@ function moreMenu() {
 window.mtBack = function () {
   if (sheet.stack && sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
   if (window.__lightbox) { window.__lightbox.close(); return true; }
-  if (['/tour', '/settings', '/stats', '/import', '/sources'].includes(Nav.cur)) { Nav.back(); return true; }
+  if (['/tour', '/story', '/settings', '/stats', '/import', '/sources'].includes(Nav.cur)) { Nav.back(); return true; }
   if (Nav.cur !== '/' && Nav.cur !== '') { Nav.go('/'); return true; }
   return false;
 };
