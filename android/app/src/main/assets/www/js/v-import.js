@@ -65,14 +65,14 @@ Views['/import'] = async root => {
   function bosch() {
     const s = sheet('Bosch eBike Flow', h('div', null,
       h('p', null, 'Bosch bietet keine öffentliche Schnittstelle für Fahrten. So kommen sie trotzdem in die App:'),
-      h('ol', { class: 'steps' }, h('li', null, 'In der Flow-App die Fahrt öffnen.'), h('li', null, 'Teilen/Exportieren wählen (GPX-Datei).'), h('li', null, 'Als Ziel „Meine Touren Lokal“ wählen – die Fahrt wird sofort übernommen.')),
+      h('ol', { class: 'steps' }, h('li', null, 'In der Flow-App die Fahrt öffnen.'), h('li', null, 'Teilen/Exportieren wählen (GPX-Datei).'), h('li', null, 'Als Ziel „Mein Tourentagebuch“ wählen – die Fahrt wird sofort übernommen.')),
       h('p', { class: 'muted' }, 'Oder die exportierten Dateien hier auswählen. Alternativ in den Flow-Einstellungen die Verbindung zu Komoot/Strava nutzen und von dort importieren.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Import', upd => Import.pickFiles(upd)); } }, 'Dateien wählen'))));
   }
   async function others() {
     const folders = await DB.kvGet('trackFolders', []);
     const s = sheet('Weitere Dienste', h('div', null,
-      h('p', null, h('b', null, 'Teilen-Menü: '), 'In Garmin Connect, Suunto, Polar Flow, Wahoo, Coros, Outdooractive, Gipfelbuch … die Aktivität als GPX/FIT teilen und „Meine Touren Lokal“ wählen.'),
+      h('p', null, h('b', null, 'Teilen-Menü: '), 'In Garmin Connect, Suunto, Polar Flow, Wahoo, Coros, Outdooractive, Gipfelbuch … die Aktivität als GPX/FIT teilen und „Mein Tourentagebuch“ wählen.'),
       h('p', null, h('b', null, 'Datenexport: '), 'Vollständige Exporte (ZIP) über „Dateien“ importieren. Alle Aktivitäten darin werden übernommen.'),
       h('p', null, h('b', null, 'Überwachter Ordner: '), 'Ein Ordner, in den z. B. Syncthing, ein Cloud-Dienst oder die Garmin-Sync-App neue Dateien legt. Neue GPX/FIT/TCX-Dateien werden bei jedem Einlesen importiert.'),
       folders.length ? h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Entfernen', onclick: async () => { folders.splice(i, 1); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, '✕')))) : null,
@@ -104,16 +104,16 @@ Views['/settings'] = async root => {
     h('h3', null, 'Standort'), h('div', { class: 'row' }, inp('Heimat Breite', 'homeLat', '47.5'), inp('Heimat Länge', 'homeLon', '11.2')),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', onclick: backup }, '💾 Sicherung speichern'), h('button', { class: 'btn', onclick: restore }, '↩ Sicherung einspielen')),
-    h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Meine Touren Lokal ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
+    h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
     h('div', { class: 'row wrap' }, window.MTApp ? h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll') : null,
       h('button', { class: 'btn sm danger', onclick: wipe }, 'Alle Daten löschen')));
 
   async function backup() {
-    const data = { app: 'meinetouren-lokal', v: 1, date: Date.now(), tours: await DB.all('tours'), tracks: await DB.all('tracks'), photos: await DB.all('photos'),
+    const data = { app: 'tourentagebuch', v: 1, date: Date.now(), tours: await DB.all('tours'), tracks: await DB.all('tracks'), photos: await DB.all('photos'),
       kv: (await DB.all('kv')).filter(k => !['komoot', 'strava', 'zepp', 'smb', 'webdav'].includes(k.k)) };
     const gz = fflate.gzipSync(new TextEncoder().encode(JSON.stringify(data)));
     let bin = ''; gz.forEach(b => bin += String.fromCharCode(b));
-    const name = 'MeineTouren-Sicherung-' + new Date().toISOString().slice(0, 10) + '.mtl';
+    const name = 'Tourentagebuch-Sicherung-' + new Date().toISOString().slice(0, 10) + '.mtl';
     try { toast('Gespeichert: ' + await Native.json('saveFile', { name, mime: 'application/octet-stream', b64: btoa(bin) }), 6000); }
     catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([gz])), download: name }); document.body.append(a); a.click(); a.remove(); }
   }
@@ -122,7 +122,7 @@ Views['/settings'] = async root => {
       const f = await Native.json('pickFiles'); if (!f.length) return;
       const buf = await Import.fetchBuf(f[0].url);
       const data = JSON.parse(new TextDecoder().decode(fflate.gunzipSync(buf)));
-      if (data.app !== 'meinetouren-lokal') throw new Error('Das ist keine Sicherung von Meine Touren Lokal.');
+      if (data.app !== 'tourentagebuch') throw new Error('Das ist keine Sicherung von Mein Tourentagebuch.');
       if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto-Dateien selbst sind nicht Teil der Sicherung.)`, 'Einspielen')) return;
       await DB.putMany('tours', data.tours); await DB.putMany('tracks', data.tracks); await DB.putMany('photos', data.photos);
       Tours.invalidate(); toast('Sicherung eingespielt ✓'); Nav.render();

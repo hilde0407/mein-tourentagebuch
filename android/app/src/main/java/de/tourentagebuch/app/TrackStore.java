@@ -1,4 +1,4 @@
-package de.meinetouren.lokal;
+package de.tourentagebuch.app;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -197,7 +197,7 @@ public class TrackStore {
         StringBuilder b = new StringBuilder(pts.size() * 90 + 400);
         long start = pts.isEmpty() ? System.currentTimeMillis() : pts.get(0).t;
         b.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        b.append("<gpx version=\"1.1\" creator=\"Meine Touren (Android)\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+        b.append("<gpx version=\"1.1\" creator=\"Tourentagebuch (Android)\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
         b.append("<metadata><name>").append(esc(name)).append("</name><time>").append(iso(start)).append("</time></metadata>\n");
         b.append("<trk><name>").append(esc(name)).append("</name><type>").append(esc(sport)).append("</type>");
         boolean open = false;

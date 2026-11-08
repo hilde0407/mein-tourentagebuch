@@ -1,4 +1,4 @@
-package de.meinetouren.lokal;
+package de.tourentagebuch.app;
 
 import java.util.ArrayList;
 import java.util.List;

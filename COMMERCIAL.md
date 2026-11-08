@@ -4,7 +4,7 @@ Dies ist eine technische Checkliste, **keine Rechtsberatung**. Vor einem Verkauf
 
 ## 1. Eigene Rechte
 - Der Quellcode dieses Projekts ist eigenständig und enthält keinen GPL-Code. Eine Lizenz für den Verkauf (z. B. „Alle Rechte vorbehalten“) muss noch festgelegt und als `LICENSE` ergänzt werden.
-- Die Aufnahme- und Ansage-Logik stammt aus dem Schwesterprojekt „Meine Touren“ (gleicher Autor).
+- Die Aufnahme- und Ansage-Logik stammt aus dem Schwesterprojekt „Meine Touren“ (Server-Version) (gleicher Autor).
 
 ## 2. Bibliotheken (alle kommerziell nutzbar)
 | Bibliothek | Lizenz | Pflicht |
@@ -36,7 +36,7 @@ Bewusst **nicht** verwendet: jcifs-ng (LGPL), weil dessen Bedingungen für Apps 
 - Der Zugriff auf SMB/WebDAV erfolgt nur auf Servereingabe des Nutzers.
 
 ## 6. Technisches vor dem Verkauf
-- **Signierschlüssel**: Der in `android/app/mt-debug.jks` liegende Schlüssel ist öffentlich und nur für Testversionen. Für den Verkauf einen eigenen Upload-/Release-Schlüssel erzeugen, **geheim halten** und sichern (Verlust = keine Updates mehr). Das App-Paket `de.meinetouren.lokal` ist nach der Veröffentlichung dauerhaft festgelegt.
+- **Signierschlüssel**: Der in `android/app/mt-debug.jks` liegende Schlüssel ist öffentlich und nur für Testversionen. Für den Verkauf einen eigenen Upload-/Release-Schlüssel erzeugen, **geheim halten** und sichern (Verlust = keine Updates mehr). Das App-Paket `de.tourentagebuch.app` ist nach der Veröffentlichung dauerhaft festgelegt.
 - Als Android App Bundle (`bundleRelease`) bauen, `targetSdk` aktuell halten.
 - Optional: Bezahlmodell (Einmalkauf/Abo) über Google Play Billing; die App hat dafür noch keine Funktion.
-- App-Name „Meine Touren Lokal“ auf Markenkollisionen prüfen.
+- App-Name „Mein Tourentagebuch“ auf Markenkollisionen prüfen.

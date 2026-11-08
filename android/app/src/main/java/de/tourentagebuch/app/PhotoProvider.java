@@ -1,4 +1,4 @@
-package de.meinetouren.lokal;
+package de.tourentagebuch.app;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -11,7 +11,7 @@ import java.io.FileNotFoundException;
 
 /** Gibt der Kamera-App Schreibzugriff auf genau eine Datei im privaten Ordner der App (ohne AndroidX/FileProvider). */
 public class PhotoProvider extends ContentProvider {
-    public static final String AUTH = "de.meinetouren.lokal.fileprovider";
+    public static final String AUTH = "de.tourentagebuch.app.fileprovider";
 
     public static File camDir(android.content.Context c) {
         File d = new File(c.getCacheDir(), "cam");

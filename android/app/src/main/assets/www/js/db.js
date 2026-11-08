@@ -4,7 +4,7 @@ const DB = {
   db: null,
   open() {
     return new Promise((ok, fail) => {
-      const r = indexedDB.open('meinetouren-lokal', 1);
+      const r = indexedDB.open('tourentagebuch', 1);
       r.onupgradeneeded = () => {
         const d = r.result;
         const t = d.createObjectStore('tours', { keyPath: 'id' });

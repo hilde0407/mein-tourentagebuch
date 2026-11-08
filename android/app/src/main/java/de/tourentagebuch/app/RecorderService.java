@@ -1,4 +1,4 @@
-package de.meinetouren.lokal;
+package de.tourentagebuch.app;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -21,10 +21,10 @@ import java.util.Locale;
 
 /** Vordergrunddienst: hält die GPS-Aufzeichnung am Laufen, auch bei ausgeschaltetem Bildschirm. */
 public class RecorderService extends Service implements LocationListener {
-    public static final String ACT_START = "de.meinetouren.lokal.START";
-    public static final String ACT_PAUSE = "de.meinetouren.lokal.PAUSE";
-    public static final String ACT_RESUME = "de.meinetouren.lokal.RESUME";
-    public static final String ACT_STOP = "de.meinetouren.lokal.STOP";
+    public static final String ACT_START = "de.tourentagebuch.app.START";
+    public static final String ACT_PAUSE = "de.tourentagebuch.app.PAUSE";
+    public static final String ACT_RESUME = "de.tourentagebuch.app.RESUME";
+    public static final String ACT_STOP = "de.tourentagebuch.app.STOP";
     private static final String CHANNEL = "rec";
     private static final int NID = 42;
 
@@ -111,7 +111,7 @@ public class RecorderService extends Service implements LocationListener {
         }
         if (wl == null) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MeineTouren:rec");
+            wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Tourentagebuch:rec");
             wl.acquire(12L * 60 * 60 * 1000);
         }
     }

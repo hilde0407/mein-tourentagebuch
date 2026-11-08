@@ -1,4 +1,4 @@
-package de.meinetouren.lokal;
+package de.tourentagebuch.app;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -59,7 +59,7 @@ public class ImportService extends Service {
         int i = in == null ? 0 : in.getIntExtra("i", 0), n = in == null ? 0 : in.getIntExtra("n", 0);
         Notification nt = base(this, title == null ? "Import läuft" : title, text == null ? "" : text, i, n, true).build();
         if (wl == null) {
-            wl = ((PowerManager) getSystemService(Context.POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "meinetouren:import");
+            wl = ((PowerManager) getSystemService(Context.POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tourentagebuch:import");
             wl.acquire(3 * 60 * 60 * 1000L);
         }
         if (Build.VERSION.SDK_INT >= 29) startForeground(NID, nt, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);

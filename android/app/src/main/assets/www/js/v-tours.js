@@ -41,7 +41,7 @@ Views['/'] = async root => {
     sum.textContent = ts.length ? `${ts.length} ${ts.length === 1 ? 'Tour' : 'Touren'} · ${F.km(d)} · ${F.m(u)} Aufstieg` : '';
     if (!ts.length) {
       list.append(all.length ? h('div', { class: 'empty' }, h('p', null, 'Keine Tour passt zu diesem Filter.')) :
-        h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '⛰️'), h('h2', null, 'Willkommen bei Meine Touren'), h('p', null, 'Alle Touren und Fotos bleiben auf deinem Handy. Hol deine bisherigen Touren herein oder starte gleich eine neue.'),
+        h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '⛰️'), h('h2', null, 'Willkommen im Tourentagebuch'), h('p', null, 'Alle Touren und Fotos bleiben auf deinem Handy. Hol deine bisherigen Touren herein oder starte gleich eine neue.'),
           h('div', { class: 'col' }, h('a', { class: 'btn pri', href: '#/import' }, '📥 Touren importieren'), h('a', { class: 'btn', href: '#/rec' }, '● Aufzeichnung starten'), h('a', { class: 'btn', href: '#/plan' }, '✏️ Tour planen'))));
       return;
     }
@@ -56,7 +56,7 @@ Views['/'] = async root => {
           h('div', { class: 'met' }, h('span', null, F.km(t.dist)), t.up ? h('span', null, '↑ ' + F.m(t.up)) : null, t.dur ? h('span', null, '⏱ ' + F.dur(t.dur)) : null, pc[t.id] ? h('span', null, '🖼 ' + pc[t.id]) : null))));
     });
   };
-  root.append(topbar('Meine Touren'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), chips, sum), list,
+  root.append(topbar('Tourentagebuch'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), chips, sum), list,
     h('a', { class: 'fab', href: '#/import', 'aria-label': 'Touren importieren' }, '＋'));
   draw();
   return () => io.disconnect();

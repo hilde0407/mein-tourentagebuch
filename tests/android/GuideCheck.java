@@ -1,4 +1,4 @@
-import de.meinetouren.lokal.Guide;
+import de.tourentagebuch.app.Guide;
 import java.util.ArrayList;
 import java.util.List;
 

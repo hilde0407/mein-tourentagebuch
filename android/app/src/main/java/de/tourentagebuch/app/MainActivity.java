@@ -1,4 +1,4 @@
-package de.meinetouren.lokal;
+package de.tourentagebuch.app;
 
 import android.Manifest;
 import android.app.Activity;
@@ -49,7 +49,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * Meine Touren Lokal: eine WebView zeigt die Oberfläche aus den Assets unter https://app.local/.
+ * Mein Tourentagebuch: eine WebView zeigt die Oberfläche aus den Assets unter https://app.local/.
  * Alle Daten liegen auf dem Handy. Die Brücke "MTApp" erledigt, was eine Webseite nicht kann
  * (Netzwerk ohne CORS, Dateien, Fotos, SMB, GPS-Aufzeichnung, Sprachansagen).
  */
@@ -79,7 +79,7 @@ public class MainActivity extends Activity {
         s.setGeolocationEnabled(true);
         s.setAllowFileAccess(false);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " MeineTourenLokal/1.0");
+        s.setUserAgentString(s.getUserAgentString() + " Tourentagebuch/1.0");
         web.addJavascriptInterface(new Bridge(), "MTApp");
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -344,7 +344,7 @@ public class MainActivity extends Activity {
 
     /* ---------- Brücke zur Weboberfläche ---------- */
     public class Bridge {
-        @JavascriptInterface public String version() { return "1.0.2"; }
+        @JavascriptInterface public String version() { return "1.0.0"; }
 
         /** Einziger Einstieg für alles Asynchrone: Ergebnis kommt über window.__mtcb(id, ok, json). */
         @JavascriptInterface
@@ -455,7 +455,7 @@ public class MainActivity extends Activity {
     private String dispatch(String id, String m, JSONObject a) throws Exception {
         switch (m) {
             case "info": {
-                return new JSONObject().put("version", "1.0.2").put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
+                return new JSONObject().put("version", "1.0.0").put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
                         .put("device", Build.MANUFACTURER + " " + Build.MODEL).put("loc", hasLoc())
                         .put("battery_free", ((android.os.PowerManager) getSystemService(POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()))
                         .put("rec", new JSONObject(Recorder.get(this).statusJson())).toString();
@@ -626,15 +626,15 @@ public class MainActivity extends Activity {
             android.content.ContentValues v = new android.content.ContentValues();
             v.put(MediaStore.Downloads.DISPLAY_NAME, name);
             v.put(MediaStore.Downloads.MIME_TYPE, mt);
-            v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MeineTouren");
+            v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Tourentagebuch");
             Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
             if (u == null) throw new Exception("Speichern nicht möglich");
             try (OutputStream o = getContentResolver().openOutputStream(u)) { o.write(data); }
-            return JSONObject.quote("Download/MeineTouren/" + name);
+            return JSONObject.quote("Download/Tourentagebuch/" + name);
         }
-        File d = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "MeineTouren");
+        File d = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Tourentagebuch");
         d.mkdirs();
         try (OutputStream o = new FileOutputStream(new File(d, name))) { o.write(data); }
-        return JSONObject.quote("Download/MeineTouren/" + name);
+        return JSONObject.quote("Download/Tourentagebuch/" + name);
     }
 }

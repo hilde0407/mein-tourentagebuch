@@ -107,7 +107,7 @@ const Geo = {
   gpx(name, sport, pts, wpts) {
     const x = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const iso = t => new Date(t).toISOString().replace(/\.\d+Z$/, 'Z');
-    let o = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Meine Touren Lokal" xmlns="http://www.topografix.com/GPX/1/1">\n';
+    let o = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Mein Tourentagebuch" xmlns="http://www.topografix.com/GPX/1/1">\n';
     (wpts || []).forEach(w => { o += `<wpt lat="${w.lat}" lon="${w.lon}"><name>${x(w.name)}</name></wpt>\n`; });
     o += `<trk><name>${x(name)}</name><type>${x(sport)}</type><trkseg>\n`;
     pts.forEach((p, i) => {

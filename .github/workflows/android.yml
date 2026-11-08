@@ -26,9 +26,9 @@ jobs:
         run: |
           node tests/test_parse.js
           mkdir -p /tmp/jc
-          javac -d /tmp/jc android/app/src/main/java/de/meinetouren/lokal/TrackStore.java tests/android/TrackStoreCheck.java
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/TrackStore.java tests/android/TrackStoreCheck.java
           java -cp /tmp/jc TrackStoreCheck
-          javac -d /tmp/jc android/app/src/main/java/de/meinetouren/lokal/Guide.java tests/android/GuideCheck.java
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/Guide.java tests/android/GuideCheck.java
           java -cp /tmp/jc GuideCheck
       - name: Android-SDK-Lizenzen akzeptieren
         run: |
@@ -42,13 +42,13 @@ jobs:
       - name: APK bauen
         run: |
           gradle -p android assembleDebug
-          cp android/app/build/outputs/apk/debug/*.apk MeineTourenLokal.apk
+          cp android/app/build/outputs/apk/debug/*.apk Tourentagebuch.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: MeineTourenLokal-apk
-          path: MeineTourenLokal.apk
+          name: Tourentagebuch-apk
+          path: Tourentagebuch.apk
       - name: APK an die Veröffentlichung anhängen
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" MeineTourenLokal.apk --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" Tourentagebuch.apk --clobber

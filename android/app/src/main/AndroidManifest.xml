@@ -65,7 +65,7 @@
 
         <provider
             android:name=".PhotoProvider"
-            android:authorities="de.meinetouren.lokal.fileprovider"
+            android:authorities="de.tourentagebuch.app.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true" />
 

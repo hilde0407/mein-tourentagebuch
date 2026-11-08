@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace 'de.meinetouren.lokal'
+    namespace 'de.tourentagebuch.app'
     compileSdk 34
 
     defaultConfig {
-        applicationId 'de.meinetouren.lokal'
+        applicationId 'de.tourentagebuch.app'
         minSdk 26
         targetSdk 34
-        versionCode 102
-        versionName '1.0.2'
+        versionCode 1
+        versionName '1.0.0'
     }
 
     signingConfigs {

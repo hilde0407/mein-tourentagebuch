@@ -1,4 +1,4 @@
-# Meine Touren Lokal
+# Mein Tourentagebuch
 
 Eigenständige Android-App: Touren, Fotos, Aufzeichnung, Planung und Routing – **alles lokal auf dem Handy**, ohne Server.
 
