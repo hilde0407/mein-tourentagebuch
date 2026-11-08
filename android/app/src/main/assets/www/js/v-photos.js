@@ -49,11 +49,19 @@ async function pickTour() {
 }
 
 const PhotoSources = {
+  /** Fortschrittsdialog. Läuft als Vordergrunddienst weiter, wenn die App in den Hintergrund geht. */
   async progress(title, fn) {
     const bar = h('div', { class: 'prog' }, h('i')), txt = h('p', null, 'Bitte warten …');
-    const s = sheet(title, h('div', null, txt, bar));
-    const upd = (i, n, t) => { bar.firstChild.style.width = (i / n * 100) + '%'; txt.textContent = `${i} von ${n}` + (t ? ' · ' + t : ''); };
-    try { return await fn(upd, txt); } finally { setTimeout(() => s.close(), 300); }
+    const s = sheet(title, h('div', null, txt, bar, h('p', { class: 'muted small' }, 'Du kannst die App währenddessen verlassen – der Vorgang läuft im Hintergrund weiter (siehe Benachrichtigung).')));
+    let last = 0, lastText = '';
+    appSync('bgStart', title, 'Wird gestartet …', 0, 0);
+    const upd = (i, n, t) => {
+      bar.firstChild.style.width = (i / n * 100) + '%'; lastText = `${i} von ${n}` + (t ? ' · ' + t : ''); txt.textContent = lastText;
+      if (Date.now() - last > 1500) { last = Date.now(); appSync('bgStart', title, lastText, i, n); }
+    };
+    let ok = false;
+    try { const r = await fn(upd, txt); ok = true; return r; }
+    finally { appSync('bgStop', ok ? title + ' abgeschlossen' : ''); setTimeout(() => s.close(), 300); }
   },
   async needPerm() {
     const r = await Native.json('perm');

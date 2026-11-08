@@ -344,7 +344,7 @@ public class MainActivity extends Activity {
 
     /* ---------- Brücke zur Weboberfläche ---------- */
     public class Bridge {
-        @JavascriptInterface public String version() { return "1.0.1"; }
+        @JavascriptInterface public String version() { return "1.0.2"; }
 
         /** Einziger Einstieg für alles Asynchrone: Ergebnis kommt über window.__mtcb(id, ok, json). */
         @JavascriptInterface
@@ -372,6 +372,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void discardRecording() { Recorder.get(MainActivity.this).discard(); }
         @JavascriptInterface public String backups() { return Recorder.get(MainActivity.this).backupsJson(); }
         @JavascriptInterface public String backupGpx(String f) { return Recorder.get(MainActivity.this).backupGpx(f); }
+        @JavascriptInterface public void bgStart(String title, String text, int i, int n) { ImportService.start(MainActivity.this, title, text, i, n); }
+        @JavascriptInterface public void bgStop(String doneText) { ImportService.stop(MainActivity.this, doneText); }
         @JavascriptInterface public String takePhotoQueue() { return take("photoq"); }
         @JavascriptInterface public String takeShared() { return take("shared"); }
         @JavascriptInterface public String takeSharedText() { return take("sharedtext"); }
@@ -453,7 +455,7 @@ public class MainActivity extends Activity {
     private String dispatch(String id, String m, JSONObject a) throws Exception {
         switch (m) {
             case "info": {
-                return new JSONObject().put("version", "1.0.1").put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
+                return new JSONObject().put("version", "1.0.2").put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
                         .put("device", Build.MANUFACTURER + " " + Build.MODEL).put("loc", hasLoc())
                         .put("battery_free", ((android.os.PowerManager) getSystemService(POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()))
                         .put("rec", new JSONObject(Recorder.get(this).statusJson())).toString();
