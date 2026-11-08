@@ -1,0 +1,54 @@
+name: Android-App
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Tests (Parser, Aufzeichnungslogik, Wegansagen)
+        run: |
+          node tests/test_parse.js
+          mkdir -p /tmp/jc
+          javac -d /tmp/jc android/app/src/main/java/de/meinetouren/lokal/TrackStore.java tests/android/TrackStoreCheck.java
+          java -cp /tmp/jc TrackStoreCheck
+          javac -d /tmp/jc android/app/src/main/java/de/meinetouren/lokal/Guide.java tests/android/GuideCheck.java
+          java -cp /tmp/jc GuideCheck
+      - name: Android-SDK-Lizenzen akzeptieren
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p "$SDK/licenses"
+          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n' > "$SDK/licenses/android-sdk-license"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - name: APK bauen
+        run: |
+          gradle -p android assembleDebug
+          cp android/app/build/outputs/apk/debug/*.apk MeineTourenLokal.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MeineTourenLokal-apk
+          path: MeineTourenLokal.apk
+      - name: APK an die Veröffentlichung anhängen
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" MeineTourenLokal.apk --clobber

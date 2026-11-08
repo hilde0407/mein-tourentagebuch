@@ -1,0 +1,55 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'de.meinetouren.lokal'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'de.meinetouren.lokal'
+        minSdk 26
+        targetSdk 34
+        versionCode 100
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        debug {
+            // Fester Schlüssel im Repository: neue Versionen lassen sich über die alte installieren.
+            storeFile file('mt-debug.jks')
+            storePassword 'android'
+            keyAlias 'meinetouren'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*', 'META-INF/*.kotlin_module', 'META-INF/versions/**', 'META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA']
+        }
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.hierynomus:smbj:0.13.0'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    implementation 'org.slf4j:slf4j-nop:1.7.36'
+}
