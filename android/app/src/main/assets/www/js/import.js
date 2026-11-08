@@ -56,7 +56,7 @@ const Import = {
   /* ---------------- Komoot ---------------- */
   Komoot: {
     base: 'https://api.komoot.de',
-    auth: (u, p) => ({ Authorization: 'Basic ' + btoa(unescape(encodeURIComponent(u + ':' + p))), Accept: 'application/json' }),
+    auth: (u, p) => ({ Authorization: 'Basic ' + btoa(unescape(encodeURIComponent(u + ':' + p))) }),
     async login(email, pass) {
       const r = await Native.http({ url: Import.Komoot.base + '/v006/account/email/' + encodeURIComponent(email) + '/', headers: Import.Komoot.auth(email, pass) });
       if (r.status === 401) throw new Error('Komoot hat die Anmeldung abgelehnt (E-Mail oder Passwort falsch?)');
