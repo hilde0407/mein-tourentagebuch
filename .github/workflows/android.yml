@@ -2,7 +2,7 @@ name: Android-App
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   release:
     types: [published]
   workflow_dispatch:
