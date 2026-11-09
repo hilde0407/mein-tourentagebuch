@@ -89,6 +89,30 @@ Views['/settings'] = async root => {
   const body = h('div', { class: 'pad' });
   root.append(topbar('Einstellungen', { back: true, noMenu: true }), body);
   const sel = (label, key, opts) => h('label', { class: 'fld' }, label, h('select', { onchange: async e => { await Set_.set(key, e.target.value); } }, opts.map(([v, l]) => h('option', { value: v, selected: String(Set_.get(key)) === String(v) }, l))));
+  const homeBox = () => {      // Heimatort suchen und übernehmen (Kartenmitte der Planung, Wetter, Vorschläge)
+    const q = h('input', { type: 'text', placeholder: 'Ort oder Adresse suchen …', value: Set_.get('homeName') || '', autocapitalize: 'off' }),
+      res = h('div'), st = h('p', { class: 'muted small' });
+    const show = () => { st.textContent = Set_.get('homeLat') ? `📍 ${Set_.get('homeName') || ''} (${(+Set_.get('homeLat')).toFixed(3)}, ${(+Set_.get('homeLon')).toFixed(3)})` : 'Noch kein Heimatort eingetragen.'; };
+    const search = async () => {
+      const t = q.value.trim(); if (t.length < 2) return;
+      res.textContent = 'Suche …';
+      try {
+        const r = await Native.http({ url: 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=de&q=' + encodeURIComponent(t), headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
+        if (r.status !== 200) throw new Error('Ortssuche: HTTP ' + r.status);
+        const l = JSON.parse(r.body); res.innerHTML = '';
+        if (!l.length) { res.textContent = 'Nichts gefunden.'; return; }
+        l.forEach(e => res.append(h('div', null, h('button', { class: 'btn sm', style: { margin: '2px 0', textAlign: 'left' }, onclick: async () => {
+          const name = e.display_name.split(',').slice(0, 2).join(',').trim();
+          await Set_.set('homeName', name); await Set_.set('homeLat', (+e.lat).toFixed(5)); await Set_.set('homeLon', (+e.lon).toFixed(5));
+          q.value = name; res.innerHTML = ''; show(); toast('Heimatort gespeichert');
+        } }, '📍 ' + e.display_name))));
+      } catch (er) { res.textContent = String(er.message || er); }
+    };
+    q.addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+    show();
+    return h('div', null, h('div', { class: 'row' }, q, h('button', { class: 'btn sm', onclick: search }, 'Suchen'),
+      h('button', { class: 'btn sm', 'aria-label': 'Heimatort entfernen', onclick: async () => { for (const k of ['homeName', 'homeLat', 'homeLon']) await Set_.set(k, ''); q.value = ''; res.innerHTML = ''; show(); } }, '✕')), res, st);
+  };
   const inp = (label, key, ph, type) => h('label', { class: 'fld' }, label, h('input', { type: type || 'text', value: Set_.get(key) || '', placeholder: ph || '', autocapitalize: 'off', onchange: async e => { await Set_.set(key, e.target.value.trim()); } }));
   const cnt = h('small', { class: 'muted' }, '');
   MapKit.cacheCount().then(n => cnt.textContent = n + ' Kacheln gespeichert');
@@ -101,7 +125,7 @@ Views['/settings'] = async root => {
     h('h3', null, 'Routing'), inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'),
     h('h3', null, 'Fotos'), sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
     h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen'),
-    h('h3', null, 'Standort'), h('div', { class: 'row' }, inp('Heimat Breite', 'homeLat', '47.5'), inp('Heimat Länge', 'homeLon', '11.2')),
+    h('h3', null, 'Heimatort'), homeBox(),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', onclick: backup }, '💾 Sicherung speichern'), h('button', { class: 'btn', onclick: restore }, '↩ Sicherung einspielen')),
     h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
