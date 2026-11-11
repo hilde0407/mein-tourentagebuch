@@ -69,8 +69,16 @@ Views['/import'] = async root => {
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
       h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd); }); } }, 'Anmelden & laden')));
-    const tok = h('div', null,
-      h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort). Du brauchst einmalig das Zugangs-Token („apptoken“) deines Zepp-Kontos:'),
+    const inApp = Native.available() ? h('div', null,
+      h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort): Die App öffnet die Zepp-Anmeldeseite, du meldest dich wie gewohnt an, die App übernimmt das Zugangs-Token selbst.'),
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
+        let r; try { r = await Native.json('zeppLogin'); } catch (e) { toast(e.message, 7000); return; }
+        if (!r || !r.token) { toast('Kein Token übernommen'); return; }
+        let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(r.token, hs.value); } catch (e) { toast(e.message, 9000); return; }
+        run0(acc); } }, 'Bei Zepp anmelden')),
+      null) : null;
+    const tok = h('div', null, inApp,
+      h('p', { class: 'muted' }, Native.available() ? 'Falls die Anmeldung in der App nicht klappt, kannst du das Zugangs-Token („apptoken“) auch von Hand holen:' : 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort). Du brauchst einmalig das Zugangs-Token („apptoken“) deines Zepp-Kontos:'),
       h('ol', { class: 'steps' },
         h('li', null, 'Im Handy-Browser (Chrome) ', h('code', null, 'user.huami.com/privacy2/index.html?platform_app=com.xiaomi.hm.health&loginPlatform=web'), ' öffnen und anmelden. Dort ', h('b', null, 'nichts'), ' antippen – die Seite bietet „Konto löschen“ an.'),
         h('li', null, 'Danach die Adresszeile antippen, den folgenden Text einfügen und abschicken (das Wort „javascript:“ vorne muss dabei stehen bleiben – manche Browser löschen es beim Einfügen, dann von Hand davor tippen). Es erscheint ein Fenster mit dem Token; es ist schon kopiert.'),

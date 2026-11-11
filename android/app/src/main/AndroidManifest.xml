@@ -63,6 +63,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ZeppLoginActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
         <provider
             android:name=".PhotoProvider"
             android:authorities="de.tourentagebuch.app.fileprovider"

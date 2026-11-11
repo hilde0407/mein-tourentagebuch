@@ -55,7 +55,7 @@ import okhttp3.Response;
  */
 public class MainActivity extends Activity {
     static final String HOST = "app.local";
-    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15;
+    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16;
     private WebView web;
     private SharedPreferences prefs;
     private GeolocationPermissions.Callback geoCb;
@@ -273,6 +273,12 @@ public class MainActivity extends Activity {
         }
         if (cid == null) return;
         final String id = cid;
+        if (req == REQ_ZEPP) {
+            String tk = res == RESULT_OK && data != null ? data.getStringExtra("token") : null;
+            if (id == null) return;
+            try { reply(id, true, new JSONObject().put("token", tk == null ? "" : tk).toString()); } catch (Exception e) { reply(id, false, e.toString()); }
+            return;
+        }
         if (res != RESULT_OK || data == null) { reply(id, true, "[]"); return; }
         if (req == REQ_TREE) {
             Uri t = data.getData();
@@ -464,6 +470,14 @@ public class MainActivity extends Activity {
             case "download": return download(a);
             case "pickFiles": pick(id, REQ_PICK, new String[]{"*/*"}, true, false); return null;
             case "pickPhotos": pick(id, REQ_PICK + 100, new String[]{"image/*"}, true, true); return null;
+            case "zeppLogin": {
+                pending.put(REQ_ZEPP, id);
+                runOnUiThread(() -> {
+                    try { startActivityForResult(new Intent(this, ZeppLoginActivity.class), REQ_ZEPP); }
+                    catch (Exception e) { reply(id, false, "Anmeldefenster nicht verfügbar"); }
+                });
+                return null;
+            }
             case "pickFolder": {
                 pending.put(REQ_TREE, id);
                 runOnUiThread(() -> {
