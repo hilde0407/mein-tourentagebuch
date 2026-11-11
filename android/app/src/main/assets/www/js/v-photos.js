@@ -94,6 +94,7 @@ const PhotoSources = {
       it('🖼️', 'Aus der Galerie wählen', 'Einzelne Fotos auswählen', async () => { const m = await Native.json('pickPhotos'); return Photos.addMeta(m); }),
       tour ? it('✨', 'Passende Fotos automatisch finden', 'Galerie nach Aufnahmezeit dieser Tour durchsuchen', () => PhotoSources.galleryForTours([tour])) : it('✨', 'Passende Fotos zu allen Touren finden', 'Galerie nach Aufnahmezeit durchsuchen', async () => PhotoSources.galleryForTours((await Tours.list()).filter(t => t.status !== 'planned' && t.timed))),
       it('📁', 'Ordner auf dem Handy', 'z. B. Kamera-Ordner, Syncthing, Cloud-Ordner', () => PhotoSources.folder()),
+      it('💻', 'Vom Rechner im WLAN', 'Mac oder PC: Adresse im Browser öffnen, Fotos hineinziehen', () => { PhotoSources.receive(done); return null; }),
       it('🖧', 'Netzwerkfreigabe (SMB)', 'NAS, Fritz!Box, Windows-Freigabe', () => { PhotoSources.smb(); return null; }),
       it('☁️', 'Nextcloud / WebDAV', 'Fotos von deinem Server', () => { PhotoSources.webdav(); return null; })));
   },
@@ -121,6 +122,33 @@ const PhotoSources = {
     });
     await DB.kvSet('photoFolders', list);
     return n;
+  },
+  /* ---- Vom Rechner empfangen: das Handy zeigt eine Adresse, der Rechner schickt Fotos über eine Webseite ---- */
+  async receive(done) {
+    let timer = null, total = 0, closed = false;
+    const cnt = h('p', { class: 'recvcnt' }, ''), box = h('div', null, h('p', { class: 'muted' }, 'Starte …'));
+    const s = sheet('Vom Rechner empfangen', box, { onclose: async () => {
+      closed = true; clearInterval(timer); try { await Native.json('uploadStop'); } catch (e) { /* egal */ }
+      if (total) { toast(total + ' Foto(s) hinzugefügt', 4000); window.dispatchEvent(new Event('photos-changed')); }
+      if (done) { try { await done(); } catch (e) { /* egal */ } }
+    } });
+    let info;
+    try { info = await Native.json('uploadStart'); } catch (e) { box.textContent = 'Der Empfang konnte nicht gestartet werden: ' + (e.message || e); return; }
+    if (!info || !info.url) { box.innerHTML = ''; box.append(h('p', null, 'Kein WLAN gefunden. Verbinde das Handy mit dem gleichen Netzwerk wie den Rechner und versuche es noch einmal.')); return; }
+    box.innerHTML = '';
+    box.append(h('p', null, 'Öffne diese Adresse im Browser deines Macs oder PCs (im selben WLAN) und ziehe Fotos auf die Seite:'),
+      h('p', { class: 'recvurl', id: 'recvurl' }, info.url),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => { if (navigator.clipboard) navigator.clipboard.writeText(info.url).then(() => toast('Adresse kopiert')); } }, 'Adresse kopieren')),
+      cnt, h('p', { class: 'muted small' }, 'Der Empfang läuft, solange dieses Fenster offen ist. Die Übertragung ist nicht verschlüsselt – nur im eigenen WLAN nutzen. Fotos werden den Touren nach Aufnahmezeit zugeordnet.'));
+    cnt.textContent = 'Wartet auf Fotos …';
+    timer = setInterval(async () => {
+      if (closed) return;
+      try {
+        const r = await Native.json('uploadPoll');
+        if (r.photos && r.photos.length) { total += await Photos.addMeta(r.photos); window.dispatchEvent(new Event('photos-changed')); }
+        cnt.textContent = total ? total + ' Foto(s) empfangen' + (r.failed ? ' · ' + r.failed + ' nicht lesbar' : '') : (r.failed ? r.failed + ' Datei(en) nicht lesbar' : 'Wartet auf Fotos …');
+      } catch (e) { /* nächster Versuch */ }
+    }, 1500);
   },
   /* ---- SMB ---- */
   smb() {

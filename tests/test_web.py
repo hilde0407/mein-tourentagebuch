@@ -21,6 +21,8 @@ window.MTApp={
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(){}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r;
    if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:a.bin?'':await x.text()}; if(a.bin){ const u=new Uint8Array(await x.arrayBuffer()); let b=''; u.forEach(c=>b+=String.fromCharCode(c)); r.b64=btoa(b); } }
+   else if(m==='uploadStart') r={ip:'192.168.0.5',port:8765,url:'http://192.168.0.5:8765/abc12/'}; else if(m==='uploadStop') r=true;
+   else if(m==='uploadPoll'){ r={photos:window.__upl||[],failed:0,running:true}; window.__upl=[]; }
    else if(m==='perm') r={granted:true}; else if(m==='saveFile'){ r='Download/Tourentagebuch/'+a.name; window.__saved=a; }
    else if(m==='storage') r={photos:0,bytes:0}; else if(m==='galleryRange') r=window.__gallery||[];
    else if(m==='importUris') r=(a.uris||[]).map((u,i)=>({id:'g'+i+u.length,name:'g.jpg',ts:window.__gts||0,w:10,h:10,src:'galerie'}));
@@ -319,6 +321,13 @@ def main():
         ws = pg.evaluate("[...document.querySelectorAll('#tabs a')].map(a => Math.round(a.getBoundingClientRect().width))")
         assert len(ws) == 6 and min(ws) >= 55, ws
         pg.click("#tabs a[data-p='/reisen']"); pg.wait_for_selector("text=Mehrtagestouren"); assert pg.evaluate("document.querySelector(\"#tabs a[data-p='/reisen']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')")
+        # Fotos vom Rechner empfangen: Adresse wird angezeigt, per Abruf eingegangene Fotos werden übernommen
+        pg.evaluate("location.hash = '#/photos'"); pg.wait_for_selector("button[aria-label='Fotos hinzufügen']"); pg.click("button[aria-label='Fotos hinzufügen']")
+        pg.get_by_text("Vom Rechner im WLAN").click(); pg.wait_for_selector("#recvurl"); assert "192.168.0.5:8765/abc12/" in pg.inner_text("#recvurl")
+        pg.evaluate("window.__upl = [{ id: 'rcaaaaaaaa', name: 'r.jpg', ts: 1700000000000, w: 10, h: 10, src: 'rechner' }]")
+        pg.wait_for_selector("text=1 Foto(s) empfangen", timeout=10000)
+        pg.keyboard.press("Escape"); pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
+        assert pg.evaluate("async () => !!(await DB.get('photos', 'rcaaaaaaaa'))")
         # Streckenfarbe und Diashow
         pg.evaluate("async () => { await Set_.set('routeColor', '#d81b60'); const l = await Tours.list(); location.hash = '#/tour/' + l[0].id; }")
         pg.wait_for_selector(".tmap"); assert pg.evaluate("MapKit.routeColor('hike') === '#d81b60' && MapKit.routeColor('ebike') === '#d81b60'")

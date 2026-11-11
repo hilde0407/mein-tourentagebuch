@@ -539,6 +539,9 @@ public class MainActivity extends Activity {
                 return out.toString();
             }
             case "deletePhoto": Photos.delete(this, a.optString("id")); return "true";
+            case "uploadStart": return UploadServer.start(this).toString();
+            case "uploadStop": UploadServer.stop(); return "true";
+            case "uploadPoll": return UploadServer.poll().toString();
             case "smbList": return Smb.list(a).toString();
             case "smbImport": return Smb.importPhotos(this, a, a.getJSONArray("files")).toString();
             case "smbFetch": {
