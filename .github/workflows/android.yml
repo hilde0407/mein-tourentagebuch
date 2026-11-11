@@ -56,6 +56,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
+      - name: Signierschlüssel bereitstellen (nur Veröffentlichungen)
+        if: inputs.tag != ''
+        env:
+          KS: ${{ secrets.MT_KEYSTORE_B64 }}
+          SP: ${{ secrets.MT_STORE_PASS }}
+          KP: ${{ secrets.MT_KEY_PASS }}
+          KA: ${{ secrets.MT_KEY_ALIAS }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$SP" ] || [ -z "$KP" ] || [ -z "$KA" ]; then
+            echo "::error::Signierschlüssel fehlt: die vier Repository-Secrets MT_KEYSTORE_B64, MT_STORE_PASS, MT_KEY_PASS und MT_KEY_ALIAS anlegen (docs/signieren.md)."; exit 1
+          fi
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/mt.jks"
+          echo "::add-mask::$SP"; echo "::add-mask::$KP"
+          { echo "MT_KEYSTORE=$RUNNER_TEMP/mt.jks"; echo "MT_STORE_PASS=$SP"; echo "MT_KEY_PASS=$KP"; echo "MT_KEY_ALIAS=$KA"; } >> "$GITHUB_ENV"
       - name: APK bauen
         run: |
           gradle -p android assembleDebug

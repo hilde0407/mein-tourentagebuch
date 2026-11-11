@@ -32,6 +32,7 @@ jobs:
   android:
     needs: release
     uses: ./.github/workflows/android.yml
+    secrets: inherit
     with:
       tag: v${{ needs.release.outputs.version }}
     permissions:

@@ -30,4 +30,4 @@ Siehe [COMMERCIAL.md](COMMERCIAL.md) (Lizenzen, Kartenserver, Dienste, Schlüsse
 
 MIT-Lizenz, siehe [LICENSE](LICENSE). Mitgelieferte Bibliotheken haben eigene Lizenzen (siehe [COMMERCIAL.md](COMMERCIAL.md)).
 
-Hinweis zum Signieren: Die APK wird mit dem öffentlichen Schlüssel `android/app/mt-debug.jks` signiert. Das genügt für den privaten Gebrauch; wer die App selbst verteilt, sollte einen eigenen Schlüssel verwenden.
+Signieren: Veröffentlichte APKs sind mit einem geheimen Schlüssel signiert (nicht im Repository). Wer selbst baut, bekommt den normalen Android-Testschlüssel; Anleitung in [docs/signieren.md](docs/signieren.md).

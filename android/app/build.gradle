@@ -10,17 +10,20 @@ android {
         applicationId 'de.tourentagebuch.app'
         minSdk 26
         targetSdk 34
-        versionCode 22
-        versionName '1.7.6'
+        versionCode 23
+        versionName '1.7.7'
     }
 
     signingConfigs {
         debug {
-            // Fester Schlüssel im Repository: neue Versionen lassen sich über die alte installieren.
-            storeFile file('mt-debug.jks')
-            storePassword 'android'
-            keyAlias 'meinetouren'
-            keyPassword 'android'
+            // Veröffentlichungen werden mit einem geheimen Schlüssel signiert, den der Bau über Umgebungsvariablen
+            // bekommt (GitHub-Secrets, siehe docs/signieren.md). Ohne diese Variablen gilt der normale Android-Testschlüssel.
+            if (System.getenv('MT_KEYSTORE')) {
+                storeFile file(System.getenv('MT_KEYSTORE'))
+                storePassword System.getenv('MT_STORE_PASS')
+                keyAlias System.getenv('MT_KEY_ALIAS')
+                keyPassword System.getenv('MT_KEY_PASS')
+            }
         }
     }
 
