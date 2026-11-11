@@ -53,6 +53,10 @@ def main():
                     for item in pg.evaluate(JS): bad.setdefault(("import:" + name, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
                     pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(200)
                 except Exception as e: print("übersprungen:", name, str(e)[:60])
+            pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".chips")
+            for tabname in ("Rekorde", "Kalender", "Auswertung", "Ziele"):
+                pg.get_by_role("button", name=tabname, exact=True).click(); pg.wait_for_timeout(500)
+                for item in pg.evaluate(JS): bad.setdefault(("Statistik " + tabname, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/tours", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)

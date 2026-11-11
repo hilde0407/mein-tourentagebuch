@@ -2,7 +2,7 @@
 Views['/stats'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
-  let year = years[0] || new Date().getFullYear(), sport = '';
+  let year = years[0] || new Date().getFullYear(), sport = '', tab = 'ueber';
   const body = h('div', { class: 'pad' });
   root.append(topbar('Statistik', { back: true, noMenu: true }), body);
   const draw = () => {
@@ -11,6 +11,8 @@ Views['/stats'] = async root => {
     const ss = h('select', { onchange: e => { sport = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Sportarten'), Sports.list.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[2] + ' ' + s[1])));
     body.append(h('div', { class: 'row' }, sel, ss));
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && (!sport || t.sport === sport));
+    body.append(h('div', { class: 'chips' }, [['ueber', 'Übersicht'], ['rekorde', 'Rekorde'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele']].map(([k, l]) => h('button', { class: 'chip' + (tab === k ? ' on' : ''), onclick: () => { tab = k; draw(); } }, l))));
+    if (tab !== 'ueber') { const r = Ausw[tab](body, ts, { all, year, sport }); return r; }
     if (!ts.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Touren in diesem Zeitraum.'))); return; }
     const sum = k => ts.reduce((a, t) => a + (t[k] || 0), 0);
     const days = new Set(ts.map(t => new Date(t.start).toDateString())).size;

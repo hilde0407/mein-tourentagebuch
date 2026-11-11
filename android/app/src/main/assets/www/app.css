@@ -149,3 +149,15 @@ svg.ic{vertical-align:-3px;flex:none}
 header.top select{background:rgba(255,255,255,.12);color:#e8f0ec;border:1px solid rgba(232,240,236,.45);border-radius:var(--r);min-height:36px;padding:0 8px}
 header.top select option{background:#fff;color:#0e2a2b}
 .rec .bigstart{background:#b3261e;color:#fff}
+
+/* Auswertung: Kalender, Ziele, Tabelle */
+.calyear{flex:1;text-align:center;font-size:1.2rem}
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.cm b{display:block;margin-bottom:4px;text-transform:capitalize}.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cd{aspect-ratio:1;display:grid;place-items:center;font-size:.72rem;border-radius:5px;background:var(--accbg);color:var(--muted);border:0;font-style:normal;padding:0}.cd.none{background:none}
+.cd.l1{background:#cfe3d4;color:#0e2a2b}.cd.l2{background:#8fc4a6;color:#0e2a2b}.cd.l3{background:#3f8d6e;color:#fff}.cd.l4{background:#17494a;color:#fff}
+button.cd{cursor:pointer;font-weight:700}
+@media (prefers-color-scheme:dark){.cd.l1{background:#244a43;color:#e3ece8}.cd.l2{background:#2f7a63;color:#fff}.cd.l3{background:#4aa585;color:#08201c}.cd.l4{background:#8fe0bf;color:#08201c}}
+.goal{margin:14px 0}.gbar{position:relative;height:14px;border-radius:7px;background:var(--line)}.gbar i{display:block;height:100%;border-radius:7px;background:var(--acc)}.gbar u{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--yellow);border-radius:2px;text-decoration:none}
+.tblw{overflow-x:auto}.cstat{width:100%;border-collapse:collapse;font-size:.85rem}.cstat th,.cstat td{padding:6px 6px;text-align:right;border-bottom:1px solid var(--line)}.cstat th:first-child,.cstat td:first-child{text-align:left}
+h3.sub{font-size:1rem;margin:14px 0 4px}

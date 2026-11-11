@@ -19,6 +19,7 @@ const Import = {
     const p = [];
     if (r.added) p.push(r.added + (r.added === 1 ? ' Tour importiert' : ' Touren importiert'));
     if (r.dup) p.push(r.dup + ' schon vorhanden');
+    if (r.up) p.push('Höhenmeter bei ' + r.up + (r.up === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
     if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
     if (r.fail) p.push(r.fail + ' nicht lesbar');
     return p.join(' · ') || 'Nichts gefunden';
@@ -94,9 +95,19 @@ const Import = {
       const types = opts.planned ? ['tour_recorded', 'tour_planned'] : ['tour_recorded'];
       let list = [];
       for (const ty of types) (await Import.Komoot.tours(acc, ty)).forEach(t => list.push([t, ty]));
-      const have = new Set((await Tours.list()).map(t => t.srcId));
+      const mineK = new Map((await Tours.list()).map(t => [t.srcId, t]));
+      const have = new Set(mineK.keys());
       const todo = list.filter(([t]) => !have.has('komoot:' + t.id));
-      const res = { added: 0, dup: list.length - todo.length, fail: 0 };
+      const res = { added: 0, dup: list.length - todo.length, fail: 0, up: 0 };
+      // Schon vorhandene Komoot-Touren: Auf-/Abstieg von Komoot übernehmen (wie „Meine Touren“), statt ihn aus den Höhenwerten der Spur zu rechnen
+      for (const [t] of list) {
+        const e = mineK.get('komoot:' + t.id);
+        if (e && e.upSrc !== 'komoot' && isFinite(t.elevation_up) && t.elevation_up != null) {
+          if (Math.abs((e.up || 0) - t.elevation_up) >= 1) res.up++;
+          e.up = t.elevation_up; e.down = isFinite(t.elevation_down) && t.elevation_down != null ? t.elevation_down : e.down; e.upSrc = 'komoot';
+          await Tours.save(e);
+        }
+      }
       for (let i = 0; i < todo.length; i++) {
         const [t, ty] = todo[i];
         if (onProgress) onProgress(i + 1, todo.length, t.name);
@@ -104,7 +115,7 @@ const Import = {
           const items = await Import.Komoot.coords(acc, t.id);
           const start = t.date ? Date.parse(t.date) : null;
           const pts = items.map(c => ({ lat: c.lat, lon: c.lng, ele: c.alt, t: start && c.t != null && ty === 'tour_recorded' ? start + c.t : null }));
-          const r = await Tours.add({ name: t.name, sport: Sports.norm(t.sport), pts, src: 'komoot', srcId: 'komoot:' + t.id, status: ty === 'tour_planned' ? 'planned' : 'done', start });
+          const r = await Tours.add({ name: t.name, sport: Sports.norm(t.sport), pts, src: 'komoot', srcId: 'komoot:' + t.id, up: t.elevation_up, down: t.elevation_down, status: ty === 'tour_planned' ? 'planned' : 'done', start });
           if (r.dup) res.dup++; else res.added++;
         } catch (e) { res.fail++; }
       }

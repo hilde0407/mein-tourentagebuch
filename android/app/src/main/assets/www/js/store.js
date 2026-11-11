@@ -25,7 +25,8 @@ const Tours = {
     const bb = Geo.bbox(pts);
     const t = {
       id, name: (o.name && o.name.trim()) || Tours.autoName(o.sport, st.start), sport: o.sport || 'other', status: o.status || 'done',
-      start: st.start || o.start || Date.now(), end: st.end, dur: st.dur, moving: st.moving, dist: o.dist || st.dist, up: st.up, down: st.down,
+      start: st.start || o.start || Date.now(), end: st.end, dur: st.dur, moving: st.moving, dist: o.dist || st.dist,
+      up: isFinite(o.up) && o.up != null ? o.up : st.up, down: isFinite(o.down) && o.down != null ? o.down : st.down, upSrc: isFinite(o.up) && o.up != null ? o.src : undefined,
       maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: bb, src: o.src || 'file', srcId: o.srcId || '',
       note: o.note || '', fav: false, hidden: false, timed: !!st.start, created: Date.now(),
     };
@@ -99,6 +100,7 @@ const Tours = {
   async recalc(id) {
     const t = await DB.get('tours', id), pts = await Tours.points(id);
     const st = Geo.stats(pts);
+    delete t.upSrc;      // nach einer Änderung der Spur wieder aus den Höhenwerten gerechnet
     Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, up: st.up, down: st.down, maxAlt: st.maxAlt, minAlt: st.minAlt }, Tours.hrSummary(pts));
     await Tours.save(t); return t;
   },

@@ -148,6 +148,39 @@ def main():
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector("text=Ø Puls")
         assert "bpm" in pg.inner_text("#view")
 
+        # Auswertung: Rekorde, Kalender, Auswertung (Neuland, Wetter), Ziele
+        pg.route("**/archive-api.open-meteo.com/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"daily": {"temperature_2m_mean": [8.5], "temperature_2m_max": [12.0], "precipitation_sum": [2.4]}})))
+        pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".kpis")
+        pg.get_by_role("button", name="Rekorde", exact=True).click(); pg.wait_for_selector("text=Bester Tag"); tx = pg.inner_text("#view")
+        assert "Längste Serie" in tx and "Beste Woche" in tx and "Je Sportart" in tx, tx[:400]
+        pg.get_by_role("button", name="Kalender", exact=True).click(); pg.wait_for_selector(".cal")
+        assert pg.locator(".cd.l1, .cd.l2, .cd.l3, .cd.l4").count() >= 1
+        pg.locator("button.cd").first.click(); pg.wait_for_selector(".sheet .li"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
+        pg.get_by_role("button", name="Auswertung", exact=True).click(); pg.wait_for_selector("text=Statistik nach Aktivität")
+        pg.get_by_role("button", name="Berechnen").click(); pg.wait_for_selector("text=Größte Entdeckungen", timeout=15000)
+        nl = pg.evaluate("Tours.list().then(a => a.filter(t => t.nlCells != null).map(t => [t.nlNew, t.nlCells]))")
+        assert len(nl) >= 3 and nl[0][1] > 0 and any(x[0] == 100 for x in nl), nl
+        pg.get_by_role("button", name="Wetter laden").click(); pg.wait_for_selector("text=Touren mit Wetterdaten", timeout=15000)
+        assert "an Regentagen" in pg.inner_text("#view") and "Kälteste Tour" in pg.inner_text("#view")
+        pg.get_by_role("button", name="Ziele", exact=True).click(); pg.wait_for_selector("text=Lege Ziele")
+        pg.locator(".goal input").first.fill("500"); pg.locator(".goal input").first.dispatch_event("change"); pg.wait_for_selector(".gbar")
+        assert "von 500 km" in pg.inner_text("#view")
+
+        # Komoot: Auf-/Abstieg wie bei Komoot übernehmen (neue Touren und schon vorhandene)
+        ko = pg.evaluate("""async () => {
+          const base = 1730000000000;
+          const mk = (i) => Array.from({ length: 20 }, (_, k) => ({ lat: 48 + i * 0.1 + k * 0.0004, lon: 12 + k * 0.0003, alt: 500 + (k % 2) * 10, t: k * 20000 }));
+          await Tours.add({ name: 'K alt', sport: 'hike', pts: mk(1).map(c => ({ lat: c.lat, lon: c.lon, ele: c.alt, t: base + c.t })), src: 'komoot', srcId: 'komoot:555', start: base });
+          Import.Komoot.tours = async () => [{ id: 555, name: 'K alt', sport: 'hike', date: new Date(base).toISOString(), elevation_up: 4321, elevation_down: 4000 },
+                                               { id: 556, name: 'K neu', sport: 'hike', date: new Date(base + 86400000 * 3).toISOString(), elevation_up: 777, elevation_down: 700 }];
+          Import.Komoot.coords = async (acc, id) => mk(2).map(c => ({ lat: c.lat + (id === 556 ? 0.5 : 0), lng: c.lon, alt: c.alt, t: c.t }));
+          const r = await Import.Komoot.importAll({ user: 'u', token: 't' }, { planned: false }, null);
+          const l = await Tours.list();
+          const a = l.find(t => t.srcId === 'komoot:555'), b = l.find(t => t.srcId === 'komoot:556');
+          return { r, a: [a.up, a.down, a.upSrc], b: b ? [b.up, b.down, b.upSrc] : null };
+        }""")
+        assert ko["a"] == [4321, 4000, "komoot"] and ko["b"] == [777, 700, "komoot"] and ko["r"]["up"] == 1, ko
+
         # Zepp per Token: schlechte Eingabe abgelehnt, gutes Token geprüft (Server vorgetäuscht) und gemerkt, Sheet zeigt Abmelden
         pg.evaluate("location.hash='#/import'"); pg.wait_for_selector(".list")
         zr = pg.evaluate("""async () => {
