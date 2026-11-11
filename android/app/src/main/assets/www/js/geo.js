@@ -107,12 +107,14 @@ const Geo = {
   gpx(name, sport, pts, wpts) {
     const x = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const iso = t => new Date(t).toISOString().replace(/\.\d+Z$/, 'Z');
-    let o = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Mein Tourentagebuch" xmlns="http://www.topografix.com/GPX/1/1">\n';
+    let o = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Mein Tourentagebuch" xmlns="http://www.topografix.com/GPX/1/1"'
+      + ' xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n';
     (wpts || []).forEach(w => { o += `<wpt lat="${w.lat}" lon="${w.lon}"><name>${x(w.name)}</name></wpt>\n`; });
     o += `<trk><name>${x(name)}</name><type>${x(sport)}</type><trkseg>\n`;
     pts.forEach((p, i) => {
       if (p.newSeg && i) o += '</trkseg><trkseg>\n';
-      o += `<trkpt lat="${(+p.lat).toFixed(6)}" lon="${(+p.lon).toFixed(6)}">` + (p.ele != null ? `<ele>${(+p.ele).toFixed(1)}</ele>` : '') + (p.t ? `<time>${iso(p.t)}</time>` : '') + '</trkpt>\n';
+      o += `<trkpt lat="${(+p.lat).toFixed(6)}" lon="${(+p.lon).toFixed(6)}">` + (p.ele != null ? `<ele>${(+p.ele).toFixed(1)}</ele>` : '') + (p.t ? `<time>${iso(p.t)}</time>` : '')
+        + (p.hr ? `<extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>${p.hr | 0}</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>` : '') + '</trkpt>\n';
     });
     return o + '</trkseg></trk></gpx>\n';
   },

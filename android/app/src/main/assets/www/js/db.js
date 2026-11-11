@@ -44,7 +44,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
   v: {},
   defaults: {
     tiles: 'osm', tileUrl: '', tileKey: '', routeUrl: 'https://brouter.de/brouter', routeProfile: '',
-    photoMargin: 20, camOffset: '', guide: true, units: 'km', komootEmail: '', stravaId: '', homeLat: '', homeLon: '', homeName: '',
+    photoMargin: 20, camOffset: '', guide: true, units: 'km', komootEmail: '', stravaId: '', homeLat: '', homeLon: '', homeName: '', hrMax: '',
   },
   async load() { this.v = Object.assign({}, this.defaults, await DB.kvGet('settings', {})); },
   get(k) { return this.v[k]; },

@@ -28,6 +28,8 @@ const Sports = {
 const Parse = {
   decodeXml: s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'),
   num: s => { const v = parseFloat(s); return isNaN(v) ? null : v; },
+  /** Pulswert übernehmen, aber nur wenn er plausibel ist (Fühler liefern sonst 0 oder 255). */
+  hr: v => { const n = parseInt(v, 10); return isFinite(n) && n >= 30 && n <= 240 ? n : null; },
 
   gpx(text) {
     const out = [];
@@ -49,7 +51,7 @@ const Parse = {
           const el = Parse.num((body.match(/<ele>([^<]*)<\/ele>/) || [])[1]);
           const tm = (body.match(/<time>([^<]*)<\/time>/) || [])[1];
           const t = tm ? Date.parse(tm) : null;
-          pts.push({ lat: la, lon: lo, ele: el, t: isNaN(t) ? null : t, newSeg: first && si > 0 });
+          pts.push({ lat: la, lon: lo, ele: el, t: isNaN(t) ? null : t, hr: Parse.hr((body.match(/<(?:\w+:)?hr>([^<]*)<\/(?:\w+:)?hr>/) || [])[1]), newSeg: first && si > 0 });
           first = false;
         }
       });
@@ -69,7 +71,8 @@ const Parse = {
         const la = Parse.num((b.match(/<LatitudeDegrees>([^<]*)</) || [])[1]), lo = Parse.num((b.match(/<LongitudeDegrees>([^<]*)</) || [])[1]);
         if (la == null || lo == null) continue;
         const t = Date.parse((b.match(/<Time>([^<]*)</) || [])[1]);
-        pts.push({ lat: la, lon: lo, ele: Parse.num((b.match(/<AltitudeMeters>([^<]*)</) || [])[1]), t: isNaN(t) ? null : t });
+        pts.push({ lat: la, lon: lo, ele: Parse.num((b.match(/<AltitudeMeters>([^<]*)</) || [])[1]), t: isNaN(t) ? null : t,
+          hr: Parse.hr((b.match(/<HeartRateBpm[^>]*>\s*<Value>([^<]*)</) || [])[1]) });
       }
       if (pts.length) out.push({ name: '', sport: Sports.norm(sp), rawSport: sp || '', pts });
     });
@@ -116,7 +119,7 @@ const Parse = {
           if (v[253] != null) lastTs = v[253];
           if (v[0] != null && v[1] != null) {
             const alt = v[78] != null ? v[78] / 5 - 500 : (v[2] != null ? v[2] / 5 - 500 : null);
-            pts.push({ lat: v[0] * 180 / 2147483648, lon: v[1] * 180 / 2147483648, ele: alt, t: lastTs ? FIT_EPOCH + lastTs * 1000 : null });
+            pts.push({ lat: v[0] * 180 / 2147483648, lon: v[1] * 180 / 2147483648, ele: alt, t: lastTs ? FIT_EPOCH + lastTs * 1000 : null, hr: Parse.hr(v[3]) });
           }
         } else if (d.gm === 12 || d.gm === 18) {
           if (d.gm === 12 && v[0] != null) sport = sport || String(v[0]);

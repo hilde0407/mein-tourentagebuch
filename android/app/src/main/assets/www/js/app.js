@@ -3,12 +3,13 @@
 const Views = {};
 const Nav = {
   cleanup: null, cur: '',
-  tabs: [['/', 'Touren', '🥾'], ['/map', 'Karte', '🗺️'], ['/rec', 'Aufnehmen', '●'], ['/plan', 'Planen', '✏️'], ['/photos', 'Fotos', '🖼️']],
+  /* Gezeichnete Symbole statt Emojis – sehen auf jedem Gerät gleich aus. */
+  tabs: [['/start', 'Start', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>'], ['/', 'Touren', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19l6-10 4 6 2-3 6 7z"/><circle cx="17" cy="6" r="1.6"/></svg>'], ['/rec', 'Aufnehmen', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>'], ['/map', 'Karte', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>'], ['/photos', 'Fotos', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>']],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go('/'); },
   depth: 0,
   async render() {
-    const raw = location.hash.slice(1) || '/';
+    const raw = location.hash.slice(1) || '/start';
     const parts = raw.split('/').filter(Boolean);
     const key = '/' + (parts[0] || '');
     const route = Views[key] || Views['/'];
@@ -21,10 +22,16 @@ const Nav = {
     catch (e) { root.append(h('div', { class: 'empty' }, h('h2', null, 'Das hat nicht geklappt'), h('p', null, String(e.message || e)))); console.error(e); }
   },
 };
+/** Wegweiser-Zeichen im Kopf – dasselbe Motiv wie bei „Meine Touren“. */
+function logoMark() {
+  const e = h('span', { class: 'logo', 'aria-hidden': 'true' });
+  e.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19l6-11 4 7 2-3 6 7z"/></svg>';
+  return e;
+}
 function topbar(title, opts) {
   opts = opts || {};
   return h('header', { class: 'top' },
-    opts.back ? h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←') : h('span', { class: 'logo' }, '⛰️'),
+    opts.back ? h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←') : logoMark(),
     h('h1', null, title),
     h('span', { class: 'sp' }), opts.actions || null,
     opts.noMenu ? null : h('button', { class: 'ico', 'aria-label': 'Menü', onclick: moreMenu }, '⋮'));
@@ -41,7 +48,7 @@ window.mtBack = function () {
   if (sheet.stack && sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
   if (window.__lightbox) { window.__lightbox.close(); return true; }
   if (['/tour', '/story', '/settings', '/stats', '/import', '/sources'].includes(Nav.cur)) { Nav.back(); return true; }
-  if (Nav.cur !== '/' && Nav.cur !== '') { Nav.go('/'); return true; }
+  if (Nav.cur !== '/start' && Nav.cur !== '') { Nav.go('/start'); return true; }
   return false;
 };
 
@@ -52,7 +59,8 @@ async function boot() {
     document.body.innerHTML = '<div class="empty"><h2>Datenbank nicht verfügbar</h2><p>' + esc(e.message) + '</p></div>'; return;
   }
   const tabs = $('#tabs');
-  Nav.tabs.forEach(([p, t, i]) => tabs.append(h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '' }, h('span', { class: 'ti' }, i), h('span', null, t))));
+  Nav.tabs.forEach(([p, t, i]) => { const a = h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '' }, h('span', { class: 'ti' }), h('span', null, t)); a.firstChild.innerHTML = i; tabs.append(a); });
+  if (!location.hash) location.hash = '#/start';
   window.addEventListener('hashchange', () => { Nav.depth++; Nav.render(); });
   window.addEventListener('mtshared', handleShared);
   window.addEventListener('mtphoto', handlePhotoQueue);

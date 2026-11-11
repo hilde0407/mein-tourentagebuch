@@ -30,6 +30,22 @@ Views['/stats'] = async root => {
     const bs = {}; ts.forEach(t => { bs[t.sport] = (bs[t.sport] || 0) + t.dist; });
     const tot = Object.values(bs).reduce((a, b) => a + b, 0) || 1;
     body.append(h('h3', null, 'Sportarten'), h('div', { class: 'hbars' }, Object.entries(bs).sort((a, b) => b[1] - a[1]).map(([k, v]) => h('div', { class: 'hb' }, h('span', null, Sports.icon(k) + ' ' + Sports.label(k)), h('div', null, h('i', { style: { width: (v / tot * 100) + '%', background: MapKit.sportColor[k] } })), h('b', null, F.km(v))))));
+    // Puls: Mittelwerte und die Zeit in den Pulszonen über alle Touren des Zeitraums
+    const hts = ts.filter(t => t.hrAvg);
+    if (hts.length) {
+      const zone = [0, 0, 0, 0, 0];
+      hts.forEach(t => (t.hrZones || []).forEach((v, i) => { zone[i] += v; }));
+      const ztot = zone.reduce((a, b) => a + b, 0) || 1;
+      body.append(h('h3', null, 'Puls'), h('div', { class: 'kpis' },
+        kpi(Math.round(hts.reduce((a, t) => a + t.hrAvg, 0) / hts.length) + ' bpm', 'Ø Puls'),
+        kpi(Math.max(...hts.map(t => t.hrMax)) + ' bpm', 'Höchster Puls'),
+        kpi(hts.length, hts.length === 1 ? 'Tour mit Puls' : 'Touren mit Puls')));
+      body.append(h('div', { class: 'hbars' }, zone.map((v, i) => (v ? h('div', { class: 'hb' },
+        h('span', null, MapKit.hrName[i]), h('div', null, h('i', { style: { width: (v / ztot * 100) + '%', background: MapKit.hrColor[i] } })), h('b', null, F.dur(v))) : null))));
+      const hard = hts.slice().sort((a, b) => b.hrAvg - a.hrAvg).slice(0, 3);
+      body.append(h('div', { class: 'list' }, hard.map(t => h('a', { class: 'li', href: '#/tour/' + t.id },
+        h('span', { class: 'li-i hrt' }, '♥'), h('span', { class: 'li-t' }, h('b', null, t.hrAvg + ' bpm im Schnitt'), h('small', null, t.name + ' · ' + F.dshort(t.start)))))));
+    }
     const rec = (lab, fn, fmt) => { const b = ts.filter(t => fn(t) > 0).sort((a, c) => fn(c) - fn(a))[0]; return b ? h('a', { class: 'li', href: '#/tour/' + b.id }, h('span', { class: 'li-i' }, '🏆'), h('span', { class: 'li-t' }, h('b', null, lab + ': ' + fmt(b)), h('small', null, b.name + ' · ' + F.dshort(b.start)))) : null; };
     body.append(h('h3', null, 'Rekorde'), h('div', { class: 'list' },
       rec('Längste Tour', t => t.dist, t => F.km(t.dist)), rec('Meiste Höhenmeter', t => t.up, t => F.m(t.up)),

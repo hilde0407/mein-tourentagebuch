@@ -233,8 +233,13 @@ const Import = {
       const hr = Z.cum(Z.col(d.heart_rate, 0, true)), stp = Z.cum(Z.col(d.gait, 0));
       const all = Array.from(new Set([].concat(tt, hr, stp))).sort((a, b) => a - b);
       const LA = Z.interp(Z.cum(la), tt, all), LO = Z.interp(Z.cum(lo), tt, all), AL = Z.interp(al, tt, all);
+      // Puls: wie die Zeiten steht in Spalte 1 nur die Änderung zum Vorwert – erst aufsummieren, dann auf alle Zeitpunkte legen
+      const HR = hr.length ? Z.interp(Z.cum(Z.col(d.heart_rate, 1)), hr, all) : null;
       const start = parseInt(summary.trackid, 10);
-      return all.map((t, i) => { const e = AL[i] / 100; return { lat: LA[i] / 1e8, lon: LO[i] / 1e8, ele: e > -500 && e < 9000 ? e : null, t: (start + t) * 1000 }; });
+      return all.map((t, i) => {
+        const e = AL[i] / 100;
+        return { lat: LA[i] / 1e8, lon: LO[i] / 1e8, ele: e > -500 && e < 9000 ? e : null, t: (start + t) * 1000, hr: HR ? Parse.hr(HR[i]) : null };
+      });
     },
     async importAll(acc, onProgress) {
       const Z = Import.Zepp; let sums = [], nxt = null;

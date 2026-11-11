@@ -132,6 +132,22 @@ def main():
         # Sicherung
         pg.evaluate("location.hash='#/settings'"); pg.wait_for_selector("h3"); pg.get_by_text("Sicherung speichern").click(); pg.wait_for_timeout(500)
         assert pg.evaluate("__saved.name.endsWith('.mtl') && __saved.b64.length>100")
+        # Puls: GPX mit Herzfrequenz einlesen, Kennzahlen und Anzeige prüfen
+        hgpx = gpx(t0 + 86400000 * 120, lat=46.5, name="Mit Puls").replace("</trkpt>",
+            "<extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>%d</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions></trkpt>" % 140)
+        hres = pg.evaluate("""async g => Import.fromData('hr.gpx', new TextEncoder().encode(g), 'file')""", hgpx)
+        assert hres["added"] == 1, hres
+        ht = pg.evaluate("""async () => (await Tours.list()).find(t => t.name === 'Mit Puls')""")
+        assert ht["hrAvg"] == 140 and ht["hrMax"] == 140 and sum(ht["hrZones"]) > 0, ht
+        pg.evaluate("location.hash='#/tour/' + arguments[0]" if False else "id => location.hash = '#/tour/' + id", ht["id"])
+        pg.wait_for_selector("text=Ø Puls")
+        assert "140" in pg.inner_text("#view")
+        assert pg.evaluate("""() => !!document.querySelector('.hbars .hb')""")
+        exp = pg.evaluate("""async id => Geo.gpx('x', 'hike', await Tours.points(id))""", ht["id"])
+        assert "<gpxtpx:hr>140</gpxtpx:hr>" in exp
+        pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector("text=Ø Puls")
+        assert "bpm" in pg.inner_text("#view")
+
         b.close()
     assert not errs, "\n".join(errs)
     print("OK")

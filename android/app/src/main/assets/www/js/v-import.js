@@ -126,6 +126,8 @@ Views['/settings'] = async root => {
     h('h3', null, 'Fotos'), sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
     h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen'),
     h('h3', null, 'Heimatort'), homeBox(),
+    h('h3', null, 'Puls'), inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
+    h('p', { class: 'muted small' }, 'Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', onclick: backup }, '💾 Sicherung speichern'), h('button', { class: 'btn', onclick: restore }, '↩ Sicherung einspielen')),
     h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),

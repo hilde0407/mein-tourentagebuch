@@ -1,13 +1,15 @@
 'use strict';
 const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '' } };
 
-function previewSvg(pts, color) {
+/** Umriss der Strecke als kleines Bild. `box` setzt die Größe (Vorgabe: Kachel in der Liste). */
+function previewSvg(pts, color, box) {
+  const W = (box && box.w) || 84, H = (box && box.h) || 64, pad = (box && box.pad) || 8, sw = (box && box.sw) || 2.4;
   const sp = Geo.simplify(pts, Math.max(5, Geo.dist(pts[0].lat, pts[0].lon, pts[pts.length - 1].lat, pts[pts.length - 1].lon) / 200 || 5));
   const b = Geo.bbox(sp), k = Math.cos((b[0] + b[2]) / 2 * Math.PI / 180);
-  const w = (b[3] - b[1]) * k || 1e-5, hh = (b[2] - b[0]) || 1e-5, s = Math.min(76 / w, 56 / hh);
-  const ox = (84 - w * s) / 2, oy = (64 - hh * s) / 2;
+  const w = (b[3] - b[1]) * k || 1e-5, hh = (b[2] - b[0]) || 1e-5, s = Math.min((W - pad * 2) / w, (H - pad * 2) / hh);
+  const ox = (W - w * s) / 2, oy = (H - hh * s) / 2;
   const d = sp.map((p, i) => (i && !p.newSeg ? 'L' : 'M') + (ox + (p.lon - b[1]) * k * s).toFixed(1) + ' ' + (oy + (b[2] - p.lat) * s).toFixed(1)).join('');
-  return `<svg viewBox="0 0 84 64" width="84" height="64" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 Views['/'] = async root => {
@@ -52,8 +54,9 @@ Views['/'] = async root => {
       const pv = h('div', { class: 'pv' }); pv.__t = t; io.observe(pv);
       list.append(h('a', { class: 'card tour', href: '#/tour/' + t.id },
         pv, h('div', { class: 'tb' }, h('b', null, (t.fav ? '★ ' : '') + t.name),
-          h('small', null, Sports.icon(t.sport) + ' ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) : '')),
-          h('div', { class: 'met' }, h('span', null, F.km(t.dist)), t.up ? h('span', null, '↑ ' + F.m(t.up)) : null, t.dur ? h('span', null, '⏱ ' + F.dur(t.dur)) : null, pc[t.id] ? h('span', null, '🖼 ' + pc[t.id]) : null))));
+          h('small', null, Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) : '')),
+          h('div', { class: 'met' }, h('span', null, F.km(t.dist)), t.up ? h('span', null, '↑ ' + F.m(t.up)) : null, t.dur ? h('span', null, '⏱ ' + F.dur(t.dur)) : null,
+            pc[t.id] ? h('span', null, '🖼 ' + pc[t.id]) : null, t.hrAvg ? h('span', { class: 'hrt', title: 'Pulsdaten vorhanden' }, '♥ ' + t.hrAvg) : null))));
     });
   };
   root.append(topbar('Tourentagebuch'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), chips, sum), list,
@@ -93,6 +96,7 @@ Views['/tour'] = async (root, [id]) => {
   grid.append(st(F.km(t.dist), 'Strecke'), st(t.dur ? F.dur(t.dur) : '–', 'Dauer'), st(t.moving ? F.dur(t.moving) : '–', 'In Bewegung'),
     st(F.m(t.up), 'Aufstieg'), st(F.m(t.down), 'Abstieg'), st(t.maxAlt != null ? F.m(t.maxAlt) : '–', 'Höchster Punkt'),
     st(t.moving ? F.speed(t.dist, t.moving) : '–', 'Ø Tempo'), st(t.minAlt != null ? F.m(t.minAlt) : '–', 'Tiefster Punkt'));
+  if (t.hrAvg) grid.append(st(t.hrAvg + ' bpm', 'Ø Puls'), st(t.hrMax + ' bpm', 'Höchster Puls'));
   const prof = h('canvas', { class: 'prof', 'aria-label': 'Höhenprofil' });
   const profInfo = h('small', { class: 'muted' }, 'Profil berühren, um die Stelle auf der Karte zu sehen.');
   const strip = h('div', { class: 'strip' });
@@ -104,14 +108,34 @@ Views['/tour'] = async (root, [id]) => {
   const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
   body.append(...[t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
     h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),
-    grid, h('h3', null, 'Höhenprofil'), prof, profInfo, photoHead, strip, h('h3', null, 'Notizen'), note].filter(Boolean));
+    grid, h('h3', null, 'Höhenprofil'), prof, profInfo, t.hrAvg ? pulsBlock() : null, photoHead, strip, h('h3', null, 'Notizen'), note].filter(Boolean));
   drawStrip();
   const xs = MapKit.profile(prof, pts, (i, o) => {
     if (i == null) { map.removeLayer(cursor); profInfo.textContent = ''; return; }
     cursor.setLatLng([pts[i].lat, pts[i].lon]).addTo(map);
-    profInfo.textContent = `${F.km(o.dist)} · ${o.ele != null ? Math.round(o.ele) + ' m' : '–'}` + (pts[i].t ? ' · ' + F.time(pts[i].t) : '');
+    profInfo.textContent = `${F.km(o.dist)} · ${o.ele != null ? Math.round(o.ele) + ' m' : '–'}` + (pts[i].t ? ' · ' + F.time(pts[i].t) : '') + (o.hr ? ' · ♥ ' + o.hr + ' bpm' : '');
   });
   const onresize = () => MapKit.profile(prof, pts, null); void onresize;
+
+  /** „Zeit in den Pulszonen“ und ein Schalter, der die Strecke nach Puls einfärbt. */
+  function pulsBlock() {
+    const bars = h('div', { class: 'hbars' });
+    const tot = (t.hrZones || []).reduce((a, b) => a + b, 0) || 1;
+    (t.hrZones || []).forEach((sec, i) => {
+      if (!sec) return;
+      bars.append(h('div', { class: 'hb' }, h('span', null, MapKit.hrName[i]),
+        h('div', null, h('i', { style: { width: (sec / tot * 100).toFixed(1) + '%', background: MapKit.hrColor[i] } })), h('span', null, F.dur(sec))));
+    });
+    let hrLayer = null;
+    const sw = h('label', { class: 'sw' }, h('input', {
+      type: 'checkbox', onchange: e => {
+        if (e.target.checked) { map.removeLayer(layer); hrLayer = MapKit.lineHr(pts, 5).addTo(map); }
+        else { if (hrLayer) map.removeLayer(hrLayer); layer.addTo(map); }
+      },
+    }), 'Strecke nach Puls einfärben');
+    return h('div', null, h('h3', null, 'Puls'),
+      h('div', { class: 'sub' }, `Ø ${t.hrAvg} · höchstens ${t.hrMax} · mindestens ${t.hrMin} bpm`), bars, h('div', { class: 'row' }, sw));
+  }
 
   async function addPhotos() { PhotoSources.sheet(t, async () => { photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); }); }
   function actions() {

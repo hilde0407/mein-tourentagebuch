@@ -79,6 +79,27 @@ const MapKit = {
     if (cur.length) segs.push(cur);
     return L.polyline(segs, { color, weight: w || 5, opacity: 0.9, lineJoin: 'round' });
   },
+  /** Pulszonen: Farben und Namen (Zone 1 = ruhig … Zone 5 = maximal). */
+  hrColor: ['#4fc3f7', '#66bb6a', '#ffca28', '#fb8c00', '#e53935'],
+  hrName: ['Zone 1 · ruhig', 'Zone 2 · locker', 'Zone 3 · fordernd', 'Zone 4 · hart', 'Zone 5 · maximal'],
+  hrMax() { const v = parseInt(Set_.get('hrMax'), 10); return v >= 120 && v <= 230 ? v : 190; },
+  /** Strecke in Pulszonen-Farben. Abschnitte ohne Messwert bleiben grau. */
+  lineHr(pts, w) {
+    const hm = MapKit.hrMax(), g = L.layerGroup();
+    let cur = [], z = -2;
+    const flush = () => {
+      if (cur.length > 1) g.addLayer(L.polyline(cur, { color: z < 0 ? '#9e9e9e' : MapKit.hrColor[z], weight: w || 5, opacity: 0.9, lineJoin: 'round' }));
+      cur = cur.length ? [cur[cur.length - 1]] : [];
+    };
+    pts.forEach(p => {
+      const nz = p.hr ? Tours.hrZone(p.hr, hm) : -1;
+      if (p.newSeg) { flush(); cur = []; }
+      if (nz !== z) { flush(); z = nz; }
+      cur.push([p.lat, p.lon]);
+    });
+    flush();
+    return g;
+  },
   dot(lat, lon, color, label) {
     return L.marker([lat, lon], { icon: L.divIcon({ className: 'mk', html: `<span style="background:${color}">${label || ''}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) });
   },
@@ -110,9 +131,22 @@ const MapKit = {
     el.forEach((v, i) => { if (v == null) return; const x = X(xs[i]), y = Y(v); if (first) { g.moveTo(x, y); first = false; } else g.lineTo(x, y); lastX = x; });
     g.strokeStyle = acc; g.lineWidth = 2; g.stroke();
     g.lineTo(lastX, H - B); g.lineTo(L_, H - B); g.closePath(); g.fillStyle = acc + '33'; g.fill();
+    const hrs = pts.map(p => p.hr || null), hv = hrs.filter(Boolean);
+    if (hv.length > 4) {                                          // Pulskurve über das Profil legen
+      const hmn = Math.min(...hv), hmx = Math.max(...hv), hr0 = hmx - hmn < 10 ? hmn - 5 : hmn, hr1 = hmx - hmn < 10 ? hmx + 5 : hmx;
+      g.beginPath();
+      let st = true;
+      hrs.forEach((v, i) => {
+        if (!v) { st = true; return; }
+        const x = X(xs[i]), y = T + (1 - (v - hr0) / (hr1 - hr0)) * (H - T - B);
+        if (st) { g.moveTo(x, y); st = false; } else g.lineTo(x, y);
+      });
+      g.strokeStyle = '#e53935'; g.lineWidth = 1.6; g.stroke();
+      g.fillStyle = '#e53935'; g.font = '11px sans-serif'; g.fillText(hmn + '–' + hmx + ' bpm', L_ + 4, T + 11);
+    }
     let cur = null;
     const idxAt = ev => { const r = canvas.getBoundingClientRect(), x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left; const d = Math.max(0, Math.min(tot, (x - L_) / (W - L_ - 6) * tot)); let lo = 0, hi = xs.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] < d) lo = m; else hi = m; } return lo; };
-    const mv = ev => { const i = idxAt(ev); if (onMove) onMove(i, { dist: xs[i], ele: pts[i].ele }); };
+    const mv = ev => { const i = idxAt(ev); if (onMove) onMove(i, { dist: xs[i], ele: pts[i].ele, hr: pts[i].hr || null }); };
     canvas.onpointermove = mv; canvas.onpointerdown = mv; canvas.onpointerleave = () => onMove && onMove(null);
     return xs;
   },

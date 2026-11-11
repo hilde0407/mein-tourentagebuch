@@ -29,17 +29,43 @@ const Tours = {
       maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: bb, src: o.src || 'file', srcId: o.srcId || '',
       note: o.note || '', fav: false, hidden: false, timed: !!st.start, created: Date.now(),
     };
+    Object.assign(t, Tours.hrSummary(pts));
     if (o.status === 'planned' && !st.start) t.start = o.start || Date.now();
     await DB.put('tours', t);
-    await DB.put('tracks', { id, lat: pts.map(p => p.lat), lon: pts.map(p => p.lon), ele: pts.map(p => p.ele), t: pts.map(p => p.t), seg: pts.map(p => p.newSeg ? 1 : 0) });
+    const trk = { id, lat: pts.map(p => p.lat), lon: pts.map(p => p.lon), ele: pts.map(p => p.ele), t: pts.map(p => p.t), seg: pts.map(p => p.newSeg ? 1 : 0) };
+    if (t.hrAvg) trk.hr = pts.map(p => (p.hr == null ? 0 : p.hr));      // 0 = kein Messwert an dieser Stelle
+    await DB.put('tracks', trk);
     Tours.invalidate();
     return { tour: t, dup: false };
   },
   async points(id) {
     const r = await DB.get('tracks', id);
     if (!r) return [];
-    return r.lat.map((la, i) => ({ lat: la, lon: r.lon[i], ele: r.ele[i], t: r.t[i], newSeg: !!(r.seg && r.seg[i]) }));
+    return r.lat.map((la, i) => ({ lat: la, lon: r.lon[i], ele: r.ele[i], t: r.t[i], hr: (r.hr && r.hr[i]) || null, newSeg: !!(r.seg && r.seg[i]) }));
   },
+  /** Kennzahlen zum Puls: Mittel, Höchst- und Tiefstwert sowie die Zeit in den fünf Pulszonen. */
+  hrSummary(pts) {
+    const v = [];
+    let prev = null, zone = [0, 0, 0, 0, 0];
+    const hmax = Set_.get ? (parseInt(Set_.get('hrMax'), 10) || 0) : 0;
+    const hm = hmax >= 120 && hmax <= 230 ? hmax : 190;
+    for (const p of pts) {
+      if (p.hr == null || !(p.hr >= 30 && p.hr <= 240)) { prev = p; continue; }
+      v.push(p.hr);
+      if (prev && prev.hr && p.t && prev.t) {
+        const dt = (p.t - prev.t) / 1000;
+        if (dt > 0 && dt < 120) zone[Tours.hrZone(p.hr, hm)] += dt;
+      }
+      prev = p;
+    }
+    if (v.length < 5) return { hrAvg: null, hrMax: null, hrMin: null, hrZones: null };
+    return {
+      hrAvg: Math.round(v.reduce((a, b) => a + b, 0) / v.length), hrMax: Math.max(...v), hrMin: Math.min(...v),
+      hrZones: zone.map(x => Math.round(x)),
+    };
+  },
+  /** Pulszone 0–4 (entspricht Zone 1–5) nach Anteil am Maximalpuls. */
+  hrZone(bpm, hmax) { const q = bpm / hmax; return q < 0.6 ? 0 : q < 0.7 ? 1 : q < 0.8 ? 2 : q < 0.9 ? 3 : 4; },
   async save(t) { await DB.put('tours', t); Tours.invalidate(); },
   async remove(id) {
     const ph = await DB.byIndex('photos', 'tour', id);
@@ -49,7 +75,7 @@ const Tours = {
   async recalc(id) {
     const t = await DB.get('tours', id), pts = await Tours.points(id);
     const st = Geo.stats(pts);
-    Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, up: st.up, down: st.down, maxAlt: st.maxAlt, minAlt: st.minAlt });
+    Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, up: st.up, down: st.down, maxAlt: st.maxAlt, minAlt: st.minAlt }, Tours.hrSummary(pts));
     await Tours.save(t); return t;
   },
 };
