@@ -166,6 +166,7 @@ def main():
         pg.locator(".goal input").first.fill("500"); pg.locator(".goal input").first.dispatch_event("change"); pg.wait_for_selector(".gbar")
         assert "von 500 km" in pg.inner_text("#view")
 
+        pg.route("**/nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=500, body="x", headers={"access-control-allow-origin": "*"}))
         # Reisen & Alben: Reise aus 4 weit entfernten Tagen erkennen, Tags vergeben, Album-Seite
         rz = pg.evaluate("""async () => {
           const base = Date.UTC(2025, 5, 10, 8);
@@ -251,11 +252,11 @@ def main():
 
         pg.evaluate("Native.http = window.__http0")
         # Tour verbessern: Höhen aus Gelände (Kachel mit konstant 1500 m) und Track korrigieren
-        import io
-        from PIL import Image
-        im = Image.new("RGB", (256, 256), (131 + 1, 232 - 232 + 220, 0))   # 132*256+220-32768 = 1244 m
-        bio = io.BytesIO(); im.save(bio, "PNG")
-        pg.route("**/elevation-tiles-prod/**", lambda r: r.fulfill(status=200, body=bio.getvalue(), content_type="image/png", headers={"access-control-allow-origin": "*"}))
+        import zlib, struct
+        def _chunk(k, d): return struct.pack(">I", len(d)) + k + d + struct.pack(">I", zlib.crc32(k + d) & 0xffffffff)
+        raw = b"".join(b"\x00" + bytes([132, 220, 0]) * 256 for _ in range(256))     # 132*256+220-32768 = 1244 m
+        elev_png = b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", struct.pack(">IIBBBBB", 256, 256, 8, 2, 0, 0, 0)) + _chunk(b"IDAT", zlib.compress(raw)) + _chunk(b"IEND", b"")
+        pg.route("**/elevation-tiles-prod/**", lambda r: r.fulfill(status=200, body=elev_png, content_type="image/png", headers={"access-control-allow-origin": "*"}))
         fx = pg.evaluate("""async () => {
           const base = Date.UTC(2025, 7, 1, 8);
           const pts = Array.from({ length: 40 }, (_, k) => ({ lat: 47.1 + k * 0.0004, lon: 11.1, ele: 1000 + (Math.floor(k / 4) % 2 ? 150 : 0), t: base + k * 30000 }));
@@ -288,6 +289,15 @@ def main():
         assert af["n"] == 29 and af["skip"] >= 5 and af["dist"] < 600, af
         rs = pg.evaluate("async (id) => { await Fix.restoreTrack(id); await Tours.recalc(id); const p = await Tours.points(id); return { n: p.length, skip: p.filter(x => x.skip).length }; }", tf["id"])
         assert rs["n"] == 30 and rs["skip"] == 0, rs
+
+        # Urlaub mit Strandtagen (Pausen bis 4 Tage) bleibt eine Reise und heißt nach dem Ort
+        pg.route("**/nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"address": {"country": "La Réunion", "country_code": "re"}})))
+        pg.evaluate("""async () => {
+          const base = Date.UTC(2026, 5, 3, 8);
+          for (const d of [0, 1, 5, 6, 10]) await Tours.add({ name: 'Réunion ' + d, sport: 'hike', pts: Array.from({ length: 12 }, (_, k) => ({ lat: -21.1 + d * 0.01 + k * 0.0006, lon: 55.5 + k * 0.0005, ele: 900 + k * 6, t: base + d * 86400000 + k * 60000 })), src: 'file' });
+        }""")
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Juni 2026", timeout=15000)
+        assert "5 Touren an 5 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
 
         b.close()
     assert not errs, "\n".join(errs)

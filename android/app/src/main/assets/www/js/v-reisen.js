@@ -16,13 +16,45 @@ const Reisen = {
       if (days.size >= cfg.days) out.push(Reisen.sum(cur, days.size));
       cur = [];
     };
-    far.forEach(t => { if (cur.length && Reisen.dayNo(t.start) - Reisen.dayNo(cur[cur.length - 1].start) > cfg.gap) flush(); cur.push(t); });
+    far.forEach(t => {
+      if (cur.length) {
+        const prev = cur[cur.length - 1], gap = Reisen.dayNo(t.start) - Reisen.dayNo(prev.start);
+        // Längere Pausen (Strandtage, Regen) gehören noch zur Reise, wenn die nächste Tour am gleichen Urlaubsort liegt (bis 150 km, höchstens 7 Tage).
+        const same = gap <= Math.max(7, cfg.gap) && Geo.dist(prev.lat, prev.lon, t.lat, t.lon) <= 150000;
+        if (gap > cfg.gap && !same) flush();
+      }
+      cur.push(t);
+    });
     flush();
     return out.reverse();
   },
   sum(ts, days) {
     const s = k => ts.reduce((a, t) => a + (t[k] || 0), 0);
     return { id: ts[0].id, tours: ts, days: days || new Set(ts.map(t => Reisen.dayNo(t.start))).size, first: ts[0].start, last: ts[ts.length - 1].start, km: s('dist'), up: s('up'), dur: s('moving') || s('dur') };
+  },
+  /** „Juni 2026“ bzw. „Juni–Juli 2026“. */
+  monthYear(a, b) {
+    const A = new Date(a), B = new Date(b), m = d => d.toLocaleDateString('de-DE', { month: 'long' });
+    if (A.getFullYear() === B.getFullYear() && A.getMonth() === B.getMonth()) return m(A) + ' ' + A.getFullYear();
+    if (A.getFullYear() === B.getFullYear()) return m(A) + '–' + m(B) + ' ' + A.getFullYear();
+    return m(A) + ' ' + A.getFullYear() + ' – ' + m(B) + ' ' + B.getFullYear();
+  },
+  /** Anzeigename: eigener Name, sonst „Ort Monat Jahr“ (z. B. La Réunion Juni 2026), sonst der Zeitraum. */
+  title(r, names, places) {
+    if (names[r.id]) return names[r.id];
+    return places[r.id] ? places[r.id] + ' ' + Reisen.monthYear(r.first, r.last) : 'Reise ' + Reisen.range(r.first, r.last);
+  },
+  /** Ort der Reise per Ortssuche (Land, in D/A/CH das Bundesland) – einmal ermitteln und merken. */
+  async place(r) {
+    const places = await DB.kvGet('tripPlace', {});
+    if (r.id in places) return places[r.id];
+    const t = r.tours[Math.floor(r.tours.length / 2)];
+    const x = await Native.http({ url: `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=5&addressdetails=1&accept-language=de&lat=${t.lat}&lon=${t.lon}`, headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
+    if (x.status !== 200) throw new Error('HTTP ' + x.status);
+    const a = (JSON.parse(x.body).address) || {};
+    const n = (['de', 'at', 'ch', 'it'].includes(a.country_code) && a.state) || a.country || a.state || '';
+    const c2 = await DB.kvGet('tripPlace', {}); c2[r.id] = n; await DB.kvSet('tripPlace', c2);
+    return n;
   },
   range(a, b) {
     const A = new Date(a), B = new Date(b), m = d => d.toLocaleDateString('de-DE', { month: 'long' });
@@ -54,7 +86,7 @@ const Reisen = {
 
 Views['/reisen'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
-  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {});
+  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripPlace', {});
   const home = Set_.get('homeLat') ? [+Set_.get('homeLat'), +Set_.get('homeLon')] : null;
   const body = h('div', { class: 'pad' });
   root.append(topbar('Reisen & Alben', { back: true, noMenu: true }), body);
@@ -64,11 +96,12 @@ Views['/reisen'] = async root => {
     body.append(h('div', { class: 'chips' }, [['reisen', 'Reisen'], ['alben', 'Alben']].map(([k, l]) => h('button', { class: 'chip' + (tab === k ? ' on' : ''), onclick: () => { tab = k; draw(); } }, l))));
     if (tab === 'reisen') {
       const trips = Reisen.detect(all, home, cfg);
-      body.append(h('p', { class: 'muted small' }, `Als Reise gelten Touren, die mindestens ${cfg.km} km von zu Hause entfernt liegen, an mindestens ${cfg.days} Tagen (höchstens ${cfg.gap - 1} Tag Pause dazwischen).`));
+      if (!Reisen._busy) { Reisen._busy = true; (async () => { let ch = false; for (const r of trips) { if (names[r.id] || r.id in places) continue; try { places[r.id] = await Reisen.place(r); ch = true; await new Promise(k => setTimeout(k, 1100)); } catch (e) { break; } } Reisen._busy = false; if (ch && tab === 'reisen' && body.isConnected) draw(); })(); }
+      body.append(h('p', { class: 'muted small' }, `Als Reise gelten Touren, die mindestens ${cfg.km} km von zu Hause entfernt liegen, an mindestens ${cfg.days} Tagen (höchstens ${cfg.gap - 1} Tag Pause dazwischen; am gleichen Urlaubsort bis zu 6 Tage).`));
       if (!home) { body.append(h('div', { class: 'banner' }, 'Dafür brauche ich deinen Heimatort. ', h('a', { class: 'btn pri sm', href: '#/settings' }, 'In den Einstellungen festlegen'))); }
       else if (!trips.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Reisen gefunden.')));
       body.append(h('div', { class: 'list' }, trips.map(r => h('a', { class: 'li', href: '#/reise/' + r.id },
-        h('span', { class: 'li-i' }, '🧳'), h('span', { class: 'li-t' }, h('b', null, names[r.id] || 'Reise ' + Reisen.range(r.first, r.last)),
+        h('span', { class: 'li-i' }, '🧳'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
           h('small', null, `${Reisen.range(r.first, r.last)} · ${r.tours.length} Touren an ${r.days} Tagen · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
       const num = (k, lab, min) => h('label', { class: 'fld' }, lab, h('input', { type: 'number', min, value: cfg[k], onchange: async e => { const v = Math.max(min, parseInt(e.target.value, 10) || Reisen.DEF[k]); cfg[k] = v; await DB.kvSet('tripSet', cfg); draw(); } }));
       body.append(h('details', null, h('summary', null, 'Erkennung anpassen'), num('km', 'Mindestentfernung von zu Hause (km)', 5), num('days', 'Mindestzahl Tage mit Tour', 2), num('gap', 'Größter Abstand zwischen zwei Touren (Tage)', 1)));
@@ -113,18 +146,19 @@ async function groupPage(root, title, tours, opts) {
 
 Views['/reise'] = async (root, [id]) => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
-  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {});
+  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripPlace', {});
   const home = Set_.get('homeLat') ? [+Set_.get('homeLat'), +Set_.get('homeLon')] : null;
   const r = Reisen.detect(all, home, cfg).find(x => x.id === id);
   if (!r) { root.append(topbar('Reise', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
-  await groupPage(root, names[id] || 'Reise ' + Reisen.range(r.first, r.last), r.tours, {
+  if (!names[id] && !(id in places)) { try { places[id] = await Reisen.place(r); } catch (e) { /* offline: Zeitraum */ } }
+  await groupPage(root, Reisen.title(r, names, places), r.tours, {
     rename: async () => {
       const v = await askText('Name der Reise', 'Name', names[id] || '', 'Speichern'); if (v == null) return;
       if (v.trim()) names[id] = v.trim(); else delete names[id];
       await DB.kvSet('tripNames', names); Nav.render();
     },
     extra: h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: async () => {
-      const name = (names[id] || 'Reise ' + Reisen.range(r.first, r.last)).trim();
+      const name = Reisen.title(r, names, places).trim();
       if (!await confirmBox('Als Album speichern', `Allen ${r.tours.length} Touren wird das Schlagwort „${name}“ gegeben.`, 'Speichern')) return;
       for (const t of r.tours) { t.tags = [...new Set([...(t.tags || []), name])]; await Tours.save(t); }
       toast('Album „' + name + '“ angelegt'); Nav.go('/album/' + encodeURIComponent(name));
