@@ -84,6 +84,11 @@ const Reisen = {
     const c2 = await DB.kvGet('tripPlace', {}); c2[r.id] = n; await DB.kvSet('tripPlace', c2);
     return n;
   },
+  /** „Tag 2 · Etappe 2/5“ für eine Tour innerhalb einer Mehrtagestour. */
+  stage(r, t) {
+    const i = r.tours.findIndex(x => x.id === t.id), d = Reisen.dayNo(t.start) - Reisen.dayNo(r.first) + 1;
+    return 'Tag ' + d + ' · Etappe ' + (i + 1) + '/' + r.tours.length;
+  },
   range(a, b) {
     const A = new Date(a), B = new Date(b), m = d => d.toLocaleDateString('de-DE', { month: 'long' });
     if (A.getFullYear() === B.getFullYear() && A.getMonth() === B.getMonth()) return A.getDate() + '.–' + B.getDate() + '. ' + m(A) + ' ' + A.getFullYear();
@@ -164,7 +169,7 @@ async function groupPage(root, title, tours, opts) {
   if (photos.length) body.append(h('div', { class: 'row' }, h('h3', { class: 'grow' }, 'Fotos'), h('button', { class: 'btn sm', id: 'gshow', onclick: async () => Show.open(await Show.forTours(sorted)) }, '▶ Diashow')), h('div', { class: 'strip' }, photos.slice(0, 40).map((p, i) => h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' })))));
   // Touren je Tag
   body.append(h('h3', null, 'Touren'), h('div', { class: 'list' }, sorted.map(t => h('a', { class: 'li', href: '#/tour/' + t.id },
-    h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, t.name), h('small', null, F.date(t.start) + ' · ' + F.km(t.dist) + ' · ↑ ' + F.m(t.up)))))));
+    h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, t.name), opts.multi ? h('small', { class: 'stage' }, Reisen.stage(opts.multi, t)) : null, h('small', null, F.date(t.start) + ' · ' + F.km(t.dist) + ' · ↑ ' + F.m(t.up)))))));
   if (opts.extra) body.append(opts.extra);
   const map = MapKit.create(mapEl), bounds = [];
   for (const t of sorted) {
@@ -184,6 +189,7 @@ Views['/reise'] = async (root, [id]) => {
   if (!r) { root.append(topbar('Reise', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
   if (!r.multi && !names[id] && !(id in places)) { try { places[id] = await Reisen.place(r); } catch (e) { /* offline: Zeitraum */ } }
   await groupPage(root, Reisen.title(r, names, places), r.tours, {
+    multi: r.multi ? r : null,
     rename: async () => {
       const v = await askText('Name der Reise', 'Name', names[id] || '', 'Speichern'); if (v == null) return;
       if (v.trim()) names[id] = v.trim(); else delete names[id];

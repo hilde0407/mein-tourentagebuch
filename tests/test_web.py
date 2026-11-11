@@ -300,6 +300,8 @@ def main():
         assert "5 Touren an 5 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.wait_for_selector("text=Mehrtagestouren"); assert "2 Etappen an 2 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.locator("a.li", has_text="2 Etappen an 2 Tagen").first.click(); pg.wait_for_selector("text=Mehrtagestour "); assert "Touren" in pg.inner_text("#view")
+        pg.wait_for_selector("text=Tag 1 · Etappe 1/2"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#view"), pg.inner_text("#view")
+        pg.locator("a.li", has_text="Etappe 2/2").first.click(); pg.wait_for_selector("#stage"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#stage"), pg.inner_text("#stage")
 
         # Namensvorschläge: Start-/Zielort über Nominatim, Gipfel über Overpass (vorgetäuscht)
         pg.route("**/nominatim.openstreetmap.org/reverse**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"address": {"village": "Ort-" + r.request.url.split("lat=")[1][:5]}})))
