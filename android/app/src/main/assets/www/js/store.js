@@ -34,6 +34,7 @@ const Tours = {
     if (o.status === 'planned' && !st.start) t.start = o.start || Date.now();
     await DB.put('tours', t);
     const trk = { id, lat: pts.map(p => p.lat), lon: pts.map(p => p.lon), ele: pts.map(p => p.ele), t: pts.map(p => p.t), seg: pts.map(p => p.newSeg ? 1 : 0) };
+    if (pts.some(p => p.skip)) trk.skip = pts.map(p => p.skip ? 1 : 0);
     if (t.hrAvg) trk.hr = pts.map(p => (p.hr == null ? 0 : p.hr));      // 0 = kein Messwert an dieser Stelle
     await DB.put('tracks', trk);
     Tours.invalidate();
@@ -42,7 +43,7 @@ const Tours = {
   async points(id) {
     const r = await DB.get('tracks', id);
     if (!r) return [];
-    return r.lat.map((la, i) => ({ lat: la, lon: r.lon[i], ele: r.ele[i], t: r.t[i], hr: (r.hr && r.hr[i]) || null, newSeg: !!(r.seg && r.seg[i]) }));
+    return r.lat.map((la, i) => ({ lat: la, lon: r.lon[i], ele: r.ele[i], t: r.t[i], hr: (r.hr && r.hr[i]) || null, newSeg: !!(r.seg && r.seg[i]), skip: !!(r.skip && r.skip[i]) }));
   },
   /** Kennzahlen zum Puls: Mittel, Höchst- und Tiefstwert sowie die Zeit in den fünf Pulszonen. */
   hrSummary(pts) {

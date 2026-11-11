@@ -36,24 +36,24 @@ const Geo = {
   stats(pts) {
     const o = { dist: 0, dur: 0, moving: 0, up: 0, down: 0, maxAlt: null, minAlt: null, start: null, end: null, n: pts.length };
     if (!pts.length) return o;
-    let ele = [];
+    const runs = [[]]; let excl = 0;          // Höhenläufe: ein ausgeschlossener Abschnitt (Seilbahn, Auto …) trennt sie, damit er keine Höhenmeter zählt
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       if (p.ele != null && !isNaN(p.ele)) { o.maxAlt = o.maxAlt == null ? p.ele : Math.max(o.maxAlt, p.ele); o.minAlt = o.minAlt == null ? p.ele : Math.min(o.minAlt, p.ele); }
-      ele.push(p.ele == null ? null : p.ele);
+      if (i && p.skip) runs.push([]);
+      runs[runs.length - 1].push(p.ele == null ? null : p.ele);
       if (i && !p.newSeg) {
         const q = pts[i - 1], d = Geo.dist(q.lat, q.lon, p.lat, p.lon);
+        const dt = p.t && q.t ? (p.t - q.t) / 1000 : 0;
+        if (p.skip) { if (dt > 0) excl += dt; continue; }
         o.dist += d;
-        if (p.t && q.t) {
-          const dt = (p.t - q.t) / 1000;
-          if (dt > 0 && dt < 120 && d / dt > 0.25) o.moving += dt;
-        }
+        if (dt > 0 && dt < 120 && d / dt > 0.25) o.moving += dt;
       }
     }
     const ts = pts.map(p => p.t).filter(Boolean);
-    if (ts.length > 1) { o.start = ts[0]; o.end = ts[ts.length - 1]; o.dur = (o.end - o.start) / 1000; }
+    if (ts.length > 1) { o.start = ts[0]; o.end = ts[ts.length - 1]; o.dur = Math.max(0, (o.end - o.start) / 1000 - excl); }
     else if (ts.length) o.start = ts[0];
-    [o.up, o.down] = Geo.climb(Geo.smooth(ele, 2), 4);
+    for (const r of runs) { const [u, d] = Geo.climb(Geo.smooth(r, 2), 4); o.up += u; o.down += d; }
     return o;
   },
   bbox(pts) {

@@ -53,7 +53,7 @@ a.tour{display:flex;gap:12px;padding:10px;margin-bottom:10px;color:inherit;text-
 #tabs a.rec .ti{background:#b3261e;color:#fff;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;margin-top:-14px;box-shadow:0 3px 10px rgba(0,0,0,.3);border:3px solid var(--card)}
 #tabs a.rec.on::before{display:none}
 #view:has(.fab)~#tabs{}
-.map{width:100%;background:#cfe0cf;z-index:1}.tmap{height:42vh;min-height:260px}.pmap{height:48vh;min-height:280px}.rmap{height:36vh;min-height:220px}
+.map{width:100%;background:#cfe0cf;z-index:1}.tmap{height:42vh;min-height:260px}.fixmap{height:44vh;min-height:260px}.pmap{height:48vh;min-height:280px}.rmap{height:36vh;min-height:220px}
 .map.full{height:calc(100vh - 118px - var(--tab));min-height:300px}
 .photos .map.full{height:calc(100vh - 160px - var(--tab))}
 .maptools{display:flex;gap:8px;padding:8px 14px;background:var(--bg)}

@@ -20,7 +20,7 @@ window.MTApp={
  setRoute(p,n){window.__calls.push(['route',n,p.split(';').length])}, routeInfo:()=>'{}', routePoints:()=>'[]', clearRoute(){}, setGuide(){}, guideTest(){},
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(){}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r;
-   if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:await x.text()}; }
+   if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:a.bin?'':await x.text()}; if(a.bin){ const u=new Uint8Array(await x.arrayBuffer()); let b=''; u.forEach(c=>b+=String.fromCharCode(c)); r.b64=btoa(b); } }
    else if(m==='perm') r={granted:true}; else if(m==='saveFile'){ r='Download/Tourentagebuch/'+a.name; window.__saved=a; }
    else if(m==='storage') r={photos:0,bytes:0}; else if(m==='galleryRange') r=window.__gallery||[];
    else if(m==='importUris') r=(a.uris||[]).map((u,i)=>({id:'g'+i+u.length,name:'g.jpg',ts:window.__gts||0,w:10,h:10,src:'galerie'}));
@@ -202,6 +202,7 @@ def main():
 
         # Zepp per Token: schlechte Eingabe abgelehnt, gutes Token geprüft (Server vorgetäuscht) und gemerkt, Sheet zeigt Abmelden
         pg.evaluate("location.hash='#/import'"); pg.wait_for_selector(".list")
+        pg.evaluate("window.__http0 = Native.http")
         zr = pg.evaluate("""async () => {
           const seen = []; Native.http = async o => { seen.push(o.url + '|' + (o.headers || {}).apptoken); return { status: 200, body: JSON.stringify({ code: 1, data: { summary: [], next: -1 } }) }; };
           let bad = ''; try { await Import.Zepp.useToken('kurz'); } catch (e) { bad = e.message; }
@@ -247,6 +248,46 @@ def main():
         }""")
         assert km["matched"] and km["ok"] and 88 <= km["avg"] <= 100 and km["none"], km
         assert zh["withHr"] == zh["n"] and zh["before"] is None and zh["ok"] and 70 <= zh["avg"] <= 80 and zh["zhr"] == 1 and zh["stored"] > 5, zh
+
+        pg.evaluate("Native.http = window.__http0")
+        # Tour verbessern: Höhen aus Gelände (Kachel mit konstant 1500 m) und Track korrigieren
+        import io
+        from PIL import Image
+        im = Image.new("RGB", (256, 256), (131 + 1, 232 - 232 + 220, 0))   # 132*256+220-32768 = 1244 m
+        bio = io.BytesIO(); im.save(bio, "PNG")
+        pg.route("**/elevation-tiles-prod/**", lambda r: r.fulfill(status=200, body=bio.getvalue(), content_type="image/png", headers={"access-control-allow-origin": "*"}))
+        fx = pg.evaluate("""async () => {
+          const base = Date.UTC(2025, 7, 1, 8);
+          const pts = Array.from({ length: 40 }, (_, k) => ({ lat: 47.1 + k * 0.0004, lon: 11.1, ele: 1000 + (Math.floor(k / 4) % 2 ? 150 : 0), t: base + k * 30000 }));
+          const r = await Tours.add({ name: 'Zackig', sport: 'hike', pts, src: 'file' });
+          return { id: r.tour.id, up: r.tour.up };
+        }""")
+        assert fx["up"] > 400, fx
+        pg.evaluate("location.hash = '#/tour/' + %s" % json.dumps(fx["id"])); pg.wait_for_selector("#fixbanner")
+        pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())"); pg.click("#fixbanner"); pg.wait_for_function("() => /Aufstieg [^ ]+ m? ?→|Nicht möglich/.test(document.body.innerText)", timeout=15000)
+        t2 = pg.evaluate("async (id) => (await Tours.list()).find(t => t.id === id)", fx["id"])
+        assert t2["elevFix"] == 1 and t2["up"] < 5 and abs(t2["maxAlt"] - 1244) < 2, t2
+        back = pg.evaluate("async (id) => { const t = (await Tours.list()).find(t => t.id === id); return Fix.restoreEle(t); }", fx["id"])
+        assert back["up"] > 400 and not back.get("elevFix"), back
+        # Track: Ausreißer + zu schneller Abschnitt
+        tf = pg.evaluate("""async () => {
+          const base = Date.UTC(2025, 7, 2, 8);
+          const pts = Array.from({ length: 30 }, (_, k) => ({ lat: 47.2 + k * 0.0002, lon: 11.2, ele: 900, t: base + k * 30000 }));
+          pts[10] = { ...pts[10], lat: 47.3 };                                    // Sprung weg und zurück
+          for (let k = 20; k < 30; k++) pts[k] = { ...pts[k], lat: 47.2 + 0.004 + (k - 20) * 0.01 };   // 1,1 km in 30 s
+          const r = await Tours.add({ name: 'Sprung', sport: 'hike', pts, src: 'file' });
+          const p = await Tours.points(r.tour.id), f = Fix.detect(p, 'hike');
+          return { id: r.tour.id, dist: r.tour.dist, spike: f.spike, fast: f.fast.length };
+        }""")
+        assert tf["spike"] == [10] and tf["fast"] >= 1, tf
+        pg.evaluate("location.hash = '#/fix/' + %s" % json.dumps(tf["id"])); pg.wait_for_selector("#fx-spike")
+        pg.click("#fx-spike"); pg.wait_for_selector("#fx-restore")
+        pg.evaluate("location.hash = '#/fix/' + %s" % json.dumps(tf["id"])); pg.wait_for_selector("#fx-fast")
+        pg.click("#fx-fast"); pg.wait_for_selector("text=Schnelle Abschnitte ausgeschlossen")
+        af = pg.evaluate("async (id) => { const t = (await Tours.list()).find(t => t.id === id); const p = await Tours.points(id); return { dist: t.dist, n: p.length, skip: p.filter(x => x.skip).length }; }", tf["id"])
+        assert af["n"] == 29 and af["skip"] >= 5 and af["dist"] < 600, af
+        rs = pg.evaluate("async (id) => { await Fix.restoreTrack(id); await Tours.recalc(id); const p = await Tours.points(id); return { n: p.length, skip: p.filter(x => x.skip).length }; }", tf["id"])
+        assert rs["n"] == 30 and rs["skip"] == 0, rs
 
         b.close()
     assert not errs, "\n".join(errs)
