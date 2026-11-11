@@ -44,7 +44,7 @@ jobs:
       - name: Oberfläche im Browser prüfen
         run: |
           pip install playwright
-          python -m playwright install --with-deps chromium
+          python -m playwright install --with-deps chromium || python -m playwright install chromium
           python tests/test_web.py
       - name: Android-SDK-Lizenzen akzeptieren
         run: |
