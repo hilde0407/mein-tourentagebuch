@@ -77,23 +77,68 @@ const Reisen = {
     if (A.getFullYear() === B.getFullYear()) return m(A) + '–' + m(B) + ' ' + A.getFullYear();
     return m(A) + ' ' + A.getFullYear() + ' – ' + m(B) + ' ' + B.getFullYear();
   },
-  /** Anzeigename: eigener Name, sonst „Ort Monat Jahr“ (z. B. La Réunion Juni 2026), sonst der Zeitraum. */
+  /** Anzeigename: eigener Name, sonst „Region Jahreszeit Jahr“ (z. B. La Réunion Frühjahr 2026), sonst der Zeitraum. */
   title(r, names, places) {
     if (names[r.id]) return names[r.id];
     if (r.multi) return r.name;
-    return places[r.id] ? places[r.id] + ' ' + Reisen.monthYear(r.first, r.last) : 'Reise ' + Reisen.range(r.first, r.last);
+    return places[r.id] ? places[r.id] + ' ' + Reisen.season(r.first, r.last) : 'Reise ' + Reisen.range(r.first, r.last);
   },
-  /** Ort der Reise per Ortssuche (Land, in D/A/CH das Bundesland) – einmal ermitteln und merken. */
+  ISLANDS: [['La Gomera', 28.00, 28.20, -17.36, -17.08], ['Teneriffa', 28.00, 28.60, -16.95, -16.10], ['La Palma', 28.43, 28.87, -18.01, -17.71], ['El Hierro', 27.62, 27.90, -18.17, -17.84],
+    ['Gran Canaria', 27.70, 28.20, -15.85, -15.35], ['Fuerteventura', 28.04, 28.76, -14.55, -13.80], ['Lanzarote', 28.80, 29.25, -13.95, -13.40], ['Mallorca', 39.25, 39.97, 2.30, 3.50],
+    ['Menorca', 39.80, 40.10, 3.70, 4.35], ['Ibiza', 38.82, 39.12, 1.15, 1.65], ['Madeira', 32.60, 32.88, -17.30, -16.65], ['La Réunion', -21.40, -20.85, 55.20, 55.85],
+    ['Mauritius', -20.55, -19.95, 57.30, 57.82], ['Korsika', 41.30, 43.10, 8.50, 9.60], ['Sardinien', 38.80, 41.30, 8.10, 9.90], ['Sizilien', 36.60, 38.35, 12.35, 15.70]],
+  island: (lat, lon) => { const i = Reisen.ISLANDS.find(x => lat >= x[1] && lat <= x[2] && lon >= x[3] && lon <= x[4]); return i ? i[0] : ''; },
+  /** „A“, „A und B“, „A, B und C“. */
+  joinNames: n => n.length < 2 ? (n[0] || '') : n.slice(0, -1).join(', ') + ' und ' + n[n.length - 1],
+  /** Jahreszeit der Reise: „Frühjahr 2026“, „Herbst 2026“, „Winter 2025/26“. */
+  season(a, b) {
+    const m = new Date((a + b) / 2), mo = m.getMonth(), y = m.getFullYear();
+    if (mo >= 2 && mo <= 4) return 'Frühjahr ' + y;
+    if (mo >= 5 && mo <= 7) return 'Sommer ' + y;
+    if (mo >= 8 && mo <= 10) return 'Herbst ' + y;
+    return mo === 11 ? 'Winter ' + y + '/' + String(y + 1).slice(2) : 'Winter ' + (y - 1) + '/' + String(y).slice(2);
+  },
+  /** Regionen der Reise: Inseln aus einer eingebauten Liste, sonst per Ortssuche Bundesland (D/A/CH/I) oder Land – je Gebiet (ca. 40 km), in Reihenfolge der Reise. Wird einmal ermittelt und gemerkt. */
   async place(r) {
-    const places = await DB.kvGet('tripPlace', {});
+    const places = await DB.kvGet('tripRegion', {});
     if (r.id in places) return places[r.id];
-    const t = r.tours[Math.floor(r.tours.length / 2)];
-    const x = await Native.http({ url: `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=5&addressdetails=1&accept-language=de&lat=${t.lat}&lon=${t.lon}`, headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
-    if (x.status !== 200) throw new Error('HTTP ' + x.status);
-    const a = (JSON.parse(x.body).address) || {};
-    const n = (['de', 'at', 'ch', 'it'].includes(a.country_code) && a.state) || a.country || a.state || '';
-    const c2 = await DB.kvGet('tripPlace', {}); c2[r.id] = n; await DB.kvSet('tripPlace', c2);
-    return n;
+    const cl = [];
+    r.tours.forEach(t => { const c = cl.find(c => Geo.dist(c.lat, c.lon, t.lat, t.lon) <= 40000); if (c) c.n++; else cl.push({ lat: t.lat, lon: t.lon, n: 1 }); });
+    const names = [];
+    for (const c of cl.slice().sort((a, b) => b.n - a.n).slice(0, 4).sort((a, b) => cl.indexOf(a) - cl.indexOf(b))) {
+      let n = Reisen.island(c.lat, c.lon);
+      if (!n) {
+        const x = await Native.http({ url: `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=8&addressdetails=1&accept-language=de&lat=${c.lat}&lon=${c.lon}`, headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
+        if (x.status !== 200) throw new Error('HTTP ' + x.status);
+        const a = (JSON.parse(x.body).address) || {};
+        n = a.island || (['de', 'at', 'ch', 'it'].includes(a.country_code) && a.state) || a.country || a.state || '';
+        await new Promise(k => setTimeout(k, 1100));
+      }
+      if (n && !names.includes(n)) names.push(n);
+    }
+    const name = Reisen.joinNames(names);
+    const c2 = await DB.kvGet('tripRegion', {}); c2[r.id] = name; await DB.kvSet('tripRegion', c2);
+    return name;
+  },
+  /** Region einer Tour für den Filter: Insel (offline) oder Bundesland/Land aus einem Zwischenspeicher (ein Eintrag je Gebiet von ca. 50 km). */
+  cell: t => Math.round(t.lat * 2) + ',' + Math.round(t.lon * 2),
+  regionOf(t, cells) { if (t.lat == null) return ''; return Reisen.island(t.lat, t.lon) || cells[Reisen.cell(t)] || ''; },
+  /** Fehlende Gebiete per Ortssuche nachtragen (höchstens eine Anfrage pro Sekunde); `step` wird nach jedem neuen Eintrag aufgerufen. */
+  async resolveRegions(all, cells, step, stop) {
+    if (Reisen._rbusy) return; Reisen._rbusy = true;
+    try {
+      const todo = new Map();
+      all.forEach(t => { if (t.lat != null && !Reisen.island(t.lat, t.lon) && !(Reisen.cell(t) in cells) && !todo.has(Reisen.cell(t))) todo.set(Reisen.cell(t), t); });
+      for (const [k, t] of todo) {
+        if (stop()) break;
+        const x = await Native.http({ url: `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=8&addressdetails=1&accept-language=de&lat=${t.lat}&lon=${t.lon}`, headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
+        if (x.status !== 200) break;
+        const a = (JSON.parse(x.body).address) || {};
+        cells[k] = a.island || (['de', 'at', 'ch', 'it'].includes(a.country_code) && a.state) || a.country || a.state || '';
+        await DB.kvSet('regionCells', cells); step();
+        await new Promise(r => setTimeout(r, 1100));
+      }
+    } catch (e) { /* offline: später weiter */ } finally { Reisen._rbusy = false; }
   },
   /** „Tag 2 · Etappe 2/5“ für eine Tour innerhalb einer Mehrtagestour. */
   stage(r, t) {
@@ -130,7 +175,7 @@ const Reisen = {
 
 Views['/reisen'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
-  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripPlace', {});
+  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripRegion', {});
   const home = Reisen.homes(all);
   const body = h('div', { class: 'pad' });
   root.append(topbar('Reisen & Alben', { back: true, noMenu: true }), body);
@@ -193,7 +238,7 @@ async function groupPage(root, title, tours, opts) {
 
 Views['/reise'] = async (root, [id]) => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
-  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripPlace', {});
+  const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripRegion', {});
   const home = Reisen.homes(all);
   const r = id.startsWith('m:') ? (await Reisen.multiday(all)).find(x => x.id === id) : Reisen.detect(all, home, cfg).find(x => x.id === id);
   if (!r) { root.append(topbar('Reise', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }

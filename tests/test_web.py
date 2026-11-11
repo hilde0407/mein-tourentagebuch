@@ -19,7 +19,7 @@ window.MTApp={
  stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true}, takePhoto(){window.__calls.push(['photo']);return true},
  setRoute(p,n){window.__calls.push(['route',n,p.split(';').length])}, routeInfo:()=>'{}', routePoints:()=>'[]', clearRoute(){}, setGuide(){}, guideTest(){},
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(){}, shareText(){}, logText:()=>'log',
- call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r;
+ call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r; try{
    if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:a.bin?'':await x.text()}; if(a.bin){ const u=new Uint8Array(await x.arrayBuffer()); let b=''; u.forEach(c=>b+=String.fromCharCode(c)); r.b64=btoa(b); } }
    else if(m==='uploadStart') r={ip:'192.168.0.5',port:8765,url:'http://192.168.0.5:8765/abc12/'}; else if(m==='uploadStop') r=true;
    else if(m==='uploadPoll'){ r={photos:window.__upl||[],failed:0,running:true}; window.__upl=[]; }
@@ -28,6 +28,7 @@ window.MTApp={
    else if(m==='importUris') r=(a.uris||[]).map((u,i)=>({id:'g'+i+u.length,name:'g.jpg',ts:window.__gts||0,w:10,h:10,src:'galerie'}));
    else if(m==='pickPhotos') r=[{id:'p1aaaaaa',name:'a.jpg',ts:1700000300000,w:10,h:10,src:'galerie',lat:47.4,lon:11.1}];
    else r=[];
+   }catch(e){ r={status:599,headers:{},body:''}; }
    window.__mtcb(+id,true,JSON.stringify(r)); },5); }
 };
 """
@@ -45,7 +46,7 @@ def main():
         b = p.chromium.launch(); ctx = b.new_context(viewport={"width": 390, "height": 800}, device_scale_factor=1, permissions=["geolocation"], geolocation={"latitude": 47.0, "longitude": 11.0})
         ctx.add_init_script(MOCK)
         pg = ctx.new_page()
-        pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e)))
+        pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e) + " " + str(getattr(e, "stack", ""))))
         pg.on("console", lambda m: m.type == "error" and "Failed to load resource" not in m.text and "net::" not in m.text and errs.append("CONSOLE " + m.text))
         # Kartenserver/Routing nachstellen
         png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
@@ -298,11 +299,23 @@ def main():
           const base = Date.UTC(2026, 5, 3, 8);
           for (const d of [0, 1, 5, 6, 10]) await Tours.add({ name: d < 2 ? 'Réunion Tag ' + (d + 1) : 'Réunion ' + d, sport: 'hike', pts: Array.from({ length: 12 }, (_, k) => ({ lat: -21.1 + d * 0.01 + k * 0.0006, lon: 55.5 + k * 0.0005, ele: 900 + k * 6, t: base + d * 86400000 + k * 60000 })), src: 'file' });
         }""")
-        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Juni 2026", timeout=15000)
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Sommer 2026", timeout=15000)
         assert "5 Touren an 5 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.wait_for_selector("text=Mehrtagestouren"); assert "2 Etappen" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.locator("a.li", has_text="2 Etappen").first.click(); pg.wait_for_selector("text=Tag 1 · Etappe 1/2"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.locator("a.li", has_text="Etappe 2/2").first.click(); pg.wait_for_selector("#stage"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#stage"), pg.inner_text("#stage")
+        # Inselreise: zwei Inseln, Herbst
+        pg.evaluate("""async () => {
+          const base = Date.UTC(2026, 9, 5, 8);
+          const mk = (la, lo, d) => Array.from({ length: 12 }, (_, k) => ({ lat: la + k * 0.0006, lon: lo + k * 0.0005, ele: 400 + k * 6, t: base + d * 86400000 + k * 60000 }));
+          const pl = [[28.10, -17.20], [28.11, -17.21], [28.09, -17.19], [27.95, -15.60], [27.96, -15.61]];
+          for (let d = 0; d < 5; d++) await Tours.add({ name: 'Insel ' + d, sport: 'hike', pts: mk(pl[d][0], pl[d][1], d), src: 'file' });
+        }""")
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Gomera und Gran Canaria Herbst 2026", timeout=15000)
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("select[aria-label='Region']:not([hidden])")
+        pg.select_option("select[aria-label='Region']", label="La Gomera (3)"); pg.wait_for_function("document.querySelectorAll('.card.tour').length === 3")
+        assert "Insel" in pg.inner_text(".card.tour"), pg.inner_text("#view")
+        pg.select_option("select[aria-label='Region']", label="Alle Regionen")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector(".card.tour small.stage"); assert "Etappe" in pg.inner_text(".card.tour small.stage")
 
         # Namensvorschläge: Start-/Zielort über Nominatim, Gipfel über Overpass (vorgetäuscht)

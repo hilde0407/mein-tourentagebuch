@@ -1,5 +1,5 @@
 'use strict';
-const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '' } };
+const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '', region: '' } };
 
 /** Umriss der Strecke als kleines Bild. `box` setzt die Größe (Vorgabe: Kachel in der Liste). */
 function previewSvg(pts, color, box) {
@@ -23,6 +23,7 @@ Views['/'] = async root => {
   const photos = await DB.all('photos');
   const pc = {}; photos.forEach(p => { if (p.tour) pc[p.tour] = (pc[p.tour] || 0) + 1; });
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
+  const cells = await DB.kvGet('regionCells', {});
   const stageOf = {};      // Tour-ID → „Tag 2 · Etappe 2/5“ (kommt etwas später, weil die Zielpunkte erst gelesen werden)
   const list = h('div', { class: 'cards' }), sum = h('div', { class: 'sumline' });
   const chips = h('div', { class: 'chips' });
@@ -33,6 +34,12 @@ Views['/'] = async root => {
   }), { rootMargin: '200px' });
   const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Suchen', oninput: e => { F_.q = e.target.value; draw(); } });
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
+  const regSel = h('select', { 'aria-label': 'Region', onchange: e => { F_.region = e.target.value; draw(); } });
+  const fillRegions = () => {
+    const n = {}; all.forEach(t => { const r = Reisen.regionOf(t, cells); if (r) n[r] = (n[r] || 0) + 1; });
+    regSel.innerHTML = ''; regSel.append(h('option', { value: '' }, 'Alle Regionen'), ...Object.keys(n).sort((a, b) => a.localeCompare(b, 'de')).map(r => h('option', { value: r, selected: r === F_.region }, r + ' (' + n[r] + ')')));
+    regSel.hidden = Object.keys(n).length < 2;
+  };
   const draw = () => {
     chips.innerHTML = '';
     const chip = (label, on, fn) => chips.append(h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label));
@@ -43,7 +50,7 @@ Views['/'] = async root => {
     Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[2] + ' ' + s[1], F_.sport === s[0], () => { F_.sport = F_.sport === s[0] ? '' : s[0]; draw(); }));
     const ql = F_.q.trim().toLowerCase();
     const ts = all.filter(t => (F_.planned ? t.status === 'planned' : t.status !== 'planned') && (!F_.sport || t.sport === F_.sport) && (!F_.fav || t.fav)
-      && (!F_.year || String(new Date(t.start).getFullYear()) === String(F_.year)) && (!ql || (t.name + ' ' + (t.note || '') + ' ' + Sports.label(t.sport)).toLowerCase().includes(ql)));
+      && (!F_.year || String(new Date(t.start).getFullYear()) === String(F_.year)) && (!F_.region || Reisen.regionOf(t, cells) === F_.region) && (!ql || (t.name + ' ' + (t.note || '') + ' ' + Sports.label(t.sport)).toLowerCase().includes(ql)));
     list.innerHTML = '';
     const d = ts.reduce((a, t) => a + t.dist, 0), u = ts.reduce((a, t) => a + (t.up || 0), 0);
     sum.textContent = ts.length ? `${ts.length} ${ts.length === 1 ? 'Tour' : 'Touren'} · ${F.km(d)} · ${F.m(u)} Aufstieg` : '';
@@ -66,10 +73,11 @@ Views['/'] = async root => {
             pc[t.id] ? h('span', null, '🖼 ' + pc[t.id]) : null, t.hrAvg ? h('span', { class: 'hrt', title: 'Pulsdaten vorhanden' }, '♥ ' + t.hrAvg) : null))));
     });
   };
-  root.append(topbar('Tourentagebuch'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), chips, sum), list,
+  root.append(topbar('Tourentagebuch'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), h('div', { class: 'row' }, regSel), chips, sum), list,
     h('a', { class: 'fab', href: '#/import', 'aria-label': 'Touren importieren' }, '＋'));
-  draw();
+  fillRegions(); draw();
   let gone = false;
+  Reisen.resolveRegions(all, cells, () => { if (!gone) { fillRegions(); if (F_.region) draw(); } }, () => gone);
   Reisen.multiday(all).then(ms => { if (gone || !ms.length) return; ms.forEach(r => r.tours.forEach(q => { stageOf[q.id] = Reisen.stage(r, q); })); draw(); }).catch(() => {});
   return () => { gone = true; io.disconnect(); };
 };
