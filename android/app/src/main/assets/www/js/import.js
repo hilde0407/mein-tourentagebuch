@@ -198,6 +198,16 @@ const Import = {
       const acc = { token: ti.app_token, user: String(ti.user_id || '') };
       await DB.kvSet('zepp', acc); return acc;
     },
+    /* Anmeldung per Token (für Google-/Apple-/Mi-Konten ohne Passwort): prüfen, welcher Server antwortet, dann merken */
+    async useToken(raw, host) {
+      const token = Parse.zeppToken(raw);
+      if (!token) throw new Error('Das sieht nicht wie ein Zepp-Token aus. Es besteht aus mindestens 20 Zeichen (Buchstaben, Ziffern, - _ = +). Bitte den Wert von „apptoken“ komplett einfügen.');
+      let h0 = String(host || '').trim().replace(/\/+$/, '');
+      if (h0 && !/^https?:\/\//i.test(h0)) h0 = 'https://' + h0;
+      const acc = { token, user: '', host: h0 || undefined, viaToken: true };
+      await Import.Zepp.req(acc, '/v1/sport/run/history.json', {});          // wirft, wenn das Token nicht (mehr) gilt
+      await DB.kvSet('zepp', acc); return acc;
+    },
     async req(acc, endpoint, params) {
       const hosts = acc.host ? [acc.host] : Import.Zepp.HOSTS;
       let last = null;
@@ -209,7 +219,7 @@ const Import = {
           if (r.status === 200) { const j = JSON.parse(r.body); if ((j.code === 1 || j.code == null) && 'data' in j) { acc.host = h0; return j; } }
         } catch (e) { last = e.message; }
       }
-      throw new Error('Zepp-Anfrage fehlgeschlagen (' + last + '). Zugang abgelaufen? Bitte neu anmelden.');
+      throw new Error('Zepp-Anfrage fehlgeschlagen (' + last + '). ' + (acc.viaToken ? 'Das Token ist abgelaufen oder gehört zu einem anderen Server – bitte ein neues holen (Abmelden, dann neu einfügen).' : 'Zugang abgelaufen? Bitte neu anmelden.'));
     },
     col(s, idx, defOne) { return (s || '').split(';').filter(Boolean).map(v => { if (idx != null) v = v.split(',')[idx]; return parseInt(v || (defOne ? 1 : 0), 10) || 0; }); },
     cum: a => { let s = 0; return a.map(v => s += v); },

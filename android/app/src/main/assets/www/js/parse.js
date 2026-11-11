@@ -29,6 +29,14 @@ const Parse = {
   decodeXml: s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'),
   num: s => { const v = parseFloat(s); return isNaN(v) ? null : v; },
   /** Pulswert übernehmen, aber nur wenn er plausibel ist (Fühler liefern sonst 0 oder 255). */
+  /* Zepp-Token aus der Zwischenablage: erlaubt „apptoken=…“, Anführungszeichen, Leerraum, Prozent-Kodierung des „=“; null bei Unsinn */
+  zeppToken: s => {
+    let t = String(s == null ? '' : s).trim().replace(/^["'`]+|["'`]+$/g, '');
+    const m = t.match(/(?:^|[;\s])apptoken\s*[=:]\s*([^;\s"']+)/i); if (m) t = m[1];
+    t = t.replace(/^Bearer\s+/i, '').replace(/\s+/g, '');
+    try { if (/%[0-9a-f]{2}/i.test(t)) t = decodeURIComponent(t); } catch (e) {}
+    return /^[A-Za-z0-9_\-+/=.~*]{20,}$/.test(t) ? t : null;
+  },
   hr: v => { const n = parseInt(v, 10); return isFinite(n) && n >= 30 && n <= 240 ? n : null; },
 
   gpx(text) {

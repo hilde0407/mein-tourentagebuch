@@ -98,7 +98,7 @@ def main():
         # Heimatort suchen und speichern
         pg.evaluate("location.hash='#/settings'"); pg.wait_for_selector("input[placeholder^='Ort oder Adresse']")
         pg.fill("input[placeholder^='Ort oder Adresse']", "Hamburg"); pg.get_by_role("button", name="Suchen").click()
-        pg.get_by_role("button", name="📍 Hamburg, Deutschland").click()
+        pg.get_by_role("button", name="Hamburg, Deutschland").click()   # das 📍 wird zum Symbol, bleibt aber nicht im Namen
         pg.wait_for_function("DB.kvGet && Set_.get('homeName') === 'Hamburg, Deutschland' && Set_.get('homeLat') === '53.55000'")
         for path, key in [("#/map", ".leaflet-container"), ("#/photos", ".pgrid"), ("#/stats", ".kpis"), ("#/import", ".list"), ("#/settings", "h3"), ("#/sources", ".list"), ("#/plan", ".pmap"), ("#/rec", ".bigstart")]:
             pg.evaluate(f"location.hash='{path}'"); pg.wait_for_selector(key, timeout=5000); pg.wait_for_timeout(250)
@@ -147,6 +147,22 @@ def main():
         assert "<gpxtpx:hr>140</gpxtpx:hr>" in exp
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector("text=Ø Puls")
         assert "bpm" in pg.inner_text("#view")
+
+        # Zepp per Token: schlechte Eingabe abgelehnt, gutes Token geprüft (Server vorgetäuscht) und gemerkt, Sheet zeigt Abmelden
+        pg.evaluate("location.hash='#/import'"); pg.wait_for_selector(".list")
+        zr = pg.evaluate("""async () => {
+          const seen = []; Native.http = async o => { seen.push(o.url + '|' + (o.headers || {}).apptoken); return { status: 200, body: JSON.stringify({ code: 1, data: { summary: [], next: -1 } }) }; };
+          let bad = ''; try { await Import.Zepp.useToken('kurz'); } catch (e) { bad = e.message; }
+          const acc = await Import.Zepp.useToken(' apptoken=abcDEF123456abcDEF123456; Path=/ ', 'api-mifit-de2.zepp.com/');
+          const kv = await DB.kvGet('zepp', null);
+          return { bad, host: acc.host, token: kv && kv.token, via: kv && kv.viaToken, seen };
+        }""")
+        assert "Token" in zr["bad"] and zr["token"] == "abcDEF123456abcDEF123456" and zr["via"] and zr["host"] == "https://api-mifit-de2.zepp.com", zr
+        assert zr["seen"][0].startswith("https://api-mifit-de2.zepp.com/v1/sport/run/history.json|abcDEF"), zr
+        pg.get_by_text("Zepp / Amazfit").click(); pg.wait_for_selector("text=Angemeldet (mit Token)")
+        pg.get_by_text("Zugang testen").click(); pg.wait_for_selector("text=Zugang funktioniert")
+        pg.get_by_text("Abmelden").click(); pg.wait_for_selector("text=Prüfen & laden")
+        assert pg.evaluate("() => !document.querySelector('input[placeholder^=\"Token einfügen\"]').closest('div[hidden]')")
 
         b.close()
     assert not errs, "\n".join(errs)

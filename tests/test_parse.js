@@ -8,6 +8,10 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  const z=fflate.zipSync({'activities/1.gpx.gz':fflate.gzipSync(new TextEncoder().encode(gpx))});
  const r2=await Parse.any('x.zip',z); A.strictEqual(r2.length,1);
  for (const [s,e] of [['Run','run'],['MountainBikeRide','mtb'],['e_touringbicycle','ebike'],['hike','hike'],['touringbicycle','bike'],['racebike','racebike'],['Walk','walk'],['EBikeRide','ebike'],['Hiking','hike'],['jogging','run']]) A.strictEqual(Sports.norm(s),e,s);
+ // Zepp-Token aus der Zwischenablage
+ const T='a1B2c3D4e5F6g7H8i9J0kLmN',Z=Parse.zeppToken;
+ A.strictEqual(Z(T),T);A.strictEqual(Z('  "'+T+'"\n'),T);A.strictEqual(Z('apptoken='+T+'; Path=/'),T);A.strictEqual(Z('Bearer '+T),T);
+ A.strictEqual(Z('abc+def%3D%3D'+T),'abc+def=='+T);A.strictEqual(Z('zu kurz'),null);A.strictEqual(Z(''),null);A.strictEqual(Z(null),null);A.strictEqual(Z('hallo welt das ist kein token!'),null);
  // FIT: build minimal file
  const rec=[];const def=[0x40,0,0,20,0,4,253,4,0x86,0,4,0x85,1,4,0x85,2,2,0x84];
  const b=[];b.push(...def);

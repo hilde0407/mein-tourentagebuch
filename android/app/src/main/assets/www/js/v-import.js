@@ -56,11 +56,35 @@ Views['/import'] = async root => {
   async function zepp() {
     const c = await DB.kvGet('zepp', null);
     const em = h('input', { type: 'email', placeholder: 'E-Mail', autocomplete: 'off' }), pw = h('input', { type: 'password', placeholder: 'Passwort', autocomplete: 'off' });
-    const s = sheet('Zepp / Amazfit', h('div', null,
-      h('p', { class: 'muted' }, 'Funktioniert für Konten mit E-Mail und Passwort. Bei Anmeldung über Google, Apple oder Mi gibt es kein Passwort – dann in der Zepp-App Aktivitäten teilen/exportieren und per „Dateien“ importieren.'),
-      c ? h('p', null, '✓ Angemeldet') : h('div', null, h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw)),
-      h('div', { class: 'row end' }, c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Abmelden') : null,
-        h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { let acc = c; if (!acc) { txt.textContent = 'Anmelden …'; acc = await Import.Zepp.login(em.value.trim(), pw.value); } txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd); }); } }, 'Aktivitäten laden'))));
+    const tk = h('input', { type: 'password', placeholder: 'Token einfügen (apptoken)', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+    const hs = h('input', { placeholder: 'leer = automatisch', autocomplete: 'off', autocapitalize: 'off' });
+    // Hilfsprogramm für Lesezeichen/Adresszeile: liest den apptoken im Browser, wo man bei Zepp angemeldet ist, und zeigt ihn zum Kopieren an
+    const bm = "javascript:(function(){var m=document.cookie.match(/(?:^|; )apptoken=([^;]+)/);if(!m){alert('Kein apptoken gefunden - bitte zuerst bei Zepp anmelden.');return;}var t=decodeURIComponent(m[1]);try{navigator.clipboard.writeText(t);}catch(e){}prompt('Token (wurde kopiert):',t);})()";
+    const run0 = (acc0) => { s.close(); run('Zepp', async (upd, txt) => { let acc = acc0; txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd); }); };
+    const loggedIn = h('div', null, h('p', null, '✓ Angemeldet' + (c && c.viaToken ? ' (mit Token)' : '')),
+      h('div', { class: 'row end wrap' },
+        h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Abmelden'),
+        h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert ✓'); } catch (e) { toast(e.message, 8000); } } }, 'Zugang testen'),
+        h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Aktivitäten laden')));
+    const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
+      h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw),
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd); }); } }, 'Anmelden & laden')));
+    const tok = h('div', null,
+      h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort). Du brauchst einmalig das Zugangs-Token („apptoken“) deines Zepp-Kontos:'),
+      h('ol', { class: 'steps' },
+        h('li', null, 'Im Handy-Browser (Chrome) ', h('code', null, 'user.huami.com/privacy2/index.html?platform_app=com.xiaomi.hm.health&loginPlatform=web'), ' öffnen und anmelden. Dort ', h('b', null, 'nichts'), ' antippen – die Seite bietet „Konto löschen“ an.'),
+        h('li', null, 'Danach die Adresszeile antippen, den folgenden Text einfügen und abschicken (das Wort „javascript:“ vorne muss dabei stehen bleiben – manche Browser löschen es beim Einfügen, dann von Hand davor tippen). Es erscheint ein Fenster mit dem Token; es ist schon kopiert.'),
+        h('li', null, 'Hier zurückkehren und das Token ins Feld einfügen.')),
+      h('div', { class: 'row end wrap' }, h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(bm); toast('Hilfstext kopiert'); } catch (e) { toast('Kopieren nicht möglich – Text manuell markieren', 6000); } } }, 'Hilfstext kopieren'),
+        Native.available() ? h('button', { class: 'btn', onclick: () => MTApp.openUrl('https://user.huami.com/privacy2/index.html?platform_app=com.xiaomi.hm.health&loginPlatform=web') }, 'Zepp-Seite öffnen') : null),
+      h('label', { class: 'fld' }, 'Token', tk), h('label', { class: 'fld' }, 'Server (nur falls nötig)', hs),
+      h('p', { class: 'muted small' }, 'Das Token wird nur auf diesem Handy gespeichert und läuft nach einiger Zeit ab; dann einfach ein neues holen. Es gibt Zugriff auf deine Zepp-Daten – nicht weitergeben.'),
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
+        let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(tk.value, hs.value); } catch (e) { toast(e.message, 9000); return; }
+        run0(acc); } }, 'Prüfen & laden')));
+    const sel = h('div', { class: 'row' }, ['Mit Token', 'E-Mail / Passwort'].map((n, i) => h('button', { class: 'btn' + (i ? '' : ' pri'), onclick: e => { tok.hidden = !!i; pass.hidden = !i; [...sel.children].forEach((b, j) => b.classList.toggle('pri', j === i)); } }, n)));
+    pass.hidden = true;
+    const s = sheet('Zepp / Amazfit', c ? loggedIn : h('div', null, sel, tok, pass));
   }
   function bosch() {
     const s = sheet('Bosch eBike Flow', h('div', null,
