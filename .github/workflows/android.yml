@@ -30,6 +30,14 @@ jobs:
           java -cp /tmp/jc TrackStoreCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/Guide.java tests/android/GuideCheck.java
           java -cp /tmp/jc GuideCheck
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Oberfläche im Browser prüfen
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          python tests/test_web.py
       - name: Android-SDK-Lizenzen akzeptieren
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
