@@ -299,6 +299,17 @@ def main():
         pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Juni 2026", timeout=15000)
         assert "5 Touren an 5 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
 
+        # Namensvorschläge: Start-/Zielort über Nominatim, Gipfel über Overpass (vorgetäuscht)
+        pg.route("**/nominatim.openstreetmap.org/reverse**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"address": {"village": "Ort-" + r.request.url.split("lat=")[1][:5]}})))
+        pg.route("**/overpass-api.de/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"elements": [{"lat": 47.0, "lon": 11.0, "tags": {"name": "Hoher Test"}}]})))
+        nm = pg.evaluate("""async () => {
+          const base = Date.UTC(2025, 8, 1, 8);
+          const pts = Array.from({ length: 30 }, (_, k) => ({ lat: 47.5 + k * 0.004, lon: 11.5, ele: 800 + k * 20, t: base + k * 60000 }));
+          const r = await Tours.add({ name: 'Alt', sport: 'hike', pts, src: 'file' });
+          return Suggest.names(r.tour, await Tours.points(r.tour.id));
+        }""")
+        assert any(x.startswith("Wanderung von Ort-") for x in nm) and any("Hoher Test" in x for x in nm), nm
+
         b.close()
     assert not errs, "\n".join(errs)
     print("OK")

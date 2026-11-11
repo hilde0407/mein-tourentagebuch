@@ -150,6 +150,7 @@ Views['/tour'] = async (root, [id]) => {
     const s = sheet('Tour', h('div', { class: 'list' },
       it('✏️', 'Umbenennen', rename),
       it('📖', 'Erzählung', () => Nav.go('/story/' + id)),
+      it('💡', 'Namensvorschläge', suggestNames),
       it('🏷️', 'Sportart ändern', changeSport),
       it('🧳', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
       it('📤', 'Als GPX speichern', exportGpx),
@@ -161,6 +162,16 @@ Views['/tour'] = async (root, [id]) => {
       t.elevFix ? it('↩️', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
       it('🔄', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id)); toast('Neu berechnet'); Nav.render(); }),
       it('🗑️', 'Löschen', async () => { if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Löschen')) { await Tours.remove(id); Nav.go('/'); } })));
+  }
+  async function suggestNames() {
+    const box = h('div', { class: 'list' }, h('p', { class: 'muted' }, 'Orte werden gesucht …'));
+    const s = sheet('Namensvorschläge', box);
+    try {
+      const l = await Suggest.names(t, pts);
+      box.innerHTML = '';
+      if (!l.length) box.append(h('p', { class: 'muted' }, 'Keine Vorschläge gefunden.'));
+      l.forEach(n => box.append(h('button', { class: 'li sugg', onclick: async () => { t.name = n; await Tours.save(t); s.close(); Nav.render(); toast('Umbenannt'); } }, h('span', { class: 'li-t' }, h('b', null, n)))));
+    } catch (e) { box.innerHTML = ''; box.append(h('p', { class: 'muted' }, 'Nicht möglich: ' + e.message + ' (Internet nötig).')); }
   }
   async function fixEle() {
     toast('Höhen werden aus dem Gelände berechnet …');

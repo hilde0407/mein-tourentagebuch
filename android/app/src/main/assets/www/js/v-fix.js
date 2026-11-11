@@ -148,3 +148,39 @@ Views['/fix'] = async (root, [id]) => {
       h('button', { class: 'btn pri', id: 'fx-fast', disabled: !found.fast.length, onclick: async () => { await Fix.excludeRuns(id, found.fast); await done('Schnelle Abschnitte ausgeschlossen'); } }, 'Schnelle Abschnitte ausschließen'),
       trk && trk.orig ? h('button', { class: 'btn', id: 'fx-restore', onclick: async () => { if (await confirmBox('Original wiederherstellen?', 'Der Track wird wieder so, wie er importiert oder aufgezeichnet wurde.', 'Wiederherstellen')) { await Fix.restoreTrack(id); await done('Original wiederhergestellt'); } } }, 'Original wiederherstellen') : null));
 };
+
+/* Namensvorschläge: Orte (Start, Ziel, weitester Punkt) und Gipfel in der Nähe des höchsten Punkts. */
+const Suggest = {
+  sportName: { hike: 'Wanderung', walk: 'Spaziergang', mtb: 'MTB-Tour', bike: 'Radtour', racebike: 'Rennradtour', ebike: 'E-Bike-Tour', run: 'Lauf', ski: 'Skitour', mountaineering: 'Bergtour' },
+  async peak(lat, lon) {
+    const q = `[out:json][timeout:10];(node(around:350,${lat},${lon})["natural"~"peak|saddle"]["name"];node(around:350,${lat},${lon})["tourism"="alpine_hut"]["name"];);out;`;
+    const r = await Native.http({ url: 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q), headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
+    if (r.status !== 200) throw new Error('Overpass: HTTP ' + r.status);
+    const els = (JSON.parse(r.body).elements || []).filter(e => e.tags && e.tags.name);
+    els.sort((a, b) => Geo.dist(lat, lon, a.lat, a.lon) - Geo.dist(lat, lon, b.lat, b.lon));
+    return els.length ? els[0].tags.name : null;
+  },
+  /** Liste von Namensvorschlägen (ohne den aktuellen Namen), höchstens 6. */
+  async names(t, pts) {
+    if (!pts.length) throw new Error('Keine Streckenpunkte vorhanden');
+    const sp = Suggest.sportName[t.sport] || 'Tour', s = pts[0], e = pts[pts.length - 1];
+    const far = pts.reduce((m, p) => Geo.dist(s.lat, s.lon, p.lat, p.lon) > Geo.dist(s.lat, s.lon, m.lat, m.lon) ? p : m, s);
+    const hi = pts.reduce((m, p) => p.ele != null && (m == null || p.ele > m.ele) ? p : m, null);
+    const loop = Geo.dist(s.lat, s.lon, e.lat, e.lon) < Math.max(500, 0.15 * (t.dist || 0));
+    const errs = []; const safe = async f => { try { return await f(); } catch (x) { errs.push(x.message); return null; } };
+    const a = await safe(() => Places.name(s.lat, s.lon));
+    const b = loop ? null : await safe(() => Places.name(e.lat, e.lon));
+    const f = loop && Geo.dist(s.lat, s.lon, far.lat, far.lon) > 2500 ? await safe(() => Places.name(far.lat, far.lon)) : null;
+    const wantPeak = hi && s.ele != null && hi.ele - s.ele >= 150 && ['hike', 'mountaineering', 'ski'].includes(t.sport);
+    const pk = wantPeak ? await safe(() => Suggest.peak(hi.lat, hi.lon)) : null;
+    const out = [];
+    if (!loop && a && b && a !== b) out.push(`${sp} von ${a} nach ${b}`);
+    if (pk) out.push(a ? `${sp} ${a} – ${pk}` : `${sp} zum ${pk}`);
+    if (a) out.push(`${sp} bei ${a}`);
+    if (f && a && f !== a) out.push(`${sp} ${a} – ${f}`);
+    if (loop && a) out.push(t.sport === 'hike' || t.sport === 'run' ? `Runde um ${a}` : `${sp}-Runde ${a}`);
+    const res = [...new Set(out)].filter(x => x !== t.name).slice(0, 6);
+    if (!res.length && errs.length) throw new Error(errs[0]);
+    return res;
+  },
+};
