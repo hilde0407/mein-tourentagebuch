@@ -23,6 +23,7 @@ Views['/'] = async root => {
   const photos = await DB.all('photos');
   const pc = {}; photos.forEach(p => { if (p.tour) pc[p.tour] = (pc[p.tour] || 0) + 1; });
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
+  const stageOf = {};      // Tour-ID → „Tag 2 · Etappe 2/5“ (kommt etwas später, weil die Zielpunkte erst gelesen werden)
   const list = h('div', { class: 'cards' }), sum = h('div', { class: 'sumline' });
   const chips = h('div', { class: 'chips' });
   const io = new IntersectionObserver(es => es.forEach(async e => {
@@ -60,6 +61,7 @@ Views['/'] = async root => {
       list.append(h('a', { class: 'card tour', href: '#/tour/' + t.id },
         pv, h('div', { class: 'tb' }, h('b', null, (t.fav ? '★ ' : '') + t.name),
           h('small', null, Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) : '')),
+          stageOf[t.id] ? h('small', { class: 'stage' }, '🥾 ' + stageOf[t.id]) : null,
           h('div', { class: 'met' }, h('span', null, F.km(t.dist)), t.up ? h('span', null, '↑ ' + F.m(t.up)) : null, t.dur ? h('span', null, '⏱ ' + F.dur(t.dur)) : null,
             pc[t.id] ? h('span', null, '🖼 ' + pc[t.id]) : null, t.hrAvg ? h('span', { class: 'hrt', title: 'Pulsdaten vorhanden' }, '♥ ' + t.hrAvg) : null))));
     });
@@ -67,7 +69,9 @@ Views['/'] = async root => {
   root.append(topbar('Tourentagebuch'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), chips, sum), list,
     h('a', { class: 'fab', href: '#/import', 'aria-label': 'Touren importieren' }, '＋'));
   draw();
-  return () => io.disconnect();
+  let gone = false;
+  Reisen.multiday(all).then(ms => { if (gone || !ms.length) return; ms.forEach(r => r.tours.forEach(q => { stageOf[q.id] = Reisen.stage(r, q); })); draw(); }).catch(() => {});
+  return () => { gone = true; io.disconnect(); };
 };
 
 Views['/tour'] = async (root, [id]) => {
