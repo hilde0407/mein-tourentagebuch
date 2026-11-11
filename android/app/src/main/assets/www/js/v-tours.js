@@ -149,6 +149,7 @@ Views['/tour'] = async (root, [id]) => {
     const it = (ico, tx, fn) => h('button', { class: 'li', onclick: () => { s.close(); fn(); } }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, tx)));
     const s = sheet('Tour', h('div', { class: 'list' },
       it('✏️', 'Umbenennen', rename),
+      it('🚁', '3D-Flug über die Tour', () => Nav.go('/flug/' + id)),
       it('📖', 'Erzählung', () => Nav.go('/story/' + id)),
       it('💡', 'Namensvorschläge', suggestNames),
       it('🏷️', 'Sportart ändern', changeSport),

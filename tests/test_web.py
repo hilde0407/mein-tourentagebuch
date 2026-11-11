@@ -321,6 +321,14 @@ def main():
         pg.mouse.click(350, 400); pg.wait_for_function("() => document.querySelector('.sh-cap').innerText.includes('2 / 3')")
         pg.keyboard.press("Escape"); pg.wait_for_selector(".sh", state="detached")
 
+        # 3D-Flug: Ansicht öffnet, Karte entsteht, Kopfzeile zeigt Strecke/Höhe, Ende zeigt „Nochmal“
+        fl = pg.evaluate("async () => { const l = await Tours.list(); location.hash = '#/flug/' + l[0].id; return l[0].id; }")
+        pg.wait_for_selector(".flight .fm canvas", timeout=20000)
+        pg.wait_for_function("() => (document.querySelector('.fhud')?.innerText || '').includes('↑')", timeout=30000)
+        pg.select_option("#fv", "8"); pg.fill("#fs", "990") if False else pg.evaluate("document.querySelector('#fs').value = 1000; document.querySelector('#fs').dispatchEvent(new Event('input'))")
+        pg.wait_for_function("() => document.querySelector('#fp').innerText.includes('Nochmal')", timeout=20000)
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
+
         b.close()
     assert not errs, "\n".join(errs)
     print("OK")
