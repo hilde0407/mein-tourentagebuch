@@ -178,6 +178,22 @@ def main():
           const again = await Tours.points(r.tour.id);
           return { n: pts.length, withHr, before, ok, avg: t2.hrAvg, zhr: t2.zhr, stored: again.filter(p => p.hr).length };
         }""")
+        # Komoot-Tour (andere Quelle, Startzeit 1 h verschoben): wird erkannt, Puls kommt nach Zeit seit Start auf die Punkte
+        km = pg.evaluate("""async () => {
+          const det = { time: '0' + ';5'.repeat(12), longitude_latitude: '200000000,5100000000' + ';1000,1000'.repeat(12), altitude: '50000' + ';10'.repeat(12),
+            heart_rate: ',90' + ';5,1'.repeat(12), gait: '0' };
+          const s = { trackid: '1710000000' };
+          const zp = Import.Zepp.decode(s, det);
+          const gs = Geo.stats(zp); s.dis = String(gs.dist); s.run_time = String(gs.dur);
+          const shifted = zp.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: p.t + 3600000 }));
+          const r = await Tours.add({ sport: 'hike', pts: shifted, src: 'komoot', srcId: 'komoot:42' });
+          const m = Import.Zepp.match(s, await Tours.list());
+          const ok = m && await Tours.fillHr(m.id, zp, 1710000000000);
+          const t2 = (await Tours.list()).find(t => t.id === r.tour.id);
+          const none = Import.Zepp.match({ trackid: '1500000000', dis: '999', run_time: '60' }, await Tours.list());
+          return { matched: !!m, ok, avg: t2.hrAvg, none: none === null };
+        }""")
+        assert km["matched"] and km["ok"] and 88 <= km["avg"] <= 100 and km["none"], km
         assert zh["withHr"] == zh["n"] and zh["before"] is None and zh["ok"] and 70 <= zh["avg"] <= 80 and zh["zhr"] == 1 and zh["stored"] > 5, zh
 
         b.close()

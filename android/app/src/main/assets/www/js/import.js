@@ -252,6 +252,19 @@ const Import = {
         return { lat: LA[i] / 1e8, lon: LO[i] / 1e8, ele: e > -500 && e < 9000 ? e : null, t: (start + t) * 1000, hr: HR ? Parse.hr(HR[i]) : null };
       });
     },
+    /** Gleiche Aktivität wie eine vorhandene Tour (auch aus Komoot oder Datei)? Gleicher Start (±5 min) oder gleiche Strecke und Dauer. */
+    match(s, tours) {
+      const st = parseInt(s.trackid, 10) * 1000, dist = parseFloat(s.dis) || 0, dur = parseFloat(s.run_time) || 0;
+      for (const t of tours) {
+        if (t.status === 'planned' || !t.start) continue;
+        if (t.srcId === 'zepp:' + s.trackid) return t;
+        const d = Math.abs(t.start - st);
+        if (d <= 300000) return t;
+        if (dist && t.dist && Math.abs(t.dist - dist) <= 0.01 * dist && dur && t.dur && Math.abs(t.dur - dur) <= 60
+          && (d <= 3 * 3600000 || [1, 2].some(h => Math.abs(d - h * 3600000) <= 300000))) return t;
+      }
+      return null;
+    },
     async importAll(acc, onProgress) {
       const Z = Import.Zepp; let sums = [], nxt = null;
       for (;;) {
@@ -260,30 +273,29 @@ const Import = {
         nxt = j.data.next; if (nxt == null || nxt === -1) break;
       }
       const mine = await Tours.list();
-      const have = new Set(mine.map(t => t.srcId));
-      const todo = sums.filter(s => !have.has('zepp:' + s.trackid));
-      // schon vorhandene Zepp-Touren ohne Puls (früher importiert) – Puls einmalig nachladen
-      const byId = new Map(mine.map(t => [t.srcId, t]));
-      const redo = sums.filter(s => { const t = byId.get('zepp:' + s.trackid); return t && !t.hrAvg && !t.zhr; });
-      const res = { added: 0, dup: sums.length - todo.length, fail: 0, hr: 0 };
+      const res = { added: 0, dup: 0, fail: 0, hr: 0 };
       const types = { 1: 'run', 6: 'walk', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'walk' };
+      // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur den Puls nachtragen – sonst neu laden
+      const todo = [];
+      for (const s of sums) {
+        const t = Z.match(s, mine);
+        if (!t) todo.push({ s, t: null });
+        else if (!t.hrAvg && !t.zhr) todo.push({ s, t });
+        else res.dup++;
+      }
       for (let i = 0; i < todo.length; i++) {
-        const s = todo[i];
-        if (onProgress) onProgress(i + 1, todo.length, F.dshort(s.trackid * 1000));
+        const { s, t } = todo[i];
+        if (onProgress) onProgress(i + 1, todo.length, (t ? 'Puls ' : '') + F.dshort(s.trackid * 1000));
         try {
           const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: s.trackid, source: s.source || '' });
           const pts = Z.decode(s, dj.data);
+          if (t) {
+            if (await Tours.fillHr(t.id, pts, parseInt(s.trackid, 10) * 1000)) res.hr++; else res.dup++;
+            continue;
+          }
           if (pts.length < 2) { res.dup++; continue; }
           const r = await Tours.add({ sport: types[s.type] || 'other', pts, src: 'zepp', srcId: 'zepp:' + s.trackid });
           if (r.dup) res.dup++; else res.added++;
-        } catch (e) { res.fail++; }
-      }
-      for (let i = 0; i < redo.length; i++) {
-        const s = redo[i];
-        if (onProgress) onProgress(i + 1, redo.length, 'Puls ' + F.dshort(s.trackid * 1000));
-        try {
-          const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: s.trackid, source: s.source || '' });
-          if (await Tours.fillHr(byId.get('zepp:' + s.trackid).id, Z.decode(s, dj.data))) res.hr++;
         } catch (e) { res.fail++; }
       }
       await Photos.assignAll();

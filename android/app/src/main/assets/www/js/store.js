@@ -68,17 +68,22 @@ const Tours = {
   hrZone(bpm, hmax) { const q = bpm / hmax; return q < 0.6 ? 0 : q < 0.7 ? 1 : q < 0.8 ? 2 : q < 0.9 ? 3 : 4; },
   async save(t) { await DB.put('tours', t); Tours.invalidate(); },
   /** Puls nachtragen (z. B. bei Touren, die vor der Pulsunterstützung importiert wurden): Werte nach Zeit auf die gespeicherten Punkte legen. */
-  async fillHr(id, hrPts) {
+  async fillHr(id, hrPts, srcStart) {
     const trk = await DB.get('tracks', id), t = await DB.get('tours', id);
     if (!trk || !t) return false;
     const src = hrPts.filter(p => p.hr != null && p.t != null).sort((a, b) => a.t - b.t);
     t.zhr = 1;                                                    // Versuch vermerken, damit nicht bei jedem Import neu geladen wird
     if (src.length < 5) { await DB.put('tours', t); Tours.invalidate(); return false; }
+    // Zeitversatz zwischen Quelle und Tour (z. B. Zeitzone/Sommerzeit bei Komoot-Touren): Werte nach Zeit seit Start zuordnen
+    const t0 = trk.t.find(x => x != null);
+    if (t0 == null) { await DB.put('tours', t); Tours.invalidate(); return false; }
+    const shift = srcStart != null ? t0 - srcStart : 0;
     let j = 0;
     trk.hr = trk.t.map(tm => {
       if (tm == null) return 0;
-      while (j + 1 < src.length && src[j + 1].t <= tm) j++;
-      return Math.abs(src[j].t - tm) <= 30000 ? src[j].hr : 0;
+      const q = tm - shift;
+      while (j + 1 < src.length && src[j + 1].t <= q) j++;
+      return Math.abs(src[j].t - q) <= 30000 ? src[j].hr : 0;
     });
     const pts = trk.lat.map((la, i) => ({ t: trk.t[i], hr: trk.hr[i] || null }));
     Object.assign(t, Tours.hrSummary(pts));
