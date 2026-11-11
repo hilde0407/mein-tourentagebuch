@@ -12,6 +12,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - id: v
@@ -27,3 +29,10 @@ jobs:
           N="docs/versionen/$V.md"
           [ -f "$N" ] || { mkdir -p docs/versionen; echo "Siehe die Änderungen in diesem Stand." > "$N"; }
           gh release create "v$V" --target "$GITHUB_SHA" --title "Mein Tourentagebuch $V" --notes-file "$N"
+  android:
+    needs: release
+    uses: ./.github/workflows/android.yml
+    with:
+      tag: v${{ needs.release.outputs.version }}
+    permissions:
+      contents: write

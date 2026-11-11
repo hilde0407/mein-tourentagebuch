@@ -3,9 +3,17 @@ name: Android-App
 on:
   push:
     branches: ["**"]
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Veröffentlichung, an die die APK gehängt wird (z. B. v1.3.0) – leer lassen für einen reinen Testbau"
+        required: false
+        default: ""
+  workflow_call:                 # von „Veröffentlichen“ aufgerufen; eine von GITHUB_TOKEN angelegte
+    inputs:                      # Veröffentlichung löst selbst keinen Baulauf aus, darum der direkte Aufruf
+      tag:
+        type: string
+        required: true
 
 permissions:
   contents: write
@@ -56,7 +64,7 @@ jobs:
           name: Tourentagebuch-apk
           path: Tourentagebuch.apk
       - name: APK an die Veröffentlichung anhängen
-        if: github.event_name == 'release'
+        if: inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" Tourentagebuch.apk --clobber
+        run: gh release upload "${{ inputs.tag }}" Tourentagebuch.apk --clobber
