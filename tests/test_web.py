@@ -314,6 +314,11 @@ def main():
         }""")
         assert any(x.startswith("Wanderung von Ort-") for x in nm) and any("Hoher Test" in x for x in nm), nm
 
+        # Reisen als Tab in der unteren Leiste (6 Tabs, alle gut tippbar), bleibt auch auf Reise-/Albumseiten markiert
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#tabs a[data-p='/reisen']")
+        ws = pg.evaluate("[...document.querySelectorAll('#tabs a')].map(a => Math.round(a.getBoundingClientRect().width))")
+        assert len(ws) == 6 and min(ws) >= 55, ws
+        pg.click("#tabs a[data-p='/reisen']"); pg.wait_for_selector("text=Mehrtagestouren"); assert pg.evaluate("document.querySelector(\"#tabs a[data-p='/reisen']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')")
         # Streckenfarbe und Diashow
         pg.evaluate("async () => { await Set_.set('routeColor', '#d81b60'); const l = await Tours.list(); location.hash = '#/tour/' + l[0].id; }")
         pg.wait_for_selector(".tmap"); assert pg.evaluate("MapKit.routeColor('hike') === '#d81b60' && MapKit.routeColor('ebike') === '#d81b60'")

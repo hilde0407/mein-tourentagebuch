@@ -4,7 +4,7 @@ const Views = {};
 const Nav = {
   cleanup: null, cur: '',
   /* Gezeichnete Symbole statt Emojis – sehen auf jedem Gerät gleich aus. */
-  tabs: [['/start', 'Start', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>'], ['/', 'Touren', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19l6-10 4 6 2-3 6 7z"/><circle cx="17" cy="6" r="1.6"/></svg>'], ['/rec', 'Aufnehmen', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>'], ['/map', 'Karte', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>'], ['/photos', 'Fotos', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>']],
+  tabs: [['/start', 'Start', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>'], ['/', 'Touren', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19l6-10 4 6 2-3 6 7z"/><circle cx="17" cy="6" r="1.6"/></svg>'], ['/reisen', 'Reisen', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="8" width="14" height="12" rx="2"/><path d="M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8"/><path d="M9 12v4M15 12v4"/></svg>'], ['/rec', 'Aufnehmen', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>'], ['/map', 'Karte', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>'], ['/photos', 'Fotos', '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>']],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go('/'); },
   depth: 0,
@@ -16,8 +16,8 @@ const Nav = {
     if (Nav.cleanup) { try { Nav.cleanup(); } catch (e) { /* weiter */ } Nav.cleanup = null; }
     const root = $('#view'); root.innerHTML = ''; root.scrollTop = 0;
     Nav.cur = key;
-    $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.p === key || (key === '/tour' && a.dataset.p === '/')));
-    $('#tabs').classList.toggle('hide', ['/tour', '/story', '/settings', '/stats', '/import', '/sources', '/reisen', '/reise', '/album', '/fix', '/flug'].includes(key));
+    $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.p === key || (key === '/tour' && a.dataset.p === '/') || ((key === '/reise' || key === '/album') && a.dataset.p === '/reisen')));
+    $('#tabs').classList.toggle('hide', ['/tour', '/story', '/settings', '/stats', '/import', '/sources', '/reise', '/album', '/fix', '/flug'].includes(key));
     try { Nav.cleanup = await route(root, parts.slice(1).map(decodeURIComponent)); }
     catch (e) { root.append(h('div', { class: 'empty' }, h('h2', null, 'Das hat nicht geklappt'), h('p', null, String(e.message || e)))); console.error(e); }
   },
@@ -48,7 +48,7 @@ function moreMenu() {
 window.mtBack = function () {
   if (sheet.stack && sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
   if (window.__lightbox) { window.__lightbox.close(); return true; }
-  if (['/tour', '/story', '/settings', '/stats', '/import', '/sources', '/reisen', '/reise', '/album', '/fix', '/flug'].includes(Nav.cur)) { Nav.back(); return true; }
+  if (['/tour', '/story', '/settings', '/stats', '/import', '/sources', '/reise', '/album', '/fix', '/flug'].includes(Nav.cur)) { Nav.back(); return true; }
   if (Nav.cur !== '/start' && Nav.cur !== '') { Nav.go('/start'); return true; }
   return false;
 };
