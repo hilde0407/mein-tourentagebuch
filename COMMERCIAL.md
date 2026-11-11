@@ -3,7 +3,7 @@
 Dies ist eine technische Checkliste, **keine Rechtsberatung**. Vor einem Verkauf (z. B. Google Play) bitte rechtlich prüfen lassen.
 
 ## 1. Eigene Rechte
-- Der Quellcode dieses Projekts ist eigenständig und enthält keinen GPL-Code. Eine Lizenz für den Verkauf (z. B. „Alle Rechte vorbehalten“) muss noch festgelegt und als `LICENSE` ergänzt werden.
+- Der Quellcode dieses Projekts ist eigenständig und enthält keinen GPL-Code. Der Quellcode steht unter der **MIT-Lizenz** (siehe `LICENSE`); damit ist auch ein Verkauf der App erlaubt. Der im Repository liegende Signierschlüssel `android/app/mt-debug.jks` ist öffentlich und gehört nicht in eine Play-Store-Veröffentlichung – dafür einen eigenen, geheimen Schlüssel verwenden.
 - Die Aufnahme- und Ansage-Logik stammt aus dem Schwesterprojekt „Meine Touren“ (Server-Version) (gleicher Autor).
 
 ## 2. Bibliotheken (alle kommerziell nutzbar)

@@ -25,3 +25,9 @@ Tests: `node tests/test_parse.js`, `python3 tests/test_web.py`.
 
 ## Verkauf
 Siehe [COMMERCIAL.md](COMMERCIAL.md) (Lizenzen, Kartenserver, Dienste, Schlüssel).
+
+## Lizenz
+
+MIT-Lizenz, siehe [LICENSE](LICENSE). Mitgelieferte Bibliotheken haben eigene Lizenzen (siehe [COMMERCIAL.md](COMMERCIAL.md)).
+
+Hinweis zum Signieren: Die APK wird mit dem öffentlichen Schlüssel `android/app/mt-debug.jks` signiert. Das genügt für den privaten Gebrauch; wer die App selbst verteilt, sollte einen eigenen Schlüssel verwenden.
