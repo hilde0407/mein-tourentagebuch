@@ -166,6 +166,25 @@ def main():
         pg.locator(".goal input").first.fill("500"); pg.locator(".goal input").first.dispatch_event("change"); pg.wait_for_selector(".gbar")
         assert "von 500 km" in pg.inner_text("#view")
 
+        # Reisen & Alben: Reise aus 4 weit entfernten Tagen erkennen, Tags vergeben, Album-Seite
+        rz = pg.evaluate("""async () => {
+          const base = Date.UTC(2025, 5, 10, 8);
+          const mk = (i, d) => Array.from({ length: 12 }, (_, k) => ({ lat: 46.5 + i * 0.01 + k * 0.0006, lon: 11.5 + k * 0.0005, ele: 1200 + k * 5, t: base + d * 86400000 + k * 60000 }));
+          for (let d = 0; d < 5; d++) await Tours.add({ name: 'Reisetour ' + (d + 1), sport: 'hike', pts: mk(d, d), src: 'file' });
+          await Set_.set('homeLat', '53.55'); await Set_.set('homeLon', '10.0');
+          const all = (await Tours.list()).filter(t => t.status !== 'planned');
+          const trips = Reisen.detect(all, [53.55, 10.0], await Reisen.settings());
+          const none = Reisen.detect(all, [46.5, 11.5], await Reisen.settings());
+          const rt = all.filter(t => /^Reisetour/.test(t.name));
+          for (const t of rt) { t.tags = ['Südtirol 2025']; await Tours.save(t); }
+          return { n: trips.length, tours: trips[0] && trips[0].tours.length, days: trips[0] && trips[0].days, none: none.length, rng: trips[0] && Reisen.range(trips[0].first, trips[0].last) };
+        }""")
+        assert rz["n"] == 1 and rz["tours"] == 5 and rz["days"] == 5 and rz["none"] == 0 and "Juni 2025" in rz["rng"], rz
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=Reise 10.–14. Juni 2025"); assert "5 Touren an 5 Tagen" in pg.inner_text("#view")
+        pg.get_by_role("button", name="Alben", exact=True).click(); pg.wait_for_selector("text=Südtirol 2025")
+        pg.get_by_text("Südtirol 2025").first.click(); pg.wait_for_selector("text=Reisetour 3"); assert "Tage" in pg.inner_text("#view") and pg.locator(".map path").count() >= 1
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector(".chips"); pg.locator("a.li", has_text="Reise 10.").first.click(); pg.wait_for_selector("text=Als Album speichern")
+
         # Komoot: Auf-/Abstieg wie bei Komoot übernehmen (neue Touren und schon vorhandene)
         ko = pg.evaluate("""async () => {
           const base = 1730000000000;

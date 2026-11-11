@@ -39,7 +39,7 @@ def main():
             t0 = 1700000000000
             pg.evaluate("""async ([a,b]) => { const e=s=>new TextEncoder().encode(s); await Import.fromData('a.gpx',e(a),'file'); await Import.fromData('b.gpx',e(b),'file'); }""",
                         [T.gpx(t0, name="Hüttenrunde"), T.gpx(t0 + 86400000 * 40, lat=47.2, name="Zweite Tour")])
-            routes = ["#/start", "#/tours", "#/rec", "#/map", "#/photos", "#/stats", "#/import", "#/settings", "#/sources", "#/plan"]
+            routes = ["#/start", "#/tours", "#/rec", "#/map", "#/photos", "#/stats", "#/import", "#/settings", "#/sources", "#/plan", "#/reisen"]
             tid = pg.evaluate("DB.all('tours').then(a => a[0].id)")
             routes += [f"#/tour/{tid}", f"#/story/{tid}"]
             for r in routes:

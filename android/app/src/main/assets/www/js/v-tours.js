@@ -113,6 +113,7 @@ Views['/tour'] = async (root, [id]) => {
   const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
   body.append(...[t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
     h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),
+    (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
     grid, h('h3', null, 'Höhenprofil'), prof, profInfo, t.hrAvg ? pulsBlock() : null, photoHead, strip, h('h3', null, 'Notizen'), note].filter(Boolean));
   drawStrip();
   const xs = MapKit.profile(prof, pts, (i, o) => {
@@ -149,6 +150,7 @@ Views['/tour'] = async (root, [id]) => {
       it('✏️', 'Umbenennen', rename),
       it('📖', 'Erzählung', () => Nav.go('/story/' + id)),
       it('🏷️', 'Sportart ändern', changeSport),
+      it('🧳', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
       it('📤', 'Als GPX speichern', exportGpx),
       it('🔗', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
       it('🧭', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
