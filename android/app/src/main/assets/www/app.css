@@ -144,3 +144,8 @@ svg.ic{vertical-align:-3px;flex:none}
 .li-i svg.ic{vertical-align:middle}
 .btn svg.ic,.chip svg.ic{margin-right:-1px}
 .fab svg.ic{width:26px;height:26px;stroke-width:2.2}
+
+/* Lesbarkeit: Auswahlfeld in der dunklen Kopfzeile, großer Aufnahmeknopf im Dunkelmodus */
+header.top select{background:rgba(255,255,255,.12);color:#e8f0ec;border:1px solid rgba(232,240,236,.45);border-radius:var(--r);min-height:36px;padding:0 8px}
+header.top select option{background:#fff;color:#0e2a2b}
+.rec .bigstart{background:#b3261e;color:#fff}

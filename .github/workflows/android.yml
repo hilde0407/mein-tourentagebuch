@@ -46,6 +46,7 @@ jobs:
           pip install playwright
           python -m playwright install --with-deps chromium || python -m playwright install chromium
           python tests/test_web.py
+          python tests/audit_kontrast.py --fail
       - name: Android-SDK-Lizenzen akzeptieren
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
