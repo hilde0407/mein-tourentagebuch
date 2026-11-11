@@ -176,8 +176,8 @@ def main():
           for (let d = 0; d < 5; d++) await Tours.add({ name: 'Reisetour ' + (d + 1), sport: 'hike', pts: mk(d, d), src: 'file' });
           await Set_.set('homeLat', '53.55'); await Set_.set('homeLon', '10.0');
           const all = (await Tours.list()).filter(t => t.status !== 'planned');
-          const trips = Reisen.detect(all, [53.55, 10.0], await Reisen.settings());
-          const none = Reisen.detect(all, [46.5, 11.5], await Reisen.settings());
+          const trips = Reisen.detect(all, [[53.55, 10.0]], await Reisen.settings());
+          const none = Reisen.detect(all, [[46.5, 11.5]], await Reisen.settings());
           const rt = all.filter(t => /^Reisetour/.test(t.name));
           for (const t of rt) { t.tags = ['Südtirol 2025']; await Tours.save(t); }
           return { n: trips.length, tours: trips[0] && trips[0].tours.length, days: trips[0] && trips[0].days, none: none.length, rng: trips[0] && Reisen.range(trips[0].first, trips[0].last) };
@@ -296,12 +296,12 @@ def main():
         pg.route("**/nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"address": {"country": "La Réunion", "country_code": "re"}})))
         pg.evaluate("""async () => {
           const base = Date.UTC(2026, 5, 3, 8);
-          for (const d of [0, 1, 5, 6, 10]) await Tours.add({ name: 'Réunion ' + d, sport: 'hike', pts: Array.from({ length: 12 }, (_, k) => ({ lat: -21.1 + d * 0.01 + k * 0.0006, lon: 55.5 + k * 0.0005, ele: 900 + k * 6, t: base + d * 86400000 + k * 60000 })), src: 'file' });
+          for (const d of [0, 1, 5, 6, 10]) await Tours.add({ name: d < 2 ? 'Réunion Tag ' + (d + 1) : 'Réunion ' + d, sport: 'hike', pts: Array.from({ length: 12 }, (_, k) => ({ lat: -21.1 + d * 0.01 + k * 0.0006, lon: 55.5 + k * 0.0005, ele: 900 + k * 6, t: base + d * 86400000 + k * 60000 })), src: 'file' });
         }""")
         pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Juni 2026", timeout=15000)
         assert "5 Touren an 5 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
-        pg.wait_for_selector("text=Mehrtagestouren"); assert "2 Etappen an 2 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
-        pg.locator("a.li", has_text="2 Etappen an 2 Tagen").first.click(); pg.wait_for_selector("text=Tag 1 · Etappe 1/2"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#view"), pg.inner_text("#view")
+        pg.wait_for_selector("text=Mehrtagestouren"); assert "2 Etappen" in pg.inner_text("#view"), pg.inner_text("#view")
+        pg.locator("a.li", has_text="2 Etappen").first.click(); pg.wait_for_selector("text=Tag 1 · Etappe 1/2"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.locator("a.li", has_text="Etappe 2/2").first.click(); pg.wait_for_selector("#stage"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#stage"), pg.inner_text("#stage")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector(".card.tour small.stage"); assert "Etappe" in pg.inner_text(".card.tour small.stage")
 

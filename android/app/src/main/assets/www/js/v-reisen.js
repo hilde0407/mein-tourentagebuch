@@ -1,59 +1,70 @@
 'use strict';
 /* Reisen (automatisch erkannt) und Alben (Schlagworte/Tags an Touren) – wie in „Meine Touren“.
-   Reise: Touren weit weg von zu Hause an mindestens N Tagen, mit höchstens einem Ruhetag dazwischen. */
+   Reise: Touren weit weg von zu Hause (Regeln wie „Meine Touren“). */
 const Reisen = {
-  DEF: { km: 60, days: 4, gap: 2 },
+  DEF: { days: 4 },
   async settings() { return Object.assign({}, Reisen.DEF, await DB.kvGet('tripSet', {})); },
   dayNo: ms => { const d = new Date(ms); return Math.round(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 86400000); },
-  /** Alle Reisen aus der Tourenliste: [{id, tours, days, first, last, km, up, dur}], neueste zuerst. */
-  detect(all, home, cfg) {
-    if (!home) return [];
-    const far = all.filter(t => t.status !== 'planned' && !t.hidden && t.lat != null && t.start && Geo.dist(home[0], home[1], t.lat, t.lon) / 1000 >= cfg.km).sort((a, b) => a.start - b.start);
+  /** Orte, an denen man sich ständig aufhält (wie „Meine Touren“): Gebiete von ca. 30 km mit sehr vielen Tourstarts in vielen Monaten. Ein von Hand eingetragener Heimatort gilt stattdessen. */
+  homes(all) {
+    const la = parseFloat(Set_.get('homeLat')), lo = parseFloat(Set_.get('homeLon'));
+    if (isFinite(la) && isFinite(lo) && (la || lo)) return [[la, lo]];
+    const ts = all.filter(t => t.lat != null && t.start);
+    if (!ts.length) return [];
+    const cl = [];
+    ts.forEach(t => {
+      const d = new Date(t.start), mo = d.getFullYear() + '-' + d.getMonth(), c = cl.find(c => Geo.dist(c[0], c[1], t.lat, t.lon) <= 30000);
+      if (c) { c[0] += (t.lat - c[0]) / (c[2] + 1); c[1] += (t.lon - c[1]) / (c[2] + 1); c[2]++; c[3].add(mo); } else cl.push([t.lat, t.lon, 1, new Set([mo])]);
+    });
+    const need = Math.max(8, Math.floor(ts.length / 10)), hs = cl.filter(c => c[2] >= need && c[3].size >= 8).map(c => [c[0], c[1]]);
+    if (hs.length) return hs;
+    const med = a => { const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+    return [[med(ts.map(t => t.lat)), med(ts.map(t => t.lon))]];
+  },
+  /** Reisen wie in „Meine Touren“: Touren, die von allen Heimatorten mehr als 60 km entfernt sind; eine Tour zu Hause beendet die Reise.
+      Mehr als 1 Tag Pause beginnt eine neue Reise, außer es sind höchstens 7 Tage und die Tour liegt höchstens 150 km von einer Tour der Reise entfernt. */
+  detect(all, homes, cfg) {
+    const ts = all.filter(t => t.status !== 'planned' && !t.hidden && t.lat != null && t.start).sort((a, b) => a.start - b.start);
+    if (ts.length < 3 || !homes || !homes.length) return [];
     const out = []; let cur = [];
     const flush = () => {
-      if (!cur.length) return;
-      const days = new Set(cur.map(t => Reisen.dayNo(t.start)));
-      if (days.size >= cfg.days) out.push(Reisen.sum(cur, days.size));
+      if (cur.length) { const days = new Set(cur.map(t => Reisen.dayNo(t.start))); if (days.size >= 2) out.push(Reisen.sum(cur, days.size)); }
       cur = [];
     };
-    far.forEach(t => {
+    ts.forEach(t => {
+      const far = Math.min(...homes.map(h => Geo.dist(h[0], h[1], t.lat, t.lon))) > 60000;
+      if (!far) { flush(); return; }
       if (cur.length) {
-        const prev = cur[cur.length - 1], gap = Reisen.dayNo(t.start) - Reisen.dayNo(prev.start);
-        // Längere Pausen (Strandtage, Regen) gehören noch zur Reise, wenn die nächste Tour am gleichen Urlaubsort liegt (bis 150 km, höchstens 7 Tage).
-        const same = gap <= Math.max(7, cfg.gap) && Geo.dist(prev.lat, prev.lon, t.lat, t.lon) <= 150000;
-        if (gap > cfg.gap && !same) flush();
+        const gap = Reisen.dayNo(t.start) - Reisen.dayNo(cur[cur.length - 1].start);
+        const close = cur.some(q => Geo.dist(q.lat, q.lon, t.lat, t.lon) <= 150000);
+        if (gap > 1 && !(gap <= 7 && close)) flush();
       }
       cur.push(t);
     });
     flush();
-    return out.reverse();
+    return out.filter(r => r.days >= Math.max(2, cfg.days)).reverse();
   },
-  /** Mehrtagestouren: Touren an aufeinanderfolgenden Tagen, bei denen jede dort beginnt, wo die vorige endete (Etappen), egal wie weit von zu Hause.
-      Eigene Gruppen, unabhängig von den Reisen (eine Etappenwanderung im Urlaub zählt auch als Reise). */
-  async multiday(all, minDays = 2, maxGapKm = 5) {
-    const ts = all.filter(t => t.status !== 'planned' && !t.hidden && t.lat != null && t.start).sort((a, b) => a.start - b.start);
-    const ends = await DB.kvGet('tourEnds', {});
-    let ch = false;
-    const endOf = async t => {
-      if (ends[t.id]) return ends[t.id];
-      const p = await Tours.points(t.id);
-      if (!p.length) return null;
-      ends[t.id] = [p[p.length - 1].lat, p[p.length - 1].lon]; ch = true; return ends[t.id];
-    };
-    const out = []; let cur = [];
-    const flush = () => { if (cur.length) { const days = new Set(cur.map(t => Reisen.dayNo(t.start))); if (days.size >= minDays) { const r = Reisen.sum(cur, days.size); r.id = 'm:' + cur[0].id; r.multi = true; out.push(r); } } cur = []; };
-    for (const t of ts) {
-      if (cur.length) {
-        const prev = cur[cur.length - 1], gap = Reisen.dayNo(t.start) - Reisen.dayNo(prev.start), e = gap === 1 ? await endOf(prev) : null;
-        const joined = gap === 0 ? false : gap === 1 && e && Geo.dist(e[0], e[1], t.lat, t.lon) <= maxGapKm * 1000;
-        if (gap === 0 && cur.length) { cur.push(t); continue; }      // zwei Touren am gleichen Tag gehören zur gleichen Etappe
-        if (!joined) flush();
-      }
-      cur.push(t);
-    }
-    flush();
-    if (ch) await DB.kvSet('tourEnds', ends);
-    return out.filter(r => r.tours.length >= 2).reverse();
+  SER_RE: /^(.*?)[\s\-–—:,.]*\b(?:Tag|Etappe|Day|Stage|Jour|Étape|Día|Etapa)\s*0?(\d{1,2})\b/i,
+  /** Mehrtagestouren wie in „Meine Touren“: Touren mit gleichem Namensanfang und Nummer („Alpenüberquerung – Tag 3“, „… Etappe 2“); mindestens zwei verschiedene Nummern. */
+  async multiday(all) {
+    const g = {};
+    all.filter(t => t.status !== 'planned' && !t.hidden && t.start).forEach(t => {
+      const m = Reisen.SER_RE.exec((t.name || '').trim());
+      if (!m || !m[1].trim()) return;
+      const k = m[1].trim().toLowerCase();
+      (g[k] = g[k] || { name: m[1].trim(), items: [] }).items.push({ t, n: +m[2] });
+    });
+    const out = [];
+    Object.values(g).forEach(v => {
+      v.items.sort((a, b) => a.n - b.n || a.t.start - b.t.start);
+      if (v.items.length < 2 || new Set(v.items.map(x => x.n)).size < 2) return;
+      const r = Reisen.sum(v.items.map(x => x.t)); r.id = 'm:' + v.items[0].t.id; r.multi = true; r.name = v.name; r.nums = {};
+      v.items.forEach(x => { r.nums[x.t.id] = x.n; });
+      r.first = Math.min(...r.tours.map(t => t.start)); r.last = Math.max(...r.tours.map(t => t.start));
+      r.days = new Set(r.tours.map(t => Reisen.dayNo(t.start))).size;
+      out.push(r);
+    });
+    return out.sort((a, b) => b.first - a.first);
   },
   sum(ts, days) {
     const s = k => ts.reduce((a, t) => a + (t[k] || 0), 0);
@@ -69,7 +80,7 @@ const Reisen = {
   /** Anzeigename: eigener Name, sonst „Ort Monat Jahr“ (z. B. La Réunion Juni 2026), sonst der Zeitraum. */
   title(r, names, places) {
     if (names[r.id]) return names[r.id];
-    if (r.multi) return 'Mehrtagestour ' + Reisen.range(r.first, r.last);
+    if (r.multi) return r.name;
     return places[r.id] ? places[r.id] + ' ' + Reisen.monthYear(r.first, r.last) : 'Reise ' + Reisen.range(r.first, r.last);
   },
   /** Ort der Reise per Ortssuche (Land, in D/A/CH das Bundesland) – einmal ermitteln und merken. */
@@ -86,8 +97,8 @@ const Reisen = {
   },
   /** „Tag 2 · Etappe 2/5“ für eine Tour innerhalb einer Mehrtagestour. */
   stage(r, t) {
-    const i = r.tours.findIndex(x => x.id === t.id), d = Reisen.dayNo(t.start) - Reisen.dayNo(r.first) + 1;
-    return 'Tag ' + d + ' · Etappe ' + (i + 1) + '/' + r.tours.length;
+    const i = r.tours.findIndex(x => x.id === t.id);
+    return 'Tag ' + ((r.nums && r.nums[t.id]) || (Reisen.dayNo(t.start) - Reisen.dayNo(r.first) + 1)) + ' · Etappe ' + (i + 1) + '/' + r.tours.length;
   },
   range(a, b) {
     const A = new Date(a), B = new Date(b), m = d => d.toLocaleDateString('de-DE', { month: 'long' });
@@ -120,7 +131,7 @@ const Reisen = {
 Views['/reisen'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripPlace', {});
-  const home = Set_.get('homeLat') ? [+Set_.get('homeLat'), +Set_.get('homeLon')] : null;
+  const home = Reisen.homes(all);
   const body = h('div', { class: 'pad' });
   root.append(topbar('Reisen & Alben', { back: true, noMenu: true }), body);
   const multi = await Reisen.multiday(all);
@@ -131,17 +142,16 @@ Views['/reisen'] = async root => {
     if (tab === 'reisen') {
       const trips = Reisen.detect(all, home, cfg);
       if (!Reisen._busy) { Reisen._busy = true; (async () => { let ch = false; for (const r of trips) { if (names[r.id] || r.id in places) continue; try { places[r.id] = await Reisen.place(r); ch = true; await new Promise(k => setTimeout(k, 1100)); } catch (e) { break; } } Reisen._busy = false; if (ch && tab === 'reisen' && body.isConnected) draw(); })(); }
-      body.append(h('p', { class: 'muted small' }, `Als Reise gelten Touren, die mindestens ${cfg.km} km von zu Hause entfernt liegen, an mindestens ${cfg.days} Tagen (höchstens ${cfg.gap - 1} Tag Pause dazwischen; am gleichen Urlaubsort bis zu 6 Tage).`));
-      if (!home) { body.append(h('div', { class: 'banner' }, 'Dafür brauche ich deinen Heimatort. ', h('a', { class: 'btn pri sm', href: '#/settings' }, 'In den Einstellungen festlegen'))); }
-      else if (!trips.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Reisen gefunden.')));
+      body.append(h('p', { class: 'muted small' }, `Als Reise gelten Touren mehr als 60 km von deinem Zuhause (automatisch erkannt, oder der Heimatort aus den Einstellungen) an mindestens ${Math.max(2, cfg.days)} Tagen; bis 7 Tage Pause im gleichen Gebiet gehören dazu.`));
+      if (!trips.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Reisen gefunden.')));
       body.append(h('div', { class: 'list' }, trips.map(r => h('a', { class: 'li', href: '#/reise/' + r.id },
         h('span', { class: 'li-i' }, '🧳'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
           h('small', null, `${Reisen.range(r.first, r.last)} · ${r.tours.length} Touren an ${r.days} Tagen · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
-      if (multi.length) body.append(h('h3', null, 'Mehrtagestouren'), h('p', { class: 'muted small' }, 'Etappen an aufeinanderfolgenden Tagen, bei denen jede dort beginnt, wo die vorige endete.'),
+      if (multi.length) body.append(h('h3', null, 'Mehrtagestouren'), h('p', { class: 'muted small' }, 'Erkannt an Namen wie „… Tag 3“ oder „… Etappe 2“.'),
         h('div', { class: 'list' }, multi.map(r => h('a', { class: 'li', href: '#/reise/' + r.id }, h('span', { class: 'li-i' }, '🥾'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
-          h('small', null, `${r.tours.length} Etappen an ${r.days} Tagen · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
+          h('small', null, `${r.tours.length} Etappen · ${Reisen.range(r.first, r.last)} · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
       const num = (k, lab, min) => h('label', { class: 'fld' }, lab, h('input', { type: 'number', min, value: cfg[k], onchange: async e => { const v = Math.max(min, parseInt(e.target.value, 10) || Reisen.DEF[k]); cfg[k] = v; await DB.kvSet('tripSet', cfg); draw(); } }));
-      body.append(h('details', null, h('summary', null, 'Erkennung anpassen'), num('km', 'Mindestentfernung von zu Hause (km)', 5), num('days', 'Mindestzahl Tage mit Tour', 2), num('gap', 'Größter Abstand zwischen zwei Touren (Tage)', 1)));
+      body.append(h('details', null, h('summary', null, 'Erkennung anpassen'), num('days', 'Mindestzahl Tage einer Reise', 2)));
     } else {
       const m = Reisen.tags(all), list = [...m.entries()].map(([g, ts]) => [g, Reisen.sum(ts.slice().sort((a, b) => a.start - b.start))]).sort((a, b) => b[1].last - a[1].last);
       body.append(h('p', { class: 'muted small' }, 'Alben entstehen aus Schlagworten, die du einer Tour gibst (Tour öffnen → ⋮ → „Tags & Alben“).'));
@@ -184,7 +194,7 @@ async function groupPage(root, title, tours, opts) {
 Views['/reise'] = async (root, [id]) => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripPlace', {});
-  const home = Set_.get('homeLat') ? [+Set_.get('homeLat'), +Set_.get('homeLon')] : null;
+  const home = Reisen.homes(all);
   const r = id.startsWith('m:') ? (await Reisen.multiday(all)).find(x => x.id === id) : Reisen.detect(all, home, cfg).find(x => x.id === id);
   if (!r) { root.append(topbar('Reise', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
   if (!r.multi && !names[id] && !(id in places)) { try { places[id] = await Reisen.place(r); } catch (e) { /* offline: Zeitraum */ } }
