@@ -226,7 +226,7 @@ Views['/photos'] = async root => {
   let mode = 'all';
   const body = h('div', { class: 'photos' });
   const seg = h('div', { class: 'seg' });
-  root.append(topbar('Fotos', { actions: h('button', { class: 'ico', 'aria-label': 'Fotos hinzufügen', onclick: () => PhotoSources.sheet(null, null) }, '＋') }), seg, body);
+  root.append(topbar('Fotos', { actions: [h('button', { class: 'ico', id: 'pshow', 'aria-label': 'Diashow aller Fotos', onclick: async () => { const all = await Photos.all(), tours = Object.fromEntries((await Tours.list()).map(t => [t.id, t])); Show.open(all.map(p => Object.assign({ tourName: p.tour && tours[p.tour] ? tours[p.tour].name : '' }, p)), { shuffle: true }); } }, '▶'), h('button', { class: 'ico', 'aria-label': 'Fotos hinzufügen', onclick: () => PhotoSources.sheet(null, null) }, '＋')] }), seg, body);
   let map = null;
   const draw = async () => {
     const all = await Photos.all(); const tours = Object.fromEntries((await Tours.list()).map(t => [t.id, t]));

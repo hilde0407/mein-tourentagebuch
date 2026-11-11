@@ -179,3 +179,11 @@ button.cd{cursor:pointer;font-weight:700}
 .goal{margin:14px 0}.gbar{position:relative;height:14px;border-radius:7px;background:var(--line)}.gbar i{display:block;height:100%;border-radius:7px;background:var(--acc)}.gbar u{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--yellow);border-radius:2px;text-decoration:none}
 .tblw{overflow-x:auto}.cstat{width:100%;border-collapse:collapse;font-size:.85rem}.cstat th,.cstat td{padding:6px 6px;text-align:right;border-bottom:1px solid var(--line)}.cstat th:first-child,.cstat td:first-child{text-align:left}
 h3.sub{font-size:1rem;margin:14px 0 4px}
+.sh{position:fixed;inset:0;z-index:60;background:#000;color:#fff;overflow:hidden}
+.sh-s{position:absolute;inset:0;background:center/contain no-repeat;opacity:0;transition:opacity 1.4s}
+.sh-s.on{opacity:1;animation:shkb 8s ease-out forwards}@keyframes shkb{from{transform:scale(1)}to{transform:scale(1.05)}}
+.sh-cap{position:absolute;left:16px;right:16px;bottom:max(16px,env(safe-area-inset-bottom));text-shadow:0 1px 5px #000;display:flex;flex-direction:column;gap:2px;pointer-events:none}
+.sh-cap b{font-size:22px;line-height:1.15}.sh-cap span{font-size:15px;opacity:.9}
+.sh-ctl{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;display:flex;gap:8px;transition:opacity .4s}.sh-ctl.off{opacity:0;pointer-events:none}
+.sh-ctl .ico{background:rgba(0,0,0,.6);color:#fff;border-radius:24px;min-width:48px;height:48px;padding:0 14px}
+@media (prefers-reduced-motion:reduce){.sh-s.on{animation:none}}

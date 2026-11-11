@@ -7,6 +7,8 @@ const MapKit = {
     custom: { name: 'Eigener Kartenserver', url: '', max: 19, attr: 'Kartendaten: siehe Anbieter' },
   },
   sportColor: { hike: '#2e7d32', walk: '#2e7d32', mtb: '#e65100', bike: '#1565c0', racebike: '#6a1b9a', ebike: '#00838f', run: '#c62828', ski: '#37474f', mountaineering: '#4e342e', other: '#546e7a' },
+  /** Streckenfarbe: eigene Wahl (Einstellungen) oder die Farbe der Sportart. */
+  routeColor(sport, fb) { const c = Set_.get('routeColor'); return /^#[0-9a-f]{6}$/i.test(c || '') ? c : (MapKit.sportColor[sport] || fb || '#2e7d32'); },
   cacheName: 'tiles-v1',
 
   layer() {

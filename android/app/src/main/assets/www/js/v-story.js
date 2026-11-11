@@ -82,7 +82,7 @@ Views['/story'] = async (root, [id]) => {
   root.append(h('header', { class: 'top' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), h('h1', null, t.name), h('span', { class: 'sp' })), mapEl,
     h('div', { class: 'pad' }, h('div', { class: 'sub' }, `${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)}${t.dur ? ' · ' + F.dur(t.dur) : ''}`)), tl);
   const map = MapKit.create(mapEl);
-  if (pts.length) { const ln = MapKit.line(pts, MapKit.sportColor[t.sport] || '#2e7d32', 5).addTo(map); map.fitBounds(ln.getBounds(), { padding: [24, 24] }); }
+  if (pts.length) { const ln = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 5).addTo(map); map.fitBounds(ln.getBounds(), { padding: [24, 24] }); }
   ev.forEach(e => { if (e.pos && e.kind !== 'ph') MapKit.dot(e.pos[0], e.pos[1], e.kind === 'start' ? '#2e7d32' : '#c62828', e.kind === 'start' ? 'S' : 'Z').addTo(map); });
   photos.filter(p => p.lat != null).forEach(p => MapKit.photoMarker(p, () => openPhoto(p)).addTo(map));
   setTimeout(() => map.invalidateSize(), 200);

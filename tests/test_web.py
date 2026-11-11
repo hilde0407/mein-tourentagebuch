@@ -310,6 +310,17 @@ def main():
         }""")
         assert any(x.startswith("Wanderung von Ort-") for x in nm) and any("Hoher Test" in x for x in nm), nm
 
+        # Streckenfarbe und Diashow
+        pg.evaluate("async () => { await Set_.set('routeColor', '#d81b60'); const l = await Tours.list(); location.hash = '#/tour/' + l[0].id; }")
+        pg.wait_for_selector(".tmap"); assert pg.evaluate("MapKit.routeColor('hike') === '#d81b60' && MapKit.routeColor('ebike') === '#d81b60'")
+        pg.evaluate("Set_.set('routeColor', '')"); assert pg.evaluate("MapKit.routeColor('hike')") == '#2e7d32'
+        pg.evaluate("""async () => { const l = await Tours.list(); const t = l[0];
+          for (const k of [1, 2, 3]) await DB.put('photos', { id: 'sh' + k + 'aaaaaa', name: 's.jpg', ts: t.start + k * 1000, tour: t.id, w: 10, h: 10, src: 'galerie' }); location.hash = '#/tour/' + t.id; Nav.render(); }""")
+        pg.wait_for_selector("#tshow"); pg.click("#tshow"); pg.wait_for_selector(".sh .sh-cap")
+        assert "1 / 3" in pg.inner_text(".sh-cap"), pg.inner_text(".sh-cap")
+        pg.mouse.click(350, 400); pg.wait_for_function("() => document.querySelector('.sh-cap').innerText.includes('2 / 3')")
+        pg.keyboard.press("Escape"); pg.wait_for_selector(".sh", state="detached")
+
         b.close()
     assert not errs, "\n".join(errs)
     print("OK")

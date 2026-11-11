@@ -150,7 +150,10 @@ Views['/settings'] = async root => {
   MapKit.cacheCount().then(n => cnt.textContent = n + ' Kacheln gespeichert');
   const nT = await DB.count('tours'), nP = await DB.count('photos');
   body.append(
-    h('h3', null, 'Karte'), sel('Kartenquelle', 'tiles', Object.entries(MapKit.providers).map(([k, v]) => [k, v.name])),
+    h('h3', null, 'Karte'),
+    h('div', { class: 'fld' }, 'Streckenfarbe', h('div', { class: 'chips wrap', id: 'rc' }, [['', 'Nach Sportart'], ['#e53935', 'Rot'], ['#fb8c00', 'Orange'], ['#fdd835', 'Gelb'], ['#43a047', 'Grün'], ['#1e88e5', 'Blau'], ['#8e24aa', 'Violett'], ['#d81b60', 'Pink'], ['#212121', 'Schwarz']].map(([c, n]) =>
+      h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),
+    sel('Kartenquelle', 'tiles', Object.entries(MapKit.providers).map(([k, v]) => [k, v.name])),
     inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}'), inp('Schlüssel (für {key})', 'tileKey', ''),
     h('div', { class: 'row' }, cnt, h('span', { class: 'sp' }), h('button', { class: 'btn sm', onclick: async () => { await MapKit.clearCache(); cnt.textContent = '0 Kacheln gespeichert'; } }, 'Offline-Karten löschen')),
     h('p', { class: 'muted small' }, 'Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),

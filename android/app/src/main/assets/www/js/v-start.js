@@ -67,7 +67,7 @@ Views['/start'] = async root => {
   // ---- Die letzten Touren: volle Zeilen mit Streckenzeichnung, Name darf umbrechen
   const rows = h('div', { class: 'recent' });
   all.slice(0, 8).forEach(t => {
-    const col = MapKit.sportColor[t.sport] || '#17494a';
+    const col = MapKit.routeColor(t.sport, '#17494a');
     const pv = h('div', { class: 'rpv' });
     rows.append(h('a', { class: 'rrow', href: '#/tour/' + t.id, style: { '--sc': col } }, pv,
       h('div', { class: 'rtx' }, h('b', null, t.name), h('small', null, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start)),

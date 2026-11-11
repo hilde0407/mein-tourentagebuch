@@ -132,7 +132,7 @@ Views['/fix'] = async (root, [id]) => {
   const info = h('div', { class: 'pad' });
   root.append(topbar('Track korrigieren', { back: true }), mapEl, info);
   const map = MapKit.create(mapEl);
-  const layer = MapKit.line(pts, MapKit.sportColor[t.sport] || '#2e7d32', 4).addTo(map);
+  const layer = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 4).addTo(map);
   if (pts.length) map.fitBounds(layer.getBounds(), { padding: [20, 20] });
   found.spike.forEach(i => L.circleMarker([pts[i].lat, pts[i].lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#c62828', fillOpacity: 1 }).addTo(map));
   found.fast.forEach(r => L.polyline(pts.slice(r.from, r.to + 1).map(p => [p.lat, p.lon]), { color: '#ef6c00', weight: 7, opacity: 0.95 }).addTo(map));

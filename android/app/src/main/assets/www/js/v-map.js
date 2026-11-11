@@ -22,7 +22,7 @@ Views['/map'] = async root => {
       const t = ts[i];
       if (!cache[t.id]) cache[t.id] = Geo.simplify(await Tours.points(t.id), 30);
       const pts = cache[t.id]; if (pts.length < 2) continue;
-      const pl = MapKit.line(pts, MapKit.sportColor[t.sport] || '#2e7d32', 3).addTo(g);
+      const pl = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 3).addTo(g);
       pl.on('click', () => L.popup().setLatLng([pts[0].lat, pts[0].lon]).setContent(`<b>${esc(t.name)}</b><br>${F.dshort(t.start)} · ${F.km(t.dist)}<br><a href="#/tour/${t.id}">Öffnen</a>`).openOn(map));
       bounds.push([t.lat, t.lon]);
       if (i % 20 === 19) await sleep(0);

@@ -28,7 +28,7 @@ Views['/'] = async root => {
   const io = new IntersectionObserver(es => es.forEach(async e => {
     if (!e.isIntersecting) return; io.unobserve(e.target);
     const t = e.target.__t, pts = await Tours.points(t.id);
-    if (pts.length > 1) e.target.innerHTML = previewSvg(pts, MapKit.sportColor[t.sport] || '#2e7d32');
+    if (pts.length > 1) e.target.innerHTML = previewSvg(pts, MapKit.routeColor(t.sport, '#2e7d32'));
   }), { rootMargin: '200px' });
   const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Suchen', oninput: e => { F_.q = e.target.value; draw(); } });
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
@@ -85,7 +85,7 @@ Views['/tour'] = async (root, [id]) => {
   async function rename() { const n = await askText('Name der Tour', 'Name', t.name, 'Speichern'); if (n && n.trim()) { t.name = n.trim(); await Tours.save(t); title.textContent = t.name; } }
 
   const map = MapKit.create(mapEl);
-  const layer = MapKit.line(pts, MapKit.sportColor[t.sport] || '#2e7d32', 5).addTo(map);
+  const layer = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 5).addTo(map);
   if (pts.length) {
     MapKit.dot(pts[0].lat, pts[0].lon, '#2e7d32', 'S').addTo(map); MapKit.dot(pts[pts.length - 1].lat, pts[pts.length - 1].lon, '#c62828', 'Z').addTo(map);
     map.fitBounds(layer.getBounds(), { padding: [24, 24] });
@@ -110,7 +110,7 @@ Views['/tour'] = async (root, [id]) => {
     photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }))));
   };
   const note = h('textarea', { rows: 3, placeholder: 'Notizen zur Tour …', onchange: async e => { t.note = e.target.value; await Tours.save(t); } }, t.note || '');
-  const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
+  const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p))) }, '▶ Diashow'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
   body.append(...[Fix.suspicious(t) && !t.elevFix ? h('div', { class: 'banner' }, '⛰️ Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', h('div', { class: 'row' }, h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren'))) : null,
     t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
     h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),

@@ -129,7 +129,7 @@ async function groupPage(root, title, tours, opts) {
   const kpi = (v, l) => h('div', { class: 'kpi' }, h('b', null, v), h('small', null, l));
   body.append(h('div', { class: 'sub' }, Reisen.range(r.first, r.last)),
     h('div', { class: 'kpis' }, kpi(sorted.length, 'Touren'), kpi(r.days, r.days === 1 ? 'Tag' : 'Tage'), kpi(F.km(r.km), 'Strecke'), kpi(F.m(r.up), 'Aufstieg'), kpi(F.dur(r.dur), 'Zeit unterwegs'), kpi(photos.length, 'Fotos')));
-  if (photos.length) body.append(h('h3', null, 'Fotos'), h('div', { class: 'strip' }, photos.slice(0, 40).map((p, i) => h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' })))));
+  if (photos.length) body.append(h('div', { class: 'row' }, h('h3', { class: 'grow' }, 'Fotos'), h('button', { class: 'btn sm', id: 'gshow', onclick: async () => Show.open(await Show.forTours(sorted)) }, '▶ Diashow')), h('div', { class: 'strip' }, photos.slice(0, 40).map((p, i) => h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' })))));
   // Touren je Tag
   body.append(h('h3', null, 'Touren'), h('div', { class: 'list' }, sorted.map(t => h('a', { class: 'li', href: '#/tour/' + t.id },
     h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, t.name), h('small', null, F.date(t.start) + ' · ' + F.km(t.dist) + ' · ↑ ' + F.m(t.up)))))));
@@ -137,7 +137,7 @@ async function groupPage(root, title, tours, opts) {
   const map = MapKit.create(mapEl), bounds = [];
   for (const t of sorted) {
     const pts = await Tours.points(t.id); if (pts.length < 2) continue;
-    MapKit.line(pts, MapKit.sportColor[t.sport] || '#2e7d32', 3).addTo(map).on('click', () => Nav.go('/tour/' + t.id));
+    MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 3).addTo(map).on('click', () => Nav.go('/tour/' + t.id));
     pts.forEach((p, i) => { if (i % 5 === 0) bounds.push([p.lat, p.lon]); });
   }
   if (bounds.length) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24] }); else mapEl.hidden = true;
