@@ -9,7 +9,12 @@ function previewSvg(pts, color, box) {
   const w = (b[3] - b[1]) * k || 1e-5, hh = (b[2] - b[0]) || 1e-5, s = Math.min((W - pad * 2) / w, (H - pad * 2) / hh);
   const ox = (W - w * s) / 2, oy = (H - hh * s) / 2;
   const d = sp.map((p, i) => (i && !p.newSeg ? 'L' : 'M') + (ox + (p.lon - b[1]) * k * s).toFixed(1) + ' ' + (oy + (b[2] - p.lat) * s).toFixed(1)).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  let ends = '';
+  if (box && box.ends) {
+    const at = p => [ox + (p.lon - b[1]) * k * s, oy + (b[2] - p.lat) * s], a = at(sp[0]), z = at(sp[sp.length - 1]), r = box.ends;
+    ends = `<circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="${r}" fill="${box.endsA || '#fff'}" stroke="${color}" stroke-width="${(r / 2.2).toFixed(1)}"/><circle cx="${z[0].toFixed(1)}" cy="${z[1].toFixed(1)}" r="${r}" fill="${color}" stroke="${box.endsA || '#fff'}" stroke-width="${(r / 2.2).toFixed(1)}"/>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>${ends}</svg>`;
 }
 
 Views['/'] = async root => {
