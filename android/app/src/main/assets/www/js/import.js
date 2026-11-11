@@ -19,6 +19,7 @@ const Import = {
     const p = [];
     if (r.added) p.push(r.added + (r.added === 1 ? ' Tour importiert' : ' Touren importiert'));
     if (r.dup) p.push(r.dup + ' schon vorhanden');
+    if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
     if (r.fail) p.push(r.fail + ' nicht lesbar');
     return p.join(' · ') || 'Nichts gefunden';
   },
@@ -258,9 +259,13 @@ const Import = {
         sums = sums.concat(j.data.summary || []);
         nxt = j.data.next; if (nxt == null || nxt === -1) break;
       }
-      const have = new Set((await Tours.list()).map(t => t.srcId));
+      const mine = await Tours.list();
+      const have = new Set(mine.map(t => t.srcId));
       const todo = sums.filter(s => !have.has('zepp:' + s.trackid));
-      const res = { added: 0, dup: sums.length - todo.length, fail: 0 };
+      // schon vorhandene Zepp-Touren ohne Puls (früher importiert) – Puls einmalig nachladen
+      const byId = new Map(mine.map(t => [t.srcId, t]));
+      const redo = sums.filter(s => { const t = byId.get('zepp:' + s.trackid); return t && !t.hrAvg && !t.zhr; });
+      const res = { added: 0, dup: sums.length - todo.length, fail: 0, hr: 0 };
       const types = { 1: 'run', 6: 'walk', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'walk' };
       for (let i = 0; i < todo.length; i++) {
         const s = todo[i];
@@ -271,6 +276,14 @@ const Import = {
           if (pts.length < 2) { res.dup++; continue; }
           const r = await Tours.add({ sport: types[s.type] || 'other', pts, src: 'zepp', srcId: 'zepp:' + s.trackid });
           if (r.dup) res.dup++; else res.added++;
+        } catch (e) { res.fail++; }
+      }
+      for (let i = 0; i < redo.length; i++) {
+        const s = redo[i];
+        if (onProgress) onProgress(i + 1, redo.length, 'Puls ' + F.dshort(s.trackid * 1000));
+        try {
+          const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: s.trackid, source: s.source || '' });
+          if (await Tours.fillHr(byId.get('zepp:' + s.trackid).id, Z.decode(s, dj.data))) res.hr++;
         } catch (e) { res.fail++; }
       }
       await Photos.assignAll();

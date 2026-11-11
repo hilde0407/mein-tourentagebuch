@@ -67,6 +67,25 @@ const Tours = {
   /** Pulszone 0–4 (entspricht Zone 1–5) nach Anteil am Maximalpuls. */
   hrZone(bpm, hmax) { const q = bpm / hmax; return q < 0.6 ? 0 : q < 0.7 ? 1 : q < 0.8 ? 2 : q < 0.9 ? 3 : 4; },
   async save(t) { await DB.put('tours', t); Tours.invalidate(); },
+  /** Puls nachtragen (z. B. bei Touren, die vor der Pulsunterstützung importiert wurden): Werte nach Zeit auf die gespeicherten Punkte legen. */
+  async fillHr(id, hrPts) {
+    const trk = await DB.get('tracks', id), t = await DB.get('tours', id);
+    if (!trk || !t) return false;
+    const src = hrPts.filter(p => p.hr != null && p.t != null).sort((a, b) => a.t - b.t);
+    t.zhr = 1;                                                    // Versuch vermerken, damit nicht bei jedem Import neu geladen wird
+    if (src.length < 5) { await DB.put('tours', t); Tours.invalidate(); return false; }
+    let j = 0;
+    trk.hr = trk.t.map(tm => {
+      if (tm == null) return 0;
+      while (j + 1 < src.length && src[j + 1].t <= tm) j++;
+      return Math.abs(src[j].t - tm) <= 30000 ? src[j].hr : 0;
+    });
+    const pts = trk.lat.map((la, i) => ({ t: trk.t[i], hr: trk.hr[i] || null }));
+    Object.assign(t, Tours.hrSummary(pts));
+    if (!t.hrAvg) { delete trk.hr; await DB.put('tours', t); Tours.invalidate(); return false; }
+    await DB.put('tracks', trk); await DB.put('tours', t); Tours.invalidate();
+    return true;
+  },
   async remove(id) {
     const ph = await DB.byIndex('photos', 'tour', id);
     for (const p of ph) { p.tour = ''; await DB.put('photos', p); }

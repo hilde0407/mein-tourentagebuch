@@ -164,6 +164,22 @@ def main():
         pg.get_by_text("Abmelden").click(); pg.wait_for_selector("text=Prüfen & laden")
         assert pg.evaluate("() => !document.querySelector('input[placeholder^=\"Token einfügen\"]').closest('div[hidden]')")
 
+        # Zepp: Puls wird mitdekodiert und bei früher importierten Touren nachgetragen
+        zh = pg.evaluate("""async () => {
+          const hrraw = ',72' + Array.from({ length: 12 }, (_, i) => ';5,' + (i % 2 ? -3 : 4)).join('');
+          const det = { time: '0' + ';5'.repeat(12), longitude_latitude: '100000000,5000000000' + ';1000,1000'.repeat(12), altitude: '50000' + ';10'.repeat(12), heart_rate: hrraw, gait: '0' };
+          const pts = Import.Zepp.decode({ trackid: '1700000000' }, det);
+          const withHr = pts.filter(p => p.hr != null).length;
+          const noHr = pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: p.t }));
+          const r = await Tours.add({ sport: 'walk', pts: noHr, src: 'zepp', srcId: 'zepp:1700000000' });
+          const before = r.tour.hrAvg || null;
+          const ok = await Tours.fillHr(r.tour.id, pts);
+          const t2 = (await Tours.list()).find(t => t.id === r.tour.id);
+          const again = await Tours.points(r.tour.id);
+          return { n: pts.length, withHr, before, ok, avg: t2.hrAvg, zhr: t2.zhr, stored: again.filter(p => p.hr).length };
+        }""")
+        assert zh["withHr"] == zh["n"] and zh["before"] is None and zh["ok"] and 70 <= zh["avg"] <= 80 and zh["zhr"] == 1 and zh["stored"] > 5, zh
+
         b.close()
     assert not errs, "\n".join(errs)
     print("OK")
