@@ -350,7 +350,7 @@ public class MainActivity extends Activity {
 
     /* ---------- Brücke zur Weboberfläche ---------- */
     public class Bridge {
-        @JavascriptInterface public String version() { return "1.0.0"; }
+        @JavascriptInterface public String version() { return appVersion(); }
 
         /** Einziger Einstieg für alles Asynchrone: Ergebnis kommt über window.__mtcb(id, ok, json). */
         @JavascriptInterface
@@ -461,7 +461,7 @@ public class MainActivity extends Activity {
     private String dispatch(String id, String m, JSONObject a) throws Exception {
         switch (m) {
             case "info": {
-                return new JSONObject().put("version", "1.0.0").put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
+                return new JSONObject().put("version", appVersion()).put("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
                         .put("device", Build.MANUFACTURER + " " + Build.MODEL).put("loc", hasLoc())
                         .put("battery_free", ((android.os.PowerManager) getSystemService(POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()))
                         .put("rec", new JSONObject(Recorder.get(this).statusJson())).toString();
@@ -642,6 +642,11 @@ public class MainActivity extends Activity {
     }
 
     /** Speichert eine Datei im Download-Ordner des Handys (ohne Berechtigung über MediaStore). */
+    /** Versionsname aus der installierten App (build.gradle: versionName). */
+    private String appVersion() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "?"; }
+    }
+
     private byte[] readCacheRec(String n) throws Exception {
         File f = new File(new File(getCacheDir(), "rec"), new File(n).getName().replaceAll("[^A-Za-z0-9._-]", "_"));
         byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
