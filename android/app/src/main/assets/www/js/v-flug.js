@@ -178,6 +178,7 @@ Views['/flug'] = async (root, [id]) => {
   /** Vor der Aufnahme die Strecke einmal im Schnelldurchlauf abfahren, damit alle Kartenkacheln und Höhendaten schon geladen sind (keine weißen Flächen im Video). */
   const prewarm = async (zoom) => {
     const steps = Math.min(40, Math.max(12, Math.round(N / 12))), t0 = performance.now(), e0 = mapErr;
+    msg.classList.add('prog');
     for (let k = 0; k <= steps && !stopped; k++) {
       if (performance.now() - t0 > 60000 || mapErr - e0 >= 4) break;     // bei schlechter oder fehlender Verbindung nicht ewig warten
       const f = k / steps * (N - 1), i = Math.min(N - 1, Math.round(f)), p = P[i], lk = S[Math.min(N - 1, i + Math.max(6, Math.round(N / 60)))];
@@ -186,7 +187,7 @@ Views['/flug'] = async (root, [id]) => {
       msg.textContent = 'Karte wird geladen … ' + Math.round(k / steps * 100) + ' %'; msg.style.display = '';
       await new Promise(ok => { let done = false; const fin = () => { if (!done) { done = true; ok(); } }; m.once('idle', fin); setTimeout(fin, 3000); m.triggerRepaint(); });
     }
-    msg.style.display = 'none';
+    msg.style.display = 'none'; msg.classList.remove('prog');
   };
   let preparing = false, mapErr = 0;
   recB.onclick = async () => {
