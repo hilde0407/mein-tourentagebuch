@@ -341,7 +341,7 @@ def main():
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#tabs a[data-p='/reisen']")
         ws = pg.evaluate("[...document.querySelectorAll('#tabs a')].map(a => Math.round(a.getBoundingClientRect().width))")
         assert len(ws) == 6 and min(ws) >= 55, ws
-        pg.click("#tabs a[data-p='/reisen']"); pg.wait_for_selector("text=Mehrtagestouren"); assert pg.evaluate("document.querySelector(\"#tabs a[data-p='/reisen']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')")
+        pg.click("#tabs a[data-p='/reisen']"); pg.wait_for_selector("text=Mehrtagestouren"); pg.wait_for_function("document.querySelector(\"#tabs a[data-p='/reisen']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')", timeout=10000)
         # Fotos vom Rechner empfangen: Adresse wird angezeigt, per Abruf eingegangene Fotos werden übernommen
         pg.evaluate("location.hash = '#/photos'"); pg.wait_for_selector("button[aria-label='Fotos hinzufügen']"); pg.click("button[aria-label='Fotos hinzufügen']")
         pg.get_by_text("Vom Rechner im WLAN").click(); pg.wait_for_selector("#recvurl"); assert "192.168.0.5:8765/abc12/" in pg.inner_text("#recvurl")
