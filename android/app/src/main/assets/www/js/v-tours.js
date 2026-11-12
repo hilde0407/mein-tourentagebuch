@@ -56,9 +56,7 @@ Views['/'] = async root => {
     const d = ts.reduce((a, t) => a + t.dist, 0), u = ts.reduce((a, t) => a + (t.up || 0), 0);
     sum.textContent = ts.length ? `${ts.length} ${ts.length === 1 ? 'Tour' : 'Touren'} · ${F.km(d)} · ${F.m(u)} Aufstieg` : '';
     if (!ts.length) {
-      list.append(all.length ? h('div', { class: 'empty' }, h('p', null, 'Keine Tour passt zu diesem Filter.')) :
-        h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '⛰️'), h('h2', null, 'Willkommen im Tourentagebuch'), h('p', null, 'Alle Touren und Fotos bleiben auf deinem Handy. Hol deine bisherigen Touren herein oder starte gleich eine neue.'),
-          h('div', { class: 'col' }, h('a', { class: 'btn pri', href: '#/import' }, '📥 Touren importieren'), h('a', { class: 'btn', href: '#/rec' }, '● Aufzeichnung starten'), h('a', { class: 'btn', href: '#/plan' }, '✏️ Tour planen'))));
+      list.append(all.length ? h('div', { class: 'empty' }, h('p', null, 'Keine Tour passt zu diesem Filter.')) : welcomeHero());
       return;
     }
     let lastMonth = '';

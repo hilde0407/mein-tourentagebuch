@@ -72,6 +72,14 @@ function askText(title, label, value, okLabel) {
   });
 }
 
+/** Leerzustand ohne Touren – auf Start- und Tourenseite derselbe. */
+function welcomeHero() {
+  return h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '⛰️'), h('h2', null, 'Willkommen im Tourentagebuch'),
+    h('p', null, 'Alle Touren und Fotos bleiben auf deinem Handy. Hol deine bisherigen Touren herein oder starte gleich eine neue.'),
+    h('div', { class: 'col' }, h('a', { class: 'btn pri', href: '#/import' }, '📥 Touren importieren'),
+      h('a', { class: 'btn', href: '#/rec' }, '● Aufzeichnung starten'), h('a', { class: 'btn', href: '#/plan' }, '✏️ Tour planen')));
+}
+
 /* ---- Brücke zur Android-Hülle (Promise-Wrapper um MTApp.call) ---- */
 const Native = {
   _id: 0, _cbs: {},

@@ -7,10 +7,7 @@ Views['/start'] = async root => {
   const body = h('div', { class: 'pad home' });
   root.append(topbar('Mein Tourentagebuch'), body);
   if (!all.length) {
-    body.append(h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '⛰'), h('h2', null, 'Willkommen im Tourentagebuch'),
-      h('p', null, 'Alle Touren und Fotos bleiben auf deinem Handy. Hol deine bisherigen Touren herein oder starte gleich eine neue.'),
-      h('div', { class: 'col' }, h('a', { class: 'btn pri', href: '#/import' }, 'Touren importieren'),
-        h('a', { class: 'btn', href: '#/rec' }, 'Aufzeichnung starten'), h('a', { class: 'btn', href: '#/plan' }, 'Tour planen'))));
+    body.append(welcomeHero());
     return;
   }
 
@@ -42,7 +39,7 @@ Views['/start'] = async root => {
   };
   body.append(hero);
   await drawHero();
-  body.append(h('div', { class: 'row wrap', style: { marginTop: '10px' } }, h('a', { class: 'btn', id: 'startplan', href: '#/plan' }, '✏️ Tour planen'), h('a', { class: 'btn', href: '#/rec' }, '● Aufzeichnung starten')));
+  body.append(h('div', { class: 'row', style: { marginTop: '10px' } }, h('a', { class: 'btn', style: { flex: 1 }, href: '#/rec' }, '● Aufzeichnung starten'), h('a', { class: 'btn', id: 'startplan', style: { flex: 1 }, href: '#/plan' }, '✏️ Tour planen')));
 
   // ---- Dein Jahr: eine große Zahl, Vergleich zum Vorjahr, Monate als Balken
   const now = new Date(), yr = now.getFullYear();
@@ -51,7 +48,7 @@ Views['/start'] = async root => {
   const cur = all.filter(t => inYear(t, yr)), prev = all.filter(t => tillToday(t, yr - 1));
   const sum = (ts, k) => ts.reduce((a, t) => a + (t[k] || 0), 0);
   const cmp = (a, b) => {
-    if (!b) return null;
+    if (!a || !b) return null;      // leeres Jahr: kein „−100 %“ anzeigen
     const d = Math.round((a - b) / b * 100);
     return h('span', { class: 'hcmp ' + (d >= 0 ? 'up' : 'down') }, (d >= 0 ? '▲ +' : '▼ ') + d + ' % ggü. ' + (yr - 1));
   };

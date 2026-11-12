@@ -8,7 +8,15 @@ const Nav = {
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go('/'); },
   depth: 0,
+  /** Rendert nie zweimal gleichzeitig: Ein laufender Aufbau wird zu Ende geführt, danach wird höchstens einmal neu gezeichnet. */
   async render() {
+    if (Nav._busy) { Nav._again = true; return; }
+    Nav._busy = true;
+    try {
+      do { Nav._again = false; await Nav._render1(); } while (Nav._again);
+    } finally { Nav._busy = false; }
+  },
+  async _render1() {
     const raw = location.hash.slice(1) || '/start';
     const parts = raw.split('/').filter(Boolean);
     const key = '/' + (parts[0] || '');
@@ -61,7 +69,7 @@ async function boot() {
   }
   const tabs = $('#tabs');
   Nav.tabs.forEach(([p, t, i]) => { const a = h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '' }, h('span', { class: 'ti' }), h('span', null, t)); a.firstChild.innerHTML = i; tabs.append(a); });
-  if (!location.hash) location.hash = '#/start';
+  if (!location.hash) history.replaceState(null, '', '#/start');      // ohne hashchange-Ereignis, sonst wird die Startseite doppelt aufgebaut
   window.addEventListener('hashchange', () => { Nav.depth++; Nav.render(); });
   window.addEventListener('mtshared', handleShared);
   window.addEventListener('mtphoto', handlePhotoQueue);

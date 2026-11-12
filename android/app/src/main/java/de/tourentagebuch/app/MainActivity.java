@@ -29,7 +29,6 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -86,7 +85,7 @@ public class MainActivity extends Activity {
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
                 if (u == null || !HOST.equals(u.getHost())) return null;
-                return serve(u.getPath() == null ? "/" : u.getPath(), r.getRequestHeaders() == null ? null : r.getRequestHeaders().get("Range"));
+                return Serve.handle(MainActivity.this, u.getPath() == null ? "/" : u.getPath(), r.getRequestHeaders() == null ? null : r.getRequestHeaders().get("Range"));
             }
 
             @Override
@@ -113,83 +112,7 @@ public class MainActivity extends Activity {
         handleIntent(getIntent());
     }
 
-    /* ---------- virtueller Server: Assets, Fotos, Cache ---------- */
-    private static String mime(String p) {
-        String l = p.toLowerCase();
-        if (l.endsWith(".html")) return "text/html";
-        if (l.endsWith(".js")) return "application/javascript";
-        if (l.endsWith(".css")) return "text/css";
-        if (l.endsWith(".json") || l.endsWith(".webmanifest")) return "application/json";
-        if (l.endsWith(".png")) return "image/png";
-        if (l.endsWith(".mp4")) return "video/mp4";
-        if (l.endsWith(".jpg") || l.endsWith(".jpeg")) return "image/jpeg";
-        if (l.endsWith(".svg")) return "image/svg+xml";
-        if (l.endsWith(".gpx") || l.endsWith(".xml") || l.endsWith(".tcx")) return "application/xml";
-        return "application/octet-stream";
-    }
-
-    private WebResourceResponse serve(String path, String range) {
-        try {
-            InputStream in = null;
-            if (path.equals("/")) path = "/index.html";
-            if (path.startsWith("/photo/") || path.startsWith("/thumb/") || path.startsWith("/cache/")) {
-                File base = path.startsWith("/photo/") ? Photos.dir(this) : path.startsWith("/thumb/") ? Photos.thumbDir(this) : getCacheDir();
-                String rel = path.substring(path.indexOf('/', 1) + 1);
-                File f = new File(base, rel);
-                if (!f.getCanonicalPath().startsWith(base.getCanonicalPath() + File.separator) || !f.isFile()) return resp(404, "text/plain", new ByteArrayInputStream(new byte[0]));
-                if (path.endsWith(".mp4")) return videoResp(f, range);
-                in = new FileInputStream(f);
-            } else {
-                in = getAssets().open("www" + path);
-            }
-            return resp(200, mime(path), in);
-        } catch (Exception e) {
-            return resp(404, "text/plain", new ByteArrayInputStream(new byte[0]));
-        }
-    }
-
-    /** Video mit Bereichsabfrage (Range), damit man darin springen kann. */
-    private static WebResourceResponse videoResp(File f, String range) throws Exception {
-        long len = f.length(), a = 0, b = len - 1;
-        boolean part = false;
-        if (range != null && range.startsWith("bytes=")) {
-            try {
-                String[] p = range.substring(6).split("-", 2);
-                if (!p[0].isEmpty()) a = Long.parseLong(p[0]);
-                if (p.length > 1 && !p[1].isEmpty()) b = Math.min(len - 1, Long.parseLong(p[1]));
-                part = a <= b && a < len;
-            } catch (NumberFormatException e) { part = false; a = 0; b = len - 1; }
-        }
-        FileInputStream in = new FileInputStream(f);
-        if (part && a > 0) in.skip(a);
-        final long left = b - a + 1;
-        InputStream lim = part ? new java.io.FilterInputStream(in) {
-            long rest = left;
-            @Override public int read() throws java.io.IOException { if (rest <= 0) return -1; int r = super.read(); if (r >= 0) rest--; return r; }
-            @Override public int read(byte[] buf, int o, int n) throws java.io.IOException { if (rest <= 0) return -1; int r = super.read(buf, o, (int) Math.min(n, rest)); if (r > 0) rest -= r; return r; }
-        } : in;
-        Map<String, String> h = new HashMap<>();
-        h.put("Cache-Control", "no-cache");
-        h.put("Access-Control-Allow-Origin", "*");
-        h.put("Accept-Ranges", "bytes");
-        h.put("Content-Length", Long.toString(part ? left : len));
-        if (part) h.put("Content-Range", "bytes " + a + "-" + b + "/" + len);
-        WebResourceResponse r = new WebResourceResponse("video/mp4", null, lim);
-        r.setStatusCodeAndReasonPhrase(part ? 206 : 200, part ? "Partial Content" : "OK");
-        r.setResponseHeaders(h);
-        return r;
-    }
-
-    private static WebResourceResponse resp(int code, String mime, InputStream in) {
-        Map<String, String> h = new HashMap<>();
-        h.put("Cache-Control", "no-cache");
-        h.put("Access-Control-Allow-Origin", "*");
-        WebResourceResponse r = new WebResourceResponse(mime, mime.startsWith("text/") || mime.contains("javascript") || mime.contains("json") || mime.contains("xml") ? "UTF-8" : null, in);
-        r.setStatusCodeAndReasonPhrase(code, code == 200 ? "OK" : "Not Found");
-        r.setResponseHeaders(h);
-        return r;
-    }
-
+    /* Virtueller Server: siehe Serve.java */
     private boolean hasLoc() { return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED; }
 
     @Override protected void onNewIntent(Intent in) { super.onNewIntent(in); setIntent(in); handleIntent(in); }
