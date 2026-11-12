@@ -42,7 +42,9 @@ public final class UploadServer {
     private UploadServer() { }
 
     public static synchronized JSONObject start(Context c) throws Exception {
-        stop();
+        // Läuft schon ein Empfang, die laufende Adresse weitergeben statt sie durch eine neue zu ersetzen –
+        // sonst wird eine gerade angezeigte Adresse ungültig, wenn der Dialog aus Versehen zweimal geöffnet wird.
+        if (server != null && !server.isClosed()) return info();
         ctx = c.getApplicationContext();
         byte[] r = new byte[5];
         new SecureRandom().nextBytes(r);
@@ -66,6 +68,10 @@ public final class UploadServer {
         }, "upload-server");
         t.setDaemon(true);
         t.start();
+        return info();
+    }
+
+    private static JSONObject info() throws Exception {
         String ip = localIp();
         return new JSONObject().put("ip", ip == null ? "" : ip).put("port", server.getLocalPort()).put("token", token)
                 .put("url", ip == null ? "" : "http://" + ip + ":" + server.getLocalPort() + "/" + token + "/");
@@ -84,16 +90,24 @@ public final class UploadServer {
         return new JSONObject().put("photos", a).put("failed", failed).put("running", server != null);
     }
 
+    /** Namen virtueller Schnittstellen, deren Adresse ein anderes Gerät im WLAN nicht erreichen kann
+     * (Mobilfunk-Tunnel, IPv6-zu-IPv4-Übersetzung, eigener Hotspot, VPN) – hier nie die Adresse hernehmen. */
+    private static final String[] SKIP_IF = {"rmnet", "v4-", "clat", "ap", "p2p", "tun", "ipsec", "dummy"};
+
     static String localIp() {
         try {
             String fallback = null;
             for (Enumeration<NetworkInterface> e = NetworkInterface.getNetworkInterfaces(); e.hasMoreElements(); ) {
                 NetworkInterface n = e.nextElement();
                 if (!n.isUp() || n.isLoopback()) continue;
+                String name = n.getName() == null ? "" : n.getName();
+                boolean skip = false;
+                for (String s : SKIP_IF) if (name.startsWith(s)) { skip = true; break; }
+                if (skip) continue;
                 for (Enumeration<InetAddress> ad = n.getInetAddresses(); ad.hasMoreElements(); ) {
                     InetAddress a = ad.nextElement();
                     if (a instanceof Inet4Address && a.isSiteLocalAddress()) {
-                        if (n.getName().startsWith("wlan") || n.getName().startsWith("eth")) return a.getHostAddress();
+                        if (name.startsWith("wlan") || name.startsWith("eth")) return a.getHostAddress();
                         if (fallback == null) fallback = a.getHostAddress();
                     }
                 }
@@ -164,11 +178,17 @@ public final class UploadServer {
             String path = rq[1], q = null;
             int qi = path.indexOf('?');
             if (qi >= 0) { q = path.substring(qi + 1); path = path.substring(0, qi); }
-            String base = "/" + token + "/";
-            if (!path.startsWith(base)) { reply(out, 404, "text/plain; charset=utf-8", "Nicht gefunden".getBytes(StandardCharsets.UTF_8)); return; }
-            String rest = path.substring(base.length());
-            if (rq[0].equals("GET") && rest.isEmpty()) { reply(out, 200, "text/html; charset=utf-8", PAGE.getBytes(StandardCharsets.UTF_8)); return; }
-            if (rq[0].equals("POST") && rest.equals("up")) {
+            int d = UploadRoute.decide(rq[0], path, token);
+            if (d == UploadRoute.REDIRECT) {
+                byte[] body = "Weitergeleitet".getBytes(StandardCharsets.UTF_8);
+                String head = "HTTP/1.1 301 Moved Permanently\r\nLocation: /" + token + "/\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: " + body.length
+                        + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+                out.write(head.getBytes(StandardCharsets.ISO_8859_1)); out.write(body); out.flush();
+                return;
+            }
+            if (d == UploadRoute.NOT_FOUND) { reply(out, 404, "text/plain; charset=utf-8", "Nicht gefunden".getBytes(StandardCharsets.UTF_8)); return; }
+            if (d == UploadRoute.PAGE) { reply(out, 200, "text/html; charset=utf-8", PAGE.getBytes(StandardCharsets.UTF_8)); return; }
+            if (d == UploadRoute.UPLOAD) {
                 if (len <= 0 || len > MAX_BYTES) { reply(out, 413, "application/json", "{\"ok\":false,\"error\":\"Datei zu gro\\u00df oder leer\"}".getBytes(StandardCharsets.UTF_8)); return; }
                 Limited body = new Limited(in, len);
                 String name = param(q, "n");

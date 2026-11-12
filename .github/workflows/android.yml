@@ -38,6 +38,8 @@ jobs:
           java -cp /tmp/jc TrackStoreCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/Guide.java tests/android/GuideCheck.java
           java -cp /tmp/jc GuideCheck
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/UploadRoute.java tests/android/UploadServerCheck.java
+          java -cp /tmp/jc UploadServerCheck
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

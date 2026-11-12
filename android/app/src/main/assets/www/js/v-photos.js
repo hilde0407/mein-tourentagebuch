@@ -143,7 +143,8 @@ const PhotoSources = {
     box.append(h('p', null, 'Öffne diese Adresse im Browser deines Macs oder PCs (im selben WLAN) und ziehe Fotos auf die Seite:'),
       h('p', { class: 'recvurl', id: 'recvurl' }, info.url),
       h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => { if (navigator.clipboard) navigator.clipboard.writeText(info.url).then(() => toast('Adresse kopiert')); } }, 'Adresse kopieren')),
-      cnt, h('p', { class: 'muted small' }, 'Der Empfang läuft, solange dieses Fenster offen ist. Die Übertragung ist nicht verschlüsselt – nur im eigenen WLAN nutzen. Fotos werden den Touren nach Aufnahmezeit zugeordnet.'));
+      cnt, h('p', { class: 'muted small' }, 'Der Empfang läuft, solange dieses Fenster offen ist. Die Übertragung ist nicht verschlüsselt – nur im eigenen WLAN nutzen. Fotos werden den Touren nach Aufnahmezeit zugeordnet.'),
+      h('p', { class: 'muted small' }, 'Meldet der Browser „nicht gefunden“: Tippfehler prüfen und die Adresse am besten mit „Adresse kopieren“ übernehmen, nicht abtippen.'));
     cnt.textContent = 'Wartet auf Fotos …';
     timer = setInterval(async () => {
       if (closed) return;
