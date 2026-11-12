@@ -131,7 +131,7 @@ Views['/rec'] = async root => {
     const photoBtn = h('button', { class: 'rbtn', id: 'rphoto', onclick: () => { MTApp.takePhoto(); } }, h('span', null, '📷'), 'Foto');
     const pinBtn = h('button', { class: 'rbtn sm', id: 'rpin', onclick: () => addPin(st, false) }, h('span', null, '📍'), 'Pin');
     const pinPhBtn = h('button', { class: 'rbtn sm', id: 'rpinph', onclick: () => addPin(st, true) }, h('span', null, '📷'), 'Foto + Text');
-    const vidBtn = h('button', { class: 'rbtn sm', id: 'rvideo', onclick: () => { if (MTApp.takeVideo) MTApp.takeVideo(); else toast('Video braucht die neueste App-Version.'); } }, h('span', null, '🎥'), 'Video');
+    const vidBtn = h('button', { class: 'rbtn', id: 'rvideo', onclick: () => { if (MTApp.takeVideo) MTApp.takeVideo(); else toast('Video braucht die neueste App-Version.'); } }, h('span', null, '🎥'), 'Video');
     // Beenden: steht allein und reagiert nur, wenn man es gedrückt hält (Ring füllt sich)
     const ring = h('i', { class: 'holdring' });
     const stopBtn = h('button', { class: 'holdstop', id: 'rstop', 'aria-label': 'Beenden – gedrückt halten' }, ring, h('span', { class: 'ht' }, h('b', null, '■ Beenden'), h('small', null, 'gedrückt halten')));
@@ -149,8 +149,8 @@ Views['/rec'] = async root => {
     stopBtn.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { holdStart(e); } });
     stopBtn.addEventListener('keyup', holdStop);
     box.append(mapEl, h('div', { class: 'pad' }, big, grid,
-      h('div', { class: 'rbtns main' }, pause, photoBtn),
-      h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn, vidBtn),
+      h('div', { class: 'rbtns main' }, pause, photoBtn, vidBtn),
+      h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn),
       h('div', { class: 'stopgap' }), stopBtn));
     map = MapKit.create(mapEl, { zoom: 16 });
     line = L.polyline([], { color: '#e65100', weight: 5 }).addTo(map);
