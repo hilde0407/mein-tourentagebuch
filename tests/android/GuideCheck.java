@@ -51,7 +51,7 @@ public class GuideCheck {
         List<String> s = walk(g, c, 4, 1.4);
         String all = String.join(" | ", s);
         System.out.println(all);
-        check(all.contains("In 100 Metern rechts abbiegen") || all.contains("In 150 Metern rechts abbiegen"), "Vorankündigung rechts fehlt: " + all);
+        check(all.contains("In 40 Metern rechts abbiegen") || all.contains("In 50 Metern rechts abbiegen"), "Vorankündigung rechts fehlt: " + all);
         check(all.contains("Jetzt rechts abbiegen"), "Jetzt rechts fehlt: " + all);
         check(all.contains("Jetzt links abbiegen"), "Jetzt links fehlt");
         check(all.contains("Du bist auf der Route"), "Start fehlt");

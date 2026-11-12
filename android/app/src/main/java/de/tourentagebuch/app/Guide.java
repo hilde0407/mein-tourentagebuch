@@ -56,7 +56,7 @@ public final class Guide {
 
     /**
      * Ein Richtungswechsel wird nur angesagt, wenn es dort auch etwas zu entscheiden gibt: an einer Wegkreuzung/Gabelung,
-     * oder wenn er sehr scharf ist (Kehre). Kennt die App die Kreuzungen nicht (kein Internet), werden nur deutliche Abbiegungen (ab 60°) angesagt.
+     * oder wenn er sehr scharf ist (Kehre). Kennt die App die Kreuzungen nicht (kein Internet), werden nur deutliche Abbiegungen (ab 45°) angesagt.
      */
     private void applyFilter() {
         List<Turn> k = new ArrayList<>();
@@ -67,7 +67,7 @@ public final class Guide {
             else if (jx != null) {
                 keep = false;
                 for (int i = 0; i < jx.length && !keep; i++) keep = Math.hypot(jx[i] - t.tx, jy[i] - t.ty) <= JUNC_M;
-            } else keep = a >= 60;
+            } else keep = a >= 45;
             if (keep) k.add(t);
         }
         turns = k;
