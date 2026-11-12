@@ -42,6 +42,7 @@ Views['/start'] = async root => {
   };
   body.append(hero);
   await drawHero();
+  body.append(h('div', { class: 'row wrap', style: { marginTop: '10px' } }, h('a', { class: 'btn', id: 'startplan', href: '#/plan' }, '✏️ Tour planen'), h('a', { class: 'btn', href: '#/rec' }, '● Aufzeichnung starten')));
 
   // ---- Dein Jahr: eine große Zahl, Vergleich zum Vorjahr, Monate als Balken
   const now = new Date(), yr = now.getFullYear();

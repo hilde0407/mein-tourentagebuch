@@ -86,10 +86,21 @@ async function handleShared() {
 const confirm_ok = u => /^https?:\/\//.test(u);
 async function handlePhotoQueue() {
   if (!window.MTApp) return;
-  try { const q = JSON.parse(MTApp.takePhotoQueue() || '[]'); if (q.length) { await Photos.addMeta(q); window.dispatchEvent(new Event('photos-changed')); } } catch (e) { /* ignorieren */ }
+  try { const q = JSON.parse(MTApp.takePhotoQueue() || '[]'); if (q.length) { await Photos.addMeta(q); await applyPinNote(q); window.dispatchEvent(new Event('photos-changed')); } } catch (e) { /* ignorieren */ }
+}
+/** Wurde das Foto über „Foto + Text“ aufgenommen, bekommt es den Kommentar als Notiz. */
+async function applyPinNote(q) {
+  try {
+    const pn = JSON.parse(sessionStorage.getItem('pinNote') || 'null');
+    if (!pn || Date.now() - pn.t > 10 * 60000) return;
+    const m = q.find(x => !x.video) || q[0];
+    const ph = m && await DB.get('photos', m.id);
+    if (ph && pn.text) { ph.note = pn.text; await DB.put('photos', ph); }
+    sessionStorage.removeItem('pinNote');
+  } catch (e) { /* ignorieren */ }
 }
 async function checkUnsaved() {
-  if (!window.MTApp) return;
+  if (!window.MTApp || window.__saving) return;
   try {
     const st = JSON.parse(MTApp.status());
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) { if (Nav.cur !== '/rec') { toast('Es gibt eine noch nicht gespeicherte Aufzeichnung.', 6000); Nav.go('/rec'); } }

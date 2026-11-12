@@ -55,7 +55,7 @@ import okhttp3.Response;
  */
 public class MainActivity extends Activity {
     static final String HOST = "app.local";
-    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16;
+    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16, REQ_VIDEO = 17;
     private WebView web;
     private SharedPreferences prefs;
     private GeolocationPermissions.Callback geoCb;
@@ -86,7 +86,7 @@ public class MainActivity extends Activity {
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
                 if (u == null || !HOST.equals(u.getHost())) return null;
-                return serve(u.getPath() == null ? "/" : u.getPath());
+                return serve(u.getPath() == null ? "/" : u.getPath(), r.getRequestHeaders() == null ? null : r.getRequestHeaders().get("Range"));
             }
 
             @Override
@@ -121,13 +121,14 @@ public class MainActivity extends Activity {
         if (l.endsWith(".css")) return "text/css";
         if (l.endsWith(".json") || l.endsWith(".webmanifest")) return "application/json";
         if (l.endsWith(".png")) return "image/png";
+        if (l.endsWith(".mp4")) return "video/mp4";
         if (l.endsWith(".jpg") || l.endsWith(".jpeg")) return "image/jpeg";
         if (l.endsWith(".svg")) return "image/svg+xml";
         if (l.endsWith(".gpx") || l.endsWith(".xml") || l.endsWith(".tcx")) return "application/xml";
         return "application/octet-stream";
     }
 
-    private WebResourceResponse serve(String path) {
+    private WebResourceResponse serve(String path, String range) {
         try {
             InputStream in = null;
             if (path.equals("/")) path = "/index.html";
@@ -136,6 +137,7 @@ public class MainActivity extends Activity {
                 String rel = path.substring(path.indexOf('/', 1) + 1);
                 File f = new File(base, rel);
                 if (!f.getCanonicalPath().startsWith(base.getCanonicalPath() + File.separator) || !f.isFile()) return resp(404, "text/plain", new ByteArrayInputStream(new byte[0]));
+                if (path.endsWith(".mp4")) return videoResp(f, range);
                 in = new FileInputStream(f);
             } else {
                 in = getAssets().open("www" + path);
@@ -144,6 +146,38 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return resp(404, "text/plain", new ByteArrayInputStream(new byte[0]));
         }
+    }
+
+    /** Video mit Bereichsabfrage (Range), damit man darin springen kann. */
+    private static WebResourceResponse videoResp(File f, String range) throws Exception {
+        long len = f.length(), a = 0, b = len - 1;
+        boolean part = false;
+        if (range != null && range.startsWith("bytes=")) {
+            try {
+                String[] p = range.substring(6).split("-", 2);
+                if (!p[0].isEmpty()) a = Long.parseLong(p[0]);
+                if (p.length > 1 && !p[1].isEmpty()) b = Math.min(len - 1, Long.parseLong(p[1]));
+                part = a <= b && a < len;
+            } catch (NumberFormatException e) { part = false; a = 0; b = len - 1; }
+        }
+        FileInputStream in = new FileInputStream(f);
+        if (part && a > 0) in.skip(a);
+        final long left = b - a + 1;
+        InputStream lim = part ? new java.io.FilterInputStream(in) {
+            long rest = left;
+            @Override public int read() throws java.io.IOException { if (rest <= 0) return -1; int r = super.read(); if (r >= 0) rest--; return r; }
+            @Override public int read(byte[] buf, int o, int n) throws java.io.IOException { if (rest <= 0) return -1; int r = super.read(buf, o, (int) Math.min(n, rest)); if (r > 0) rest -= r; return r; }
+        } : in;
+        Map<String, String> h = new HashMap<>();
+        h.put("Cache-Control", "no-cache");
+        h.put("Access-Control-Allow-Origin", "*");
+        h.put("Accept-Ranges", "bytes");
+        h.put("Content-Length", Long.toString(part ? left : len));
+        if (part) h.put("Content-Range", "bytes " + a + "-" + b + "/" + len);
+        WebResourceResponse r = new WebResourceResponse("video/mp4", null, lim);
+        r.setStatusCodeAndReasonPhrase(part ? 206 : 200, part ? "Partial Content" : "OK");
+        r.setResponseHeaders(h);
+        return r;
     }
 
     private static WebResourceResponse resp(int code, String mime, InputStream in) {
@@ -271,6 +305,25 @@ public class MainActivity extends Activity {
             } else if (!pf.isEmpty()) f.delete();
             return;
         }
+        if (req == REQ_VIDEO) {
+            final String pf = prefs.getString("pend_vfile", "");
+            final double la = Double.longBitsToDouble(prefs.getLong("pend_lat", Double.doubleToLongBits(Double.NaN)));
+            final double lo = Double.longBitsToDouble(prefs.getLong("pend_lon", Double.doubleToLongBits(Double.NaN)));
+            final long ts = prefs.getLong("pend_ts", System.currentTimeMillis());
+            prefs.edit().remove("pend_vfile").apply();
+            final File f = new File(PhotoProvider.camDir(this), pf);
+            if (res == RESULT_OK && !pf.isEmpty() && f.length() > 0) {
+                pool.execute(() -> {
+                    try {
+                        JSONObject m = Photos.importVideo(getApplicationContext(), f, ts, la, lo);
+                        queue("photoq", m);
+                        js("window.dispatchEvent(new Event('mtphoto'))");
+                    } catch (Exception e) { AppLog.log("Kamera-Video: " + e); }
+                    f.delete();
+                });
+            } else if (!pf.isEmpty()) f.delete();
+            return;
+        }
         if (cid == null) return;
         final String id = cid;
         if (req == REQ_ZEPP) {
@@ -387,6 +440,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String routePoints() { return Navi.points(MainActivity.this); }
         @JavascriptInterface public void clearRoute() { Navi.clear(MainActivity.this); }
         @JavascriptInterface public String routeInfo() { return Navi.info(MainActivity.this); }
+        @JavascriptInterface public void setJunctions(String t) { Navi.setJunctions(MainActivity.this, t); }
         @JavascriptInterface public void setGuide(boolean on) { Navi.setEnabled(MainActivity.this, on); }
         @JavascriptInterface public void guideTest() { Navi.speak(MainActivity.this, "Die Sprachansagen sind eingeschaltet. In 100 Metern links abbiegen."); }
         @JavascriptInterface public boolean hasPermission() { return hasLoc(); }
@@ -421,6 +475,32 @@ public class MainActivity extends Activity {
                 Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text);
                 startActivity(Intent.createChooser(i, "Senden mit …"));
             });
+        }
+
+        @JavascriptInterface
+        public boolean takeVideo() {
+            Recorder r = Recorder.get(MainActivity.this);
+            double la = r.store().lastLat(), lo = r.store().lastLon();
+            final File f = new File(PhotoProvider.camDir(MainActivity.this), "vid_" + System.currentTimeMillis() + ".mp4");
+            try { f.createNewFile(); } catch (Exception e) { return false; }
+            prefs.edit().putString("pend_vfile", f.getName()).putLong("pend_lat", Double.doubleToLongBits(la))
+                    .putLong("pend_lon", Double.doubleToLongBits(lo)).putLong("pend_ts", System.currentTimeMillis()).apply();
+            runOnUiThread(() -> {
+                try {
+                    Uri u = PhotoProvider.uriFor(f);
+                    Intent i = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+                    i.putExtra(MediaStore.EXTRA_OUTPUT, u);
+                    i.putExtra(MediaStore.EXTRA_DURATION_LIMIT, 120);
+                    i.setClipData(android.content.ClipData.newRawUri("", u));
+                    i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(i, REQ_VIDEO);
+                } catch (Exception e) {
+                    prefs.edit().remove("pend_vfile").apply();
+                    f.delete();
+                    Toast.makeText(MainActivity.this, "Keine Kamera-App gefunden", Toast.LENGTH_LONG).show();
+                }
+            });
+            return true;
         }
 
         @JavascriptInterface

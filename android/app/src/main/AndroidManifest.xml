@@ -16,6 +16,7 @@
 
     <queries>
         <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
+        <intent><action android:name="android.media.action.VIDEO_CAPTURE" /></intent>
     </queries>
 
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />

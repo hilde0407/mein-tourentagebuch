@@ -46,6 +46,7 @@ Views['/'] = async root => {
     chip('Alle', !F_.sport && !F_.fav && !F_.planned, () => { Object.assign(F_, { sport: '', fav: false, planned: false }); draw(); });
     chip('★ Favoriten', F_.fav, () => { F_.fav = !F_.fav; draw(); });
     chip('✏️ Geplant', F_.planned, () => { F_.planned = !F_.planned; draw(); });
+    chips.append(h('a', { class: 'chip', id: 'newplan', href: '#/plan' }, '＋ Tour planen'));
     const used = [...new Set(all.map(t => t.sport))];
     Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[2] + ' ' + s[1], F_.sport === s[0], () => { F_.sport = F_.sport === s[0] ? '' : s[0]; draw(); }));
     const ql = F_.q.trim().toLowerCase();
@@ -106,6 +107,7 @@ Views['/tour'] = async (root, [id]) => {
   const pm = L.layerGroup().addTo(map);
   const drawPhotos = () => { pm.clearLayers(); photos.filter(p => p.lat != null).forEach(p => MapKit.photoMarker(p, () => Lightbox.open(photos, photos.indexOf(p))).addTo(pm)); };
   drawPhotos();
+  (t.pins || []).filter(p => p.lat != null).forEach(p => MapKit.pin(p).addTo(pm));
   setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
   const grid = h('div', { class: 'stats' });
@@ -121,6 +123,7 @@ Views['/tour'] = async (root, [id]) => {
     strip.innerHTML = '';
     photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }))));
   };
+  const pinList = () => (t.pins || []).length ? h('div', { id: 'pins' }, h('h3', null, 'Pins'), (t.pins || []).map(p => h('div', { class: 'pinrow' }, h('b', null, '📍 ' + F.time(p.ts)), ' ', p.text || '(ohne Text)', p.lat != null ? h('button', { class: 'btn sm', onclick: () => map.setView([p.lat, p.lon], 17) }, 'Auf Karte') : null))) : null;
   const stageBox = h('div');
   Tours.list().then(all => Reisen.multiday(all)).then(ms => {      // Teil einer Mehrtagestour? Dann „Tag 2 · Etappe 2/5“ mit Link zur Gruppe
     const r = ms.find(x => x.tours.some(q => q.id === t.id));
@@ -132,7 +135,7 @@ Views['/tour'] = async (root, [id]) => {
     t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
     h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
-    grid, h('h3', null, 'Höhenprofil'), prof, profInfo, t.hrAvg ? pulsBlock() : null, photoHead, strip, h('h3', null, 'Notizen'), note].filter(Boolean));
+    grid, h('h3', null, 'Höhenprofil'), prof, profInfo, t.hrAvg ? pulsBlock() : null, photoHead, strip, pinList(), h('h3', null, 'Notizen'), note].filter(Boolean));
   drawStrip();
   const xs = MapKit.profile(prof, pts, (i, o) => {
     if (i == null) { map.removeLayer(cursor); profInfo.textContent = ''; return; }
@@ -212,6 +215,7 @@ function startWith(t, pts) {
   if (!window.MTApp) { toast('Ansagen gibt es nur in der Android-App'); Nav.go('/rec'); return; }
   const sp = Geo.simplify(pts, 3);
   MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name);
+  Junctions.load(sp);
   sessionStorage.setItem('recSport', t.sport); sessionStorage.setItem('recName', t.name);
   Nav.go('/rec');
 }

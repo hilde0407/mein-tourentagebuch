@@ -12,12 +12,18 @@ const Tours = {
   },
   /** Spur speichern. Gibt {tour, dup} zurück; dup=true, wenn es die Tour schon gab. */
   async add(o) {
+    // Speichern nacheinander (nie gleichzeitig), sonst entstehen bei zwei parallelen Aufrufen doppelte Touren
+    const p = (Tours._q || Promise.resolve()).then(() => Tours._add(o));
+    Tours._q = p.catch(() => {});
+    return p;
+  },
+  async _add(o) {
     const pts = o.pts.filter(p => isFinite(p.lat) && isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180);
     if (pts.length < 2) throw new Error('Zu wenige Punkte');
     const st = Geo.stats(pts);
     const all = await Tours.list();
     if (o.srcId) { const e = all.find(t => t.srcId === o.srcId); if (e) return { tour: e, dup: true }; }
-    if (st.start) {
+    if (st.start && !o.force) {
       const e = all.find(t => t.status !== 'planned' && t.start && Math.abs(t.start - st.start) < 90000 && Math.abs(t.dist - st.dist) < Math.max(100, st.dist * 0.03));
       if (e) return { tour: e, dup: true };
     }
@@ -109,7 +115,7 @@ const Tours = {
 
 const Photos = {
   async all() { return (await DB.all('photos')).sort((a, b) => (a.ts || 0) - (b.ts || 0)); },
-  url: id => '/photo/' + id + '.jpg',
+  url: id => '/photo/' + id + (/v$/.test(id) ? '.mp4' : '.jpg'),
   thumb: id => '/thumb/' + id + '.jpg',
   /** Meta-Daten aus der Hülle speichern und zuordnen (Zeit + Position). */
   async addMeta(list) {
@@ -117,7 +123,7 @@ const Photos = {
     for (const m of list) {
       const old = await DB.get('photos', m.id);
       if (old) continue;
-      await DB.put('photos', { id: m.id, name: m.name, ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: m.src || '', tour: '', pos: m.lat != null ? 'exif' : 'none', note: '' });
+      await DB.put('photos', { id: m.id, name: m.name, ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: m.src || '', video: !!m.video, dur: m.dur || 0, tour: '', pos: m.lat != null ? 'exif' : 'none', note: '' });
       n++;
     }
     await Photos.assignAll();

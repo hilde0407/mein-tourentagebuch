@@ -120,8 +120,57 @@ public final class Photos {
         }
     }
 
+    /** Video aus der Kamera-App übernehmen: id endet auf „v“, Datei <id>.mp4, Vorschaubild <id>.jpg. */
+    public static JSONObject importVideo(Context c, File src, long ts, double lat, double lon) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-1");
+        try (FileInputStream in = new FileInputStream(src)) {
+            byte[] b = new byte[64 * 1024];
+            int n, total = 0;
+            while ((n = in.read(b)) > 0 && total < 4 * 1024 * 1024) { md.update(b, 0, n); total += n; }
+        }
+        md.update(Long.toString(src.length()).getBytes("UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        for (byte x : md.digest()) sb.append(String.format(Locale.US, "%02x", x));
+        String id = sb.substring(0, 19) + "v";
+        File out = new File(dir(c), id + ".mp4"), th = new File(thumbDir(c), id + ".jpg");
+        if (!out.exists()) {
+            try (FileInputStream in = new FileInputStream(src); FileOutputStream o = new FileOutputStream(out)) {
+                byte[] b = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(b)) > 0) o.write(b, 0, n);
+            }
+        }
+        int w = 0, h = 0;
+        long dur = 0;
+        android.media.MediaMetadataRetriever mr = new android.media.MediaMetadataRetriever();
+        try {
+            mr.setDataSource(out.getAbsolutePath());
+            Bitmap fr = mr.getFrameAtTime(0);
+            String sw = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+            String sh = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+            String sd = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+            String ro = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+            if (sw != null) w = Integer.parseInt(sw);
+            if (sh != null) h = Integer.parseInt(sh);
+            if (sd != null) dur = Long.parseLong(sd);
+            if (ro != null && (ro.equals("90") || ro.equals("270"))) { int t = w; w = h; h = t; }
+            if (fr != null) {
+                float s2 = (float) THUMB_PX / Math.max(fr.getWidth(), fr.getHeight());
+                Bitmap t = s2 < 1f ? Bitmap.createScaledBitmap(fr, Math.round(fr.getWidth() * s2), Math.round(fr.getHeight() * s2), true) : fr;
+                try (FileOutputStream fo = new FileOutputStream(th)) { t.compress(Bitmap.CompressFormat.JPEG, 80, fo); }
+            }
+        } finally {
+            try { mr.release(); } catch (Exception e) { /* egal */ }
+        }
+        JSONObject j = new JSONObject();
+        j.put("id", id).put("name", "Video.mp4").put("ts", ts).put("w", w).put("h", h).put("dur", dur).put("video", true).put("src", "kamera");
+        if (!Double.isNaN(lat)) j.put("lat", lat).put("lon", lon);
+        return j;
+    }
+
     public static void delete(Context c, String id) {
-        if (id == null || !id.matches("[0-9a-f]{6,40}")) return;
+        if (id == null || !id.matches("[0-9a-f]{6,40}v?")) return;
+        new File(dir(c), id + ".mp4").delete();
         new File(dir(c), id + ".jpg").delete();
         new File(thumbDir(c), id + ".jpg").delete();
     }

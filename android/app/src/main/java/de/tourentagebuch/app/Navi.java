@@ -42,12 +42,36 @@ final class Navi {
             return;
         }
         prefs(c).edit().putString("route_name", name == null ? "" : name).apply();
+        juncFile(c).delete();
         guide = Guide.parse(text);
         loaded = true;
         AppLog.log("Route geladen: \"" + name + "\", " + (guide == null ? "ungültig" : Math.round(guide.totalM()) + " m, " + guide.turnCount() + " Abbiegungen"));
     }
 
+    private static File juncFile(Context c) { return new File(c.getFilesDir(), "junc.txt"); }
+
+    /** Wegkreuzungen entlang der Strecke („la,lo;la,lo;…“, aus OpenStreetMap): Abbiegen wird nur noch an Kreuzungen angesagt. */
+    static synchronized void setJunctions(Context c, String text) {
+        try (FileOutputStream o = new FileOutputStream(juncFile(c))) { o.write((text == null ? "" : text).getBytes("UTF-8")); } catch (Exception e) { AppLog.log("Kreuzungen speichern: " + e.getClass().getSimpleName()); }
+        Guide g = guide(c);
+        if (g != null) { g.setJunctions(parseJunc(text)); AppLog.log("Kreuzungen: " + (text == null || text.isEmpty() ? 0 : text.split(";").length) + ", Abbiegungen jetzt " + g.turnCount()); }
+    }
+
+    private static double[][] parseJunc(String s) {
+        if (s == null || s.trim().isEmpty()) return new double[][]{new double[0], new double[0]};
+        String[] ps = s.split(";");
+        double[] a = new double[ps.length], b = new double[ps.length];
+        int n = 0;
+        for (String p : ps) {
+            String[] q = p.trim().split(",");
+            if (q.length < 2) continue;
+            try { a[n] = Double.parseDouble(q[0]); b[n] = Double.parseDouble(q[1]); n++; } catch (NumberFormatException e) { /* überspringen */ }
+        }
+        return new double[][]{java.util.Arrays.copyOf(a, n), java.util.Arrays.copyOf(b, n)};
+    }
+
     static synchronized void clear(Context c) {
+        juncFile(c).delete();
         file(c).delete();
         prefs(c).edit().remove("route_name").apply();
         guide = null;
@@ -74,6 +98,16 @@ final class Navi {
                 } catch (Exception e) {
                     guide = null;
                 }
+                File jf = juncFile(c);
+                if (guide != null && jf.exists()) {
+                    try (FileInputStream in = new FileInputStream(jf)) {
+                        ByteArrayOutputStream b = new ByteArrayOutputStream();
+                        byte[] buf = new byte[16384];
+                        int n;
+                        while ((n = in.read(buf)) > 0) b.write(buf, 0, n);
+                        guide.setJunctions(parseJunc(b.toString("UTF-8")));
+                    } catch (Exception e) { /* ohne Kreuzungen */ }
+                }
             }
         }
         return guide;
@@ -89,6 +123,7 @@ final class Navi {
                 o.put("name", prefs(c).getString("route_name", ""));
                 o.put("km", Math.round(g.totalM() / 10.0) / 100.0);
                 o.put("turns", g.turnCount());
+                o.put("junc", g.hasJunctions());
                 o.put("off", g.offRoute());
                 o.put("prog_m", Math.round(g.progressM()));
             }
@@ -114,6 +149,7 @@ final class Navi {
     }
 
     static synchronized void speak(final Context c, final String text) {
+        if (text == null || text.isEmpty()) { if (tts == null) speak0(c); return; }
         AppLog.log("Ansage: " + text);
         if (ttsFailed) return;
         if (tts == null) {
@@ -130,6 +166,7 @@ final class Navi {
                         @Override public void onStart(String id) { }
                         @Override public void onDone(String id) { release(app); }
                         @Override public void onError(String id) { release(app); }
+                        @Override public void onError(String id, int code) { release(app); if (code == TextToSpeech.ERROR_SERVICE || code == TextToSpeech.ERROR_NOT_INSTALLED_YET) restart(app, ""); }
                     });
                     ttsReady = true;
                     for (String q : queue) say(app, q);
@@ -142,6 +179,24 @@ final class Navi {
         say(c.getApplicationContext(), text);
     }
 
+    /** Sprachausgabe ohne Text vorbereiten. */
+    private static void speak0(final Context c) { speak(c, "."); }
+
+    private static long lastRestart = 0;
+
+    /** Sprachausgabe neu starten (die Sprach-App kann im Hintergrund beendet worden sein, z. B. während die Kamera offen war). */
+    private static synchronized void restart(Context c, String text) {
+        long now = System.currentTimeMillis();
+        if (now - lastRestart < 4000) return;
+        lastRestart = now;
+        AppLog.log("Sprachausgabe wird neu gestartet");
+        try { if (tts != null) tts.shutdown(); } catch (Exception e) { /* schon weg */ }
+        tts = null;
+        ttsReady = false;
+        queue.clear();
+        speak(c, text);
+    }
+
     private static void say(Context c, String text) {
         AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
         if (am != null) {
@@ -150,7 +205,8 @@ final class Navi {
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()).build();
             am.requestAudioFocus(focus);
         }
-        tts.speak(text, TextToSpeech.QUEUE_ADD, null, "mt" + System.nanoTime());
+        int r = tts.speak(text, TextToSpeech.QUEUE_ADD, null, "mt" + System.nanoTime());
+        if (r != TextToSpeech.SUCCESS) restart(c, text);
     }
 
     private static void release(Context c) {

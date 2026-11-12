@@ -12,16 +12,19 @@ public final class Guide {
     public static final class Turn {
         public final double at;      // Meter ab Start der Strecke
         public final double angle;   // Grad, > 0 = rechts, < 0 = links
-        Turn(double at, double angle) { this.at = at; this.angle = angle; }
+        final double tx, ty;         // Lage der Abbiegung (lokale Meter)
+        Turn(double at, double angle, double tx, double ty) { this.at = at; this.angle = angle; this.tx = tx; this.ty = ty; }
     }
 
-    private static final double OFF_M = 40, BACK_M = 30, LOOK_M = 40, MIN_ANGLE = 40;
+    private static final double OFF_M = 40, BACK_M = 30, LOOK_M = 40, MIN_ANGLE = 30, JUNC_M = 30;
 
     private final double[] la, lo, cum;      // vereinfachte Strecke, Länge ab Start
     private final double[] x, y;             // lokale Koordinaten in Metern
     private final double lat0, kx;
-    private final List<Turn> turns = new ArrayList<>();
-    private final int[] level;               // je Abbiegung: 0 nichts gesagt, 1 Vorankündigung, 2 „jetzt“
+    private final List<Turn> all = new ArrayList<>();      // alle Richtungswechsel
+    private List<Turn> turns = new ArrayList<>();               // davon angesagte (an Kreuzungen)
+    private double[] jx = null, jy = null;                      // Kreuzungen (lokale Meter), null = unbekannt
+    private int[] level;               // je Abbiegung: 0 nichts gesagt, 1 Vorankündigung, 2 „jetzt“
 
     private double prog = 0;
     private boolean reached = false, introSaid = false, off = false, finished = false, km1 = false;
@@ -48,8 +51,38 @@ public final class Guide {
             j++;
         }
         findTurns();
+        applyFilter();
+    }
+
+    /**
+     * Ein Richtungswechsel wird nur angesagt, wenn es dort auch etwas zu entscheiden gibt: an einer Wegkreuzung/Gabelung,
+     * oder wenn er sehr scharf ist (Kehre). Kennt die App die Kreuzungen nicht (kein Internet), werden nur deutliche Abbiegungen (ab 60°) angesagt.
+     */
+    private void applyFilter() {
+        List<Turn> k = new ArrayList<>();
+        for (Turn t : all) {
+            double a = Math.abs(t.angle);
+            boolean keep;
+            if (a >= 120) keep = true;
+            else if (jx != null) {
+                keep = false;
+                for (int i = 0; i < jx.length && !keep; i++) keep = Math.hypot(jx[i] - t.tx, jy[i] - t.ty) <= JUNC_M;
+            } else keep = a >= 60;
+            if (keep) k.add(t);
+        }
+        turns = k;
         level = new int[turns.size()];
     }
+
+    /** Kreuzungen setzen: {Breiten, Längen}. */
+    public synchronized void setJunctions(double[][] ll) {
+        int n = ll[0].length;
+        jx = new double[n]; jy = new double[n];
+        for (int i = 0; i < n; i++) { jx[i] = (ll[1][i] - lo[0]) * 111320.0 * kx; jy[i] = (ll[0][i] - la[0]) * 110540.0; }
+        applyFilter();
+    }
+
+    public boolean hasJunctions() { return jx != null; }
 
     /** Douglas-Peucker, ohne Rekursion. */
     private static void simplify(double[] px, double[] py, int a, int b, double eps, boolean[] keep) {
@@ -117,7 +150,7 @@ public final class Guide {
             if (Math.abs(ang) >= MIN_ANGLE) {
                 int mid = s;
                 for (int k = s; k <= e; k++) if (Math.abs(local[k]) > Math.abs(local[mid])) mid = k;
-                turns.add(new Turn(cum[mid], ang));
+                all.add(new Turn(cum[mid], ang, x[mid], y[mid]));
             }
             i = e + 1;
         }
@@ -235,9 +268,9 @@ public final class Guide {
         if (ti >= 0) {
             Turn t = turns.get(ti);
             double d = t.at - prog;
-            double far = Math.max(100, Math.min(400, speed * 20)), near = Math.max(18, speed * 3);
+            double far = Math.max(45, Math.min(200, speed * 18)), near = Math.max(15, speed * 3.5);   // zu Fuß ca. 50 m vorher, mit dem Rad entsprechend früher
             String then = "";
-            if (ti + 1 < turns.size() && turns.get(ti + 1).at - t.at < 80) then = ", danach " + instruction(turns.get(ti + 1).angle);
+            if (ti + 1 < turns.size() && turns.get(ti + 1).at - t.at < 40) then = ", danach " + instruction(turns.get(ti + 1).angle);
             if (d <= near && level[ti] < 2) {
                 level[ti] = 2;
                 say.add(cap("jetzt " + instruction(t.angle)) + then + ".");

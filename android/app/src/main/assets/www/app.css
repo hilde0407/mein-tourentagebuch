@@ -203,3 +203,13 @@ h3.sub{font-size:1rem;margin:14px 0 4px}
 .fcam{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #1e88e5}
 .stage{font-weight:700}.stagechip{text-decoration:none;font-weight:700}
 .recvurl{font:700 18px ui-monospace,monospace;word-break:break-all;background:var(--accbg);padding:12px;border-radius:10px;user-select:all}.recvcnt{font-weight:700}
+
+/* Aufnahme-Seite: große Pause/Foto-Tasten, kleine Zusatztasten, „Beenden“ allein und nur durch Halten */
+.rbtns.main .rbtn{min-height:96px;font-size:1.05rem}
+.rbtns.sub{margin-top:10px}.rbtn.sm{min-height:62px;font-size:.85rem}.rbtn.sm span{font-size:1.3rem}
+.stopgap{height:34px}
+.holdstop{position:relative;overflow:hidden;width:100%;min-height:74px;border:2px solid var(--danger);border-radius:18px;background:var(--card);color:var(--danger);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.holdstop .holdring{position:absolute;inset:0;background:var(--danger);transform:scaleX(0);transform-origin:left;opacity:.9}
+.holdstop .ht{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px}.holdstop .ht b{font-size:1.15rem}.holdstop .ht small{opacity:.85}
+.holdstop.on{color:#fff}
+.pinrow{padding:6px 0;border-bottom:1px solid var(--line,#ddd)}.pinrow .btn{margin-left:8px}

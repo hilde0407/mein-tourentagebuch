@@ -1,12 +1,45 @@
 'use strict';
 /* Aufzeichnen: GPS-Spur im Hintergrund (Vordergrunddienst der Hülle), Fotos unterwegs, Sprachansagen auf geplanter Route. */
+/** Wegkreuzungen entlang einer Route aus OpenStreetMap holen. Die Sprachansage meldet Abbiegungen nur noch an solchen Stellen. */
+const Junctions = {
+  async fetch(sp) {
+    const out = [];
+    const seg = (p, a, b) => {      // Abstand Punkt–Strecke in Metern (lokal eben)
+      const k = Math.cos(a.lat * Math.PI / 180), x = (p.lon - a.lon) * 111320 * k, y = (p.lat - a.lat) * 110540, dx = (b.lon - a.lon) * 111320 * k, dy = (b.lat - a.lat) * 110540;
+      const l2 = dx * dx + dy * dy, u = l2 ? Math.max(0, Math.min(1, (x * dx + y * dy) / l2)) : 0;
+      return Math.hypot(x - u * dx, y - u * dy);
+    };
+    const near = p => { for (let i = 1; i < sp.length; i++) if (seg(p, sp[i - 1], sp[i]) <= 25) return true; return false; };
+    for (let s = 0; s < sp.length; s += 350) {
+      const part = sp.slice(Math.max(0, s - 1), s + 351);
+      if (part.length < 2) continue;
+      const b = Geo.bbox(part), pad = 0.0004;
+      const q = `[out:json][timeout:40];way(${b[0] - pad},${b[1] - pad},${b[2] + pad},${b[3] + pad})["highway"]["highway"!~"proposed|construction|corridor|platform|elevator"];out body;>;out skel qt;`;
+      const r = await Native.http({ url: 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q), headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
+      if (r.status !== 200) throw new Error('Overpass: HTTP ' + r.status);
+      const els = JSON.parse(r.body).elements || [];
+      const xy = {}, cnt = {};
+      els.forEach(e => { if (e.type === 'node') xy[e.id] = e; });
+      els.forEach(e => { if (e.type === 'way' && e.nodes) { const seen = new Set(e.nodes); seen.forEach(n => { cnt[n] = (cnt[n] || 0) + 1; }); } });
+      Object.keys(cnt).forEach(id => { const n = xy[id]; if (cnt[id] >= 2 && n && near(n)) out.push(n.lat.toFixed(6) + ',' + n.lon.toFixed(6)); });
+    }
+    return out;
+  },
+  /** Im Hintergrund laden und der Hülle geben; ohne Netz bleibt es bei den deutlichen Abbiegungen. */
+  async load(sp) {
+    if (!window.MTApp || !MTApp.setJunctions) return;
+    try { const j = await Junctions.fetch(sp); MTApp.setJunctions(j.join(';')); }
+    catch (e) { /* ohne Kreuzungsdaten: nur deutliche Abbiegungen */ }
+  },
+};
+
 Views['/rec'] = async root => {
   const box = h('div', { class: 'rec' });
   root.append(topbar('Aufzeichnen'), box);
   if (!window.MTApp) { box.append(h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '●'), h('h2', null, 'Nur in der Android-App'), h('p', null, 'Die GPS-Aufzeichnung läuft im Hintergrund und braucht die installierte App.'))); return; }
   let timer = null, map = null, line = null, me = null, lastPts = 0;
   const stat = () => { try { return JSON.parse(MTApp.status()); } catch (e) { return { state: 'idle' }; } };
-  const stop_ = () => { clearInterval(timer); timer = null; if (map) { map.remove(); map = null; } };
+  let stop_ = () => { clearInterval(timer); timer = null; if (map) { map.remove(); map = null; } };
 
   async function idle(st) {
     stop_(); box.innerHTML = '';
@@ -28,7 +61,7 @@ Views['/rec'] = async root => {
       else routeBox.append(h('b', null, '🧭 Route mit Ansagen'), h('p', { class: 'muted' }, 'Wähle eine geplante Tour: Die App sagt dann Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
         planned.length ? h('select', { onchange: async e => { const t = planned.find(x => x.id === e.target.value); if (t) { startWith0(t); } } }, h('option', { value: '' }, 'Route wählen …'), planned.map(t => h('option', { value: t.id }, t.name + ' · ' + F.km(t.dist)))) : h('small', { class: 'muted' }, 'Noch keine geplante Tour. Im Reiter „Planen“ eine erstellen.'));
     };
-    async function startWith0(t) { const pts = await Tours.points(t.id); const sp = Geo.simplify(pts, 3); MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name); sport = t.sport; name.value = t.name; drawChips(); drawRoute(); }
+    async function startWith0(t) { const pts = await Tours.points(t.id); const sp = Geo.simplify(pts, 3); MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name); Junctions.load(sp); sport = t.sport; name.value = t.name; drawChips(); drawRoute(); }
     void ri;
     drawRoute();
     const warn = h('div');
@@ -42,25 +75,101 @@ Views['/rec'] = async root => {
       h('button', { class: 'bigstart', onclick: () => {
         if (!MTApp.hasPermission()) { MTApp.requestPermission(); return; }
         MTApp.setGuide(Set_.get('guide') !== false);
+        DB.kvSet('recPins', []);
         MTApp.startRecording(sport, name.value.trim());
         sessionStorage.removeItem('recSport'); sessionStorage.removeItem('recName');
         setTimeout(() => Nav.render(), 400);
       } }, h('span', null, '●'), 'Aufzeichnung starten'),
       h('p', { class: 'muted small' }, 'Die Aufzeichnung läuft auch bei ausgeschaltetem Bildschirm weiter. Für lange Touren: Akku-Optimierung für diese App ausschalten.'),
-      h('button', { class: 'btn sm', onclick: () => MTApp.openBatterySettings() }, '🔋 Akku-Einstellungen')));
+      h('div', { class: 'row wrap' },
+        h('a', { class: 'btn sm', id: 'goplan', href: '#/plan' }, '🗺️ Tour planen'),
+        h('button', { class: 'btn sm', id: 'baks', onclick: backups }, '💾 Gesicherte Aufzeichnungen'),
+        h('button', { class: 'btn sm', onclick: () => MTApp.openBatterySettings() }, '🔋 Akku-Einstellungen'))));
+  }
+
+  /** Die letzten Aufzeichnungen liegen als Sicherung auf dem Handy – hier lassen sie sich als Tour zurückholen. */
+  function backups() {
+    let list = [];
+    try { list = JSON.parse(MTApp.backups() || '[]'); } catch (e) { /* leer */ }
+    const body = h('div', { class: 'list' });
+    let sh = null;
+    if (!list.length) body.append(h('p', { class: 'muted' }, 'Keine Sicherungen vorhanden. Beendete Aufzeichnungen werden automatisch gesichert (die letzten 10).'));
+    list.forEach(b => body.append(h('button', { class: 'li', onclick: async () => {
+      if (!await confirmBox('Als Tour wiederherstellen?', 'Die Aufzeichnung vom ' + F.date(b.ts) + ' (' + F.time(b.ts) + ' Uhr) wird als neue Tour gespeichert. Passende Fotos werden wieder zugeordnet.', 'Wiederherstellen')) return;
+      if (sh) sh.close();
+      try {
+        const gpx = MTApp.backupGpx(b.file);
+        const a = Parse.gpx(gpx)[0];
+        if (!a || a.pts.length < 2) throw new Error('Datei enthält keine Spur');
+        const r = await Tours.add({ name: '', sport: Sports.norm(a.rawSport) || 'hike', pts: a.pts, src: 'rec', force: true });
+        await Photos.assignAll();
+        toast(r.dup ? 'Diese Tour gibt es schon.' : 'Tour wiederhergestellt ✓');
+        Nav.go('/tour/' + r.tour.id);
+      } catch (e) { toast('Wiederherstellen fehlgeschlagen: ' + e.message, 6000); }
+    } }, h('span', { class: 'li-i' }, '💾'), h('span', { class: 'li-t' }, h('b', null, F.date(b.ts) + ' · ' + F.time(b.ts) + ' Uhr'), h('small', null, F.size(b.size))))));
+    sh = sheet('Gesicherte Aufzeichnungen', body);
+  }
+
+  /** Pin: Ort mit Kommentar (optional mit Foto) – wird mit der Tour gespeichert. */
+  async function addPin(st, withPhoto) {
+    const txt = await askText(withPhoto ? 'Foto mit Kommentar' : 'Pin setzen', 'Kommentar', '', withPhoto ? 'Foto aufnehmen' : 'Speichern');
+    if (txt == null) return;
+    const pins = (await DB.kvGet('recPins', [])) || [];
+    const s = stat();
+    pins.push({ id: uid(), ts: Date.now(), lat: s.lat != null ? s.lat : null, lon: s.lon != null ? s.lon : null, text: txt.trim() });
+    await DB.kvSet('recPins', pins);
+    window.dispatchEvent(new Event('pins-changed'));
+    if (withPhoto) { try { sessionStorage.setItem('pinNote', JSON.stringify({ t: Date.now(), text: txt.trim() })); } catch (e) { /* egal */ } MTApp.takePhoto(); }
+    else toast('Pin gesetzt 📍');
   }
 
   async function active(st) {
     box.innerHTML = '';
     const mapEl = h('div', { class: 'map rmap' });
     const big = h('div', { class: 'bigtime' }), grid = h('div', { class: 'stats' });
-    const pause = h('button', { class: 'rbtn', onclick: () => { st.state === 'paused' ? MTApp.resumeRecording() : MTApp.pauseRecording(); setTimeout(tick, 300); } });
-    const photoN = h('span');
+    const pause = h('button', { class: 'rbtn pause', id: 'rpause', onclick: () => { st.state === 'paused' ? MTApp.resumeRecording() : MTApp.pauseRecording(); setTimeout(tick, 300); } });
+    const photoBtn = h('button', { class: 'rbtn', id: 'rphoto', onclick: () => { MTApp.takePhoto(); } }, h('span', null, '📷'), 'Foto');
+    const pinBtn = h('button', { class: 'rbtn sm', id: 'rpin', onclick: () => addPin(st, false) }, h('span', null, '📍'), 'Pin');
+    const pinPhBtn = h('button', { class: 'rbtn sm', id: 'rpinph', onclick: () => addPin(st, true) }, h('span', null, '📷'), 'Foto + Text');
+    const vidBtn = h('button', { class: 'rbtn sm', id: 'rvideo', onclick: () => { if (MTApp.takeVideo) MTApp.takeVideo(); else toast('Video braucht die neueste App-Version.'); } }, h('span', null, '🎥'), 'Video');
+    // Beenden: steht allein und reagiert nur, wenn man es gedrückt hält (Ring füllt sich)
+    const ring = h('i', { class: 'holdring' });
+    const stopBtn = h('button', { class: 'holdstop', id: 'rstop', 'aria-label': 'Beenden – gedrückt halten' }, ring, h('span', { class: 'ht' }, h('b', null, '■ Beenden'), h('small', null, 'gedrückt halten')));
+    let hold = null, holdT = 0;
+    const HOLD_MS = 1500;
+    const holdStop = () => { if (hold) { cancelAnimationFrame(hold); hold = null; } ring.style.transform = 'scaleX(0)'; stopBtn.classList.remove('on'); };
+    const holdStart = e => {
+      e.preventDefault(); if (hold) return;
+      holdT = performance.now(); stopBtn.classList.add('on');
+      const step = () => { const f = Math.min(1, (performance.now() - holdT) / HOLD_MS); ring.style.transform = 'scaleX(' + f + ')'; if (f >= 1) { hold = null; stopBtn.classList.remove('on'); finish(); } else hold = requestAnimationFrame(step); };
+      hold = requestAnimationFrame(step);
+    };
+    ['pointerdown'].forEach(ev => stopBtn.addEventListener(ev, holdStart));
+    ['pointerup', 'pointercancel', 'pointerleave', 'contextmenu'].forEach(ev => stopBtn.addEventListener(ev, e => { if (ev === 'contextmenu') e.preventDefault(); holdStop(); }));
+    stopBtn.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { holdStart(e); } });
+    stopBtn.addEventListener('keyup', holdStop);
     box.append(mapEl, h('div', { class: 'pad' }, big, grid,
-      h('div', { class: 'rbtns' }, pause, h('button', { class: 'rbtn', onclick: () => { MTApp.takePhoto(); } }, h('span', null, '📷'), 'Foto', photoN), h('button', { class: 'rbtn stop', onclick: finish }, h('span', null, '■'), 'Beenden'))));
+      h('div', { class: 'rbtns main' }, pause, photoBtn),
+      h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn, vidBtn),
+      h('div', { class: 'stopgap' }), stopBtn));
     map = MapKit.create(mapEl, { zoom: 16 });
     line = L.polyline([], { color: '#e65100', weight: 5 }).addTo(map);
     me = L.circleMarker([0, 0], { radius: 8, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 });
+    // Orte, an denen Fotos gemacht wurden, und Pins sind schon während der Aufzeichnung auf der Karte zu sehen
+    const marks = L.layerGroup().addTo(map);
+    const drawMarks = async () => {
+      if (!map) return;
+      marks.clearLayers();
+      const since = (st.start || 0) - 60000;
+      const ph = (await Photos.all()).filter(p => p.lat != null && p.ts >= since);
+      ph.forEach(p => MapKit.photoMarker(p, () => Lightbox.open(ph, ph.indexOf(p))).addTo(marks));
+      ((await DB.kvGet('recPins', [])) || []).filter(p => p.lat != null).forEach(p => MapKit.pin(p).addTo(marks));
+    };
+    const onMarks = () => { drawMarks().catch(() => {}); };
+    window.addEventListener('photos-changed', onMarks); window.addEventListener('pins-changed', onMarks);
+    const prevStop = stop_;
+    stop_ = () => { window.removeEventListener('photos-changed', onMarks); window.removeEventListener('pins-changed', onMarks); holdStop(); prevStop(); };
+    drawMarks().catch(() => {});
     let first = true;
     const ri = (() => { try { return JSON.parse(MTApp.routePoints() || '[]'); } catch (e) { return []; } })();
     if (ri.length) { const rp = ri.map(p => Array.isArray(p) ? p : [p.lat, p.lon]); L.polyline(rp, { color: '#1565c0', weight: 4, opacity: .6, dashArray: '2 8' }).addTo(map); map.fitBounds(L.latLngBounds(rp)); first = false; }
@@ -85,7 +194,7 @@ Views['/rec'] = async root => {
     await tick();
     timer = setInterval(tick, 1000);
     async function finish() {
-      if (!await confirmBox('Aufzeichnung beenden?', 'Die Tour wird gespeichert und die Fotos werden zugeordnet.', 'Beenden')) return;
+      if (window.__saving) return;
       const nm = st.name || '';
       MTApp.stopRecording(nm);
       stop_();
@@ -94,24 +203,37 @@ Views['/rec'] = async root => {
   }
 
   async function saveFinished() {
-    const st = stat();
-    const gpx = MTApp.takeFinished();
-    if (!gpx || gpx.length < 100) { MTApp.discardRecording(); toast('Zu wenige Punkte – nichts gespeichert.'); return Nav.render(); }
+    if (window.__saving) return;
+    window.__saving = true;
     try {
-      const acts = Parse.gpx(gpx);
-      if (!acts.length || acts[0].pts.length < 2) throw new Error('Zu wenige Punkte');
-      const a = acts[0];
-      const sport = Sports.norm(st.sport || a.rawSport) === 'other' && st.sport ? st.sport : Sports.norm(st.sport || a.rawSport);
-      const r = await Tours.add({ name: st.name || a.name, sport, pts: a.pts, src: 'rec' });
-      await handlePhotoQueue();
-      await Photos.assignAll();
-      MTApp.discardRecording();
-      toast(r.dup ? 'Diese Tour war schon gespeichert.' : 'Tour gespeichert ✓');
-      Nav.go('/tour/' + r.tour.id);
-    } catch (e) {
-      toast('Speichern fehlgeschlagen: ' + e.message + ' – die Aufzeichnung bleibt erhalten.', 7000);
-      Nav.render();
-    }
+      const st = stat();
+      const gpx = MTApp.takeFinished();
+      if (!gpx || gpx.length < 100) { MTApp.discardRecording(); toast('Zu wenige Punkte – nichts gespeichert.'); return Nav.render(); }
+      try {
+        const acts = Parse.gpx(gpx);
+        if (!acts.length || acts[0].pts.length < 2) throw new Error('Zu wenige Punkte');
+        const a = acts[0];
+        const sport = Sports.norm(st.sport || a.rawSport) === 'other' && st.sport ? st.sport : Sports.norm(st.sport || a.rawSport);
+        const r = await Tours.add({ name: st.name || a.name, sport, pts: a.pts, src: 'rec' });
+        if (r.dup) {
+          // Gleiche Spur gibt es schon: nichts doppelt anlegen, die Aufzeichnung bleibt als Sicherung erhalten
+          await handlePhotoQueue(); await Photos.assignAll();
+          MTApp.discardRecording();
+          toast('Diese Tour war schon gespeichert.');
+          return Nav.go('/tour/' + r.tour.id);
+        }
+        const pins = (await DB.kvGet('recPins', [])) || [];
+        if (pins.length) { r.tour.pins = pins; await Tours.save(r.tour); await DB.kvSet('recPins', []); }
+        await handlePhotoQueue();
+        await Photos.assignAll();
+        MTApp.discardRecording();
+        toast('Tour gespeichert ✓');
+        Nav.go('/tour/' + r.tour.id);
+      } catch (e) {
+        toast('Speichern fehlgeschlagen: ' + e.message + ' – die Aufzeichnung bleibt erhalten.', 7000);
+        Nav.render();
+      }
+    } finally { window.__saving = false; }
   }
 
   function unsaved(st) {

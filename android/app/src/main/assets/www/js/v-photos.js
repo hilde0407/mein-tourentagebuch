@@ -5,6 +5,8 @@ const Lightbox = {
     if (window.__lightbox) window.__lightbox.close();
     let i = idx, timer = null;
     const img = h('img', { alt: '', class: 'lb-img' });
+    const vid = h('video', { class: 'lb-img', controls: true, playsinline: true, preload: 'metadata' });
+    vid.hidden = true;
     const info = h('div', { class: 'lb-info' });
     const cnt = h('span', { class: 'lb-cnt' });
     const el = h('div', { class: 'lb', role: 'dialog', 'aria-label': 'Foto' },
@@ -12,19 +14,21 @@ const Lightbox = {
         h('button', { class: 'ico', 'aria-label': 'Diashow', onclick: toggle }, h('span', { id: 'lbp' }, '▶')),
         h('button', { class: 'ico', 'aria-label': 'Details', onclick: details }, 'ⓘ'),
         h('button', { class: 'ico', 'aria-label': 'Schließen', onclick: close }, '✕')),
-      img, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
+      img, vid, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
     let x0 = null;
     el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
     el.addEventListener('touchend', e => { if (x0 == null) return; const d = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
     function show() {
-      const p = list[i]; img.src = Photos.url(p.id);
+      const p = list[i];
+      if (p.video) { img.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
+      else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; img.src = Photos.url(p.id); }
       cnt.textContent = (i + 1) + ' / ' + list.length;
       info.textContent = (p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : '') + (p.tourName ? ' · ' + p.tourName : '');
-      [list[(i + 1) % list.length], list[(i + list.length - 1) % list.length]].forEach(q => { const pre = new Image(); pre.src = Photos.url(q.id); });
+      [list[(i + 1) % list.length], list[(i + list.length - 1) % list.length]].filter(q => !q.video).forEach(q => { const pre = new Image(); pre.src = Photos.url(q.id); });
     }
     function step(d) { i = (i + d + list.length) % list.length; show(); }
-    function toggle() { if (timer) { clearInterval(timer); timer = null; $('#lbp').textContent = '▶'; } else { timer = setInterval(() => step(1), 4000); $('#lbp').textContent = '❚❚'; } }
-    function close() { if (timer) clearInterval(timer); el.remove(); window.__lightbox = null; }
+    function toggle() { if (timer) { clearInterval(timer); timer = null; $('#lbp').textContent = '▶'; } else { timer = setInterval(() => { if (!(list[i].video && !vid.paused && !vid.ended)) step(1); }, 4000); $('#lbp').textContent = '❚❚'; } }
+    function close() { if (timer) clearInterval(timer); try { vid.pause(); } catch (e) { /* egal */ } el.remove(); window.__lightbox = null; }
     async function details() {
       const p = list[i], tour = p.tour ? await DB.get('tours', p.tour) : null;
       const s = sheet('Foto', h('div', null,

@@ -111,6 +111,12 @@ const MapKit = {
   dot(lat, lon, color, label) {
     return L.marker([lat, lon], { icon: L.divIcon({ className: 'mk', html: `<span style="background:${color}">${label || ''}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) });
   },
+  /** Pin mit Kommentar. */
+  pin(p) {
+    const k = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'mk', html: '<span style="background:#6a1b9a">📍</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) });
+    if (p.text) k.bindPopup(String(p.text).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])));
+    return k;
+  },
   photoMarker(p, onclick) {
     const m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'pmk', html: `<img src="${Photos.thumb(p.id)}" alt="" loading="lazy" class="${p.pos === 'track' ? 'est' : ''}">`, iconSize: [38, 38], iconAnchor: [19, 19] }) });
     m.on('click', () => onclick(p));

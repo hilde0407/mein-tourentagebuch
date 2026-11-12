@@ -16,7 +16,7 @@ window.MTApp={
  points:()=>JSON.stringify([[47.5,11.2],[47.501,11.201]]), takeFinished:()=>window.__gpx||'', discardRecording(){window.__rec.state='idle';window.__rec.unsent=false},
  startRecording(s,n){window.__rec=Object.assign(window.__rec,{state:'recording',sport:s,name:n,count:5,dist_m:120,active_s:61,lat:47.5,lon:11.2,fix_age_s:1,fix_acc_m:5});window.__calls.push(['start',s,n])},
  pauseRecording(){window.__rec.state='paused'}, resumeRecording(){window.__rec.state='recording'},
- stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true}, takePhoto(){window.__calls.push(['photo']);return true},
+ stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true}, takePhoto(){window.__calls.push(['photo']);return true}, takeVideo(){window.__calls.push(['video']);return true}, setJunctions(t){window.__calls.push(['junc',t.split(';').length])}, backups:()=>JSON.stringify(window.__baks||[]), backupGpx:()=>window.__bakgpx||'',
  setRoute(p,n){window.__calls.push(['route',n,p.split(';').length])}, routeInfo:()=>'{}', routePoints:()=>'[]', clearRoute(){}, setGuide(){}, guideTest(){},
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(){}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r; try{
@@ -121,11 +121,30 @@ def main():
         assert pg.evaluate("__calls.some(c=>c[0]==='route'&&c[1]==='Geplant A')")
         # Aufzeichnung (simuliert)
         pg.locator(".bigstart").click(); pg.wait_for_selector(".bigtime"); assert "01:01" in pg.inner_text(".bigtime")
-        pg.locator(".rbtn", has_text="Foto").click(); assert pg.evaluate("__calls.some(c=>c[0]==='photo')")
+        pg.locator("#rphoto").click(); assert pg.evaluate("__calls.some(c=>c[0]==='photo')")
+        pg.locator("#rvideo").click(); assert pg.evaluate("__calls.some(c=>c[0]==='video')")
+        # Pin mit Kommentar
+        pg.locator("#rpin").click(); pg.wait_for_selector(".sheet input"); pg.fill(".sheet input", "Schöne Aussicht"); pg.get_by_role("button", name="Speichern", exact=True).click(); pg.wait_for_timeout(300)
+        assert pg.evaluate("DB.kvGet('recPins',[]).then(a=>a.length===1&&a[0].text==='Schöne Aussicht')")
+        # Beenden: ein kurzer Druck beendet nichts, erst Halten
+        bb = pg.locator("#rstop").bounding_box()
+        pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down(); pg.wait_for_timeout(300); pg.mouse.up(); pg.wait_for_timeout(300)
+        assert pg.evaluate("__rec.state") == "recording", "kurzer Druck darf nicht beenden"
         pg.evaluate("window.__gpx = arguments[0]", None) if False else None
         pg.evaluate("g => { window.__gpx = g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
-        pg.locator(".rbtn.stop").click(); pg.get_by_role("button", name="Beenden", exact=True).click()
+        pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down()
+        pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); pg.mouse.up()
+        pg.wait_for_selector("#pins"); assert "Schöne Aussicht" in pg.inner_text("#pins")
+        tid = pg.evaluate("location.hash.split('/')[2]")
+        # Gesicherte Aufzeichnung wiederherstellen (Tour war gelöscht)
+        pg.evaluate("t => Tours.remove(t)", tid)
+        pg.evaluate("g => { window.__baks=[{file:'rec_20260101_100000.gpx',size:2048,ts:1767261600000}]; window.__bakgpx=g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
+        pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector("#baks"); pg.click("#baks"); pg.locator(".sheet .li").first.click()
+        pg.get_by_role("button", name="Wiederherstellen", exact=True).click()
         pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=6000)
+        # Planen ist von Start und Touren aus erreichbar
+        pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#newplan")
+        pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#startplan")
         # Foto-Quellen: Galerie zu Tour
         pg.evaluate("window.__gts = %d; window.__gallery=[{uri:'content://m/1',ts:%d,name:'q'}]" % (t0 + 100000, t0 + 100000))
         pg.evaluate("location.hash='#/photos'"); pg.wait_for_selector(".pgrid")
