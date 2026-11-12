@@ -1,5 +1,11 @@
 'use strict';
 /* Karten (Leaflet): Kartenquellen, Offline-Kacheln, Spuren, Foto-Marker, Höhenprofil. */
+/* Leaflet-Absicherung: Wird eine Karte entfernt, während noch eine Zoom-/Schwenk-Animation läuft, rufen Zeitgeber später Funktionen
+   einer schon abgebauten Karte auf und lösen einen Fehler aus. Diese Aufrufe werden dann übersprungen. */
+['_onZoomTransitionEnd', '_animateZoom', '_tryAnimatedPan', '_catchTransitionEnd'].forEach(n => {
+  const o = L.Map.prototype[n]; if (!o) return;
+  L.Map.prototype[n] = function () { return this._mapPane ? o.apply(this, arguments) : undefined; };
+});
 const MapKit = {
   providers: {
     osm: { name: 'Straßenkarte (OpenStreetMap)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attr: '© OpenStreetMap-Mitwirkende' },
