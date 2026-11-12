@@ -137,7 +137,7 @@ Views['/fix'] = async (root, [id]) => {
   found.spike.forEach(i => L.circleMarker([pts[i].lat, pts[i].lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#c62828', fillOpacity: 1 }).addTo(map));
   found.fast.forEach(r => L.polyline(pts.slice(r.from, r.to + 1).map(p => [p.lat, p.lon]), { color: '#ef6c00', weight: 7, opacity: 0.95 }).addTo(map));
   pts.forEach((p, i) => { if (p.skip && i && !pts[i - 1].newSeg) L.polyline([[pts[i - 1].lat, pts[i - 1].lon], [p.lat, p.lon]], { color: '#757575', weight: 6, dashArray: '2 8', opacity: 0.9 }).addTo(map); });
-  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
   const done = async msg => { await Tours.recalc(id); toast(msg); Nav.render(); };
   info.append(

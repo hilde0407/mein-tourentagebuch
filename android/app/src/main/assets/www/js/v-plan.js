@@ -39,7 +39,7 @@ Views['/plan'] = async (root, [editId]) => {
   const hl = Set_.get('homeLat');
   map.setView(fc || (hl ? [+hl, +Set_.get('homeLon')] : [47.5, 11.2]), fc ? 14 : 9);
   map.locate({ setView: !editing && !fc && !hl, maxZoom: 14 });
-  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
   const profileName = () => Set_.get('routeProfile') || Router.profileFor(sport);
   async function addWp(ll) {

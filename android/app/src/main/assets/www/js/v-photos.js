@@ -271,7 +271,7 @@ Views['/photos'] = async root => {
       const g = L.layerGroup().addTo(map), withPos = all.filter(p => p.lat != null);
       withPos.forEach(p => MapKit.photoMarker(p, () => Lightbox.open(all, all.indexOf(p))).addTo(g));
       if (withPos.length) map.fitBounds(L.latLngBounds(withPos.map(p => [p.lat, p.lon])), { padding: [30, 30], maxZoom: 14 });
-      setTimeout(() => map.invalidateSize(), 150);
+      setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 150);
       return;
     }
     if (!list.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Alle Fotos sind einer Tour zugeordnet.'))); return; }

@@ -85,7 +85,7 @@ Views['/story'] = async (root, [id]) => {
   if (pts.length) { const ln = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 5).addTo(map); map.fitBounds(ln.getBounds(), { padding: [24, 24] }); }
   ev.forEach(e => { if (e.pos && e.kind !== 'ph') MapKit.dot(e.pos[0], e.pos[1], e.kind === 'start' ? '#2e7d32' : '#c62828', e.kind === 'start' ? 'S' : 'Z').addTo(map); });
   photos.filter(p => p.lat != null).forEach(p => MapKit.photoMarker(p, () => openPhoto(p)).addTo(map));
-  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
   draw();
   let alive = true;
   (async () => {      // Ortsnamen der Stationen nachladen (zwischengespeichert; ohne Internet bleibt die Zeile leer)

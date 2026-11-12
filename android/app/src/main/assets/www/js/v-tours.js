@@ -106,7 +106,7 @@ Views['/tour'] = async (root, [id]) => {
   const pm = L.layerGroup().addTo(map);
   const drawPhotos = () => { pm.clearLayers(); photos.filter(p => p.lat != null).forEach(p => MapKit.photoMarker(p, () => Lightbox.open(photos, photos.indexOf(p))).addTo(pm)); };
   drawPhotos();
-  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
   const grid = h('div', { class: 'stats' });
   const st = (v, l) => h('div', null, h('b', null, v), h('small', null, l));

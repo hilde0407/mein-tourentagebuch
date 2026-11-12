@@ -255,7 +255,7 @@ async function groupPage(root, title, tours, opts) {
     pts.forEach((p, i) => { if (i % 5 === 0) bounds.push([p.lat, p.lon]); });
   }
   if (bounds.length) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24] }); else mapEl.hidden = true;
-  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 }
 
 Views['/reise'] = async (root, [id]) => {
