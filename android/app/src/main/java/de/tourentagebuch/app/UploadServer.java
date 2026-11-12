@@ -194,8 +194,14 @@ public final class UploadServer {
                 String name = param(q, "n");
                 long mtime = 0;
                 try { mtime = Long.parseLong(param(q, "m")); } catch (Exception e) { mtime = 0; }
+                // Wurde das Foto im Browser vor dem Senden verkleinert, gehen die EXIF-Daten (Position, Aufnahmezeit)
+                // dabei verloren; der Browser liest sie vorher selbst aus und schickt sie separat mit.
+                double lat = Double.NaN, lon = Double.NaN;
+                try { lat = Double.parseDouble(param(q, "lat")); lon = Double.parseDouble(param(q, "lon")); } catch (Exception e) { lat = Double.NaN; lon = Double.NaN; }
+                long ts = 0;
+                try { ts = Long.parseLong(param(q, "ts")); } catch (Exception e) { ts = 0; }
                 try {
-                    JSONObject j = Photos.importStream(ctx, body, name.isEmpty() ? null : name, mtime, Double.NaN, Double.NaN, 0, "rechner");
+                    JSONObject j = Photos.importStream(ctx, body, name.isEmpty() ? null : name, mtime, lat, lon, ts, "rechner");
                     done.add(j);
                     body.drain();
                     reply(out, 200, "application/json", "{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
@@ -222,13 +228,26 @@ public final class UploadServer {
             + "<div id=drop>Fotos hierher ziehen<br><br><button id=pick type=button>Fotos ausw&auml;hlen</button> <button id=pickdir type=button>Ordner ausw&auml;hlen</button></div>"
             + "<input id=f type=file accept='image/*' multiple hidden><input id=fd type=file webkitdirectory multiple hidden><p id=sum></p><ul id=l></ul>"
             + "<small>Bei &bdquo;Ordner ausw&auml;hlen&ldquo; werden auch alle Bilder in Unterordnern mit hochgeladen.<br>Die &Uuml;bertragung ist nicht verschl&uuml;sselt &ndash; nur im eigenen WLAN nutzen. Die Seite funktioniert nur, solange der Dialog in der App offen ist.</small></main>"
-            + "<script>var d=document.getElementById('drop'),f=document.getElementById('f'),fd=document.getElementById('fd'),l=document.getElementById('l'),sum=document.getElementById('sum'),n=0,ok=0,bad=0,q=[],busy=false;"
-            + "document.getElementById('pick').onclick=function(e){e.stopPropagation();f.click()};document.getElementById('pickdir').onclick=function(e){e.stopPropagation();fd.click()};d.onclick=function(){f.click()};"
-            + "d.ondragover=function(e){e.preventDefault();d.className='over'};d.ondragleave=function(){d.className=''};"
-            + "d.ondrop=function(e){e.preventDefault();d.className='';add(e.dataTransfer.files)};f.onchange=function(){add(f.files);f.value=''};fd.onchange=function(){add(fd.files);fd.value=''};"
-            + "function add(fs){for(var i=0;i<fs.length;i++){if(/^image\\//.test(fs[i].type)||/\\.(jpe?g|png|heic|webp)$/i.test(fs[i].name)){var li=document.createElement('li');li.innerHTML='<span></span><span>wartet</span>';li.firstChild.textContent=fs[i].webkitRelativePath||fs[i].name;l.appendChild(li);q.push([fs[i],li]);n++}}upd();run()}"
-            + "function upd(){sum.textContent=ok+' von '+n+' gesendet'+(bad?', '+bad+' fehlgeschlagen':'')}"
-            + "function run(){if(busy||!q.length)return;busy=true;var it=q.shift(),fl=it[0],li=it[1];li.lastChild.textContent='wird gesendet \\u2026';"
-            + "fetch('up?n='+encodeURIComponent(fl.name)+'&m='+fl.lastModified,{method:'POST',body:fl}).then(function(r){return r.json()}).then(function(j){if(j.ok){ok++;li.lastChild.textContent='\\u2713';li.lastChild.className='ok'}else{bad++;li.lastChild.textContent=j.error||'Fehler';li.lastChild.className='err'}})"
-            + ".catch(function(){bad++;li.lastChild.textContent='Verbindung unterbrochen';li.lastChild.className='err'}).then(function(){busy=false;upd();run()})}</script></body></html>";
+            + "<script>var d=document.getElementById('drop'),f=document.getElementById('f'),fd=document.getElementById('fd'),l=document.getElementById('l'),sum=document.getElementById('sum'),n=0,ok=0,bad=0,q=[],busy=false,MAXPX=2400;"
+            + "document.getElementById('pick').onclick=function(e){e.stopPropagation();f.click()};document.getElementById('pickdir').onclick=function(e){e.stopPropagation();fd.click()};d.onclick=function(){f.click()}"
+            + ";d.ondragover=function(e){e.preventDefault();d.className='over'};d.ondragleave=function(){d.className=''};d.ondrop=function(e){e.preventDefault();d.className='';add(e.dataTransfer.files)};f.onchange=function(){add(f.files);"
+            + "f.value=''};fd.onchange=function(){add(fd.files);fd.value=''};function add(fs){for(var i=0;i<fs.length;i++){if(/^image\\//.test(fs[i].type)||/\\.(jpe?g|png|heic|webp)$/i.test(fs[i].name)){var li=document.createElement('li');"
+            + "li.innerHTML='<span></span><span>wartet</span>';li.firstChild.textContent=fs[i].webkitRelativePath||fs[i].name;l.appendChild(li);q.push([fs[i],li]);n++}}upd();run()}function upd(){sum.textContent=ok+' von '+n+' gesendet'+(bad?', '+bad+' fehlgeschlagen':'')}"
+            + "function parseExif(buf){var dv=new DataView(buf);if(dv.byteLength<4||dv.getUint16(0)!==0xFFD8)return null;var off=2,app1=null;while(off+4<=dv.byteLength){var marker=dv.getUint16(off);if((marker&0xFF00)!==0xFF00)break;"
+            + "if(marker===0xFFD8||marker===0xFFD9){off+=2;continue}if(off+4>dv.byteLength)break;var size=dv.getUint16(off+2);if(marker===0xFFE1){var segStart=off+4;if(dv.getUint32(segStart)===0x45786966&&dv.getUint16(segStart+4)===0x0000){app1=segStart+6}"
+            + "break}if(marker>=0xFFD0&&marker<=0xFFD9){off+=2;continue}off+=2+size}if(app1==null)return null;var tiffStart=app1,little=dv.getUint16(tiffStart)===0x4949;function u16(o){return dv.getUint16(o,little)}"
+            + "function u32(o){return dv.getUint32(o,little)}function readIfd(ifdOff){var n=u16(tiffStart+ifdOff),entries={};for(var i=0;i<n;i++){var eOff=tiffStart+ifdOff+2+i*12,tag=u16(eOff),type=u16(eOff+2),count=u32(eOff+4);"
+            + "entries[tag]={type:type,count:count,valOff:eOff+8}}return{entries:entries}}function rational(o){var num=u32(o),den=u32(o+4);return den===0?0:num/den}function entryValueOffset(e){var sizeOf={1:1,2:1,3:2,4:4,5:8,7:1}"
+            + ",total=(sizeOf[e.type]||1)*e.count;return total>4?tiffStart+u32(e.valOff):e.valOff}var ifd0=readIfd(u32(tiffStart+4)),result={lat:null,lon:null,ts:null},exifPtr=ifd0.entries[0x8769],gpsPtr=ifd0.entries[0x8825];"
+            + "if(exifPtr){var exifIfd=readIfd(u32(entryValueOffset(exifPtr))),dto=exifIfd.entries[0x9003];if(dto){var o=entryValueOffset(dto),bytes=[];for(var i=0;i<Math.min(dto.count,19);i++)bytes.push(dv.getUint8(o+i));"
+            + "var s=String.fromCharCode.apply(null,bytes),m=/^(\\d{4}):(\\d{2}):(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})/.exec(s);if(m)result.ts=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime()}}if(gpsPtr){var gpsIfd=readIfd(u32(entryValueOffset(gpsPtr)));"
+            + "function dms(e){var o=entryValueOffset(e);return rational(o)+rational(o+8)/60+rational(o+16)/3600}var latE=gpsIfd.entries[2],latRefE=gpsIfd.entries[1],lonE=gpsIfd.entries[4],lonRefE=gpsIfd.entries[3];"
+            + "if(latE&&latRefE){var latRef=String.fromCharCode(dv.getUint8(entryValueOffset(latRefE))),lat=dms(latE);result.lat=latRef==='S'?-lat:lat}if(lonE&&lonRefE){var lonRef=String.fromCharCode(dv.getUint8(entryValueOffset(lonRefE))),lon=dms(lonE);"
+            + "result.lon=lonRef==='W'?-lon:lon}}return result}function prep(fl){if(!/^image\\//.test(fl.type)||fl.type==='image/gif')return Promise.resolve({blob:fl});return fl.slice(0,131072).arrayBuffer().then(function(ab){var meta=null;"
+            + "try{meta=parseExif(ab)}catch(e){meta=null}return createImageBitmap(fl).then(function(bm){var w=bm.width,h=bm.height;if(Math.max(w,h)<=MAXPX){if(bm.close)bm.close();return{blob:fl,lat:meta&&meta.lat,lon:meta&&meta.lon,ts:meta&&meta.ts}"
+            + "}var sc=MAXPX/Math.max(w,h),cw=Math.round(w*sc),ch=Math.round(h*sc),cv=document.createElement('canvas');cv.width=cw;cv.height=ch;cv.getContext('2d').drawImage(bm,0,0,cw,ch);if(bm.close)bm.close();return new Promise(function(res){cv.toBlob(function(b){res({blob:b||fl,lat:meta&&meta.lat,lon:meta&&meta.lon,ts:meta&&meta.ts}"
+            + ")},'image/jpeg',0.85)})})}).catch(function(){return{blob:fl}})}function run(){if(busy||!q.length)return;busy=true;var it=q.shift(),fl=it[0],li=it[1];li.lastChild.textContent='wird gesendet \\u2026';prep(fl).then(function(p){var url='up?n='+encodeURIComponent(fl.name)+'&m='+fl.lastModified;"
+            + "if(p.lat!=null&&p.lon!=null)url+='&lat='+p.lat+'&lon='+p.lon;if(p.ts)url+='&ts='+p.ts;return fetch(url,{method:'POST',body:p.blob})}).then(function(r){return r.json()}).then(function(j){if(j.ok){ok++;"
+            + "li.lastChild.textContent='\\u2713';li.lastChild.className='ok'}else{bad++;li.lastChild.textContent=j.error||'Fehler';li.lastChild.className='err'}}).catch(function(){bad++;li.lastChild.textContent='Verbindung unterbrochen';"
+            + "li.lastChild.className='err'}).then(function(){busy=false;upd();run()})}</script></body></html>";
 }
