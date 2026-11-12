@@ -72,7 +72,7 @@ a.tour{display:flex;gap:12px;padding:10px;margin-bottom:10px;color:inherit;text-
 .list{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
 .li{display:flex;gap:12px;align-items:center;width:100%;padding:12px 14px;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;text-decoration:none;color:inherit;min-height:56px}
 .li:last-child{border-bottom:0}.li:active{background:var(--accbg)}
-.li-i{flex:none;width:36px;text-align:center;font-size:1.4rem}.li-t{flex:1;min-width:0}.li-t b{display:block;font-weight:600}.li-t small{display:block;color:var(--muted);font-size:.82rem}
+.li-i.cov{width:48px;height:48px;padding:0}.li-i.cov img{width:48px;height:48px;object-fit:cover;border-radius:8px;display:block}.li-i{flex:none;width:36px;text-align:center;font-size:1.4rem}.li-t{flex:1;min-width:0}.li-t b{display:block;font-weight:600}.li-t small{display:block;color:var(--muted);font-size:.82rem}
 .li.big{padding:16px 14px}
 .empty{text-align:center;padding:40px 24px;color:var(--muted)}.empty.hero{color:var(--ink)}.empty .big{font-size:3.2rem}.empty h2{margin:6px 0}
 .empty .btn{margin:4px}

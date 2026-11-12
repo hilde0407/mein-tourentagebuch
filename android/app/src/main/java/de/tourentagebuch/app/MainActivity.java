@@ -549,6 +549,13 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("name", f.getName()).put("url", "/cache/imp/" + f.getName()).put("size", f.length()).toString();
             }
             case "saveFile": return saveFile(a);
+            case "appendCache": {                      // große Dateien (Video) stückweise im Zwischenspeicher ablegen
+                File d = new File(getCacheDir(), "rec"); d.mkdirs();
+                File f = new File(d, new File(a.getString("name")).getName().replaceAll("[^A-Za-z0-9._-]", "_"));
+                if (a.optBoolean("reset") && f.exists()) f.delete();
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(f, true)) { o.write(android.util.Base64.decode(a.getString("b64"), android.util.Base64.DEFAULT)); }
+                return "true";
+            }
             case "readFileB64": {
                 File f = new File(a.getString("path"));
                 if (!f.getCanonicalPath().startsWith(getCacheDir().getCanonicalPath())) throw new Exception("Pfad nicht erlaubt");
@@ -635,9 +642,16 @@ public class MainActivity extends Activity {
     }
 
     /** Speichert eine Datei im Download-Ordner des Handys (ohne Berechtigung über MediaStore). */
+    private byte[] readCacheRec(String n) throws Exception {
+        File f = new File(new File(getCacheDir(), "rec"), new File(n).getName().replaceAll("[^A-Za-z0-9._-]", "_"));
+        byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+        f.delete();
+        return b;
+    }
+
     private String saveFile(JSONObject a) throws Exception {
         String name = a.getString("name").replaceAll("[^A-Za-z0-9._ -]", "_");
-        byte[] data = a.has("b64") ? android.util.Base64.decode(a.getString("b64"), android.util.Base64.DEFAULT) : a.optString("text").getBytes("UTF-8");
+        byte[] data = a.has("path") ? readCacheRec(a.getString("path")) : a.has("b64") ? android.util.Base64.decode(a.getString("b64"), android.util.Base64.DEFAULT) : a.optString("text").getBytes("UTF-8");
         String mt = a.optString("mime", "application/octet-stream");
         if (Build.VERSION.SDK_INT >= 29) {
             android.content.ContentValues v = new android.content.ContentValues();

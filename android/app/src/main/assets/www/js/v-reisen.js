@@ -90,14 +90,33 @@ const Reisen = {
   island: (lat, lon) => { const i = Reisen.ISLANDS.find(x => lat >= x[1] && lat <= x[2] && lon >= x[3] && lon <= x[4]); return i ? i[0] : ''; },
   /** „A“, „A und B“, „A, B und C“. */
   joinNames: n => n.length < 2 ? (n[0] || '') : n.slice(0, -1).join(', ') + ' und ' + n[n.length - 1],
-  /** Jahreszeit der Reise: „Frühjahr 2026“, „Herbst 2026“, „Winter 2025/26“. */
+  /** Jahreszeit der Reise nach dem Kalender (Frühjahr ab 20. März, Sommer ab 21. Juni, Herbst ab 23. September, Winter ab 21. Dezember), gerechnet vom Mittelpunkt der Reise. */
   season(a, b) {
-    const m = new Date((a + b) / 2), mo = m.getMonth(), y = m.getFullYear();
-    if (mo >= 2 && mo <= 4) return 'Frühjahr ' + y;
-    if (mo >= 5 && mo <= 7) return 'Sommer ' + y;
-    if (mo >= 8 && mo <= 10) return 'Herbst ' + y;
-    return mo === 11 ? 'Winter ' + y + '/' + String(y + 1).slice(2) : 'Winter ' + (y - 1) + '/' + String(y).slice(2);
+    const m = new Date((a + b) / 2), v = (m.getMonth() + 1) * 100 + m.getDate(), y = m.getFullYear();
+    if (v >= 320 && v < 621) return 'Frühjahr ' + y;
+    if (v >= 621 && v < 923) return 'Sommer ' + y;
+    if (v >= 923 && v < 1221) return 'Herbst ' + y;
+    return v >= 1221 ? 'Winter ' + y + '/' + String(y + 1).slice(2) : 'Winter ' + (y - 1) + '/' + String(y).slice(2);
   },
+  /** Eigene Änderungen: ausgeblendete Reisen und geänderter Zeitraum (Touren zwischen zwei Tagen). */
+  async edits() { return { hidden: await DB.kvGet('tripHidden', {}), period: await DB.kvGet('tripPeriod', {}) }; },
+  applyPeriod(trips, all, period) {
+    return trips.map(r => {
+      const p = period[r.id]; if (!p) return r;
+      const ts = all.filter(t => t.start >= p[0] && t.start < p[1] + 86400000).sort((x, y) => x.start - y.start);
+      if (!ts.length) return r;
+      const n = Reisen.sum(ts); n.id = r.id; n.multi = r.multi; n.name = r.name; n.nums = r.nums; return n;
+    });
+  },
+  /** Titelfoto: das mittlere Foto (nach Aufnahmezeit) aus den Touren. */
+  async cover(r) {
+    const ph = [];
+    for (const t of r.tours) ph.push(...(await DB.byIndex('photos', 'tour', t.id)));
+    ph.sort((a, b) => a.ts - b.ts);
+    return ph.length ? ph[Math.floor(ph.length / 2)] : null;
+  },
+  /** Symbol-Feld für Listen; wird nach dem Zeichnen durch das Titelfoto ersetzt, falls vorhanden. */
+  icon(r, sym) { const el = h('span', { class: 'li-i' }, sym); Reisen.cover(r).then(p => { if (p) { el.textContent = ''; el.append(h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' })); el.classList.add('cov'); } }).catch(() => {}); return el; },
   /** Regionen der Reise: Inseln aus einer eingebauten Liste, sonst per Ortssuche Bundesland (D/A/CH/I) oder Land – je Gebiet (ca. 40 km), in Reihenfolge der Reise. Wird einmal ermittelt und gemerkt. */
   async place(r) {
     const places = await DB.kvGet('tripRegion', {});
@@ -180,20 +199,22 @@ Views['/reisen'] = async root => {
   const body = h('div', { class: 'pad' });
   root.append(topbar('Reisen & Alben', { back: true, noMenu: true }), body);
   const multi = await Reisen.multiday(all);
+  const ed = await Reisen.edits();
   let tab = 'reisen';
   const draw = () => {
     body.innerHTML = '';
     body.append(h('div', { class: 'chips' }, [['reisen', 'Reisen'], ['alben', 'Alben']].map(([k, l]) => h('button', { class: 'chip' + (tab === k ? ' on' : ''), onclick: () => { tab = k; draw(); } }, l))));
     if (tab === 'reisen') {
-      const trips = Reisen.detect(all, home, cfg);
+      const trips = Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).filter(r => !ed.hidden[r.id]), gone = Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).filter(r => ed.hidden[r.id]);
       if (!Reisen._busy) { Reisen._busy = true; (async () => { let ch = false; for (const r of trips) { if (names[r.id] || r.id in places) continue; try { places[r.id] = await Reisen.place(r); ch = true; await new Promise(k => setTimeout(k, 1100)); } catch (e) { break; } } Reisen._busy = false; if (ch && tab === 'reisen' && body.isConnected) draw(); })(); }
       body.append(h('p', { class: 'muted small' }, `Als Reise gelten Touren mehr als 60 km von deinem Zuhause (automatisch erkannt, oder der Heimatort aus den Einstellungen) an mindestens ${Math.max(2, cfg.days)} Tagen; bis 7 Tage Pause im gleichen Gebiet gehören dazu.`));
       if (!trips.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Reisen gefunden.')));
       body.append(h('div', { class: 'list' }, trips.map(r => h('a', { class: 'li', href: '#/reise/' + r.id },
-        h('span', { class: 'li-i' }, '🧳'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
+        Reisen.icon(r, '🧳'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
           h('small', null, `${Reisen.range(r.first, r.last)} · ${r.tours.length} Touren an ${r.days} Tagen · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
+      if (gone.length) body.append(h('details', null, h('summary', null, 'Ausgeblendete Reisen (' + gone.length + ')'), h('div', { class: 'list' }, gone.map(r => h('a', { class: 'li', href: '#/reise/' + r.id }, h('span', { class: 'li-i' }, '🙈'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)), h('small', null, Reisen.range(r.first, r.last))))))));
       if (multi.length) body.append(h('h3', null, 'Mehrtagestouren'), h('p', { class: 'muted small' }, 'Erkannt an Namen wie „… Tag 3“ oder „… Etappe 2“.'),
-        h('div', { class: 'list' }, multi.map(r => h('a', { class: 'li', href: '#/reise/' + r.id }, h('span', { class: 'li-i' }, '🥾'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
+        h('div', { class: 'list' }, multi.map(r => h('a', { class: 'li', href: '#/reise/' + r.id }, Reisen.icon(r, '🥾'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
           h('small', null, `${r.tours.length} Etappen · ${Reisen.range(r.first, r.last)} · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
       const num = (k, lab, min) => h('label', { class: 'fld' }, lab, h('input', { type: 'number', min, value: cfg[k], onchange: async e => { const v = Math.max(min, parseInt(e.target.value, 10) || Reisen.DEF[k]); cfg[k] = v; await DB.kvSet('tripSet', cfg); draw(); } }));
       body.append(h('details', null, h('summary', null, 'Erkennung anpassen'), num('days', 'Mindestzahl Tage einer Reise', 2)));
@@ -202,7 +223,7 @@ Views['/reisen'] = async root => {
       body.append(h('p', { class: 'muted small' }, 'Alben entstehen aus Schlagworten, die du einer Tour gibst (Tour öffnen → ⋮ → „Tags & Alben“).'));
       if (!list.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Noch keine Alben.')));
       body.append(h('div', { class: 'list' }, list.map(([g, r]) => h('a', { class: 'li', href: '#/album/' + encodeURIComponent(g) },
-        h('span', { class: 'li-i' }, '🏷️'), h('span', { class: 'li-t' }, h('b', null, g), h('small', null, `${r.tours.length} Touren · ${F.km(r.km)} · ${Reisen.range(r.first, r.last)}`))))));
+        Reisen.icon(r, '🏷️'), h('span', { class: 'li-t' }, h('b', null, g), h('small', null, `${r.tours.length} Touren · ${F.km(r.km)} · ${Reisen.range(r.first, r.last)}`))))));
     }
   };
   draw();
@@ -221,6 +242,7 @@ async function groupPage(root, title, tours, opts) {
   const kpi = (v, l) => h('div', { class: 'kpi' }, h('b', null, v), h('small', null, l));
   body.append(h('div', { class: 'sub' }, Reisen.range(r.first, r.last)),
     h('div', { class: 'kpis' }, kpi(sorted.length, 'Touren'), kpi(r.days, r.days === 1 ? 'Tag' : 'Tage'), kpi(F.km(r.km), 'Strecke'), kpi(F.m(r.up), 'Aufstieg'), kpi(F.dur(r.dur), 'Zeit unterwegs'), kpi(photos.length, 'Fotos')));
+  body.append(h('div', { class: 'row' }, h('button', { class: 'btn', id: 'gflug', onclick: () => { Flug.title = title; Nav.go('/flug/set:' + sorted.map(t => t.id).join(',')); } }, '🚁 ' + (sorted.length > 1 ? 'Reiseflug' : '3D-Flug'))));
   if (photos.length) body.append(h('div', { class: 'row' }, h('h3', { class: 'grow' }, 'Fotos'), h('button', { class: 'btn sm', id: 'gshow', onclick: async () => Show.open(await Show.forTours(sorted)) }, '▶ Diashow')), h('div', { class: 'strip' }, photos.slice(0, 40).map((p, i) => h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' })))));
   // Touren je Tag
   body.append(h('h3', null, 'Touren'), h('div', { class: 'list' }, sorted.map(t => h('a', { class: 'li', href: '#/tour/' + t.id },
@@ -240,7 +262,8 @@ Views['/reise'] = async (root, [id]) => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripRegion', {});
   const home = Reisen.homes(all);
-  const r = id.startsWith('m:') ? (await Reisen.multiday(all)).find(x => x.id === id) : Reisen.detect(all, home, cfg).find(x => x.id === id);
+  const ed = await Reisen.edits();
+  const r = id.startsWith('m:') ? (await Reisen.multiday(all)).find(x => x.id === id) : Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).find(x => x.id === id);
   if (!r) { root.append(topbar('Reise', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
   if (!r.multi && !names[id] && !(id in places)) { try { places[id] = await Reisen.place(r); } catch (e) { /* offline: Zeitraum */ } }
   await groupPage(root, Reisen.title(r, names, places), r.tours, {
@@ -250,7 +273,16 @@ Views['/reise'] = async (root, [id]) => {
       if (v.trim()) names[id] = v.trim(); else delete names[id];
       await DB.kvSet('tripNames', names); Nav.render();
     },
-    extra: h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: async () => {
+    extra: h('div', { class: 'row end wrap' },
+      r.multi ? null : h('button', { class: 'btn', onclick: () => {
+        const d = ms => { const x = new Date(ms); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const a = h('input', { type: 'date', value: d(r.first) }), b = h('input', { type: 'date', value: d(r.last) });
+        const sh = sheet('Zeitraum der Reise', h('div', null, h('label', { class: 'fld' }, 'Von', a), h('label', { class: 'fld' }, 'Bis', b),
+          h('div', { class: 'row end' }, ed.period[id] ? h('button', { class: 'btn', onclick: async () => { delete ed.period[id]; await DB.kvSet('tripPeriod', ed.period); sh.close(); Nav.render(); } }, 'Zurücksetzen') : null,
+            h('button', { class: 'btn pri', onclick: async () => { const f = new Date(a.value + 'T00:00:00').getTime(), l = new Date(b.value + 'T00:00:00').getTime(); if (!(f <= l)) return toast('Das Ende liegt vor dem Anfang'); ed.period[id] = [f, l]; await DB.kvSet('tripPeriod', ed.period); sh.close(); Nav.render(); } }, 'Speichern'))));
+      } }, '📅 Zeitraum ändern'),
+      r.multi ? null : h('button', { class: 'btn', onclick: async () => { if (ed.hidden[id]) delete ed.hidden[id]; else ed.hidden[id] = true; await DB.kvSet('tripHidden', ed.hidden); toast(ed.hidden[id] ? 'Reise ausgeblendet' : 'Reise wieder eingeblendet'); Nav.go('/reisen'); } }, ed.hidden[id] ? '👁 Wieder einblenden' : '🙈 Ausblenden'),
+      h('button', { class: 'btn', onclick: async () => {
       const name = Reisen.title(r, names, places).trim();
       if (!await confirmBox('Als Album speichern', `Allen ${r.tours.length} Touren wird das Schlagwort „${name}“ gegeben.`, 'Speichern')) return;
       for (const t of r.tours) { t.tags = [...new Set([...(t.tags || []), name])]; await Tours.save(t); }

@@ -21,7 +21,7 @@ window.MTApp={
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(){}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r; try{
    if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:a.bin?'':await x.text()}; if(a.bin){ const u=new Uint8Array(await x.arrayBuffer()); let b=''; u.forEach(c=>b+=String.fromCharCode(c)); r.b64=btoa(b); } }
-   else if(m==='uploadStart') r={ip:'192.168.0.5',port:8765,url:'http://192.168.0.5:8765/abc12/'}; else if(m==='uploadStop') r=true;
+   else if(m==='appendCache') r=true; else if(m==='uploadStart') r={ip:'192.168.0.5',port:8765,url:'http://192.168.0.5:8765/abc12/'}; else if(m==='uploadStop') r=true;
    else if(m==='uploadPoll'){ r={photos:window.__upl||[],failed:0,running:true}; window.__upl=[]; }
    else if(m==='perm') r={granted:true}; else if(m==='saveFile'){ r='Download/Tourentagebuch/'+a.name; window.__saved=a; }
    else if(m==='storage') r={photos:0,bytes:0}; else if(m==='galleryRange') r=window.__gallery||[];
@@ -299,7 +299,7 @@ def main():
           const base = Date.UTC(2026, 5, 3, 8);
           for (const d of [0, 1, 5, 6, 10]) await Tours.add({ name: d < 2 ? 'Réunion Tag ' + (d + 1) : 'Réunion ' + d, sport: 'hike', pts: Array.from({ length: 12 }, (_, k) => ({ lat: -21.1 + d * 0.01 + k * 0.0006, lon: 55.5 + k * 0.0005, ele: 900 + k * 6, t: base + d * 86400000 + k * 60000 })), src: 'file' });
         }""")
-        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Sommer 2026", timeout=15000)
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Réunion Frühjahr 2026", timeout=15000)
         assert "5 Touren an 5 Tagen" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.wait_for_selector("text=Mehrtagestouren"); assert "2 Etappen" in pg.inner_text("#view"), pg.inner_text("#view")
         pg.locator("a.li", has_text="2 Etappen").first.click(); pg.wait_for_selector("text=Tag 1 · Etappe 1/2"); assert "Tag 2 · Etappe 2/2" in pg.inner_text("#view"), pg.inner_text("#view")
@@ -312,6 +312,14 @@ def main():
           for (let d = 0; d < 5; d++) await Tours.add({ name: 'Insel ' + d, sport: 'hike', pts: mk(pl[d][0], pl[d][1], d), src: 'file' });
         }""")
         pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=La Gomera und Gran Canaria Herbst 2026", timeout=15000)
+        # Reise ausblenden / wieder einblenden / Zeitraum ändern
+        pg.locator("a.li", has_text="La Gomera und Gran Canaria").first.click(); pg.wait_for_selector("text=Ausblenden")
+        pg.get_by_role("button", name="Zeitraum ändern").click(); pg.wait_for_selector("text=Zeitraum der Reise")
+        pg.locator("input[type=date]").nth(1).fill("2026-10-07"); pg.get_by_role("button", name="Speichern", exact=True).click(); pg.wait_for_selector(".kpi:has-text('Touren') b:text-is('3')", timeout=8000)
+        pg.get_by_role("button", name="Ausblenden").click(); pg.wait_for_selector("text=Ausgeblendete Reisen (1)")
+        assert "La Gomera und Gran Canaria" not in pg.inner_text("#view").split("Ausgeblendete")[0], pg.inner_text("#view")
+        pg.locator("details summary", has_text="Ausgeblendete").click(); pg.locator("a.li", has_text="La Gomera").first.click(); pg.get_by_role("button", name="Wieder einblenden").click(); pg.wait_for_selector("text=La Gomera und Gran Canaria")
+        pg.evaluate("async () => { await DB.kvSet('tripPeriod', {}); }")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("select[aria-label='Region']:not([hidden])")
         pg.select_option("select[aria-label='Region']", label="La Gomera (3)"); pg.wait_for_function("document.querySelectorAll('.card.tour').length === 3")
         assert "Insel" in pg.inner_text(".card.tour"), pg.inner_text("#view")
@@ -358,6 +366,17 @@ def main():
         pg.wait_for_function("() => (document.querySelector('.fhud')?.innerText || '').includes('↑')", timeout=30000)
         pg.select_option("#fv", "8"); pg.fill("#fs", "990") if False else pg.evaluate("document.querySelector('#fs').value = 1000; document.querySelector('#fs').dispatchEvent(new Event('input'))")
         pg.wait_for_function("() => document.querySelector('#fp').innerText.includes('Nochmal')", timeout=20000)
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
+
+        # Reiseflug über mehrere Touren (zwei Inseln) mit Video-Aufnahme
+        ids = pg.evaluate("async () => (await Tours.list()).filter(t => /^Insel/.test(t.name)).map(t => t.id).join(',')")
+        pg.evaluate("window.__saved = null; Flug.title = 'Inselreise'; location.hash = '#/flug/set:' + %s" % json.dumps(ids))
+        pg.wait_for_function("() => (document.querySelector('.fhud')?.innerText || '').includes('Insel')", timeout=30000)
+        pg.select_option("#fv", "8"); pg.click("#frec"); pg.wait_for_function("() => window.__flugRec && window.__flugRec()")
+        pg.wait_for_function("() => document.querySelector('.fhud').innerText.includes('Weiterflug')", timeout=40000)
+        pg.evaluate("document.querySelector('#fs').value = 1000; document.querySelector('#fs').dispatchEvent(new Event('input'))")
+        pg.wait_for_function("() => window.__saved && /^flug-/.test(window.__saved.path || '')", timeout=30000)
+        assert pg.evaluate("window.__saved.name") == "Inselreise.webm" or pg.evaluate("window.__saved.name").endswith((".webm", ".mp4")), pg.evaluate("window.__saved")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
 
         b.close()
