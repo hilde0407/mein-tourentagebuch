@@ -91,7 +91,7 @@ Views['/flug'] = async (root, [id]) => {
     sel('fc', 'Kamera', [['follow', 'Kamera folgt'], ['free', 'Kamera frei']], 'follow'),
     sel('fz', 'Flughöhe', [[16, 'nah'], [14.8, 'mittel'], [13.4, 'weit']], 14.8),
     sel('fpi', 'Neigung', [['auto', 'automatisch'], [55, 'flach'], [68, 'schräg'], [78, 'sehr schräg']], 'auto'),
-    sel('fb', 'Karte', [['osm', 'Straßenkarte'], ['topo', 'Topografisch'], ['sat', 'Satellit']], style), recB);
+    sel('fb', 'Karte', [['osm', 'Straßenkarte'], ['topo', 'Topografisch'], ['sat', 'Satellit']], style), sel('fq', 'Videoqualität', [[1280, 'Video: Standard'], [1600, 'Video: Hoch'], [1920, 'Video: Sehr hoch']], 1600), recB);
   root.append(h('div', { class: 'flight', id: 'fl' }, mapEl, h('div', { class: 'fbar' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), h('b', { class: 'ft' }, t.name)), hud, ph, ctl, msg));
   const $v = k => root.querySelector('#' + k).value;
   if (!document.createElement('canvas').getContext('webgl') && !document.createElement('canvas').getContext('experimental-webgl')) { msg.textContent = 'Dieses Gerät unterstützt kein WebGL, die 3D-Ansicht ist nicht möglich.'; return; }
@@ -175,22 +175,45 @@ Views['/flug'] = async (root, [id]) => {
     toast('Video gespeichert: ' + await Native.json('saveFile', { name, mime: blob.type || 'video/mp4', path: tmp }), 7000);
   };
   const stopRec = () => { if (!rec) return; const r = rec; rec = null; r.mr.stop(); recB.textContent = '⏺ Video'; };
-  recB.onclick = () => {
+  /** Vor der Aufnahme die Strecke einmal im Schnelldurchlauf abfahren, damit alle Kartenkacheln und Höhendaten schon geladen sind (keine weißen Flächen im Video). */
+  const prewarm = async (zoom) => {
+    const steps = Math.min(40, Math.max(12, Math.round(N / 12))), t0 = performance.now(), e0 = mapErr;
+    for (let k = 0; k <= steps && !stopped; k++) {
+      if (performance.now() - t0 > 60000 || mapErr - e0 >= 4) break;     // bei schlechter oder fehlender Verbindung nicht ewig warten
+      const f = k / steps * (N - 1), i = Math.min(N - 1, Math.round(f)), p = P[i], lk = S[Math.min(N - 1, i + Math.max(6, Math.round(N / 60)))];
+      const tr = SET && p.trans ? Math.sin(Math.PI * p.tq) : 0;
+      m.jumpTo({ center: [at(S, f, 'lng'), at(S, f, 'lat')], bearing: Flug.brg([at(S, f, 'lat'), at(S, f, 'lng')], [lk.lat, lk.lng]), pitch: 62, zoom: zoom - 4 * tr });
+      msg.textContent = 'Karte wird geladen … ' + Math.round(k / steps * 100) + ' %'; msg.style.display = '';
+      await new Promise(ok => { let done = false; const fin = () => { if (!done) { done = true; ok(); } }; m.once('idle', fin); setTimeout(fin, 3000); m.triggerRepaint(); });
+    }
+    msg.style.display = 'none';
+  };
+  let preparing = false, mapErr = 0;
+  recB.onclick = async () => {
     if (rec) return stopRec();
+    if (preparing) return;
     const mime = window.MediaRecorder && ['video/mp4;codecs=avc1.42E01E', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(x => MediaRecorder.isTypeSupported(x));
     if (!mime) return toast('Dieses Gerät kann keine Videos aufnehmen.');
-    const c = m.getCanvas(), W = Math.min(c.width, 1280), oc = document.createElement('canvas'); oc.width = W; oc.height = Math.round(W * c.height / c.width);
-    const mr = new MediaRecorder(oc.captureStream(30), { mimeType: mime, videoBitsPerSecond: 4e6 }), chunks = [];
+    preparing = true; recB.disabled = true; playing = false; follow = false;
+    const zRec = zBase + 0.9, want = +$v('fq'), css = mapEl.clientWidth || 400, oldPR = m.getPixelRatio ? m.getPixelRatio() : window.devicePixelRatio;
+    try {
+      try { m.setPixelRatio(Math.min(3.5, Math.max(1, want / css))); } catch (e) { /* alte Auflösung */ }
+      await prewarm(zRec);
+    } finally { preparing = false; recB.disabled = false; }
+    if (stopped) return;
+    const c = m.getCanvas(), W = Math.min(c.width, want), oc = document.createElement('canvas'); oc.width = W; oc.height = Math.round(W * c.height / c.width);
+    const mr = new MediaRecorder(oc.captureStream(30), { mimeType: mime, videoBitsPerSecond: want >= 1920 ? 12e6 : want >= 1600 ? 9e6 : 6e6 }), chunks = [];
     mr.ondataavailable = e => e.data.size && chunks.push(e.data);
-    mr.onstop = () => saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern fehlgeschlagen: ' + e.message, 7000));
-    rec = { c: oc, x: oc.getContext('2d'), mr, ending: false };
+    mr.onstop = () => { try { m.setPixelRatio(oldPR); } catch (e) { /* egal */ } saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern fehlgeschlagen: ' + e.message, 7000)); };
+    rec = { c: oc, x: oc.getContext('2d'), mr, ending: false, stall: 0 };
     u = 0; prevU = 0; playing = true; follow = true; root.querySelector('#fc').value = 'follow'; bear = m.getBearing(); last = performance.now(); pp.textContent = '❚❚ Pause';
     mr.start(500); recB.textContent = '⏹ Aufnahme beenden';
   };
   window.__flugRec = () => rec;
   const tick = now => {
     if (stopped || !mapEl.isConnected) { stopped = true; if (rec) stopRec(); try { m.remove(); } catch (e) { /* egal */ } window.__flug = null; return; }
-    const dt = Math.max(0, Math.min(100, now - last)); last = now;
+    let dt = Math.max(0, Math.min(100, now - last)); last = now;
+    if (rec && !rec.ending && !m.areTilesLoaded() && rec.stall < 1500) { rec.stall += dt; dt = 0; } else if (rec && m.areTilesLoaded()) rec.stall = 0;   // bei der Aufnahme kurz warten, bis die Kacheln da sind
     if (playing) {
       u += dt / 1000 / Ttot * +$v('fv');
       if (u >= 1) { u = 1; playing = false; pp.textContent = '↻ Nochmal'; }
@@ -219,7 +242,7 @@ Views['/flug'] = async (root, [id]) => {
         pitchNow += (pitchWant - pitchNow) * Math.min(1, dt / 700) * (pitchWant < pitchNow ? 1 : 0.35);
         o.pitch = pitchNow;
       }
-      if (SET) o.zoom = zBase - 4 * (p.trans ? Math.sin(Math.PI * p.tq) : 0);   // im Übergang aufsteigen (herauszoomen) und danach wieder absinken
+      if (SET || rec) o.zoom = zBase + (rec ? 0.9 : 0) - (SET && p.trans ? 4 * Math.sin(Math.PI * p.tq) : 0);   // Aufnahme etwas näher; im Übergang aufsteigen (herauszoomen) und danach wieder absinken
       m.jumpTo(o);
     }
     requestAnimationFrame(tick);
@@ -235,6 +258,7 @@ Views['/flug'] = async (root, [id]) => {
   try { m.touchZoomRotate.enable(); m.touchZoomRotate.enableRotation(); m.touchPitch.enable(); m.dragRotate.enable(); } catch (e) { /* egal */ }
   ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart'].forEach(n => m.on(n, ev => { if (follow && ev && ev.originalEvent) { follow = false; root.querySelector('#fc').value = 'free'; } }));
   m.on('error', e => {
+    mapErr++;
     console.warn('3D:', e && e.error && e.error.message);
     if (e && e.error && /terrain|dem/i.test(String(e.error.message))) { msg.textContent = 'Höhendaten nicht erreichbar – Gelände wird flach dargestellt'; msg.style.display = ''; }
   });
