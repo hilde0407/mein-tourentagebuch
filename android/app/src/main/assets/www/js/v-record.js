@@ -58,9 +58,24 @@ Views['/rec'] = async root => {
       if (info.name || info.points) routeBox.append(h('div', { class: 'row' }, h('div', { style: { flex: 1 } }, h('b', null, '🧭 ' + (info.name || 'Geplante Route')), h('small', { class: 'muted' }, ' Sprachansagen sind aktiv')),
         h('button', { class: 'btn sm', onclick: () => { MTApp.clearRoute(); drawRoute(); } }, 'Entfernen')),
         h('div', { class: 'row' }, h('label', { class: 'sw' }, h('input', { type: 'checkbox', checked: Set_.get('guide') !== false, onchange: async e => { await Set_.set('guide', e.target.checked); MTApp.setGuide(e.target.checked); } }), ' Wege ansagen'), h('button', { class: 'btn sm', onclick: () => MTApp.guideTest() }, '🔊 Test')));
-      else routeBox.append(h('b', null, '🧭 Route mit Ansagen'), h('p', { class: 'muted' }, 'Wähle eine geplante Tour: Die App sagt dann Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
+      else routeBox.append(h('b', null, '🧭 Route mit Ansagen'), h('p', { class: 'muted' }, 'Wähle eine GPX-Datei oder eine geplante Tour: Die App sagt dann Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
+        h('button', { class: 'btn pri', id: 'gpxroute', onclick: pickGpx }, '📂 GPX-Datei vom Handy wählen'),
         planned.length ? h('select', { onchange: async e => { const t = planned.find(x => x.id === e.target.value); if (t) { startWith0(t); } } }, h('option', { value: '' }, 'Route wählen …'), planned.map(t => h('option', { value: t.id }, t.name + ' · ' + F.km(t.dist)))) : h('small', { class: 'muted' }, 'Noch keine geplante Tour. Im Reiter „Planen“ eine erstellen.'));
     };
+    /** Schnell: GPX-Datei vom Handy direkt als Route mit Ansagen verwenden (ohne sie erst zu importieren). */
+    async function pickGpx() {
+      try {
+        const f = await Native.json('pickFiles'); if (!f || !f.length) return;
+        const acts = await Parse.any(f[0].name, await Import.fetchBuf(f[0].url));
+        try { await Native.call('clearCache'); } catch (e) { /* egal */ }
+        const a = acts.find(x => x.pts && x.pts.length > 1);
+        if (!a) throw new Error('In der Datei ist keine Strecke zu finden.');
+        const sp = Geo.simplify(a.pts, 3), nm = (a.name || f[0].name || 'Route').replace(/\.(gpx|tcx|fit)$/i, '');
+        MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), nm); Junctions.load(sp);
+        if (a.sport) sport = a.sport; name.value = nm; drawChips(); drawRoute();
+        toast('Route „' + nm + '“ ist aktiv – Ansagen eingeschaltet');
+      } catch (e) { toast(e.message, 6000); }
+    }
     async function startWith0(t) { const pts = await Tours.points(t.id); const sp = Geo.simplify(pts, 3); MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name); Junctions.load(sp); sport = t.sport; name.value = t.name; drawChips(); drawRoute(); }
     void ri;
     drawRoute();

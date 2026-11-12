@@ -139,7 +139,7 @@ def main():
         # Gesicherte Aufzeichnung wiederherstellen (Tour war gelöscht)
         pg.evaluate("t => Tours.remove(t)", tid)
         pg.evaluate("g => { window.__baks=[{file:'rec_20260101_100000.gpx',size:2048,ts:1767261600000}]; window.__bakgpx=g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
-        pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector("#baks"); pg.click("#baks"); pg.locator(".sheet .li").first.click()
+        pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector("#baks"); pg.wait_for_selector("#gpxroute"); pg.click("#baks"); pg.locator(".sheet .li").first.click()
         pg.get_by_role("button", name="Wiederherstellen", exact=True).click()
         pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=6000)
         # Planen ist von Start und Touren aus erreichbar
