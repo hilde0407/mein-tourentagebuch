@@ -383,6 +383,8 @@ def main():
         fl = pg.evaluate("async () => { const l = await Tours.list(); location.hash = '#/flug/' + l[0].id; return l[0].id; }")
         pg.wait_for_selector(".flight .fm canvas", timeout=20000)
         pg.wait_for_function("() => (document.querySelector('.fhud')?.innerText || '').includes('↑')", timeout=30000)
+        pg.wait_for_selector(".flight.idle", timeout=15000)      # Bedienelemente blenden sich aus …
+        pg.dispatch_event(".flight .fm", "pointerdown"); pg.wait_for_selector(".flight:not(.idle)", timeout=3000)      # … und kommen per Tipp zurück
         pg.select_option("#fv", "8"); pg.fill("#fs", "990") if False else pg.evaluate("document.querySelector('#fs').value = 1000; document.querySelector('#fs').dispatchEvent(new Event('input'))")
         pg.wait_for_function("() => document.querySelector('#fp').innerText.includes('Nochmal')", timeout=20000)
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
@@ -391,7 +393,7 @@ def main():
         ids = pg.evaluate("async () => (await Tours.list()).filter(t => /^Insel/.test(t.name)).map(t => t.id).join(',')")
         pg.evaluate("window.__saved = null; Flug.title = 'Inselreise'; location.hash = '#/flug/set:' + %s" % json.dumps(ids))
         pg.wait_for_function("() => (document.querySelector('.fhud')?.innerText || '').includes('Insel')", timeout=30000)
-        pg.select_option("#fv", "8"); pg.click("#frec"); pg.wait_for_function("() => window.__flugRec && window.__flugRec()", timeout=90000)
+        pg.select_option("#fv", "8"); pg.evaluate("document.querySelector('#frec').click()"); pg.wait_for_function("() => window.__flugRec && window.__flugRec()", timeout=90000)
         pg.wait_for_timeout(2000)
         pg.evaluate("document.querySelector('#fs').value = 1000; document.querySelector('#fs').dispatchEvent(new Event('input'))")
         pg.wait_for_function("() => window.__saved && /^flug-/.test(window.__saved.path || '')", timeout=30000)

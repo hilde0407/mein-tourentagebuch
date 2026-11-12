@@ -250,6 +250,14 @@ Views['/flug'] = async (root, [id]) => {
   };
   pp.onclick = () => { if (u >= 1) { u = 0; playing = true; } else playing = !playing; pp.textContent = playing ? '❚❚ Pause' : '▶ Weiter'; if (playing) last = performance.now(); };
   slider.oninput = () => { u = +slider.value / 1000; };
+  // Bedienelemente blenden sich beim Abspielen nach ein paar Sekunden aus; ein Tipp auf die Karte bringt sie zurück
+  const fl = root.querySelector('#fl'); let hideT = null;
+  const wake = () => {
+    fl.classList.remove('idle'); clearTimeout(hideT);
+    hideT = setTimeout(function again() { if (stopped || !fl.isConnected) return; if (playing) fl.classList.add('idle'); else hideT = setTimeout(again, 2000); }, 4000);
+  };
+  ['pointerdown', 'pointermove', 'wheel', 'keydown'].forEach(ev => fl.addEventListener(ev, wake, { passive: true, capture: true }));
+  wake();
   function apply(k) {
     if (k === 'fc') { follow = $v('fc') === 'follow'; if (follow) bear = m.getBearing(); }
     else if (k === 'fz') { zBase = +$v('fz'); m.setZoom(zBase); }

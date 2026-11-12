@@ -213,3 +213,5 @@ h3.sub{font-size:1rem;margin:14px 0 4px}
 .holdstop .ht{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px}.holdstop .ht b{font-size:1.15rem}.holdstop .ht small{opacity:.85}
 .holdstop.on{color:#fff}
 .pinrow{padding:6px 0;border-bottom:1px solid var(--line,#ddd)}.pinrow .btn{margin-left:8px}
+
+.flight .fbar,.flight .fctl{transition:opacity .5s}.flight.idle .fbar,.flight.idle .fctl{opacity:0;pointer-events:none}
