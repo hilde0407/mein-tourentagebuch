@@ -143,7 +143,7 @@ Views['/flug'] = async (root, [id]) => {
   const at = (A, f, key) => { const i = Math.min(N - 2, Math.floor(f)), r = f - i; return A[i][key] + (A[i + 1][key] - A[i][key]) * r; };
   photos.forEach(p => { const k = P[p.gi]; new maplibregl.Marker({ element: h('div', { class: 'fcam', title: 'Foto' }) }).setLngLat([k.lng, k.lat]).addTo(m); });
   let phUntil = 0, prevU = 0;
-  const showPh = p => { phi.src = Photos.thumb(p.id); phc.textContent = F.time(p.ts) + ' Uhr'; ph.classList.add('on'); phUntil = performance.now() + 4500; };
+  const showPh = p => { ph.style.top = (hud.offsetTop + hud.offsetHeight + 8) + 'px'; phi.src = Photos.thumb(p.id); phc.textContent = F.time(p.ts) + ' Uhr'; ph.classList.add('on'); phUntil = performance.now() + 4500; };
   const hrZ = typeof MapKit.hrMax === 'function' ? MapKit.hrMax() : 190;
   const hudText = (p, f) => {
     const sg = segs[p.seg] || segs[0], nm = SET ? (p.trans ? 'Weiterflug …' : sg.t.name) + ' · ' : '';
