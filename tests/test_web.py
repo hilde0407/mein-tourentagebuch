@@ -306,6 +306,12 @@ def main():
         assert t2["elevFix"] == 1 and t2["up"] < 5 and abs(t2["maxAlt"] - 1244) < 2, t2
         back = pg.evaluate("async (id) => { const t = (await Tours.list()).find(t => t.id === id); return Fix.restoreEle(t); }", fx["id"])
         assert back["up"] > 400 and not back.get("elevFix"), back
+        # Höhe aus Uhr: Menüeintrag da, ohne Zepp-Zugang klare Meldung statt Absturz
+        pg.evaluate("DB.kvSet('zepp', null)")
+        pg.evaluate("location.hash = '#/tour/' + %s" % json.dumps(fx["id"])); pg.wait_for_selector("header.top button[aria-label=Aktionen]")
+        pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
+        pg.locator("header.top button[aria-label=Aktionen]").click(); pg.get_by_text("Höhe aus Uhr abgleichen (Zepp)").click()
+        pg.wait_for_function("() => /Zepp-Zugang fehlt/.test(document.body.innerText)", timeout=8000)
         # Track: Ausreißer + zu schneller Abschnitt
         tf = pg.evaluate("""async () => {
           const base = Date.UTC(2025, 7, 2, 8);

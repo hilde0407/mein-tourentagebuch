@@ -60,15 +60,43 @@ const Fix = {
     trk.ele = ele;
     await DB.put('tracks', trk);
     t.elevFix = 1;
-    return Tours.recalc(t.id).then(r => { r.elevFix = 1; r.origUp = t.origUp; r.origDown = t.origDown; return Tours.save(r).then(() => r); });
+    return Tours.recalc(t.id).then(r => { r.elevFix = 1; delete r.elevSrc; r.origUp = t.origUp; r.origDown = t.origDown; return Tours.save(r).then(() => r); });
   },
   async restoreEle(t) {
     const trk = await DB.get('tracks', t.id);
     if (trk && trk.origEle) { trk.ele = trk.origEle; delete trk.origEle; await DB.put('tracks', trk); }
     const o = { up: t.origUp, down: t.origDown };
     const r = await Tours.recalc(t.id);
-    delete r.elevFix; delete r.origUp; delete r.origDown;
+    delete r.elevFix; delete r.elevSrc; delete r.origUp; delete r.origDown;
     if (o.up != null && t.src === 'komoot') { r.up = o.up; r.down = o.down; r.upSrc = 'komoot'; }
+    await Tours.save(r); return r;
+  },
+  /** Höhen aus der Uhr (Zepp, Barometer) übernehmen. Zuordnung Training ↔ Tour wie beim Puls-Nachtrag (Import.Zepp.match), Originalhöhen
+      landen wie bei demFix in trk.origEle und kommen über restoreEle zurück. Gibt die neue Tour zurück. */
+  async zeppEle(t) {
+    const Z = Import.Zepp, acc = await DB.kvGet('zepp', null);
+    if (!acc || !acc.token) throw new Error('Zepp-Zugang fehlt – bitte unter Einstellungen → Import einrichten');
+    const trk = await DB.get('tracks', t.id);
+    if (!trk || trk.lat.length < 5) throw new Error('Keine Streckenpunkte vorhanden');
+    let sum = null, nxt = null;
+    for (;;) {
+      const j = await Z.req(acc, '/v1/sport/run/history.json', nxt != null ? { trackid: nxt } : {});
+      sum = (j.data.summary || []).find(s => Z.match(s, [t]));
+      nxt = j.data.next; if (sum || nxt == null || nxt === -1) break;
+    }
+    if (!sum) throw new Error('Kein passendes Zepp-Training zu dieser Tour gefunden');
+    const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: sum.trackid, source: sum.source || '' });
+    const t0 = trk.t.find(x => x != null);
+    // Nur ganze Halbstunden ausgleichen (Zeitzonen-Versatz, z. B. bei Komoot-Zeiten); ein paar Minuten Startunterschied zwischen Uhr und Handy sind echte Zeit und dürfen die Höhenreihe nicht verschieben
+    const shift = t0 != null ? Math.round((t0 - parseInt(sum.trackid, 10) * 1000) / 1800000) * 1800000 : 0;
+    const zp = Z.decode(sum, dj.data).filter(p => p.ele != null).map(p => ({ t: p.t + shift, alt: p.ele }));
+    const ele = Geo.alignAlt(trk.lat.map((_, i) => ({ t: trk.t[i], ele: trk.ele[i] })), zp);
+    if (!ele) throw new Error('Zepp-Training hat keine brauchbaren Höhendaten');
+    if (!trk.origEle) { trk.origEle = trk.ele.slice(); t.origUp = t.up; t.origDown = t.down; }
+    trk.ele = ele;
+    await DB.put('tracks', trk);
+    const r = await Tours.recalc(t.id);
+    r.elevSrc = 'zepp'; delete r.elevFix; r.origUp = t.origUp; r.origDown = t.origDown;
     await Tours.save(r); return r;
   },
   /** Höhenangabe wirkt unglaubwürdig (mehr als 120 Höhenmeter je km und über 400 m). */

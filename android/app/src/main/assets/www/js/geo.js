@@ -95,6 +95,27 @@ const Geo = {
     const a = pts[lo], b = pts[hi], f = (b.t - a.t) ? (t - a.t) / (b.t - a.t) : 0;
     return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f, i: lo };
   },
+  /** Zepp-Höhen (Barometer) auf die Punkte einer Tour legen. zpts: [{t, alt}] mit t in ms (gleiche Zeitbasis wie pts[].t), alt in m.
+      Der Barometer driftet im Absolutwert, der Verlauf (Auf-/Abstieg) stimmt: darum Zepp-Höhe minus Median(Zepp − Original), das Niveau der Tour bleibt.
+      Gibt ein Array neuer Höhen (Länge pts; Punkte ohne Zepp-Wert behalten ihre Originalhöhe) oder null bei zu dünner Datenlage zurück. */
+  alignAlt(pts, zpts) {
+    const z = (zpts || []).filter(p => p && Number.isFinite(p.t) && Number.isFinite(p.alt) && p.alt > -500 && p.alt < 9000).sort((a, b) => a.t - b.t);   // Platzhalter wie −20000 m = „keine Höhe“
+    if (z.length < 6 || !pts.length) return null;
+    const TOL = 30000, zv = pts.map(p => {
+      const t = p.t;
+      if (!t || t < z[0].t - TOL || t > z[z.length - 1].t + TOL) return null;
+      if (t <= z[0].t) return z[0].alt;
+      if (t >= z[z.length - 1].t) return z[z.length - 1].alt;
+      let lo = 0, hi = z.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (z[m].t <= t) lo = m; else hi = m; }
+      const a = z[lo], b = z[hi], f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
+      return a.alt + (b.alt - a.alt) * f;
+    });
+    if (zv.filter(v => v != null).length < 0.8 * pts.length) return null;
+    const d = pts.map((p, i) => zv[i] != null && p.ele != null && !isNaN(p.ele) ? zv[i] - p.ele : null).filter(v => v != null).sort((a, b) => a - b);
+    const med = d.length ? (d.length % 2 ? d[d.length >> 1] : (d[d.length / 2 - 1] + d[d.length / 2]) / 2) : 0;   // ohne Originalhöhen: Zepp unverändert
+    return pts.map((p, i) => zv[i] != null ? Math.round((zv[i] - med) * 10) / 10 : p.ele);
+  },
   /** Kleinster Abstand (m) und Index eines Punktes zur Spur. */
   nearest(pts, lat, lon) {
     let best = 1e12, bi = -1;

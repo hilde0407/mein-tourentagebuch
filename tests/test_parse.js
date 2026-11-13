@@ -41,5 +41,17 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  const col=(s,idx,defOne)=>(s||'').split(';').filter(Boolean).map(v=>{if(idx!=null)v=v.split(',')[idx];return parseInt(v||(defOne?1:0),10)||0});
  const cum=a=>{let s=0;return a.map(v=>s+=v)};
  A.deepStrictEqual(cum(col('1,108;0,1;,0;,-2',1)),[108,109,109,107]);
+
+ // Höhe aus Uhr: Absolutniveau der Tour, Verlauf vom Barometer
+ const T0=1e12, tp=Array.from({length:20},(_,k)=>({t:T0+k*60000,ele:500+(k%2?6:-6)+(k%3?2:-2)}));
+ const zs=(f)=>Array.from({length:30},(_,k)=>({t:T0+k*(19*60000/29),alt:f(k)}));
+ const zl=zs(k=>480+80*k/29), al=Geo.alignAlt(tp,zl);
+ const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s.length%2?s[s.length>>1]:(s[s.length/2-1]+s[s.length/2])/2};
+ A.strictEqual(al.length,20); A.ok(Math.abs(med(al.map((v,i)=>v-tp[i].ele)))<=0.1,'Niveau');A.ok(Math.abs(med(al)-500)<=5,'Niveau '+med(al));   // Differenz zum Original im Median 0
+ A.ok(Math.abs(al[19]-al[0]-80)<=1,'Anstieg '+(al[19]-al[0]));
+ A.ok(Geo.alignAlt(tp,zs(k=>k%4?480+k:-20000))!==null);                       // Platzhalter werden ignoriert, Rest reicht
+ A.strictEqual(Geo.alignAlt(tp,zs(k=>k<5?500+k:-20000)),null);                // weniger als 6 gültige Werte
+ A.strictEqual(Geo.alignAlt(tp,zl.filter(p=>p.t<T0+10*60000)),null);          // Abdeckung unter 80 %
+ A.strictEqual(Geo.alignAlt(tp.map(p=>({t:p.t,ele:null})),zl)[0],480);        // ohne Originalhöhen: Zepp unverändert
  console.log('OK');
 })();

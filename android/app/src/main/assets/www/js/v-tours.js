@@ -208,7 +208,7 @@ Views['/tour'] = async (root, [id]) => {
   }).catch(() => {});
   const note = h('textarea', { rows: 3, placeholder: 'Notizen zur Tour …', onchange: async e => { t.note = e.target.value; await Tours.save(t); } }, t.note || '');
   const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
-  body.append(...[stageBox, Fix.suspicious(t) && !t.elevFix ? h('div', { class: 'banner' }, '⛰️ Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', h('div', { class: 'row' }, h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren'))) : null,
+  body.append(...[stageBox, Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? h('div', { class: 'banner' }, '⛰️ Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', h('div', { class: 'row' }, h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren'))) : null,
     t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
     h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
@@ -257,8 +257,9 @@ Views['/tour'] = async (root, [id]) => {
       it('🧭', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
       it('📷', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); }),
       it('⛰️', t.elevFix ? 'Höhen neu aus Gelände berechnen' : 'Höhen korrigieren (Geländemodell)', fixEle),
+      it('⌚', t.elevSrc ? 'Höhe aus Uhr (bereits abgeglichen) – erneut abgleichen' : 'Höhe aus Uhr abgleichen (Zepp)', zeppEle),
       it('🛠️', 'GPS-Track korrigieren', () => Nav.go('/fix/' + id)),
-      t.elevFix ? it('↩️', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
+      t.elevFix || t.elevSrc ? it('↩️', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
       it('🔄', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id)); toast('Neu berechnet'); Nav.render(); }),
       it('🗑️', 'Löschen', async () => { if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Löschen')) { await Tours.remove(id); Nav.go('/'); } })));
   }
@@ -276,6 +277,11 @@ Views['/tour'] = async (root, [id]) => {
     toast('Höhen werden aus dem Gelände berechnet …');
     try { const o = t.up; Object.assign(t, await Fix.demFix(t)); toast(`Aufstieg ${F.m(o)} → ${F.m(t.up)}`); Nav.render(); }
     catch (e) { toast('Nicht möglich: ' + e.message); }
+  }
+  async function zeppEle() {
+    toast('Höhen werden von der Uhr geholt …');
+    try { const o = t.up; Object.assign(t, await Fix.zeppEle(t)); toast(`Höhe aus Zepp übernommen: ↑ ${F.m(t.up)} (vorher ${F.m(o)})`); Nav.render(); }
+    catch (e) { toast(e.message); }
   }
   async function changeSport() {
     const s = sheet('Sportart', h('div', { class: 'list' }, Sports.list.map(sp => h('button', { class: 'li', onclick: async () => { t.sport = sp[0]; await Tours.save(t); s.close(); Nav.render(); } }, h('span', { class: 'li-i' }, sp[2]), h('span', { class: 'li-t' }, h('b', null, sp[1]))))));
