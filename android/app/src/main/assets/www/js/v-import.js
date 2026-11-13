@@ -65,6 +65,7 @@ Views['/import'] = async root => {
       h('div', { class: 'row end wrap' },
         h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Abmelden'),
         h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert ✓'); } catch (e) { toast(e.message, 8000); } } }, 'Zugang testen'),
+        h('button', { class: 'btn', onclick: () => { s.close(); run('Höhe aus Uhr', async (upd, txt) => { txt.textContent = 'Zepp-Trainings laden …'; const r = await Fix.zeppEleAll(c, upd); return `Höhe aus Uhr abgeglichen: ${r.done} von ${r.total} passenden Touren` + (r.none ? `, ${r.none} ohne brauchbare Höhendaten` : '') + (r.fail ? `, ${r.fail} fehlgeschlagen` : ''); }); } }, '⌚ Höhe für alle Touren abgleichen'),
         h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Aktivitäten laden')));
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
       h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw),

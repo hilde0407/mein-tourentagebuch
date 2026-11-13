@@ -85,6 +85,11 @@ const Fix = {
       nxt = j.data.next; if (sum || nxt == null || nxt === -1) break;
     }
     if (!sum) throw new Error('Kein passendes Zepp-Training zu dieser Tour gefunden');
+    return Fix.zeppEleWith(t, trk, acc, sum);
+  },
+  /** Kern des Abgleichs für ein bereits gefundenes Zepp-Training (wird auch vom Sammel-Abgleich genutzt). */
+  async zeppEleWith(t, trk, acc, sum) {
+    const Z = Import.Zepp;
     const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: sum.trackid, source: sum.source || '' });
     const t0 = trk.t.find(x => x != null);
     // Nur ganze Halbstunden ausgleichen (Zeitzonen-Versatz, z. B. bei Komoot-Zeiten); ein paar Minuten Startunterschied zwischen Uhr und Handy sind echte Zeit und dürfen die Höhenreihe nicht verschieben
@@ -98,6 +103,29 @@ const Fix = {
     const r = await Tours.recalc(t.id);
     r.elevSrc = 'zepp'; delete r.elevFix; r.origUp = t.origUp; r.origDown = t.origDown;
     await Tours.save(r); return r;
+  },
+  /** Alle Touren mit passendem Zepp-Training abgleichen (Verlauf nur einmal laden). Schon abgeglichene oder mit Geländemodell korrigierte Touren bleiben unberührt. */
+  async zeppEleAll(acc, onProgress) {
+    const Z = Import.Zepp; let sums = [], nxt = null;
+    for (;;) {
+      const j = await Z.req(acc, '/v1/sport/run/history.json', nxt != null ? { trackid: nxt } : {});
+      sums = sums.concat(j.data.summary || []);
+      nxt = j.data.next; if (nxt == null || nxt === -1) break;
+    }
+    const mine = (await Tours.list()).filter(t => t.status !== 'planned' && !t.elevSrc && !t.elevFix);
+    const todo = [];
+    for (const s of sums) { const t = Z.match(s, mine); if (t && !todo.some(x => x.t.id === t.id)) todo.push({ s, t }); }
+    const res = { done: 0, none: 0, fail: 0, total: todo.length };
+    for (let i = 0; i < todo.length; i++) {
+      const { s, t } = todo[i];
+      if (onProgress) onProgress(i + 1, todo.length, F.dshort(s.trackid * 1000));
+      try {
+        const trk = await DB.get('tracks', t.id);
+        if (!trk || trk.lat.length < 5) { res.none++; continue; }
+        await Fix.zeppEleWith(t, trk, acc, s); res.done++;
+      } catch (e) { if (/brauchbaren/.test(e.message)) res.none++; else res.fail++; }
+    }
+    return res;
   },
   /** Höhenangabe wirkt unglaubwürdig (mehr als 120 Höhenmeter je km und über 400 m). */
   suspicious: t => (t.dist || 0) > 500 && (t.up || 0) > 120 * (t.dist / 1000) && (t.up || 0) > 400,

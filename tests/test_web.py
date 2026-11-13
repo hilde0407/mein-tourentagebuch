@@ -250,6 +250,14 @@ def main():
         assert "Token" in zr["bad"] and zr["token"] == "abcDEF123456abcDEF123456" and zr["via"] and zr["host"] == "https://api-mifit-de2.zepp.com", zr
         assert zr["seen"][0].startswith("https://api-mifit-de2.zepp.com/v1/sport/run/history.json|abcDEF"), zr
         pg.get_by_text("Zepp / Amazfit").click(); pg.wait_for_selector("text=Angemeldet (mit Token)")
+        assert pg.get_by_text("Höhe für alle Touren abgleichen").count() == 1
+        # Sammel-Abgleich: ohne passende Touren/Trainings nichts zu tun, Verlauf wird geladen
+        zb = pg.evaluate("""async () => {
+          const o = Import.Zepp.req; let calls = 0;
+          Import.Zepp.req = async () => { calls++; return { data: { summary: [], next: -1 } }; };
+          try { const r = await Fix.zeppEleAll({ token: 'x' }, null); return { r, calls }; } finally { Import.Zepp.req = o; }
+        }""")
+        assert zb["r"]["total"] == 0 and zb["r"]["done"] == 0 and zb["calls"] == 1, zb
         pg.get_by_text("Zugang testen").click(); pg.wait_for_selector("text=Zugang funktioniert")
         pg.get_by_text("Abmelden").click(); pg.wait_for_selector("text=Prüfen & laden")
         assert pg.evaluate("() => !document.querySelector('input[placeholder^=\"Token einfügen\"]').closest('div[hidden]')")
