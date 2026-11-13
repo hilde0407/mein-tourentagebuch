@@ -146,6 +146,8 @@ code{background:var(--accbg);padding:1px 5px;border-radius:5px}
 .ysm{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 4px;padding-top:10px;border-top:1px solid var(--line)}
 .ysm b{display:block;font-family:var(--d);font-size:1.15rem;font-variant-numeric:tabular-nums}.ysm small{color:var(--muted);font-size:.78rem}
 .year .bars{height:84px;margin-top:16px}.year .bar i{border-radius:3px 3px 0 0;opacity:.55}.year .bar.now i{opacity:1;background:var(--yellow)}.year .bar.now small{color:var(--ink);font-weight:700}
+.ygoals{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}.ygoal{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;margin-bottom:10px}.ygoal span{font-weight:600;font-size:.85rem}.ygoal .gbar{grid-column:1/-1;height:10px}.ygoal small{grid-column:1/-1;color:var(--muted);font-size:.8rem}
+.ylink{display:block;margin-top:8px;text-align:right}#yset{margin-top:12px;text-align:left;color:var(--muted)}
 .hcmp{display:inline-block;font-weight:600}
 .hcmp.up{color:#1b7a4b}.hcmp.down{color:#b3601e}
 @media (prefers-color-scheme:dark){.hcmp.up{color:#6fcf97}.hcmp.down{color:#f0a070}}
@@ -185,6 +187,7 @@ h3.sub{font-size:1rem;margin:14px 0 4px}
 .sh-cap{position:absolute;left:16px;right:16px;bottom:max(16px,env(safe-area-inset-bottom));text-shadow:0 1px 5px #000;display:flex;flex-direction:column;gap:2px;pointer-events:none}
 .sh-cap b{font-size:22px;line-height:1.15}.sh-cap span{font-size:15px;opacity:.9}
 .sh-ctl{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;display:flex;gap:8px;transition:opacity .4s}.sh-ctl.off{opacity:0;pointer-events:none}
+.sh-prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.2);pointer-events:none}.sh-prog i{display:block;height:100%;width:0;background:rgba(255,255,255,.7);transition:width .4s}
 .sh-ctl .ico{background:rgba(0,0,0,.6);color:#fff;border-radius:24px;min-width:48px;height:48px;padding:0 14px}
 @media (prefers-reduced-motion:reduce){.sh-s.on{animation:none}}
 .flight{position:fixed;inset:0;background:#0e2a2b;color:#fff;z-index:30}
@@ -215,3 +218,14 @@ h3.sub{font-size:1rem;margin:14px 0 4px}
 .pinrow{padding:6px 0;border-bottom:1px solid var(--line,#ddd)}.pinrow .btn{margin-left:8px}
 
 .flight .fbar,.flight .fctl{transition:opacity .5s}.flight.idle .fbar,.flight.idle .fctl{opacity:0;pointer-events:none}
+/* Tourenkacheln mit Bildhintergrund (Foto oder Kartenausschnitt); Text bleibt auf satt dunklem Verlauf lesbar */
+a.tour.bg{position:relative;overflow:hidden;min-height:112px;align-items:flex-end;border-color:#0e2a2b;background:#0e2a2b;color:#fff}
+.bgimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+a.tour.bg::before{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(10,30,31,.15) 0%,rgba(10,30,31,.55) 40%,rgba(10,30,31,.94) 78%)}
+a.tour.bg.map::before{background:linear-gradient(180deg,rgba(10,30,31,.35) 0%,rgba(10,30,31,.7) 40%,rgba(10,30,31,.94) 78%)}
+a.tour.bg .tb{position:relative;z-index:2;padding-top:44px;width:100%}
+a.tour.bg .tb b,a.tour.bg .tb small,a.tour.bg .met{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+a.tour.bg .tb small.stage{color:#fff}
+a.tour.bg .pv{position:absolute;top:8px;right:8px;z-index:2;width:64px;height:48px;background:none;border-radius:0;overflow:visible;filter:drop-shadow(0 0 1.5px rgba(10,30,31,.9)) drop-shadow(0 1px 3px rgba(0,0,0,.45))}
+a.tour.bg.map .pv{display:none}
+a.tour.bg .pv svg{width:100%;height:100%}

@@ -139,15 +139,39 @@ const Photos = {
     const tcache = {};
     for (const p of ph) {
       if (!p.ts || (p.tour && !force)) continue;
-      const ts = p.ts + cams * (p.src === 'kamera' ? 0 : 0);
+      const ts = p.ts + (p.src === 'kamera' ? 0 : cams);     // in der App aufgenommen: Gerätezeit stimmt, kein Kameraversatz
+      let t, o = 0;
       const cands = tours.filter(t => ts >= t.start - margin && ts <= t.end + margin);
-      if (!cands.length) continue;
-      cands.sort((a, b) => Math.abs((a.start + a.end) / 2 - ts) - Math.abs((b.start + b.end) / 2 - ts));
-      const t = cands.find(c => ts >= c.start && ts <= c.end) || cands[0];
+      if (cands.length) {
+        cands.sort((a, b) => Math.abs((a.start + a.end) / 2 - ts) - Math.abs((b.start + b.end) / 2 - ts));
+        t = cands.find(c => ts >= c.start && ts <= c.end) || cands[0];
+      } else {
+        // Rückfall: EXIF-Ortszeit ohne Zeitzone liegt evtl. um ganze/halbe Stunden neben den (korrekten) GPS-Zeiten.
+        // Vorzeichen: o > 0 heißt, die Fotozeit geht o vor (Prüfzeit = ts − o). Streng im Fenster, damit nichts Falsches greift.
+        let best = null;
+        for (let k = 1; k <= 28; k++) for (const oo of [k * 1800000, -k * 1800000]) {
+          const q = ts - oo;
+          for (const c of tours) {
+            if (q < c.start || q > c.end) continue;
+            let d = Math.abs((c.start + c.end) / 2 - q);      // ohne GPS: Abstand zur Fenstermitte
+            if (p.lat != null) {
+              // mit GPS muss die Spur dem Foto nahe kommen; Spur zur Kostenbegrenzung vereinfachen
+              const pts = tcache[c.id] || (tcache[c.id] = await Tours.points(c.id));
+              const sp = tcache[c.id + 's'] || (tcache[c.id + 's'] = Geo.simplify(pts, 50));
+              d = 1e12; for (const x of sp) d = Math.min(d, Geo.dist(p.lat, p.lon, x.lat, x.lon));
+              if (d >= 1000) continue;
+            }
+            if (!best || Math.abs(oo) < Math.abs(best.o) || (Math.abs(oo) === Math.abs(best.o) && d < best.d)) best = { t: c, o: oo, d };
+          }
+        }
+        if (!best) continue;
+        t = best.t; o = best.o;
+      }
       p.tour = t.id;
+      if (o) p.tzOff = o; else delete p.tzOff;      // erkannte Zeitzonen-Abweichung, nur zur Nachvollziehbarkeit
       if (p.lat == null || p.pos === 'track') {
         const pts = tcache[t.id] || (tcache[t.id] = await Tours.points(t.id));
-        const g = Geo.at(pts, ts, margin);
+        const g = Geo.at(pts, ts - o, margin);
         if (g) { p.lat = g.lat; p.lon = g.lon; p.pos = 'track'; }
       }
       changed.push(p);

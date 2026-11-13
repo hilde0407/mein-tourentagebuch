@@ -17,6 +17,58 @@ function previewSvg(pts, color, box) {
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>${ends}</svg>`;
 }
 
+/** Erstes Foto der Tour ohne erkanntes Gesicht (höchstens 4 prüfen; -1 = unbekannt zählt als brauchbar). Null, wenn keins taugt. */
+async function pickPhoto(tid) {
+  const ps = (await DB.byIndex('photos', 'tour', tid)).filter(p => !p.video).sort((a, b) => a.ts - b.ts);
+  for (const p of ps.slice(0, 4)) {
+    let n = p.faces;
+    if (n == null) {
+      try {
+        n = parseInt(await Native.call('photoFaces', { id: p.id }), 10);
+        if (isNaN(n)) n = -1;
+        const cur = await DB.get('photos', p.id);   // frisch lesen, damit keine zwischenzeitliche Änderung überschrieben wird
+        if (cur) { cur.faces = n; await DB.put('photos', cur); }
+      } catch (e) { n = -1; }                        // keine Hülle / Fehler: nicht merken, später neu versuchen
+    }
+    if (!(n >= 1)) return p;
+  }
+  return null;
+}
+
+/** Kartenausschnitt mit Track als JPEG-dataURL; wirft bei jedem Problem (offline, fehlende Kachel), dann bleibt es bei der SVG. */
+async function tileMapImage(t, pts) {
+  const W = 560, H = 224, pad = 28, T = 256;
+  MapKit.init();
+  const lay = MapKit.layer(), tpl = lay._url, zmax = Math.min(15, lay.options.maxZoom || 15);
+  if (!window.caches || /\{s\}/.test(tpl)) throw 0;
+  const sp = Geo.simplify(pts, 5), b = Geo.bbox(sp);
+  const wx = (lon, z) => (lon + 180) / 360 * T * 2 ** z;
+  const wy = (lat, z) => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * T * 2 ** z;
+  let z = zmax;
+  while (z > 3 && (wx(b[3], z) - wx(b[1], z) > W - pad * 2 || wy(b[0], z) - wy(b[2], z) > H - pad * 2)) z--;
+  const ox = (wx(b[1], z) + wx(b[3], z)) / 2 - W / 2, oy = (wy(b[0], z) + wy(b[2], z)) / 2 - H / 2, n = 2 ** z;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'), c = await caches.open(MapKit.cacheName), jobs = [];
+  for (let x = Math.floor(ox / T); x <= Math.floor((ox + W - 1) / T); x++) for (let y = Math.floor(oy / T); y <= Math.floor((oy + H - 1) / T); y++) {
+    if (y < 0 || y >= n) continue;
+    const url = tpl.replace('{z}', z).replace('{x}', ((x % n) + n) % n).replace('{y}', y);
+    jobs.push((async () => {
+      let r = await c.match(url);
+      if (!r) { r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw 0; c.put(url, r.clone()).catch(() => {}); }
+      const bmp = await createImageBitmap(await r.blob());
+      g.drawImage(bmp, Math.round(x * T - ox), Math.round(y * T - oy)); if (bmp.close) bmp.close();
+    })());
+  }
+  await Promise.all(jobs);
+  const at = p => [wx(p.lon, z) - ox, wy(p.lat, z) - oy], col = MapKit.routeColor(t.sport, '#2e7d32');
+  g.fillStyle = 'rgba(10,30,31,.18)'; g.fillRect(0, 0, W, H);
+  g.lineCap = g.lineJoin = 'round';
+  const line = (w, st) => { g.beginPath(); sp.forEach((p, i) => { const q = at(p); if (i && !p.newSeg) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }); g.lineWidth = w; g.strokeStyle = st; g.stroke(); };
+  line(8, '#fff'); line(4.5, col);
+  [[sp[0], '#fff', col], [sp[sp.length - 1], col, '#fff']].forEach(([p, f, s]) => { const q = at(p); g.beginPath(); g.arc(q[0], q[1], 7, 0, 7); g.fillStyle = f; g.fill(); g.lineWidth = 3; g.strokeStyle = s; g.stroke(); });
+  return cv.toDataURL('image/jpeg', 0.72);
+}
+
 Views['/'] = async root => {
   const F_ = TourUI.filter;
   const all = (await Tours.list()).filter(t => !t.hidden);
@@ -27,10 +79,37 @@ Views['/'] = async root => {
   const stageOf = {};      // Tour-ID → „Tag 2 · Etappe 2/5“ (kommt etwas später, weil die Zielpunkte erst gelesen werden)
   const list = h('div', { class: 'cards' }), sum = h('div', { class: 'sumline' });
   const chips = h('div', { class: 'chips' });
+  // Kachelhintergründe: Foto > Kartenausschnitt > Strecken-SVG. Ergebnis je Tour gemerkt, damit der Aufbau beim nächsten Mal sofort geht.
+  const tilebg = await DB.kvGet('tilebg', {});
+  let saveT = 0;
+  const saveBg = () => { if (!saveT) saveT = setTimeout(() => { saveT = 0; DB.kvSet('tilebg', tilebg).catch(() => {}); }, 1500); };
+  let busy = 0; const wait = [];   // höchstens 2 Karten-Canvas gleichzeitig, sonst ruckelt das Scrollen
+  const slot = async fn => { while (busy >= 2) await new Promise(r => wait.push(r)); busy++; try { return await fn(); } finally { busy--; const r = wait.shift(); if (r) r(); } };
+  const svgOf = (pv, t, pts, white) => { if (pts.length > 1) pv.innerHTML = previewSvg(pts, white ? '#fff' : MapKit.routeColor(t.sport, '#2e7d32')); };
+  const applyBg = async (pv, t, pts, en) => {
+    const card = pv.parentNode; if (!card || !en || en.kind === 'svg') return svgOf(pv, t, pts);
+    const img = h('img', { class: 'bgimg', alt: '', loading: 'lazy', src: en.kind === 'photo' ? Photos.thumb(en.ph) : en.data });
+    img.onerror = () => { img.remove(); card.classList.remove('bg', 'map'); delete tilebg[t.id]; saveBg(); if (en.kind === 'photo') resolve(pv, t, pts, true).catch(() => {}); else svgOf(pv, t, pts); };
+    card.classList.add('bg'); if (en.kind === 'map') card.classList.add('map');
+    card.prepend(img);
+    svgOf(pv, t, pts, true);
+  };
+  const resolve = async (pv, t, pts, noCache) => {
+    let en = noCache ? null : tilebg[t.id];
+    if (!en) {
+      const ph = noCache ? null : await pickPhoto(t.id);   // nach Bildfehler nicht erneut dasselbe Foto
+      if (ph) en = { kind: 'photo', ph: ph.id };
+      else if (pts.length > 1) { try { en = { kind: 'map', data: await slot(() => tileMapImage(t, pts)) }; } catch (e) { en = null; } }
+      if (en) { tilebg[t.id] = en; saveBg(); }
+    }
+    return applyBg(pv, t, pts, en);
+  };
   const io = new IntersectionObserver(es => es.forEach(async e => {
     if (!e.isIntersecting) return; io.unobserve(e.target);
-    const t = e.target.__t, pts = await Tours.points(t.id);
-    if (pts.length > 1) e.target.innerHTML = previewSvg(pts, MapKit.routeColor(t.sport, '#2e7d32'));
+    try {
+      const t = e.target.__t, pts = await Tours.points(t.id);
+      await resolve(e.target, t, pts);
+    } catch (err) { /* Kachel bleibt ohne Bild */ }
   }), { rootMargin: '200px' });
   const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Suchen', oninput: e => { F_.q = e.target.value; draw(); } });
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
@@ -128,7 +207,7 @@ Views['/tour'] = async (root, [id]) => {
     if (r) stageBox.append(h('a', { class: 'banner stagechip', id: 'stage', href: '#/reise/' + r.id }, '🥾 ' + Reisen.stage(r, t) + ' · Mehrtagestour ' + Reisen.range(r.first, r.last)));
   }).catch(() => {});
   const note = h('textarea', { rows: 3, placeholder: 'Notizen zur Tour …', onchange: async e => { t.note = e.target.value; await Tours.save(t); } }, t.note || '');
-  const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p))) }, '▶ Diashow'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
+  const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
   body.append(...[stageBox, Fix.suspicious(t) && !t.elevFix ? h('div', { class: 'banner' }, '⛰️ Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', h('div', { class: 'row' }, h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren'))) : null,
     t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
     h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),
@@ -173,6 +252,7 @@ Views['/tour'] = async (root, [id]) => {
       it('🏷️', 'Sportart ändern', changeSport),
       it('🧳', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
       it('📤', 'Als GPX speichern', exportGpx),
+      photos.some(p => !p.video) ? it('🎞️', 'Diashow teilen', () => Show.share(t, pts, photos)) : null,
       it('🔗', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
       it('🧭', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
       it('📷', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); }),

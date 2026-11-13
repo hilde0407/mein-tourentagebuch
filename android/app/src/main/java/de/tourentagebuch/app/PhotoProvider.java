@@ -34,7 +34,10 @@ public class PhotoProvider extends ContentProvider {
         return ParcelFileDescriptor.open(f, m);
     }
 
-    @Override public String getType(Uri uri) { String n = uri.getLastPathSegment(); return n != null && n.endsWith(".mp4") ? "video/mp4" : "image/jpeg"; }
+    @Override public String getType(Uri uri) {
+        String n = uri.getLastPathSegment();
+        return n != null && n.endsWith(".mp4") ? "video/mp4" : n != null && n.endsWith(".html") ? "text/html" : "image/jpeg";
+    }
     @Override public Cursor query(Uri u, String[] p, String s, String[] a, String o) { return null; }
     @Override public Uri insert(Uri u, ContentValues v) { return null; }
     @Override public int delete(Uri u, String s, String[] a) { return 0; }

@@ -1,8 +1,8 @@
 'use strict';
-Views['/stats'] = async root => {
+Views['/stats'] = async (root, [tab0]) => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
-  let year = years[0] || new Date().getFullYear(), sport = '', tab = 'ueber';
+  let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'kalender', 'auswertung', 'ziele'].includes(tab0) ? tab0 : 'ueber';
   const body = h('div', { class: 'pad' });
   root.append(topbar('Statistik', { back: true, noMenu: true }), body);
   const draw = () => {

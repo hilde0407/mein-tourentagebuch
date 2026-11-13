@@ -17,7 +17,7 @@ Views['/start'] = async root => {
   const drawHero = async () => {
     const t = all[at];
     const pts = await Tours.points(t.id);
-    const ph = (await DB.byIndex('photos', 'tour', t.id))[0];
+    const ph = (await pickPhoto(t.id)) || (await DB.byIndex('photos', 'tour', t.id))[0];   // möglichst ohne formatfüllende Personen
     hero.innerHTML = '';
     // Mit Foto: das Foto. Ohne Foto: die Strecke in Gelb über Höhenlinien auf Tannengrün.
     const pic = h('div', { class: 'heropic' + (ph ? ' foto' : '') });
@@ -45,22 +45,45 @@ Views['/start'] = async root => {
   const now = new Date(), yr = now.getFullYear();
   const inYear = (t, y) => new Date(t.start).getFullYear() === y;
   const tillToday = (t, y) => inYear(t, y) && new Date(t.start) <= new Date(y, now.getMonth(), now.getDate(), 23, 59, 59);
-  const cur = all.filter(t => inYear(t, yr)), prev = all.filter(t => tillToday(t, yr - 1));
+  const goals = (await DB.kvGet('goals', {}))[yr] || {};
   const sum = (ts, k) => ts.reduce((a, t) => a + (t[k] || 0), 0);
   const cmp = (a, b) => {
     if (!a || !b) return null;      // leeres Jahr: kein „−100 %“ anzeigen
     const d = Math.round((a - b) / b * 100);
     return h('span', { class: 'hcmp ' + (d >= 0 ? 'up' : 'down') }, (d >= 0 ? '▲ +' : '▼ ') + d + ' % ggü. ' + (yr - 1));
   };
-  const mon = Array(12).fill(0);
-  cur.forEach(t => { mon[new Date(t.start).getMonth()] += t.dist; });
-  const mx = Math.max(...mon, 1), nowM = now.getMonth();
-  body.append(h('h3', null, 'Dein Jahr ' + yr),
-    h('div', { class: 'card year' },
+  // Zielfortschritt wie in der Auswertung: Soll heute = Jahresanteil, der bis jetzt vergangen ist
+  const frac = Math.min(1, Math.max(0, (Date.now() - new Date(yr, 0, 1)) / (new Date(yr + 1, 0, 1) - new Date(yr, 0, 1))));
+  const nf = v => Math.round(v).toLocaleString('de-DE');
+  const goalRow = (lab, c, goal, unit) => h('div', { class: 'ygoal' }, h('span', null, lab),
+    h('div', { class: 'gbar' }, h('i', { style: { width: Math.min(100, c / goal * 100) + '%' } }), h('u', { style: { left: (frac * 100) + '%' }, title: 'Soll heute' })),
+    h('small', null, nf(c) + ' von ' + nf(goal) + unit + ' · ' + Math.round(c / goal * 100) + ' %'));
+  const used = [...new Set(all.filter(t => inYear(t, yr)).map(t => t.sport))];
+  let sport = '';      // nur Seitenzustand: filtert allein diese Karte
+  const chips = h('div', { class: 'chips' }), card = h('div', { class: 'card year' });
+  const drawYear = () => {
+    const ok = t => !sport || t.sport === sport;
+    const cur = all.filter(t => inYear(t, yr) && ok(t)), prev = all.filter(t => tillToday(t, yr - 1) && ok(t));
+    chips.innerHTML = ''; card.innerHTML = '';
+    const chip = (label, on, fn) => chips.append(h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label));
+    if (used.length > 1) {      // bei nur einer Sportart gäbe es nichts zu wählen
+      chip('Alle', !sport, () => { sport = ''; drawYear(); });
+      Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[2] + ' ' + s[1], sport === s[0], () => { sport = sport === s[0] ? '' : s[0]; drawYear(); }));
+    }
+    const mon = Array(12).fill(0);
+    cur.forEach(t => { mon[new Date(t.start).getMonth()] += t.dist; });
+    const mx = Math.max(...mon, 1), nowM = now.getMonth();
+    const gl = [['km', 'Kilometer', sum(cur, 'dist') / 1000, ' km'], ['up', 'Höhenmeter', sum(cur, 'up'), ' m'], ['n', 'Touren', cur.length, '']].filter(g => goals[g[0]] > 0);
+    card.append(
       h('div', { class: 'ybig' }, h('b', null, (sum(cur, 'dist') / 1000).toFixed(sum(cur, 'dist') < 1e5 ? 1 : 0).replace('.', ',')), h('span', null, 'km'), cmp(sum(cur, 'dist'), sum(prev, 'dist'))),
       h('div', { class: 'ysm' }, h('div', null, h('b', null, cur.length), h('small', null, cur.length === 1 ? 'Tour' : 'Touren')), h('div', null, h('b', null, F.m(sum(cur, 'up'))), h('small', null, 'Aufstieg')), h('div', null, h('b', null, F.dur(sum(cur, 'moving') || sum(cur, 'dur'))), h('small', null, 'unterwegs'))),
       h('div', { class: 'bars mt8' }, mon.map((v, i) => h('div', { class: 'bar' + (i === nowM ? ' now' : '') },
-        h('i', { style: { height: Math.max(v ? 6 : 2, v / mx * 100) + '%' }, title: F.km(v) }), h('small', null, 'JFMAMJJASOND'[i]))))));
+        h('i', { style: { height: Math.max(v ? 6 : 2, v / mx * 100) + '%' }, title: F.km(v) }), h('small', null, 'JFMAMJJASOND'[i])))),
+      gl.length ? h('div', { class: 'ygoals' }, gl.map(g => goalRow(g[1], g[2], goals[g[0]], g[3])), h('a', { class: 'small ylink', href: '#/stats/ziele' }, 'Ziele ›'))
+        : h('a', { class: 'small ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen ›'));
+  };
+  body.append(h('h3', null, 'Dein Jahr ' + yr), chips, card);
+  drawYear();
 
   // ---- Die letzten Touren: volle Zeilen mit Streckenzeichnung, Name darf umbrechen
   const rows = h('div', { class: 'recent' });

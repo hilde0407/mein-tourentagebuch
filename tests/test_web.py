@@ -145,6 +145,20 @@ def main():
         # Planen ist von Start und Touren aus erreichbar
         pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#newplan")
         pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#startplan")
+        # Jahreskarte: ohne Ziel der Hinweis, mit Ziel die Fortschrittszeile; Sport-Chip filtert die Karte
+        pg.wait_for_selector("#yset")
+        pg.evaluate("DB.kvSet('goals', {[new Date().getFullYear()]: {km: 1000, n: 50}})")
+        pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#newplan"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector(".year .ygoal")
+        assert pg.locator(".year .ygoal").count() == 2 and pg.locator(".year .ygoal .gbar u").count() == 2
+        big0 = pg.inner_text(".year .ybig b"); nch = pg.locator(".home .chips .chip").count()
+        if nch > 2:
+            pg.locator(".home .chips .chip").nth(1).click(); pg.wait_for_timeout(200)
+            assert pg.locator(".home .chips .chip.on").count() == 1 and pg.locator(".year .ygoal").count() == 2
+            pg.locator(".home .chips .chip").first.click(); pg.wait_for_timeout(200)
+            assert pg.inner_text(".year .ybig b") == big0
+        pg.click(".year .ylink"); pg.wait_for_function("location.hash==='#/stats/ziele'")
+        pg.wait_for_selector(".goal"); assert pg.locator(".chips .chip.on").inner_text() == "Ziele"
+        pg.evaluate("DB.kvSet('goals', {})"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#yset")
         # Foto-Quellen: Galerie zu Tour
         pg.evaluate("window.__gts = %d; window.__gallery=[{uri:'content://m/1',ts:%d,name:'q'}]" % (t0 + 100000, t0 + 100000))
         pg.evaluate("location.hash='#/photos'"); pg.wait_for_selector(".pgrid")
@@ -399,6 +413,16 @@ def main():
         pg.wait_for_function("() => window.__saved && /^flug-/.test(window.__saved.path || '')", timeout=30000)
         assert pg.evaluate("window.__saved.name") == "Inselreise.webm" or pg.evaluate("window.__saved.name").endswith((".webm", ".mp4")), pg.evaluate("window.__saved")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
+
+        # Zeitzonentolerante Fotozuordnung: tzOff > 0 heißt, die Kamerazeit geht der echten (GPS-)Zeit um tzOff vor (Prüfzeit = ts − tzOff)
+        tz = pg.evaluate("""async (t0) => {
+          const H = 3600000;
+          await Photos.addMeta([{id:'tz4h000001',name:'tz.jpg',ts:t0+300000+4*H,w:10,h:10,src:'galerie'},{id:'tz20h00002',name:'tz2.jpg',ts:t0+300000+20*H,w:10,h:10,src:'galerie'}]);
+          const all = await DB.all('photos'); return [all.find(x => x.id === 'tz4h000001'), all.find(x => x.id === 'tz20h00002'), (await Tours.list()).find(t => t.name === 'Hüttenrunde').id];
+        }""", t0)
+        assert tz[0]["tour"] == tz[2] and tz[0]["tzOff"] == 4 * 3600000 and tz[0]["ts"] == t0 + 300000 + 4 * 3600000, tz[0]      # ts bleibt unverändert
+        assert tz[0]["pos"] == "track" and abs(tz[0]["lat"] - 47.0) < 0.05, tz[0]      # Position aus der Spur zur korrigierten Zeit
+        assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
 
         b.close()
     assert not errs, "\n".join(errs)

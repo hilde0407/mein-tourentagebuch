@@ -35,7 +35,12 @@ Views['/map'] = async root => {
     if (!fitted && !fc && bounds.length) { map.fitBounds(L.latLngBounds(bounds), { padding: [30, 30] }); fitted = true; }
   }
   if (fc) { map.setView(fc, 15); sessionStorage.removeItem('mapFocus'); }
-  else map.setView([47.5, 11.2], 7);
+  else if (all.some(t => t.lat != null)) { map.fitBounds(L.latLngBounds(all.filter(t => t.lat != null).map(t => [t.lat, t.lon])), { padding: [30, 30], maxZoom: 13 }); fitted = true; }   // sofort auf die Startpunkte, Spuren laden später
+  else {      // ohne Touren: Standort versuchen, still zurück auf Europa (Leaflet zoomt bei einem Fehler sonst auf die ganze Welt)
+    map.setView([50, 10], 5);
+    map.once('locationerror', () => map.setView([50, 10], 5));
+    map.locate({ setView: true, maxZoom: 11 });
+  }
   const loc = L.control({ position: 'topright' });
   loc.onAdd = () => { const b = h('button', { class: 'mapbtn', 'aria-label': 'Mein Standort', onclick: () => map.locate({ setView: true, maxZoom: 15 }) }, '◎'); L.DomEvent.disableClickPropagation(b); return b; };
   loc.addTo(map);

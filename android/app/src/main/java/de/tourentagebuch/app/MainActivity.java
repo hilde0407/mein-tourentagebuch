@@ -7,6 +7,9 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.FaceDetector;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -392,6 +395,15 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** Bildschirm während der Diashow anlassen; v-show ruft das bereits auf, die Methode fehlte bisher. */
+        @JavascriptInterface
+        public void keepScreenOn(boolean on) {
+            runOnUiThread(() -> {
+                if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            });
+        }
+
         @JavascriptInterface
         public void shareText(String text) {
             runOnUiThread(() -> {
@@ -541,6 +553,7 @@ public class MainActivity extends Activity {
                 }
                 return out.toString();
             }
+            case "photoFaces": return photoFaces(a.optString("id"));
             case "deletePhoto": Photos.delete(this, a.optString("id")); return "true";
             case "uploadStart": { JSONObject j = UploadServer.start(this); UploadService.start(this); return j.toString(); }
             case "uploadStop": UploadServer.stop(); UploadService.stop(this); return "true";
@@ -557,6 +570,30 @@ public class MainActivity extends Activity {
                 File f = new File(d, new File(a.getString("name")).getName().replaceAll("[^A-Za-z0-9._-]", "_"));
                 if (a.optBoolean("reset") && f.exists()) f.delete();
                 try (java.io.FileOutputStream o = new java.io.FileOutputStream(f, true)) { o.write(android.util.Base64.decode(a.getString("b64"), android.util.Base64.DEFAULT)); }
+                return "true";
+            }
+            case "fullscreen": {                       // Systemleisten für die Diashow aus-/einblenden
+                final boolean on = a.optBoolean("on");
+                runOnUiThread(() -> setFullscreen(on));
+                return "true";
+            }
+            case "shareCache": {                       // Datei aus dem Zwischenspeicher über das Teilen-Menü senden
+                File src = new File(new File(getCacheDir(), "rec"), new File(a.getString("name")).getName().replaceAll("[^A-Za-z0-9._-]", "_"));
+                if (!src.isFile()) throw new Exception("Datei fehlt");
+                final File dst = new File(PhotoProvider.camDir(this), src.getName());   // nur dieser Ordner ist über den PhotoProvider lesbar
+                if (dst.exists()) dst.delete();
+                if (!src.renameTo(dst)) {
+                    java.nio.file.Files.copy(src.toPath(), dst.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    src.delete();
+                }
+                final String mime = a.optString("mime", "application/octet-stream"), title = a.optString("title", "Senden mit …");
+                runOnUiThread(() -> {
+                    try {
+                        Intent i = new Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, PhotoProvider.uriFor(dst));
+                        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(i, title));
+                    } catch (Exception e) { AppLog.log("Teilen: " + e); Toast.makeText(MainActivity.this, "Teilen nicht möglich", Toast.LENGTH_LONG).show(); }
+                });
                 return "true";
             }
             case "readFileB64": {
@@ -577,6 +614,26 @@ public class MainActivity extends Activity {
             }
             default: throw new Exception("unbekannt: " + m);
         }
+    }
+
+    /** Echter Vollbildmodus: Status- und Navigationsleiste weg, per Wischen kurz wieder sichtbar. Nur auf dem UI-Thread aufrufen. */
+    @SuppressWarnings("deprecation")
+    private void setFullscreen(boolean on) {
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                getWindow().setDecorFitsSystemWindows(!on);
+                android.view.WindowInsetsController c = getWindow().getInsetsController();
+                if (c == null) return;
+                if (on) {
+                    c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    c.hide(android.view.WindowInsets.Type.systemBars());
+                } else c.show(android.view.WindowInsets.Type.systemBars());
+            } else {
+                int fl = android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+                getWindow().getDecorView().setSystemUiVisibility(on ? fl : 0);
+            }
+        } catch (Exception e) { AppLog.log("Vollbild: " + e); }
     }
 
     private void scanTree(Uri tree, String docId, long since, JSONArray out, int depth) {
@@ -601,6 +658,32 @@ public class MainActivity extends Activity {
             }
         } catch (Exception e) { AppLog.log("Ordner: " + e); }
         for (String d : dirs) scanTree(tree, d, since, out, depth + 1);
+    }
+
+    /** Zählt Gesichter im Vorschaubild (0..4), damit Kachel- und Startseiten-Hintergründe keine formatfüllenden Personen zeigen. "-1" bei jedem Fehler. */
+    private String photoFaces(String id) {
+        Bitmap bm = null;
+        try {
+            File f = new File(Photos.thumbDir(this), id + ".jpg");
+            if (id.isEmpty() || id.contains("/") || !f.isFile()) return "-1";
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inPreferredConfig = Bitmap.Config.RGB_565;   // der FaceDetector verlangt RGB_565
+            bm = BitmapFactory.decodeFile(f.getAbsolutePath(), o);
+            if (bm == null) return "-1";
+            if (bm.getWidth() % 2 != 0) {                   // ... und eine gerade Breite
+                Bitmap s = Bitmap.createScaledBitmap(bm, bm.getWidth() - 1, bm.getHeight(), true);
+                if (s != bm) bm.recycle();
+                bm = s;
+                if (bm.getConfig() != Bitmap.Config.RGB_565) { Bitmap c = bm.copy(Bitmap.Config.RGB_565, false); bm.recycle(); bm = c; }
+            }
+            if (bm == null || bm.getWidth() % 2 != 0) return "-1";
+            FaceDetector.Face[] faces = new FaceDetector.Face[4];
+            return String.valueOf(new FaceDetector(bm.getWidth(), bm.getHeight(), 4).findFaces(bm, faces));
+        } catch (Throwable e) {
+            return "-1";
+        } finally {
+            if (bm != null && !bm.isRecycled()) bm.recycle();
+        }
     }
 
     private String httpCall(JSONObject a) throws Exception {
