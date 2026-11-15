@@ -620,19 +620,29 @@ public class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     private void setFullscreen(boolean on) {
         try {
-            if (Build.VERSION.SDK_INT >= 30) {
-                getWindow().setDecorFitsSystemWindows(!on);
-                android.view.WindowInsetsController c = getWindow().getInsetsController();
-                if (c == null) return;
-                if (on) {
-                    c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                    c.hide(android.view.WindowInsets.Type.systemBars());
-                } else c.show(android.view.WindowInsets.Type.systemBars());
-            } else {
-                int fl = android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
-                getWindow().getDecorView().setSystemUiVisibility(on ? fl : 0);
+            android.view.Window w = getWindow();
+            if (Build.VERSION.SDK_INT >= 28) {         // Kamera-Ausschnitt: Bild reicht bis zum Rand
+                w.getAttributes().layoutInDisplayCutoutMode = on
+                        ? android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        : android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+                w.setAttributes(w.getAttributes());
             }
+            if (Build.VERSION.SDK_INT >= 30) {
+                w.setDecorFitsSystemWindows(!on);
+                android.view.WindowInsetsController c = w.getInsetsController();
+                if (c != null) {
+                    if (on) {
+                        c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                        c.hide(android.view.WindowInsets.Type.systemBars());
+                    } else c.show(android.view.WindowInsets.Type.systemBars());
+                }
+            }
+            // Zusätzlich die klassischen Flags: greifen auch, wenn der neue Weg (je nach Android-Version/Hersteller) nichts bewirkt
+            int fl = android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            w.getDecorView().setSystemUiVisibility(on ? fl : 0);
+            if (on) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
         } catch (Exception e) { AppLog.log("Vollbild: " + e); }
     }
 
