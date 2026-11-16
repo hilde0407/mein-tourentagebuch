@@ -124,13 +124,17 @@ show(0);loop();
         }
         if (!items.length) throw new Error('Keine Fotos lesbar');
         upd(ps.length, n, 'Datei übergeben');
+        // Dateiname mit Tourname: Umlaute umschreiben, Rest auf sichere Zeichen beschränken (die Hülle erlaubt nur A–Z, 0–9, . _ -)
+        const slug = String(t.name || '').replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/ß/g, 'ss')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60);
+        const fname = 'Diashow' + (slug ? '_' + slug : '') + '.html';
         const buf = new TextEncoder().encode(Show.html(t, pts, items)), CH = 512 * 1024;
         for (let o = 0; o < buf.length; o += CH) {
           let bin = ''; const part = buf.subarray(o, o + CH);
           for (let q = 0; q < part.length; q += 8192) bin += String.fromCharCode.apply(null, part.subarray(q, q + 8192));
-          await Native.json('appendCache', { name: 'diashow.html', b64: btoa(bin), reset: o === 0 });
+          await Native.json('appendCache', { name: fname, b64: btoa(bin), reset: o === 0 });
         }
-        await Native.call('shareCache', { name: 'diashow.html', mime: 'text/html', title: 'Diashow teilen' });
+        await Native.call('shareCache', { name: fname, mime: 'text/html', title: 'Diashow teilen' });
       });
     } catch (e) { toast('Teilen fehlgeschlagen: ' + (e && e.message || e)); }
   },
