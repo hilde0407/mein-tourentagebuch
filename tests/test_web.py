@@ -75,8 +75,13 @@ def main():
         assert "Hüttenrunde" in pg.inner_text("#view")
         pg.fill("input[type=search]", "zweite"); assert pg.locator("a.tour").count() == 1
         pg.fill("input[type=search]", "")
-        pg.locator("a.tour", has_text="Hüttenrunde").click(); pg.wait_for_selector(".stats")
+        pg.locator("a.tour", has_text="Hüttenrunde").click(); pg.wait_for_selector(".tourp .kpis.big")
         txt = pg.inner_text("#view"); assert "Höhenprofil" in txt and "Aufstieg" in txt, txt
+        # Tourseite: Titel unter der Karte, die drei wichtigsten Zahlen groß (Strecke, Aufstieg, Dauer), der Rest als leise Tabelle
+        assert pg.inner_text(".tourp > h1") == "Hüttenrunde" and pg.locator(".tourp .kpis.big .kpi").count() == 3
+        assert [x.strip() for x in pg.locator(".tourp .kpis.big .kpi small").all_inner_texts()] == ["Strecke", "Aufstieg", "Dauer"]
+        assert pg.locator(".tourp .facts > div").count() >= 5 and "Abstieg" in pg.inner_text(".tourp .facts")
+        assert pg.locator("header.top.over button").count() == 3, "Zurück, Favorit, Aktionen schweben über der Karte"
         pg.wait_for_selector(".leaflet-tile-loaded, .leaflet-container"); pg.wait_for_timeout(500)
         assert pg.locator(".strip .th").count() == 1
         pg.screenshot(path="/tmp/shot_tour.png")
@@ -103,7 +108,7 @@ def main():
         pg.fill("input[placeholder^='Ort oder Adresse']", "Hamburg"); pg.get_by_role("button", name="Suchen").click()
         pg.get_by_role("button", name="Hamburg, Deutschland").click()   # das 📍 wird zum Symbol, bleibt aber nicht im Namen
         pg.wait_for_function("DB.kvGet && Set_.get('homeName') === 'Hamburg, Deutschland' && Set_.get('homeLat') === '53.55000'")
-        for path, key in [("#/map", ".leaflet-container"), ("#/photos", ".pgrid"), ("#/stats", ".kpis"), ("#/import", ".list"), ("#/settings", "h3"), ("#/sources", ".list"), ("#/plan", ".pmap"), ("#/rec", ".bigstart")]:
+        for path, key in [("#/map", ".leaflet-container"), ("#/photos", ".pgrid"), ("#/stats", ".kpis"), ("#/import", ".list"), ("#/settings", "h3"), ("#/sources", ".list"), ("#/plan", ".pmap"), ("#/rec", ".bigstart"), ("#/mehr", "#m-settings")]:
             pg.evaluate(f"location.hash='{path}'"); pg.wait_for_selector(key, timeout=5000); pg.wait_for_timeout(250)
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".kpis"); assert "3" in pg.inner_text(".kpis")
         pg.screenshot(path="/tmp/shot_stats.png")
@@ -127,7 +132,11 @@ def main():
         pg.locator("#rpin").click(); pg.wait_for_selector(".sheet input"); pg.fill(".sheet input", "Schöne Aussicht"); pg.get_by_role("button", name="Speichern", exact=True).click(); pg.wait_for_timeout(300)
         assert pg.evaluate("DB.kvGet('recPins',[]).then(a=>a.length===1&&a[0].text==='Schöne Aussicht')")
         # Beenden: ein kurzer Druck beendet nichts, erst Halten
-        bb = pg.locator("#rstop").bounding_box()
+        assert "läuft" in pg.inner_text("header.top h1") and pg.locator("#tabs a.rec.live").count() == 1
+        vals = [x.strip() for x in pg.locator(".rec .kpis.big .kpi small").all_inner_texts()]; assert vals == ["Strecke", "Aufstieg", "Höhe", "Tempo"], vals
+        assert pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.bigtime')).fontSize)") >= 56, "Laufzeit muss groß sein"
+        pg.locator("#rpause").click(); pg.wait_for_function("document.querySelector('header.top h1').innerText.includes('Pause')"); pg.locator("#rpause").click(); pg.wait_for_function("document.querySelector('header.top h1').innerText.includes('läuft')")
+        pg.locator("#rstop").scroll_into_view_if_needed(); bb = pg.locator("#rstop").bounding_box()
         pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down(); pg.wait_for_timeout(300); pg.mouse.up(); pg.wait_for_timeout(300)
         assert pg.evaluate("__rec.state") == "recording", "kurzer Druck darf nicht beenden"
         pg.evaluate("window.__gpx = arguments[0]", None) if False else None
@@ -142,20 +151,38 @@ def main():
         pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector("#baks"); pg.wait_for_selector("#gpxroute"); pg.click("#baks"); pg.locator(".sheet .li").first.click()
         pg.get_by_role("button", name="Wiederherstellen", exact=True).click()
         pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=6000)
-        # Planen ist von Start und Touren aus erreichbar
-        pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#newplan")
+        # Planen ist von Start und Touren aus erreichbar (Touren: über „＋“)
+        pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#touradd"); pg.click("#touradd"); pg.wait_for_selector("#newplan")
+        assert pg.locator("#newimport").count() == 1 and pg.locator("#newrec").count() == 1
+        pg.click("#newplan"); pg.wait_for_function("location.hash==='#/plan'"); pg.wait_for_selector(".pmap")
         pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#startplan")
+        # Startseite: letzte Tour als Aufmacher (führt zur Tour), drei Hauptaktionen, „Dieses Jahr“, „Letzte Touren“
+        last = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0])")
+        assert last["name"] in pg.inner_text("#hero h2") and pg.get_attribute("#hero", "href") == "#/tour/" + last["id"], pg.inner_text("#hero")
+        assert "km" in pg.inner_text("#hero .hero-k") and "Zuletzt" in pg.inner_text("#hero")
+        assert pg.get_attribute("#startrec", "href") == "#/rec" and pg.get_attribute("#startplan", "href") == "#/plan" and pg.get_attribute("#startimport", "href") == "#/import"
+        assert [x.strip() for x in pg.locator("#year .kpis .kpi small").all_inner_texts()][:3] == ["Strecke", "Touren", "Aufstieg"], pg.inner_text("#year")
+        nrec = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden).length)")
+        assert pg.locator("#recent a.tour").count() == min(4, nrec - 1), pg.locator("#recent a.tour").count()
+        assert last["name"] not in pg.inner_text("#recent"), "die letzte Tour steht schon im Aufmacher"
+        pg.click("#hero"); pg.wait_for_function("location.hash.startsWith('#/tour/')"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#hero")
+        # Bausteine: Ein weiterer Abschnitt lässt sich anmelden und erscheint an seiner Stelle; ein fehlerhafter Baustein reißt die Seite nicht mit
+        pg.evaluate("Home.add('probe', 30, async ctx => UI.section('Probe', UI.figs([[ctx.all.length, 'Touren']]), { id: 'probe' }))")
+        pg.evaluate("Nav.render()"); pg.wait_for_selector("#probe .kpi")
+        order = pg.evaluate("[...document.querySelectorAll('.home > *')].map(e => e.id || e.className)")
+        assert order.index("year") < order.index("probe") < order.index("recent"), order
+        pg.evaluate("Home.blocks = Home.blocks.filter(b => b.id !== 'probe'); Nav.render()"); pg.wait_for_selector("#probe", state="detached")
         # Jahreskarte: ohne Ziel der Hinweis, mit Ziel die Fortschrittszeile; Sport-Chip filtert die Karte
         pg.wait_for_selector("#yset")
         pg.evaluate("DB.kvSet('goals', {[new Date().getFullYear()]: {km: 1000, n: 50}})")
-        pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#newplan"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector(".year .ygoal")
+        pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#touradd"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector(".year .ygoal")
         assert pg.locator(".year .ygoal").count() == 2 and pg.locator(".year .ygoal .gbar u").count() == 2
-        big0 = pg.inner_text(".year .ybig b"); nch = pg.locator(".home .chips .chip").count()
+        big0 = pg.locator(".year .kpi b").first.inner_text(); nch = pg.locator(".home .chips .chip").count()
         if nch > 2:
             pg.locator(".home .chips .chip").nth(1).click(); pg.wait_for_timeout(200)
             assert pg.locator(".home .chips .chip.on").count() == 1 and pg.locator(".year .ygoal").count() == 2
             pg.locator(".home .chips .chip").first.click(); pg.wait_for_timeout(200)
-            assert pg.inner_text(".year .ybig b") == big0
+            assert pg.locator(".year .kpi b").first.inner_text() == big0
         pg.click(".year .ylink"); pg.wait_for_function("location.hash==='#/stats/ziele'")
         pg.wait_for_selector(".goal"); assert pg.locator(".chips .chip.on").inner_text() == "Ziele"
         pg.evaluate("DB.kvSet('goals', {})"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#yset")
@@ -220,7 +247,7 @@ def main():
         pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector("text=Reise 10.–14. Juni 2025"); assert "5 Touren an 5 Tagen" in pg.inner_text("#view")
         pg.get_by_role("button", name="Alben", exact=True).click(); pg.wait_for_selector("text=Südtirol 2025")
         pg.get_by_text("Südtirol 2025").first.click(); pg.wait_for_selector("text=Reisetour 3"); assert "Tage" in pg.inner_text("#view") and pg.locator(".map path").count() >= 1
-        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector(".chips"); pg.locator("a.li", has_text="Reise 10.").first.click(); pg.wait_for_selector("text=Als Album speichern")
+        pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector(".seg"); pg.locator("a.li", has_text="Reise 10.").first.click(); pg.wait_for_selector("text=Als Album speichern")
 
         # Komoot: Auf-/Abstieg wie bei Komoot übernehmen (neue Touren und schon vorhandene)
         ko = pg.evaluate("""async () => {
@@ -367,11 +394,21 @@ def main():
         assert "La Gomera und Gran Canaria" not in pg.inner_text("#view").split("Ausgeblendete")[0], pg.inner_text("#view")
         pg.locator("details summary", has_text="Ausgeblendete").click(); pg.locator("a.li", has_text="La Gomera").first.click(); pg.get_by_role("button", name="Wieder einblenden").click(); pg.wait_for_selector("text=La Gomera und Gran Canaria")
         pg.evaluate("async () => { await DB.kvSet('tripPeriod', {}); }")
-        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("select[aria-label='Region']:not([hidden])")
-        pg.select_option("select[aria-label='Region']", label="La Gomera (3)"); pg.wait_for_function("document.querySelectorAll('.card.tour').length === 3")
-        assert "Insel" in pg.inner_text(".card.tour"), pg.inner_text("#view")
-        pg.select_option("select[aria-label='Region']", label="Alle Regionen")
-        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector(".card.tour small.stage"); assert "Etappe" in pg.inner_text(".card.tour small.stage")
+        # Jahr und Region liegen hinter „Filter“; der Zähler am Knopf zeigt, wie viele davon gesetzt sind
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); assert pg.locator("#filterbtn i").count() == 0
+        pg.click("#filterbtn"); pg.wait_for_selector("select[aria-label='Region']:not([hidden])")
+        pg.select_option("select[aria-label='Region']", label="La Gomera (3)"); pg.wait_for_function("document.querySelectorAll('a.tour').length === 3")
+        assert "Insel" in pg.inner_text("a.tour"), pg.inner_text("#view")
+        pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached"); assert pg.inner_text("#filterbtn i") == "1"
+        pg.click("#filterbtn"); pg.select_option("select[aria-label='Region']", label="Alle Regionen"); pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
+        assert pg.locator("#filterbtn i").count() == 0
+        # Suche ohne Treffer: der leere Zustand bietet an, Suche und Filter zurückzusetzen
+        pg.fill("input[type=search]", "gibtesnicht"); pg.wait_for_selector(".tours .empty"); assert pg.locator("a.tour").count() == 0
+        pg.get_by_role("button", name="Suche und Filter zurücksetzen").click(); pg.wait_for_selector("a.tour")
+        # Tourzeile: Miniatur fester Größe, Titel, „Datum · Sportart“, Kennzahlen; Monatsüberschrift mit Summe
+        row = pg.evaluate("(() => { const a = document.querySelector('a.tour'), r = a.querySelector('.tr-pv').getBoundingClientRect(); return { w: r.width, h: r.height, meta: a.querySelector('.tb small').innerText, met: a.querySelector('.met').innerText, month: document.querySelector('.month').innerText }; })()")
+        assert row["w"] == 72 and row["h"] == 72 and " · " in row["meta"] and "↑" in row["met"] and ("Tour" in row["month"] and "km" in row["month"]), row
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("a.tour small.stage"); assert "Etappe" in pg.inner_text("a.tour small.stage")
 
         # Namensvorschläge: Start-/Zielort über Nominatim, Gipfel über Overpass (vorgetäuscht)
         pg.route("**/nominatim.openstreetmap.org/reverse**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"address": {"village": "Ort-" + r.request.url.split("lat=")[1][:5]}})))
@@ -384,11 +421,35 @@ def main():
         }""")
         assert any(x.startswith("Wanderung von Ort-") for x in nm) and any("Hoher Test" in x for x in nm), nm
 
-        # Reisen als Tab in der unteren Leiste (6 Tabs, alle gut tippbar), bleibt auch auf Reise-/Albumseiten markiert
-        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#tabs a[data-p='/reisen']")
-        ws = pg.evaluate("[...document.querySelectorAll('#tabs a')].map(a => Math.round(a.getBoundingClientRect().width))")
-        assert len(ws) == 6 and min(ws) >= 55, ws
-        pg.click("#tabs a[data-p='/reisen']"); pg.wait_for_selector("text=Mehrtagestouren"); pg.wait_for_function("document.querySelector(\"#tabs a[data-p='/reisen']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')", timeout=10000)
+        # Untere Leiste: fünf Reiter, „Aufnehmen“ in der Mitte und hervorgehoben, alle gut tippbar
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#tabs a[data-p='/mehr']")
+        tabs = pg.evaluate("[...document.querySelectorAll('#tabs a')].map(a => [a.dataset.p, a.innerText.trim(), Math.round(a.getBoundingClientRect().width), a.classList.contains('rec')])")
+        assert [t[0] for t in tabs] == ["/start", "/", "/rec", "/photos", "/mehr"] and [t[1] for t in tabs] == ["Start", "Touren", "Aufnehmen", "Fotos", "Mehr"], tabs
+        assert min(t[2] for t in tabs) >= 64 and [t[3] for t in tabs] == [False, False, True, False, False], tabs
+        disc = pg.evaluate("(() => { const r = document.querySelector('#tabs a.rec .ti').getBoundingClientRect(); return [r.width, r.height]; })()")
+        assert min(disc) >= 48, disc
+        # Jede bisherige Funktion bleibt erreichbar: „Mehr“ führt zu Planen, Karte, Reisen, Statistik, Import, Foto-Quellen, Einstellungen
+        pg.click("#tabs a[data-p='/mehr']"); pg.wait_for_selector("#m-settings")
+        hrefs = pg.evaluate("[...document.querySelectorAll('#view a.li')].map(a => a.getAttribute('href'))")
+        assert hrefs == ["#/plan", "#/map", "#/reisen", "#/stats", "#/import", "#/sources", "#/settings"], hrefs
+        # Reisen liegt unter „Mehr“; die Leiste bleibt dort sichtbar und „Mehr“ markiert, auf Arbeitsseiten verschwindet sie
+        pg.click("#m-reisen"); pg.wait_for_selector("text=Mehrtagestouren"); pg.wait_for_function("document.querySelector(\"#tabs a[data-p='/mehr']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')", timeout=10000)
+        anyid = pg.evaluate("Tours.list().then(l => l[0].id)")
+        for path, tab, hidden in [("/start", "/start", False), ("/", "/", False), ("/map", "/", False), ("/rec", "/rec", False), ("/photos", "/photos", False), ("/mehr", "/mehr", False), ("/stats", "/mehr", False),
+                                  ("/tour/" + anyid, "/", True), ("/plan", "/mehr", True), ("/import", "/mehr", True), ("/settings", "/mehr", True), ("/sources", "/mehr", True)]:
+            pg.evaluate("p => { location.hash = '#' + p }", path)
+            pg.wait_for_function("([p, t, h]) => Nav.cur === '/' + (p.split('/')[1] || '') && !Nav._busy && [...document.querySelectorAll('#tabs a.on')].map(a => a.dataset.p).join() === t && document.querySelector('#tabs').classList.contains('hide') === h", arg=[path, tab, hidden], timeout=10000)
+        # Zurück-Taste des Handys: von einer Unterseite zurück, von einem Reiter zur Startseite, auf der Startseite verlässt sie die App
+        pg.evaluate("location.hash = '#/mehr'"); pg.wait_for_selector("#m-settings"); pg.click("#m-settings"); pg.wait_for_selector("input[placeholder^='Ort oder Adresse']")
+        assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/mehr'")
+        assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/start'"); pg.wait_for_selector("#hero")
+        assert pg.evaluate("window.mtBack()") is False
+        # Läuft eine Aufzeichnung, ist die Scheibe „Aufnehmen“ rot und die Startseite führt zur laufenden Aufzeichnung
+        pg.evaluate("window.__rec.state = 'recording'; Nav.render()"); pg.wait_for_selector("#tabs a.rec.live"); pg.wait_for_selector("#startrec.live")
+        assert "läuft" in pg.inner_text("#startrec")
+        pg.evaluate("window.__rec.state = 'idle'; Nav.render()"); pg.wait_for_selector("#tabs a.rec:not(.live)"); pg.wait_for_selector("#startrec:not(.live)")
+        # Karte und Liste sind zwei Ansichten der Touren
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#tomap"); pg.click("#tomap"); pg.wait_for_selector(".map.full"); pg.click("#tolist"); pg.wait_for_selector("#touradd")
         # Fotos vom Rechner empfangen: Adresse wird angezeigt, per Abruf eingegangene Fotos werden übernommen
         pg.evaluate("location.hash = '#/photos'"); pg.wait_for_selector("button[aria-label='Fotos hinzufügen']"); pg.click("button[aria-label='Fotos hinzufügen']")
         pg.get_by_text("Vom Rechner im WLAN").click(); pg.wait_for_selector("#recvurl"); assert "192.168.0.5:8765/abc12/" in pg.inner_text("#recvurl")

@@ -12,6 +12,7 @@ Views['/stats'] = async (root, [tab0]) => {
     body.append(h('div', { class: 'row' }, sel, ss));
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && (!sport || t.sport === sport));
     body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Rekorde'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
+    const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
     if (tab !== 'ueber') { const r = Ausw[tab](body, ts, { all, year, sport }); return r; }
     if (!ts.length) { body.append(UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' })); return; }
     const sum = k => ts.reduce((a, t) => a + (t[k] || 0), 0);

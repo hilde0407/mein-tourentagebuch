@@ -8,6 +8,8 @@ const Home = {
   blocks: [],
   add(id, order, fn) { Home.blocks = Home.blocks.filter(b => b.id !== id); Home.blocks.push({ id, order, fn }); Home.blocks.sort((a, b) => a.order - b.order); },
 
+  /** Läuft gerade eine Aufzeichnung (oder ist sie pausiert)? */
+  live() { try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; return st.state === 'recording' || st.state === 'paused'; } catch (e) { return false; } },
   /** Höhenprofil als Fläche (für den Aufmacher ohne Foto und Karte). */
   eleSvg(pts) {
     const src = pts.filter(p => p.ele != null && !isNaN(p.ele));
@@ -15,7 +17,7 @@ const Home = {
     const N = 90, v = [];
     for (let i = 0; i < N; i++) v.push(src[Math.round(i * (src.length - 1) / (N - 1))].ele);
     const mn = Math.min(...v), span = Math.max(Math.max(...v) - mn, 30);
-    const d = v.map((e, i) => (i ? 'L' : 'M') + (i / (N - 1) * 100).toFixed(2) + ' ' + (36 - (e - mn) / span * 26).toFixed(2)).join('');
+    const d = v.map((e, i) => (i ? 'L' : 'M') + (i / (N - 1) * 100).toFixed(2) + ' ' + (14 - (e - mn) / span * 12).toFixed(2)).join('');
     return `<svg class="hero-ele" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d="${d}L100 40L0 40Z"/></svg>`;
   },
   /** Kartenbild der letzten Tour; einmal erzeugt und gemerkt (kv „heroMap“), damit die Startseite sofort steht. */
@@ -59,7 +61,7 @@ Home.add('hero', 0, async ({ all }) => {
 
 /* ---- Die drei Hauptaktionen ---- */
 Home.add('actions', 10, async () => h('div', { class: 'home-acts' },
-  UI.sign('Aufzeichnung starten', { href: '#/rec', id: 'startrec' }),
+  Home.live() ? UI.sign('Aufzeichnung läuft – öffnen', { href: '#/rec', id: 'startrec', cls: 'live' }) : UI.sign('Aufzeichnung starten', { href: '#/rec', id: 'startrec' }),
   h('div', { class: 'acts' },
     h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
     h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' }))));

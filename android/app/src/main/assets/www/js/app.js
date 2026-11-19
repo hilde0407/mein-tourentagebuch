@@ -44,7 +44,6 @@ const Nav = {
     try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; live = st.state === 'recording' || st.state === 'paused'; } catch (e) { /* ohne Hülle */ }
     a.classList.toggle('live', live);
     a.setAttribute('aria-label', live ? 'Aufnehmen – Aufzeichnung läuft' : 'Aufnehmen');
-    a.firstChild.innerHTML = Ico.svg(live ? 'stop' : 'rec', 26);
   },
 };
 /** Wegweiser-Zeichen – dasselbe Motiv wie bei „Meine Touren“. */
@@ -74,7 +73,8 @@ Views['/mehr'] = async root => {
     h('p', { class: 'muted small', style: { marginTop: '20px' } }, `${nT} ${nT === 1 ? 'Tour' : 'Touren'} · ${nP} ${nP === 1 ? 'Foto' : 'Fotos'} · alles nur auf diesem Handy`)));
 };
 window.mtBack = function () {
-  if (sheet.stack && sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
+  sheet.stack = (sheet.stack || []).filter(x => x.el.isConnected);      // nur Blätter, die wirklich noch offen sind
+  if (sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
   if (window.__lightbox) { window.__lightbox.close(); return true; }
   if (window.__show) { window.__show.close(); return true; }
   if (Nav.deep.includes(Nav.cur) || ['/stats', '/reisen', '/map'].includes(Nav.cur)) { Nav.back(); return true; }

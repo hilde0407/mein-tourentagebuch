@@ -12,7 +12,7 @@ Views['/rec'] = async root => {
     stop_(); box.innerHTML = '';
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) return unsaved(st);
     let sport = sessionStorage.getItem('recSport') || 'hike';
-    const name = h('input', { type: 'text', placeholder: 'Name (optional)', value: sessionStorage.getItem('recName') || '' });
+    const name = h('input', { type: 'text', placeholder: 'z. B. Hüttenrunde', value: sessionStorage.getItem('recName') || '' });
     const chips = h('div', { class: 'chips wrap' });
     const drawChips = () => { chips.innerHTML = ''; Sports.list.filter(s => s[0] !== 'mountaineering').forEach(s => chips.append(h('button', { class: 'chip' + (sport === s[0] ? ' on' : ''), onclick: () => { sport = s[0]; drawChips(); } }, s[2] + ' ' + s[1]))); };
     drawChips();
@@ -110,7 +110,8 @@ Views['/rec'] = async root => {
   async function active(st) {
     box.innerHTML = '';
     const mapEl = h('div', { class: 'map rmap' });
-    const state = h('div', { class: 'rec-state', role: 'status' }, h('i'), h('span'));
+    const state = h('span', { class: 'rec-state', role: 'status' }, h('i'), h('span'));
+    head.querySelector('h1').replaceChildren(state);      // der Seitentitel sagt, was gerade läuft
     const big = h('div', { class: 'bigtime', 'aria-label': 'Dauer' }), grid = h('div'), gps = h('p', { class: 'rec-gps' });
     let shown = '';
     const pause = h('button', { class: 'rbtn pause', id: 'rpause', onclick: () => { st.state === 'paused' ? MTApp.resumeRecording() : MTApp.pauseRecording(); setTimeout(tick, 300); } });
@@ -135,7 +136,7 @@ Views['/rec'] = async root => {
     ['pointerup', 'pointercancel', 'pointerleave', 'contextmenu'].forEach(ev => stopBtn.addEventListener(ev, e => { if (ev === 'contextmenu') e.preventDefault(); holdStop(); }));
     stopBtn.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { holdStart(e); } });
     stopBtn.addEventListener('keyup', holdStop);
-    box.append(mapEl, h('div', { class: 'pad' }, state, big, grid, gps,
+    box.append(mapEl, h('div', { class: 'pad' }, big, grid, gps,
       h('div', { class: 'rbtns main' }, pause, photoBtn, vidBtn),
       h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn),
       h('div', { class: 'stopgap' }), stopBtn));

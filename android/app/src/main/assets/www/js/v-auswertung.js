@@ -7,7 +7,7 @@ const Ausw = {
   monday: ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; },
   kpi: (v, l) => UI.fig(v, l),
   link: (t, main, sub) => h('a', { class: 'li', href: '#/tour/' + t.id }, h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, main), h('small', null, sub))),
-  sec: (title, sub) => [h('h3', null, title), sub ? h('p', { class: 'muted small' }, sub) : null],
+  sec: (title, sub) => [h('h3', null, title), sub ? h('p', { class: 'muted small' }, sub) : null].filter(Boolean),
 
   /* ---------- Rekorde ---------- */
   rekorde(body, ts) {
@@ -35,7 +35,7 @@ const Ausw = {
       const a = real.filter(t => t.sport === s); if (a.length < 2) return;
       const top = (lab, f, fm) => { const b = a.slice().sort((x, y) => f(y) - f(x))[0]; return f(b) > 0 ? Ausw.link(b, lab + ': ' + fm(b), b.name + ' · ' + F.dshort(b.start)) : null; };
       per.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s) + ' · ' + a.length + ' Touren'), h('div', { class: 'list' },
-        top('Längste', t => t.dist, t => F.km(t.dist)), top('Meiste Höhenmeter', t => t.up, t => F.m(t.up)), top('Höchster Punkt', t => t.maxAlt, t => F.m(t.maxAlt)),
+        top('Längste', t => t.dist, t => F.km(t.dist)), top('Größter Aufstieg', t => t.up, t => F.m(t.up)), top('Höchster Punkt', t => t.maxAlt, t => F.m(t.maxAlt)),
         top('Schnellste', t => t.moving > 600 ? t.dist / t.moving : 0, t => F.speed(t.dist, t.moving)), top('Längste Dauer', t => t.dur, t => F.dur(t.dur))));
     });
     if (per.length) body.append(...Ausw.sec('Je Sportart'), ...per);
@@ -79,7 +79,7 @@ const Ausw = {
     const rows = Sports.list.map(s => [s[0], ts.filter(t => t.sport === s[0])]).filter(r => r[1].length).sort((a, b) => b[1].reduce((x, t) => x + t.dist, 0) - a[1].reduce((x, t) => x + t.dist, 0));
     const sm = (a, k) => a.reduce((x, t) => x + (t[k] || 0), 0);
     body.append(...Ausw.sec('Statistik nach Aktivität'), h('div', { class: 'tblw' }, h('table', { class: 'cstat' },
-      h('thead', null, h('tr', null, ['Aktivität', 'Touren', 'km', 'Aufst. m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['Aktivität', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
       h('tbody', null, rows.map(([k, a]) => h('tr', null, h('td', null, Sports.icon(k) + ' ' + Sports.label(k)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
     // Leistung über die Jahre
     const all = ctx.all.filter(t => !ctx.sport || t.sport === ctx.sport);
@@ -90,9 +90,9 @@ const Ausw = {
       if (ys.length < 2) return;
       const spd = ys.map(y => sm(byY[y], 'dist') / sm(byY[y], 'moving') * 3.6), climb = ys.map(y => sm(byY[y], 'up') / (sm(byY[y], 'moving') / 3600));
       const bar = (vals, unit, dec) => { const mx = Math.max(...vals, 1); return h('div', { class: 'hbars' }, ys.map((y, i) => h('div', { class: 'hb' }, h('span', null, y), h('div', null, h('i', { style: { width: (vals[i] / mx * 100) + '%' } })), h('b', null, vals[i].toFixed(dec).replace('.', ',') + ' ' + unit)))); };
-      perf.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s)), h('p', { class: 'muted small' }, 'Ø Tempo (in Bewegung)'), bar(spd, 'km/h', 1), s !== 'bike' && s !== 'racebike' && s !== 'mtb' && s !== 'ebike' ? [h('p', { class: 'muted small' }, 'Höhenmeter pro Stunde'), bar(climb, 'm/h', 0)] : null);
+      perf.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s)), h('p', { class: 'muted small' }, 'Ø Tempo (in Bewegung)'), bar(spd, 'km/h', 1), s !== 'bike' && s !== 'racebike' && s !== 'mtb' && s !== 'ebike' ? [h('p', { class: 'muted small' }, 'Aufstieg je Stunde'), bar(climb, 'm/h', 0)] : null);
     });
-    if (perf.length) body.append(...Ausw.sec('Leistung über die Jahre', 'nur Jahre mit mindestens 2 Touren der Sportart'), ...perf);
+    if (perf.length) body.append(...Ausw.sec('Leistung über die Jahre', 'nur Jahre mit mindestens 2 Touren der Sportart'), ...perf.flat().filter(Boolean));
     // Neuland und Wetter
     const nl = h('div'), wx = h('div');
     body.append(...Ausw.sec('Neuland', 'Anteil der Strecke, der auf keiner früheren Tour lag (Raster von rund 200 m)'), nl, ...Ausw.sec('Wetter', 'Temperatur und Niederschlag am Tourtag (Open-Meteo, braucht Internet; wird einmal geladen)'), wx);
@@ -188,13 +188,13 @@ const Ausw = {
       const line = (k, lab, unit, fmt) => {
         const goal = g[k], c = cur[k], pct = goal ? Math.min(100, c / goal * 100) : 0, pace = frac > 0.02 ? c / frac : null, soll = goal ? goal * frac : 0;
         return h('div', { class: 'goal' }, h('label', { class: 'fld' }, lab + ' (' + unit + ')', inp(k)),
-          goal ? h('div', null, h('div', { class: 'gbar' }, h('i', { style: { width: pct + '%' } }), y === now ? h('u', { style: { left: (frac * 100) + '%' }, title: 'Soll heute' }) : null),
+          goal ? h('div', null, UI.bar(pct / 100, y === now ? { mark: frac } : null),
             h('p', { class: 'muted small' }, fmt(c) + ' von ' + fmt(goal) + ' · ' + Math.round(c / goal * 100) + ' %' + (y === now ? ' · Soll heute ' + fmt(soll) + (c >= soll ? ' ✓ im Plan' : ' · ' + fmt(soll - c) + ' im Rückstand') + (pace ? ' · Hochrechnung ' + fmt(pace) : '') : '')))
             : h('p', { class: 'muted small' }, 'Bisher ' + fmt(c)));
       };
       wrap.append(h('div', { class: 'row' }, h('button', { class: 'btn sm', 'aria-label': 'Vorjahr', onclick: () => { y--; draw(); } }, '‹'), h('b', { class: 'calyear' }, String(y)), h('button', { class: 'btn sm', 'aria-label': 'Folgejahr', onclick: () => { y++; draw(); } }, '›')),
         h('p', { class: 'muted small' }, 'Lege Ziele für das Jahr fest. Der Strich im Balken zeigt, wo du heute stehen müsstest.'),
-        line('km', 'Kilometer', 'km', v => Math.round(v).toLocaleString('de-DE') + ' km'), line('up', 'Höhenmeter', 'm', v => Math.round(v).toLocaleString('de-DE') + ' m'), line('n', 'Touren', 'Anzahl', v => Math.round(v) + ' Touren'));
+        line('km', 'Strecke', 'km', v => Math.round(v).toLocaleString('de-DE') + ' km'), line('up', 'Aufstieg', 'm', v => Math.round(v).toLocaleString('de-DE') + ' m'), line('n', 'Touren', 'Anzahl', v => Math.round(v) + ' Touren'));
     };
     draw();
   },
