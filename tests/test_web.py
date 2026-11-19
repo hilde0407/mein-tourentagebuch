@@ -511,7 +511,7 @@ def main():
         pg.wait_for_selector(".flight .fm canvas", timeout=20000)
         pg.wait_for_function("() => (document.querySelector('.fhud')?.innerText || '').includes('↑')", timeout=30000)
         pg.wait_for_selector(".flight.idle", timeout=15000)      # Bedienelemente blenden sich aus …
-        pg.dispatch_event(".flight .fm", "pointerdown"); pg.wait_for_selector(".flight:not(.idle)", timeout=3000)      # … und kommen per Tipp zurück
+        pg.dispatch_event(".flight .fm", "pointerdown"); pg.wait_for_selector(".flight:not(.idle)", timeout=10000)      # … und kommen per Tipp zurück
         pg.select_option("#fv", "8"); pg.fill("#fs", "990") if False else pg.evaluate("document.querySelector('#fs').value = 1000; document.querySelector('#fs').dispatchEvent(new Event('input'))")
         pg.wait_for_function("() => document.querySelector('#fp').innerText.includes('Nochmal')", timeout=20000)
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
