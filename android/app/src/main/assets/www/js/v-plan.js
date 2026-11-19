@@ -27,13 +27,13 @@ Views['/plan'] = async (root, [editId]) => {
     editing = await DB.get('tours', editId);
     if (editing) { sport = editing.sport; name = editing.name; const pts = await Tours.points(editId); const meta = (await DB.kvGet('plan:' + editId, null)); if (meta) { wps = meta.wps; } else { const sp = Geo.simplify(pts, 60); wps = [sp[0], sp[sp.length - 1]].map(p => ({ lat: p.lat, lon: p.lon })); } }
   }
-  const info = h('div', { class: 'stats' }), chips = h('div', { class: 'chips' });
+  const info = h('div', { class: 'pinfo' }), chips = h('div', { class: 'chips' });
   const prof = h('canvas', { class: 'prof small' });
-  root.append(topbar(editing ? 'Tour bearbeiten' : 'Tour planen', { actions: h('button', { class: 'ico', 'aria-label': 'Rückgängig', onclick: undo }, '↶') }), mapEl, panel);
+  root.append(topbar(editing ? 'Tour bearbeiten' : 'Tour planen', { back: true, actions: h('button', { class: 'ico', 'aria-label': 'Letzten Punkt entfernen', onclick: undo }, '↶') }), mapEl, panel);
   const map = MapKit.create(mapEl);
   const routeLayer = L.layerGroup().addTo(map), mk = L.layerGroup().addTo(map);
   const hereBtn = L.control({ position: 'topright' });
-  hereBtn.onAdd = () => { const b = h('button', { class: 'mapbtn', 'aria-label': 'Mein Standort', onclick: () => map.locate({ setView: true, maxZoom: 15 }) }, '◎'); L.DomEvent.disableClickPropagation(b); return b; };
+  hereBtn.onAdd = () => { const b = h('button', { class: 'mapbtn', 'aria-label': 'Mein Standort', html: Ico.svg('locate', 24), onclick: () => map.locate({ setView: true, maxZoom: 15 }) }); L.DomEvent.disableClickPropagation(b); return b; };
   hereBtn.addTo(map);
   const fc = JSON.parse(sessionStorage.getItem('mapFocus') || 'null');
   const hl = Set_.get('homeLat');
@@ -69,21 +69,21 @@ Views['/plan'] = async (root, [editId]) => {
     const st = Geo.stats(pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })));
     const hrs = st.dist / 1000 / ({ hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5 }[sport] || 5) + st.up / ({ hike: 500, walk: 500, run: 700, ski: 400 }[sport] || 900);
     info.innerHTML = '';
-    [[F.km(st.dist), 'Strecke'], ['↑ ' + F.m(st.up), 'Aufstieg'], ['↓ ' + F.m(st.down), 'Abstieg'], [F.dur(hrs * 3600), 'Geschätzte Zeit']].forEach(([v, l]) => info.append(h('div', null, h('b', null, v), h('small', null, l))));
+    info.append(UI.figs([[F.km(st.dist), 'Strecke'], ['↑ ' + F.m(st.up), 'Aufstieg'], ['↓ ' + F.m(st.down), 'Abstieg'], [F.dur(hrs * 3600), 'Dauer, geschätzt']], { cols: 4 }));
     if (pts.length > 1) MapKit.profile(prof, pts, null); else prof.getContext('2d').clearRect(0, 0, prof.width, prof.height);
     hint.style.display = wps.length ? 'none' : '';
   }
   async function undo() { if (!wps.length) return; wps.pop(); legs.pop(); redraw(); }
   map.on('click', e => addWp(e.latlng));
 
-  const hint = h('p', { class: 'muted' }, 'Tippe auf die Karte, um Start, Zwischenpunkte und Ziel zu setzen. Marker lassen sich verschieben, langes Drücken (Rechtsklick) löscht einen Punkt.');
-  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, Sports.list.filter(s => ['hike', 'walk', 'run', 'mtb', 'bike', 'ebike', 'racebike', 'ski'].includes(s[0])).map(s => h('option', { value: s[0], selected: s[0] === sport }, s[2] + ' ' + s[1])));
+  const hint = h('p', { class: 'muted' }, 'Tippe auf die Karte, um Start, Zwischenpunkte und Ziel zu setzen. Punkte lassen sich verschieben; langes Drücken löscht einen Punkt.');
+  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, Sports.list.filter(s => ['hike', 'walk', 'run', 'mtb', 'bike', 'ebike', 'racebike', 'ski'].includes(s[0])).map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
   const snapCb = h('input', { type: 'checkbox', checked: true, onchange: async e => { snap = e.target.checked; if (wps.length > 1) await rebuild(); } });
-  panel.append(h('div', { class: 'row' }, sel, h('label', { class: 'sw' }, snapCb, ' Wegen folgen')), info, prof, hint,
+  panel.append(h('div', { class: 'row' }, sel, h('label', { class: 'sw' }, snapCb, h('span', null, 'Wegen folgen'))), info, prof, hint,
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn sm', onclick: async () => { if (wps.length > 1) { wps.push({ lat: wps[0].lat, lon: wps[0].lon }); await routeLeg(wps.length - 2); redraw(); } } }, '⟲ Rundtour'),
       h('button', { class: 'btn sm', onclick: async () => { wps.reverse(); await rebuild(); } }, '⇄ Umkehren'),
-      h('button', { class: 'btn sm', onclick: async () => { if (await confirmBox('Alles löschen?', 'Die Planung wird zurückgesetzt.', 'Löschen')) { wps = []; legs = []; redraw(); } } }, '🗑 Leeren'),
+      h('button', { class: 'btn sm', onclick: async () => { if (await confirmBox('Planung leeren?', 'Alle gesetzten Punkte werden entfernt.', 'Leeren')) { wps = []; legs = []; redraw(); } } }, '🗑 Leeren'),
       h('button', { class: 'btn sm', onclick: exportGpx }, '📤 GPX')),
     h('div', { class: 'row' }, h('button', { class: 'btn pri grow', onclick: save }, editing ? 'Änderungen speichern' : 'Tour speichern'), h('button', { class: 'btn grow', onclick: saveAndGo }, '● Speichern & starten')));
   void chips; void profileName;
@@ -95,7 +95,7 @@ Views['/plan'] = async (root, [editId]) => {
     if (editing) await Tours.remove(editing.id);
     const r = await Tours.add({ id: editing && editing.id, name: nm.trim(), sport, pts: pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })), status: 'planned', src: 'plan' });
     await DB.kvSet('plan:' + r.tour.id, { wps });
-    toast('Gespeichert ✓');
+    toast('Tour gespeichert');
     if (go === true) return r.tour; Nav.go('/tour/' + r.tour.id); return r.tour;
   }
   async function saveAndGo() { const t = await save(true); if (t) startWith(t, await Tours.points(t.id)); }

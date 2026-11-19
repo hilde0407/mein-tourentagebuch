@@ -5,9 +5,10 @@ Views['/map'] = async root => {
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
   let year = '', showPhotos = false;
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y }, y)));
-  const phBtn = h('button', { class: 'chip', onclick: () => { showPhotos = !showPhotos; phBtn.classList.toggle('on', showPhotos); draw(); } }, '🖼 Fotos');
-  root.append(topbar('Karte', { actions: h('div', { class: 'row' }, yearSel) }), h('div', { class: 'maptools' }, phBtn,
-    h('button', { class: 'chip', onclick: offline }, '⬇ Offline-Karte')), mapEl);
+  const phBtn = UI.chip('🖼 Fotos zeigen', false, () => { showPhotos = !showPhotos; phBtn.classList.toggle('on', showPhotos); phBtn.setAttribute('aria-pressed', showPhotos ? 'true' : 'false'); draw(); });
+  // Die Karte ist die zweite Ansicht der Tourenliste: oben rechts geht es zurück zur Liste
+  root.append(topbar('Karte', { actions: h('a', { class: 'btn sm hbtn', id: 'tolist', href: '#/', html: Ico.svg('filter') + '<span>Liste</span>' }) }),
+    h('div', { class: 'maptools' }, yearSel, phBtn, h('button', { class: 'chip', onclick: offline }, '⬇ Offline speichern')), mapEl);
   const map = MapKit.create(mapEl);
   const g = L.layerGroup().addTo(map);
   const cache = {};
@@ -42,7 +43,7 @@ Views['/map'] = async root => {
     map.locate({ setView: true, maxZoom: 11 });
   }
   const loc = L.control({ position: 'topright' });
-  loc.onAdd = () => { const b = h('button', { class: 'mapbtn', 'aria-label': 'Mein Standort', onclick: () => map.locate({ setView: true, maxZoom: 15 }) }, '◎'); L.DomEvent.disableClickPropagation(b); return b; };
+  loc.onAdd = () => { const b = h('button', { class: 'mapbtn', 'aria-label': 'Mein Standort', html: Ico.svg('locate', 24), onclick: () => map.locate({ setView: true, maxZoom: 15 }) }); L.DomEvent.disableClickPropagation(b); return b; };
   loc.addTo(map);
   map.on('locationfound', e => L.circleMarker(e.latlng, { radius: 8, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(map));
   async function offline() {
@@ -50,7 +51,7 @@ Views['/map'] = async root => {
     const zmax = Math.min(16, z + 3);
     const n = MapKit.tileUrls(b, z, zmax).length;
     if (!await confirmBox('Karte offline speichern', `Der sichtbare Ausschnitt wird für die Zoomstufen ${z}–${zmax} gespeichert (ca. ${n} Kacheln, etwa ${Math.round(n * 0.02)} MB). Bitte nur im WLAN.`, 'Herunterladen')) return;
-    try { await PhotoSources.progress('Karte laden', async (upd) => { const sig = {}; await MapKit.downloadArea(b, z, zmax, d => upd(Math.min(d, n), n), sig); }); toast('Karte gespeichert ✓'); }
+    try { await PhotoSources.progress('Karte laden', async (upd) => { const sig = {}; await MapKit.downloadArea(b, z, zmax, d => upd(Math.min(d, n), n), sig); }); toast('Karte gespeichert'); }
     catch (e) { toast(e.message, 6000); }
   }
   await draw();

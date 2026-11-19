@@ -35,9 +35,11 @@ async function pickPhoto(tid) {
   return null;
 }
 
-/** Kartenausschnitt mit Track als JPEG-dataURL; wirft bei jedem Problem (offline, fehlende Kachel), dann bleibt es bei der SVG. */
-async function tileMapImage(t, pts) {
-  const W = 560, H = 224, pad = 28, T = 256;
+/** Kartenausschnitt mit Track als JPEG-dataURL; wirft bei jedem Problem (offline, fehlende Kachel), dann bleibt es bei der Zeichnung.
+    o: { w, h, pad, padTop, padBottom } – mit größerem unteren Rand rückt die Strecke nach oben (Platz für Schrift auf dem Bild). */
+async function tileMapImage(t, pts, o) {
+  o = o || {};
+  const W = o.w || 560, H = o.h || 224, pad = o.pad || 28, pT = o.padTop != null ? o.padTop : pad, pB = o.padBottom != null ? o.padBottom : pad, T = 256;
   MapKit.init();
   const lay = MapKit.layer(), tpl = lay._url, zmax = Math.min(15, lay.options.maxZoom || 15);
   if (!window.caches || /\{s\}/.test(tpl)) throw 0;
@@ -45,8 +47,8 @@ async function tileMapImage(t, pts) {
   const wx = (lon, z) => (lon + 180) / 360 * T * 2 ** z;
   const wy = (lat, z) => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * T * 2 ** z;
   let z = zmax;
-  while (z > 3 && (wx(b[3], z) - wx(b[1], z) > W - pad * 2 || wy(b[0], z) - wy(b[2], z) > H - pad * 2)) z--;
-  const ox = (wx(b[1], z) + wx(b[3], z)) / 2 - W / 2, oy = (wy(b[0], z) + wy(b[2], z)) / 2 - H / 2, n = 2 ** z;
+  while (z > 3 && (wx(b[3], z) - wx(b[1], z) > W - pad * 2 || wy(b[0], z) - wy(b[2], z) > H - pT - pB)) z--;
+  const ox = (wx(b[1], z) + wx(b[3], z)) / 2 - W / 2, oy = (wy(b[0], z) + wy(b[2], z)) / 2 - (pT + (H - pT - pB) / 2), n = 2 ** z;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d'), c = await caches.open(MapKit.cacheName), jobs = [];
   for (let x = Math.floor(ox / T); x <= Math.floor((ox + W - 1) / T); x++) for (let y = Math.floor(oy / T); y <= Math.floor((oy + H - 1) / T); y++) {
@@ -61,11 +63,12 @@ async function tileMapImage(t, pts) {
   }
   await Promise.all(jobs);
   const at = p => [wx(p.lon, z) - ox, wy(p.lat, z) - oy], col = MapKit.routeColor(t.sport, '#2e7d32');
-  g.fillStyle = 'rgba(10,30,31,.18)'; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(10,30,31,' + (o.dim != null ? o.dim : .18) + ')'; g.fillRect(0, 0, W, H);
   g.lineCap = g.lineJoin = 'round';
   const line = (w, st) => { g.beginPath(); sp.forEach((p, i) => { const q = at(p); if (i && !p.newSeg) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }); g.lineWidth = w; g.strokeStyle = st; g.stroke(); };
-  line(8, '#fff'); line(4.5, col);
-  [[sp[0], '#fff', col], [sp[sp.length - 1], col, '#fff']].forEach(([p, f, s]) => { const q = at(p); g.beginPath(); g.arc(q[0], q[1], 7, 0, 7); g.fillStyle = f; g.fill(); g.lineWidth = 3; g.strokeStyle = s; g.stroke(); });
+  const lw = W / 560;      // Strichstärken wachsen mit dem Bild
+  line(8 * lw, '#fff'); line(4.5 * lw, col);
+  [[sp[0], '#fff', col], [sp[sp.length - 1], col, '#fff']].forEach(([p, f, s]) => { const q = at(p); g.beginPath(); g.arc(q[0], q[1], 7 * lw, 0, 7); g.fillStyle = f; g.fill(); g.lineWidth = 3 * lw; g.strokeStyle = s; g.stroke(); });
   return cv.toDataURL('image/jpeg', 0.72);
 }
 
@@ -77,82 +80,78 @@ Views['/'] = async root => {
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
   const cells = await DB.kvGet('regionCells', {});
   const stageOf = {};      // Tour-ID → „Tag 2 · Etappe 2/5“ (kommt etwas später, weil die Zielpunkte erst gelesen werden)
-  const list = h('div', { class: 'cards' }), sum = h('div', { class: 'sumline' });
-  const chips = h('div', { class: 'chips' });
-  // Kachelhintergründe: Foto > Kartenausschnitt > Strecken-SVG. Ergebnis je Tour gemerkt, damit der Aufbau beim nächsten Mal sofort geht.
+  const list = h('div', { class: 'tours' }), sum = h('div', { class: 'sumline' });
+  const chips = UI.chips([]);
+  // Miniaturen: Foto, sonst die Strecke. Die Wahl je Tour wird gemerkt, damit die Liste beim nächsten Mal sofort steht.
   const tilebg = await DB.kvGet('tilebg', {});
   let saveT = 0;
   const saveBg = () => { if (!saveT) saveT = setTimeout(() => { saveT = 0; DB.kvSet('tilebg', tilebg).catch(() => {}); }, 1500); };
-  let busy = 0; const wait = [];   // höchstens 2 Karten-Canvas gleichzeitig, sonst ruckelt das Scrollen
-  const slot = async fn => { while (busy >= 2) await new Promise(r => wait.push(r)); busy++; try { return await fn(); } finally { busy--; const r = wait.shift(); if (r) r(); } };
-  const svgOf = (pv, t, pts, white) => { if (pts.length > 1) pv.innerHTML = previewSvg(pts, white ? '#fff' : MapKit.routeColor(t.sport, '#2e7d32')); };
-  const applyBg = async (pv, t, pts, en) => {
-    const card = pv.parentNode; if (!card || !en || en.kind === 'svg') return svgOf(pv, t, pts);
-    const img = h('img', { class: 'bgimg', alt: '', loading: 'lazy', src: en.kind === 'photo' ? Photos.thumb(en.ph) : en.data });
-    img.onerror = () => { img.remove(); card.classList.remove('bg', 'map'); delete tilebg[t.id]; saveBg(); if (en.kind === 'photo') resolve(pv, t, pts, true).catch(() => {}); else svgOf(pv, t, pts); };
-    card.classList.add('bg'); if (en.kind === 'map') card.classList.add('map');
-    card.prepend(img);
-    svgOf(pv, t, pts, true);
-  };
-  const resolve = async (pv, t, pts, noCache) => {
-    let en = noCache ? null : tilebg[t.id];
-    if (!en) {
-      const ph = noCache ? null : await pickPhoto(t.id);   // nach Bildfehler nicht erneut dasselbe Foto
-      if (ph) en = { kind: 'photo', ph: ph.id };
-      else if (pts.length > 1) { try { en = { kind: 'map', data: await slot(() => tileMapImage(t, pts)) }; } catch (e) { en = null; } }
-      if (en) { tilebg[t.id] = en; saveBg(); }
-    }
-    return applyBg(pv, t, pts, en);
-  };
-  const io = new IntersectionObserver(es => es.forEach(async e => {
+  const io = new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return; io.unobserve(e.target);
-    try {
-      const t = e.target.__t, pts = await Tours.points(t.id);
-      await resolve(e.target, t, pts);
-    } catch (err) { /* Kachel bleibt ohne Bild */ }
-  }), { rootMargin: '200px' });
-  const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Suchen', oninput: e => { F_.q = e.target.value; draw(); } });
+    UI.thumb(e.target, e.target.__t, tilebg, saveBg).catch(() => { /* Zeile bleibt ohne Bild */ });
+  }), { rootMargin: '300px' });
+  const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Touren suchen', oninput: e => { F_.q = e.target.value; draw(); } });
+  // Selten gebraucht (Jahr, Region): hinter „Filter“, der Zähler zeigt, wie viele davon gesetzt sind
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
   const regSel = h('select', { 'aria-label': 'Region', onchange: e => { F_.region = e.target.value; draw(); } });
+  const regFld = h('label', { class: 'fld' }, 'Region', regSel);
+  const fbtn = h('button', { class: 'btn sm fbtn', id: 'filterbtn', onclick: filterSheet });
   const fillRegions = () => {
     const n = {}; all.forEach(t => { const r = Reisen.regionOf(t, cells); if (r) n[r] = (n[r] || 0) + 1; });
     regSel.innerHTML = ''; regSel.append(h('option', { value: '' }, 'Alle Regionen'), ...Object.keys(n).sort((a, b) => a.localeCompare(b, 'de')).map(r => h('option', { value: r, selected: r === F_.region }, r + ' (' + n[r] + ')')));
-    regSel.hidden = Object.keys(n).length < 2;
+    regSel.hidden = regFld.hidden = Object.keys(n).length < 2;
   };
+  function filterSheet() {
+    const s = sheet('Filter', h('div', null, h('label', { class: 'fld' }, 'Jahr', yearSel), regFld,
+      regSel.hidden ? h('p', { class: 'muted small' }, 'Regionen erscheinen hier, sobald Touren in mindestens zwei Gebieten liegen.') : null,
+      h('div', { class: 'row end' },
+        h('button', { class: 'btn', onclick: () => { F_.year = ''; F_.region = ''; yearSel.value = ''; regSel.value = ''; draw(); } }, 'Zurücksetzen'),
+        h('button', { class: 'btn pri', id: 'filterok', onclick: () => s.close() }, 'Fertig'))));
+  }
+  function addMenu() {
+    UI.menu('Neue Tour', [
+      ['route', 'Tour planen', () => Nav.go('/plan'), 'Route auf der Karte zeichnen', 'newplan'],
+      ['download', 'Touren importieren', () => Nav.go('/import'), 'Dateien, Komoot, Strava, Zepp, Bosch Flow, Garmin', 'newimport'],
+      ['rec', 'Aufzeichnung starten', () => Nav.go('/rec'), 'Mit GPS mitschreiben', 'newrec']]);
+  }
   const draw = () => {
     chips.innerHTML = '';
-    const chip = (label, on, fn) => chips.append(h('button', { class: 'chip' + (on ? ' on' : ''), onclick: fn }, label));
+    const chip = (label, on, fn) => chips.append(UI.chip(label, on, fn));
     chip('Alle', !F_.sport && !F_.fav && !F_.planned, () => { Object.assign(F_, { sport: '', fav: false, planned: false }); draw(); });
     chip('★ Favoriten', F_.fav, () => { F_.fav = !F_.fav; draw(); });
-    chip('✏️ Geplant', F_.planned, () => { F_.planned = !F_.planned; draw(); });
-    chips.append(h('a', { class: 'chip', id: 'newplan', href: '#/plan' }, '＋ Tour planen'));
+    chip('Geplant', F_.planned, () => { F_.planned = !F_.planned; draw(); });
     const used = [...new Set(all.map(t => t.sport))];
-    Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[2] + ' ' + s[1], F_.sport === s[0], () => { F_.sport = F_.sport === s[0] ? '' : s[0]; draw(); }));
+    Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[1], F_.sport === s[0], () => { F_.sport = F_.sport === s[0] ? '' : s[0]; draw(); }));
+    const nf = (F_.year ? 1 : 0) + (F_.region ? 1 : 0);
+    fbtn.innerHTML = Ico.svg('filter') + '<span>Filter</span>' + (nf ? '<i>' + nf + '</i>' : '');
+    fbtn.setAttribute('aria-label', nf ? 'Filter, ' + nf + ' gesetzt' : 'Filter');
     const ql = F_.q.trim().toLowerCase();
     const ts = all.filter(t => (F_.planned ? t.status === 'planned' : t.status !== 'planned') && (!F_.sport || t.sport === F_.sport) && (!F_.fav || t.fav)
       && (!F_.year || String(new Date(t.start).getFullYear()) === String(F_.year)) && (!F_.region || Reisen.regionOf(t, cells) === F_.region) && (!ql || (t.name + ' ' + (t.note || '') + ' ' + Sports.label(t.sport)).toLowerCase().includes(ql)));
     list.innerHTML = '';
     const d = ts.reduce((a, t) => a + t.dist, 0), u = ts.reduce((a, t) => a + (t.up || 0), 0);
-    sum.textContent = ts.length ? `${ts.length} ${ts.length === 1 ? 'Tour' : 'Touren'} · ${F.km(d)} · ${F.m(u)} Aufstieg` : '';
+    sum.textContent = ts.length ? `${ts.length} ${ts.length === 1 ? 'Tour' : 'Touren'} · ${F.km(d)} · ↑ ${F.m(u)}` : '';
     if (!ts.length) {
-      list.append(all.length ? h('div', { class: 'empty' }, h('p', null, 'Keine Tour passt zu diesem Filter.')) : welcomeHero());
+      if (!all.length) list.append(welcomeHero());
+      else if (F_.planned && !ql && !F_.sport && !F_.fav && !nf) list.append(UI.empty({ icon: 'route', title: 'Noch keine geplante Tour', text: 'Zeichne eine Route auf der Karte. Sie lässt sich später mit Ansagen nachgehen.', actions: [h('a', { class: 'btn pri', href: '#/plan' }, 'Tour planen')] }));
+      else list.append(UI.empty({ icon: 'search', title: 'Keine Tour gefunden', text: 'Zu dieser Suche und diesen Filtern passt keine Tour.',
+        actions: [h('button', { class: 'btn', onclick: () => { Object.assign(F_, { q: '', sport: '', fav: false, planned: false, year: '', region: '' }); q.value = ''; yearSel.value = ''; regSel.value = ''; draw(); } }, 'Suche und Filter zurücksetzen')] }));
       return;
     }
-    let lastMonth = '';
+    const groups = []; let g = null;
     ts.forEach(t => {
-      const mo = new Date(t.start).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-      if (mo !== lastMonth) { lastMonth = mo; list.append(h('h3', { class: 'month' }, mo)); }
-      const pv = h('div', { class: 'pv' }); pv.__t = t; io.observe(pv);
-      list.append(h('a', { class: 'card tour', href: '#/tour/' + t.id },
-        pv, h('div', { class: 'tb' }, h('b', null, (t.fav ? '★ ' : '') + t.name),
-          h('small', null, Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) : '')),
-          stageOf[t.id] ? h('small', { class: 'stage' }, '🥾 ' + stageOf[t.id]) : null,
-          h('div', { class: 'met' }, h('span', null, F.km(t.dist)), t.up ? h('span', null, '↑ ' + F.m(t.up)) : null, t.dur ? h('span', null, '⏱ ' + F.dur(t.dur)) : null,
-            pc[t.id] ? h('span', null, '🖼 ' + pc[t.id]) : null, t.hrAvg ? h('span', { class: 'hrt', title: 'Pulsdaten vorhanden' }, '♥ ' + t.hrAvg) : null))));
+      const mo = t.start ? new Date(t.start).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }) : 'Ohne Datum';
+      if (!g || g.mo !== mo) groups.push(g = { mo, ts: [] });
+      g.ts.push(t);
+    });
+    groups.forEach(g => {
+      list.append(h('h3', { class: 'month' }, g.mo, h('small', null, (g.ts.length === 1 ? '1 Tour' : g.ts.length + ' Touren') + ' · ' + F.km(g.ts.reduce((a, t) => a + t.dist, 0)))));
+      g.ts.forEach(t => list.append(UI.tourRow(t, { io, photos: pc[t.id], stage: stageOf[t.id] })));
     });
   };
-  root.append(topbar('Tourentagebuch'), h('div', { class: 'filters' }, h('div', { class: 'row' }, q, yearSel), h('div', { class: 'row' }, regSel), chips, sum), list,
-    h('a', { class: 'fab', href: '#/import', 'aria-label': 'Touren importieren' }, '＋'));
+  root.append(topbar('Touren', { actions: [h('a', { class: 'btn sm hbtn', id: 'tomap', href: '#/map', html: Ico.svg('map') + '<span>Karte</span>' }),
+    h('button', { class: 'ico', id: 'touradd', 'aria-label': 'Neue Tour: planen, importieren oder aufzeichnen', onclick: addMenu }, '＋')] }),
+    h('div', { class: 'filters' }, h('div', { class: 'row' }, q, fbtn), chips, sum), list);
   fillRegions(); draw();
   let gone = false;
   Reisen.resolveRegions(all, cells, () => { if (!gone) { fillRegions(); if (F_.region) draw(); } }, () => gone);
@@ -162,14 +161,15 @@ Views['/'] = async root => {
 
 Views['/tour'] = async (root, [id]) => {
   const t = await DB.get('tours', id);
-  if (!t) { root.append(topbar('Tour', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Tour gibt es nicht mehr.'))); return; }
+  if (!t) { root.append(topbar('Tour', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr', actions: [h('a', { class: 'btn', href: '#/' }, 'Zur Tourenliste')] })); return; }
   const pts = await Tours.points(id);
   let photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts);
-  const mapEl = h('div', { class: 'map tmap' });
-  const body = h('div', { class: 'pad' });
-  const title = h('h1', { onclick: rename }, t.name);
-  root.append(h('header', { class: 'top' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), title, h('span', { class: 'sp' }),
-    h('button', { class: 'ico', 'aria-label': 'Favorit', onclick: async () => { t.fav = !t.fav; await Tours.save(t); fav.textContent = t.fav ? '★' : '☆'; } }, h('span', { id: 'fav' }, t.fav ? '★' : '☆')),
+  const mapEl = h('div', { class: 'map tmap under' });
+  const body = h('div', { class: 'tourp' });
+  const title = h('h1', null, t.name);
+  // Die Knöpfe schweben auf der Karte; der Titel steht darunter auf dem Papier
+  root.append(h('header', { class: 'top over' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), h('span', { class: 'sp' }),
+    h('button', { class: 'ico', 'aria-label': 'Favorit', 'aria-pressed': t.fav ? 'true' : 'false', onclick: async e => { t.fav = !t.fav; await Tours.save(t); fav.textContent = t.fav ? '★' : '☆'; e.currentTarget.setAttribute('aria-pressed', t.fav ? 'true' : 'false'); toast(t.fav ? 'Als Favorit gemerkt' : 'Kein Favorit mehr'); } }, h('span', { id: 'fav' }, t.fav ? '★' : '☆')),
     h('button', { class: 'ico', 'aria-label': 'Aktionen', onclick: actions }, '⋮')), mapEl, body);
   const fav = $('#fav');
   async function rename() { const n = await askText('Name der Tour', 'Name', t.name, 'Speichern'); if (n && n.trim()) { t.name = n.trim(); await Tours.save(t); title.textContent = t.name; } }
@@ -178,7 +178,7 @@ Views['/tour'] = async (root, [id]) => {
   const layer = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 5).addTo(map);
   if (pts.length) {
     MapKit.dot(pts[0].lat, pts[0].lon, '#2e7d32', 'S').addTo(map); MapKit.dot(pts[pts.length - 1].lat, pts[pts.length - 1].lon, '#c62828', 'Z').addTo(map);
-    map.fitBounds(layer.getBounds(), { padding: [24, 24] });
+    map.fitBounds(layer.getBounds(), { paddingTopLeft: [28, 64], paddingBottomRight: [60, 28] });
   }
   const cursor = L.circleMarker([0, 0], { radius: 7, color: '#fff', weight: 2, fillColor: '#1565c0', fillOpacity: 1 });
   const pm = L.layerGroup().addTo(map);
@@ -187,39 +187,46 @@ Views['/tour'] = async (root, [id]) => {
   (t.pins || []).filter(p => p.lat != null).forEach(p => MapKit.pin(p).addTo(pm));
   setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
-  const grid = h('div', { class: 'stats' });
-  const st = (v, l) => h('div', null, h('b', null, v), h('small', null, l));
-  grid.append(st(F.km(t.dist), 'Strecke'), st(t.dur ? F.dur(t.dur) : '–', 'Dauer'), st(t.moving ? F.dur(t.moving) : '–', 'In Bewegung'),
-    st(F.m(t.up), 'Aufstieg'), st(F.m(t.down), 'Abstieg'), st(t.maxAlt != null ? F.m(t.maxAlt) : '–', 'Höchster Punkt'),
-    st(t.moving ? F.speed(t.dist, t.moving) : '–', 'Ø Tempo'), st(t.minAlt != null ? F.m(t.minAlt) : '–', 'Tiefster Punkt'));
-  if (t.hrAvg) grid.append(st(t.hrAvg + ' bpm', 'Ø Puls'), st(t.hrMax + ' bpm', 'Höchster Puls'));
+  // Die drei wichtigsten Zahlen groß, alles Weitere leise darunter
+  const main = UI.figs([[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']], { big: true, cls: 'tmain' });
+  const more = UI.facts([['Abstieg', F.m(t.down)], ['In Bewegung', t.moving ? F.dur(t.moving) : '–'], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : '–'],
+    ['Höchster Punkt', t.maxAlt != null ? F.m(t.maxAlt) : '–'], ['Tiefster Punkt', t.minAlt != null ? F.m(t.minAlt) : '–'],
+    t.hrAvg ? ['Ø Puls', t.hrAvg + ' bpm'] : null, t.hrAvg ? ['Höchster Puls', t.hrMax + ' bpm'] : null]);
   const prof = h('canvas', { class: 'prof', 'aria-label': 'Höhenprofil' });
   const profInfo = h('small', { class: 'muted' }, 'Profil berühren, um die Stelle auf der Karte zu sehen.');
-  const strip = h('div', { class: 'strip' });
+  const strip = h('div', { class: 'strip' }), noPhotos = h('p', { class: 'muted' }, 'Noch keine Fotos zu dieser Tour.');
+  const showBtn = h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow');
   const drawStrip = () => {
     strip.innerHTML = '';
     photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }))));
+    strip.hidden = showBtn.hidden = !photos.length; noPhotos.hidden = !!photos.length;
   };
-  const pinList = () => (t.pins || []).length ? h('div', { id: 'pins' }, h('h3', null, 'Pins'), (t.pins || []).map(p => h('div', { class: 'pinrow' }, h('b', null, '📍 ' + F.time(p.ts)), ' ', p.text || '(ohne Text)', p.lat != null ? h('button', { class: 'btn sm', onclick: () => map.setView([p.lat, p.lon], 17) }, 'Auf Karte') : null))) : null;
+  const pinList = () => (t.pins || []).length ? UI.section('Pins', (t.pins || []).map(p => h('div', { class: 'pinrow' }, h('b', null, F.time(p.ts)), h('span', null, p.text || '(ohne Text)'), p.lat != null ? h('button', { class: 'btn sm', onclick: () => { map.setView([p.lat, p.lon], 17); mapEl.scrollIntoView({ block: 'start' }); } }, 'Auf Karte') : null)), { id: 'pins' }) : null;
   const stageBox = h('div');
   Tours.list().then(all => Reisen.multiday(all)).then(ms => {      // Teil einer Mehrtagestour? Dann „Tag 2 · Etappe 2/5“ mit Link zur Gruppe
     const r = ms.find(x => x.tours.some(q => q.id === t.id));
-    if (r) stageBox.append(h('a', { class: 'banner stagechip', id: 'stage', href: '#/reise/' + r.id }, '🥾 ' + Reisen.stage(r, t) + ' · Mehrtagestour ' + Reisen.range(r.first, r.last)));
+    if (r) stageBox.append(h('a', { class: 'banner stagechip', id: 'stage', href: '#/reise/' + r.id }, Reisen.stage(r, t) + ' · Mehrtagestour ' + Reisen.range(r.first, r.last)));
   }).catch(() => {});
-  const note = h('textarea', { rows: 3, placeholder: 'Notizen zur Tour …', onchange: async e => { t.note = e.target.value; await Tours.save(t); } }, t.note || '');
-  const photoHead = h('div', { class: 'row' }, h('h3', { style: { flex: 1 } }, 'Fotos'), h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow'), h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos'));
-  body.append(...[stageBox, Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? h('div', { class: 'banner' }, '⛰️ Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', h('div', { class: 'row' }, h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren'))) : null,
-    t.status === 'planned' ? h('div', { class: 'banner' }, '✏️ Geplante Tour', h('div', { class: 'row' }, h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten'))) : null,
-    h('div', { class: 'sub' }, Sports.icon(t.sport) + ' ' + Sports.label(t.sport) + ' · ' + F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + (t.src && t.src !== 'file' ? ' · ' + ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '')),
+  const note = h('textarea', { rows: 3, 'aria-label': 'Notiz', placeholder: 'Was war besonders an dieser Tour?', onchange: async e => { t.note = e.target.value; await Tours.save(t); toast('Notiz gespeichert'); } }, t.note || '');
+  const src = t.src && t.src !== 'file' ? ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '';
+  body.append(...[title,
+    h('div', { class: 'sub' }, F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport) + (src ? ' · ' + src : '')),
+    stageBox,
+    Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
+    t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
-    grid, h('h3', null, 'Höhenprofil'), prof, profInfo, t.hrAvg ? pulsBlock() : null, photoHead, strip, pinList(), h('h3', null, 'Notizen'), note].filter(Boolean));
+    main, more,
+    UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,
+    UI.section('Fotos', [strip, noPhotos], { id: 'tphotos', action: h('div', { class: 'row' }, showBtn, h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos')) }),
+    pinList(), UI.section('Notiz', note)].filter(Boolean));
+  title.addEventListener('click', rename);
   drawStrip();
   const xs = MapKit.profile(prof, pts, (i, o) => {
     if (i == null) { map.removeLayer(cursor); profInfo.textContent = ''; return; }
     cursor.setLatLng([pts[i].lat, pts[i].lon]).addTo(map);
-    profInfo.textContent = `${F.km(o.dist)} · ${o.ele != null ? Math.round(o.ele) + ' m' : '–'}` + (pts[i].t ? ' · ' + F.time(pts[i].t) : '') + (o.hr ? ' · ♥ ' + o.hr + ' bpm' : '');
+    profInfo.textContent = `${F.km(o.dist)} · ${o.ele != null ? Math.round(o.ele) + ' m' : '–'}` + (pts[i].t ? ' · ' + F.time(pts[i].t) : '') + (o.hr ? ' · Puls ' + o.hr + ' bpm' : '');
   });
-  const onresize = () => MapKit.profile(prof, pts, null); void onresize;
+  void xs;
 
   /** „Zeit in den Pulszonen“ und ein Schalter, der die Strecke nach Puls einfärbt. */
   function pulsBlock() {
@@ -231,40 +238,41 @@ Views['/tour'] = async (root, [id]) => {
         h('div', null, h('i', { style: { width: (sec / tot * 100).toFixed(1) + '%', background: MapKit.hrColor[i] } })), h('span', null, F.dur(sec))));
     });
     let hrLayer = null;
-    const sw = h('label', { class: 'sw' }, h('input', {
-      type: 'checkbox', onchange: e => {
-        if (e.target.checked) { map.removeLayer(layer); hrLayer = MapKit.lineHr(pts, 5).addTo(map); }
-        else { if (hrLayer) map.removeLayer(hrLayer); layer.addTo(map); }
-      },
-    }), 'Strecke nach Puls einfärben');
-    return h('div', null, h('h3', null, 'Puls'),
-      h('div', { class: 'sub' }, `Ø ${t.hrAvg} · höchstens ${t.hrMax} · mindestens ${t.hrMin} bpm`), bars, h('div', { class: 'row' }, sw));
+    const sw = UI.toggle('Strecke nach Puls einfärben', false, on => {
+      if (on) { map.removeLayer(layer); hrLayer = MapKit.lineHr(pts, 5).addTo(map); }
+      else { if (hrLayer) map.removeLayer(hrLayer); layer.addTo(map); }
+    });
+    return UI.section('Puls', [bars, sw], { sub: `Ø ${t.hrAvg} · höchstens ${t.hrMax} · mindestens ${t.hrMin} bpm` });
   }
 
   async function addPhotos() { PhotoSources.sheet(t, async () => { photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); }); }
   function actions() {
-    const it = (ico, tx, fn) => h('button', { class: 'li', onclick: () => { s.close(); fn(); } }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, tx)));
-    const s = sheet('Tour', h('div', { class: 'list' },
-      it('✏️', 'Umbenennen', rename),
-      it('🚁', '3D-Flug über die Tour', () => Nav.go('/flug/' + id)),
-      it('📖', 'Erzählung', () => Nav.go('/story/' + id)),
-      it('💡', 'Namensvorschläge', suggestNames),
-      it('🏷️', 'Sportart ändern', changeSport),
-      it('🧳', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
-      it('📤', 'Als GPX speichern', exportGpx),
-      photos.some(p => !p.video) ? it('🎞️', 'Diashow teilen', () => Show.share(t, pts, photos)) : null,
-      it('🔗', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
-      it('🧭', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
-      it('📷', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); }),
-      it('⛰️', t.elevFix ? 'Höhen neu aus Gelände berechnen' : 'Höhen korrigieren (Geländemodell)', fixEle),
-      it('⌚', t.elevSrc ? 'Höhe aus Uhr (bereits abgeglichen) – erneut abgleichen' : 'Höhe aus Uhr abgleichen (Zepp)', zeppEle),
-      it('🛠️', 'GPS-Track korrigieren', () => Nav.go('/fix/' + id)),
-      t.elevFix || t.elevSrc ? it('↩️', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
-      it('🔄', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id)); toast('Neu berechnet'); Nav.render(); }),
-      it('🗑️', 'Löschen', async () => { if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Löschen')) { await Tours.remove(id); Nav.go('/'); } })));
+    const it = (ico, tx, fn) => UI.row({ icon: ico, title: tx, onclick: () => { s.close(); fn(); } });
+    const grp = (name, rows) => [h('h3', { class: 'sub' }, name), UI.list(rows.filter(Boolean), { cls: 'menu' })];
+    const s = sheet(t.name, h('div', null,
+      grp('Ansehen und teilen', [
+        it('flight', '3D-Flug über die Tour', () => Nav.go('/flug/' + id)),
+        it('book', 'Erzählung', () => Nav.go('/story/' + id)),
+        photos.some(p => !p.video) ? it('film', 'Diashow teilen', () => Show.share(t, pts, photos)) : null,
+        it('link', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
+        it('compass', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
+        it('share', 'Als GPX speichern', exportGpx)]),
+      grp('Bearbeiten', [
+        it('pencil', 'Umbenennen', rename),
+        it('bulb', 'Namensvorschläge', suggestNames),
+        it('tag', 'Sportart ändern', changeSport),
+        it('bag', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
+        it('camera', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); })]),
+      grp('Strecke und Höhen', [
+        it('peak', t.elevFix ? 'Höhen neu aus Gelände berechnen' : 'Höhen korrigieren (Geländemodell)', fixEle),
+        it('watch', t.elevSrc ? 'Höhe aus Uhr (bereits abgeglichen) – erneut abgleichen' : 'Höhe aus Uhr abgleichen (Zepp)', zeppEle),
+        it('wrench', 'GPS-Track korrigieren', () => Nav.go('/fix/' + id)),
+        t.elevFix || t.elevSrc ? it('undo', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
+        it('refresh', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id)); toast('Kennzahlen neu berechnet'); Nav.render(); })]),
+      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', onclick: async () => { s.close(); if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Tour löschen')) { await Tours.remove(id); Nav.go('/'); } } }, '🗑️ Tour löschen'))));
   }
   async function suggestNames() {
-    const box = h('div', { class: 'list' }, h('p', { class: 'muted' }, 'Orte werden gesucht …'));
+    const box = h('div', { class: 'list menu' }, h('p', { class: 'muted' }, 'Orte werden gesucht …'));
     const s = sheet('Namensvorschläge', box);
     try {
       const l = await Suggest.names(t, pts);
@@ -284,7 +292,7 @@ Views['/tour'] = async (root, [id]) => {
     catch (e) { toast(e.message); }
   }
   async function changeSport() {
-    const s = sheet('Sportart', h('div', { class: 'list' }, Sports.list.map(sp => h('button', { class: 'li', onclick: async () => { t.sport = sp[0]; await Tours.save(t); s.close(); Nav.render(); } }, h('span', { class: 'li-i' }, sp[2]), h('span', { class: 'li-t' }, h('b', null, sp[1]))))));
+    const s = sheet('Sportart', UI.list(Sports.list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' }));
   }
   async function exportGpx() {
     const wp = photos.filter(p => p.lat != null).map(p => ({ lat: p.lat, lon: p.lon, name: p.name }));

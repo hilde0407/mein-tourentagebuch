@@ -31,7 +31,7 @@ const Places = {
 };
 Views['/story'] = async (root, [id]) => {
   const t = await DB.get('tours', id);
-  if (!t) { root.append(topbar('Erzählung', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Tour gibt es nicht mehr.'))); return; }
+  if (!t) { root.append(topbar('Erzählung', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr' })); return; }
   const pts = await Tours.points(id);
   const photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts);
   let CM = await Comments.all();
@@ -75,7 +75,7 @@ Views['/story'] = async (root, [id]) => {
       try { await Comments.add(p.id, v); CM = await Comments.all(); inp.value = ''; fill(); draw(); } catch (e) { toast(String(e.message || e)); }
     };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
-    sheet('📷 Foto', h('div', null, h('img', { src: Photos.url(p.id), alt: '', style: { width: '100%', maxHeight: '45vh', objectFit: 'contain', borderRadius: '8px' } }), list,
+    sheet('Foto und Kommentare', h('div', null, h('img', { src: Photos.url(p.id), alt: '', style: { width: '100%', maxHeight: '45vh', objectFit: 'contain', borderRadius: '6px' } }), list,
       h('div', { class: 'row' }, inp, h('button', { class: 'btn pri sm', onclick: send }, 'Senden'))));
     fill();
   }

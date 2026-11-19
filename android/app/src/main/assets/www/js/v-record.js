@@ -1,9 +1,9 @@
 'use strict';
 /* Aufzeichnen: GPS-Spur im Hintergrund (Vordergrunddienst der Hülle), Fotos unterwegs, Sprachansagen auf geplanter Route. */
 Views['/rec'] = async root => {
-  const box = h('div', { class: 'rec' });
-  root.append(topbar('Aufzeichnen'), box);
-  if (!window.MTApp) { box.append(h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '●'), h('h2', null, 'Nur in der Android-App'), h('p', null, 'Die GPS-Aufzeichnung läuft im Hintergrund und braucht die installierte App.'))); return; }
+  const box = h('div', { class: 'rec' }), head = topbar('Aufzeichnen');
+  root.append(head, box);
+  if (!window.MTApp) { box.append(UI.empty({ icon: 'rec', title: 'Nur in der Android-App', text: 'Die GPS-Aufzeichnung läuft im Hintergrund und braucht die installierte App.' })); return; }
   let timer = null, map = null, line = null, me = null, lastPts = 0;
   const stat = () => { try { return JSON.parse(MTApp.status()); } catch (e) { return { state: 'idle' }; } };
   let stop_ = () => { clearInterval(timer); timer = null; if (map) { map.remove(); map = null; } };
@@ -18,16 +18,17 @@ Views['/rec'] = async root => {
     drawChips();
     const ri = (() => { try { return JSON.parse(MTApp.routeInfo() || '{}'); } catch (e) { return {}; } })();
     const planned = (await Tours.list()).filter(t => t.status === 'planned');
-    const routeBox = h('div', { class: 'card pad' });
+    const routeBox = h('div', { class: 'routebox' });
     const drawRoute = () => {
       routeBox.innerHTML = '';
       const info = (() => { try { return JSON.parse(MTApp.routeInfo() || '{}'); } catch (e) { return {}; } })();
-      if (info.name || info.points) routeBox.append(h('div', { class: 'row' }, h('div', { style: { flex: 1 } }, h('b', null, '🧭 ' + (info.name || 'Geplante Route')), h('small', { class: 'muted' }, ' Sprachansagen sind aktiv')),
-        h('button', { class: 'btn sm', onclick: () => { MTApp.clearRoute(); drawRoute(); } }, 'Entfernen')),
-        h('div', { class: 'row' }, h('label', { class: 'sw' }, h('input', { type: 'checkbox', checked: Set_.get('guide') !== false, onchange: async e => { await Set_.set('guide', e.target.checked); MTApp.setGuide(e.target.checked); } }), ' Wege ansagen'), h('button', { class: 'btn sm', onclick: () => MTApp.guideTest() }, '🔊 Test')));
-      else routeBox.append(h('b', null, '🧭 Route mit Ansagen'), h('p', { class: 'muted' }, 'Wähle eine GPX-Datei oder eine geplante Tour: Die App sagt dann Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
-        h('button', { class: 'btn pri', id: 'gpxroute', onclick: pickGpx }, '📂 GPX-Datei vom Handy wählen'),
-        planned.length ? h('select', { onchange: async e => { const t = planned.find(x => x.id === e.target.value); if (t) { startWith0(t); } } }, h('option', { value: '' }, 'Route wählen …'), planned.map(t => h('option', { value: t.id }, t.name + ' · ' + F.km(t.dist)))) : h('small', { class: 'muted' }, 'Noch keine geplante Tour. Im Reiter „Planen“ eine erstellen.'));
+      if (info.name || info.points) routeBox.append(UI.list([UI.row({ icon: 'compass', title: info.name || 'Geplante Route', sub: 'Die App sagt Abbiegungen an und warnt, wenn du vom Weg abkommst.',
+          trail: h('button', { class: 'btn sm', onclick: () => { MTApp.clearRoute(); drawRoute(); } }, 'Entfernen') })]),
+        h('div', { class: 'row' }, UI.toggle('Wege ansagen', Set_.get('guide') !== false, async on => { await Set_.set('guide', on); MTApp.setGuide(on); }), h('span', { class: 'sp' }), h('button', { class: 'btn sm', onclick: () => MTApp.guideTest() }, '🔊 Ansage testen')));
+      else routeBox.append(h('p', { class: 'muted' }, 'Mit einer Route sagt die App Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
+        h('div', { class: 'col' }, h('button', { class: 'btn', id: 'gpxroute', onclick: pickGpx }, '📂 GPX-Datei vom Handy wählen'),
+          planned.length ? h('select', { 'aria-label': 'Geplante Tour als Route', onchange: async e => { const t = planned.find(x => x.id === e.target.value); if (t) { startWith0(t); } } }, h('option', { value: '' }, 'Geplante Tour wählen …'), planned.map(t => h('option', { value: t.id }, t.name + ' · ' + F.km(t.dist))))
+            : h('p', { class: 'muted small' }, 'Noch keine geplante Tour. Unter „Tour planen“ lässt sich eine zeichnen.')));
     };
     /** Schnell: GPX-Datei vom Handy direkt als Route mit Ansagen verwenden (ohne sie erst zu importieren). */
     async function pickGpx() {
@@ -49,31 +50,32 @@ Views['/rec'] = async root => {
     const warn = h('div');
     const check = () => {
       warn.innerHTML = '';
-      if (!MTApp.hasPermission()) warn.append(h('div', { class: 'banner' }, '📍 Für die Aufzeichnung braucht die App den Standort.', h('button', { class: 'btn sm pri', onclick: () => MTApp.requestPermission() }, 'Standort erlauben')));
-      else if (!st.gps) warn.append(h('div', { class: 'banner' }, '📡 GPS ist ausgeschaltet. Bitte in den Android-Schnellmenü einschalten.'));
+      if (!MTApp.hasPermission()) warn.append(UI.banner('Für die Aufzeichnung braucht die App den Standort.', [h('button', { class: 'btn sm pri', onclick: () => MTApp.requestPermission() }, 'Standort erlauben')]));
+      else if (!st.gps) warn.append(UI.banner('GPS ist ausgeschaltet. Bitte im Android-Schnellmenü einschalten.'));
     };
     check(); window.addEventListener('mtperm', check, { once: true });
-    box.append(h('div', { class: 'pad' }, warn, h('h3', null, 'Sportart'), chips, h('label', { class: 'fld' }, 'Name', name), routeBox,
-      h('button', { class: 'bigstart', onclick: () => {
+    box.append(h('div', { class: 'pad' }, warn, UI.section('Sportart', chips), h('label', { class: 'fld' }, 'Name der Tour (optional)', name),
+      UI.sign('Aufzeichnung starten', { cls: 'bigstart', onclick: () => {
         if (!MTApp.hasPermission()) { MTApp.requestPermission(); return; }
         MTApp.setGuide(Set_.get('guide') !== false);
         DB.kvSet('recPins', []);
         MTApp.startRecording(sport, name.value.trim());
         sessionStorage.removeItem('recSport'); sessionStorage.removeItem('recName');
         setTimeout(() => Nav.render(), 400);
-      } }, h('span', null, '●'), 'Aufzeichnung starten'),
-      h('p', { class: 'muted small' }, 'Die Aufzeichnung läuft auch bei ausgeschaltetem Bildschirm weiter. Für lange Touren: Akku-Optimierung für diese App ausschalten.'),
-      h('div', { class: 'row wrap' },
-        h('a', { class: 'btn sm', id: 'goplan', href: '#/plan' }, '🗺️ Tour planen'),
-        h('button', { class: 'btn sm', id: 'baks', onclick: backups }, '💾 Gesicherte Aufzeichnungen'),
-        h('button', { class: 'btn sm', onclick: () => MTApp.openBatterySettings() }, '🔋 Akku-Einstellungen'))));
+      } }),
+      h('p', { class: 'muted small' }, 'Die Aufzeichnung läuft auch bei ausgeschaltetem Bildschirm weiter.'),
+      UI.section('Route mit Ansagen', routeBox),
+      UI.section('Außerdem', UI.list([
+        UI.row({ icon: 'route', title: 'Tour planen', sub: 'Route zeichnen und mit Ansagen nachgehen', href: '#/plan', id: 'goplan' }),
+        UI.row({ icon: 'save', title: 'Gesicherte Aufzeichnungen', sub: 'Die letzten zehn Aufzeichnungen zurückholen', onclick: backups, id: 'baks' }),
+        UI.row({ icon: 'battery', title: 'Akku-Einstellungen', sub: 'Für lange Touren die Akku-Optimierung dieser App ausschalten', onclick: () => MTApp.openBatterySettings() })]))));
   }
 
   /** Die letzten Aufzeichnungen liegen als Sicherung auf dem Handy – hier lassen sie sich als Tour zurückholen. */
   function backups() {
     let list = [];
     try { list = JSON.parse(MTApp.backups() || '[]'); } catch (e) { /* leer */ }
-    const body = h('div', { class: 'list' });
+    const body = h('div', { class: 'list menu' });
     let sh = null;
     if (!list.length) body.append(h('p', { class: 'muted' }, 'Keine Sicherungen vorhanden. Beendete Aufzeichnungen werden automatisch gesichert (die letzten 10).'));
     list.forEach(b => body.append(h('button', { class: 'li', onclick: async () => {
@@ -88,7 +90,7 @@ Views['/rec'] = async root => {
         toast(r.dup ? 'Diese Tour gibt es schon.' : 'Tour wiederhergestellt ✓');
         Nav.go('/tour/' + r.tour.id);
       } catch (e) { toast('Wiederherstellen fehlgeschlagen: ' + e.message, 6000); }
-    } }, h('span', { class: 'li-i' }, '💾'), h('span', { class: 'li-t' }, h('b', null, F.date(b.ts) + ' · ' + F.time(b.ts) + ' Uhr'), h('small', null, F.size(b.size))))));
+    } }, h('span', { class: 'li-i', html: Ico.svg('save', 22) }), h('span', { class: 'li-t' }, h('b', null, F.date(b.ts) + ' · ' + F.time(b.ts) + ' Uhr'), h('small', null, F.size(b.size))))));
     sh = sheet('Gesicherte Aufzeichnungen', body);
   }
 
@@ -102,21 +104,24 @@ Views['/rec'] = async root => {
     await DB.kvSet('recPins', pins);
     window.dispatchEvent(new Event('pins-changed'));
     if (withPhoto) { try { sessionStorage.setItem('pinNote', JSON.stringify({ t: Date.now(), text: txt.trim() })); } catch (e) { /* egal */ } MTApp.takePhoto(); }
-    else toast('Pin gesetzt 📍');
+    else toast('Pin gesetzt');
   }
 
   async function active(st) {
     box.innerHTML = '';
     const mapEl = h('div', { class: 'map rmap' });
-    const big = h('div', { class: 'bigtime' }), grid = h('div', { class: 'stats' });
+    const state = h('div', { class: 'rec-state', role: 'status' }, h('i'), h('span'));
+    const big = h('div', { class: 'bigtime', 'aria-label': 'Dauer' }), grid = h('div'), gps = h('p', { class: 'rec-gps' });
+    let shown = '';
     const pause = h('button', { class: 'rbtn pause', id: 'rpause', onclick: () => { st.state === 'paused' ? MTApp.resumeRecording() : MTApp.pauseRecording(); setTimeout(tick, 300); } });
-    const photoBtn = h('button', { class: 'rbtn', id: 'rphoto', onclick: () => { MTApp.takePhoto(); } }, h('span', null, '📷'), 'Foto');
-    const pinBtn = h('button', { class: 'rbtn sm', id: 'rpin', onclick: () => addPin(st, false) }, h('span', null, '📍'), 'Pin');
-    const pinPhBtn = h('button', { class: 'rbtn sm', id: 'rpinph', onclick: () => addPin(st, true) }, h('span', null, '📷'), 'Foto + Text');
-    const vidBtn = h('button', { class: 'rbtn', id: 'rvideo', onclick: () => { if (MTApp.takeVideo) MTApp.takeVideo(); else toast('Video braucht die neueste App-Version.'); } }, h('span', null, '🎥'), 'Video');
+    const ib = (cls, id, ico, label, fn) => h('button', { class: cls, id, onclick: fn }, h('span', { html: Ico.svg(ico, 30) }), label);
+    const photoBtn = ib('rbtn', 'rphoto', 'camera', 'Foto', () => { MTApp.takePhoto(); });
+    const pinBtn = ib('rbtn sm', 'rpin', 'pin', 'Pin setzen', () => addPin(st, false));
+    const pinPhBtn = ib('rbtn sm', 'rpinph', 'chat', 'Foto mit Text', () => addPin(st, true));
+    const vidBtn = ib('rbtn', 'rvideo', 'video', 'Video', () => { if (MTApp.takeVideo) MTApp.takeVideo(); else toast('Video braucht die neueste App-Version.'); });
     // Beenden: steht allein und reagiert nur, wenn man es gedrückt hält (Ring füllt sich)
     const ring = h('i', { class: 'holdring' });
-    const stopBtn = h('button', { class: 'holdstop', id: 'rstop', 'aria-label': 'Beenden – gedrückt halten' }, ring, h('span', { class: 'ht' }, h('b', null, '■ Beenden'), h('small', null, 'gedrückt halten')));
+    const stopBtn = h('button', { class: 'holdstop', id: 'rstop', 'aria-label': 'Beenden – gedrückt halten' }, ring, h('span', { class: 'ht' }, h('b', { html: Ico.svg('stop', 22) + '<span>Aufzeichnung beenden</span>' }), h('small', null, 'gedrückt halten')));
     let hold = null, holdT = 0;
     const HOLD_MS = 1500;
     const holdStop = () => { if (hold) { cancelAnimationFrame(hold); hold = null; } ring.style.transform = 'scaleX(0)'; stopBtn.classList.remove('on'); };
@@ -130,7 +135,7 @@ Views['/rec'] = async root => {
     ['pointerup', 'pointercancel', 'pointerleave', 'contextmenu'].forEach(ev => stopBtn.addEventListener(ev, e => { if (ev === 'contextmenu') e.preventDefault(); holdStop(); }));
     stopBtn.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { holdStart(e); } });
     stopBtn.addEventListener('keyup', holdStop);
-    box.append(mapEl, h('div', { class: 'pad' }, big, grid,
+    box.append(mapEl, h('div', { class: 'pad' }, state, big, grid, gps,
       h('div', { class: 'rbtns main' }, pause, photoBtn, vidBtn),
       h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn),
       h('div', { class: 'stopgap' }), stopBtn));
@@ -162,10 +167,15 @@ Views['/rec'] = async root => {
       st = s;
       big.textContent = F.clock(s.active_s);
       grid.innerHTML = '';
-      const c = (v, l) => grid.append(h('div', null, h('b', null, v), h('small', null, l)));
-      c(F.km(s.dist_m), 'Strecke'); c('↑ ' + F.m(s.up_m), 'Aufstieg'); c(s.alt_m != null ? F.m(s.alt_m) : '–', 'Höhe'); c(s.speed_ms ? (s.speed_ms * 3.6).toFixed(1).replace('.', ',') + ' km/h' : '–', 'Tempo');
-      c(s.fix_acc_m > 0 ? '±' + s.fix_acc_m + ' m' : '–', 'GPS-Genauigkeit'); c(s.state === 'paused' ? 'Pause' : (s.fix_age_s >= 0 && s.fix_age_s < 20 ? 'ok' : 'Suche …'), 'Signal');
-      pause.innerHTML = ''; pause.append(h('span', null, s.state === 'paused' ? '▶' : '❚❚'), s.state === 'paused' ? 'Weiter' : 'Pause');
+      grid.append(UI.figs([[F.km(s.dist_m), 'Strecke'], ['↑ ' + F.m(s.up_m), 'Aufstieg'], [s.alt_m != null ? F.m(s.alt_m) : '–', 'Höhe'], [s.speed_ms ? (s.speed_ms * 3.6).toFixed(1).replace('.', ',') + ' km/h' : '–', 'Tempo']], { big: true, cols: 2 }));
+      const sig = s.fix_age_s >= 0 && s.fix_age_s < 20;
+      gps.textContent = s.state === 'paused' ? 'Pausiert – es wird nichts mitgeschrieben.' : (sig ? 'GPS-Signal gut' + (s.fix_acc_m > 0 ? ', auf ' + s.fix_acc_m + ' m genau' : '') : 'GPS-Signal wird gesucht …');
+      if (shown !== s.state) {      // nur bei Wechsel neu aufbauen, sonst flackert die Taste im Sekundentakt
+        shown = s.state;
+        const p = s.state === 'paused';
+        state.classList.toggle('paused', p); state.lastChild.textContent = p ? 'Pause' : 'Aufzeichnung läuft';
+        pause.innerHTML = ''; pause.append(h('span', { html: Ico.svg(p ? 'play' : 'pause', 30) }), p ? 'Weiter' : 'Pause');
+      }
       if (s.count !== lastPts && s.lat != null) {
         lastPts = s.count;
         try { const ps = JSON.parse(MTApp.points(800)); line.setLatLngs(ps); } catch (e) { /* ignorieren */ }
@@ -219,9 +229,10 @@ Views['/rec'] = async root => {
   }
 
   function unsaved(st) {
-    box.append(h('div', { class: 'pad' }, h('div', { class: 'banner' }, '💾 Es liegt eine beendete Aufzeichnung vor, die noch nicht gespeichert wurde.'),
-      h('button', { class: 'btn pri', onclick: () => saveFinished() }, 'Jetzt als Tour speichern'),
-      h('button', { class: 'btn danger', onclick: async () => { if (await confirmBox('Aufzeichnung verwerfen?', 'Sie wird gelöscht (eine Sicherungskopie bleibt auf dem Handy).', 'Verwerfen')) { MTApp.discardRecording(); Nav.render(); } } }, 'Verwerfen')));
+    void st;
+    box.append(h('div', { class: 'pad' }, UI.empty({ icon: 'save', title: 'Aufzeichnung noch nicht gespeichert', text: 'Eine beendete Aufzeichnung liegt noch auf dem Handy. Speichere sie als Tour oder verwirf sie.', actions: [
+      h('button', { class: 'btn pri', onclick: () => saveFinished() }, 'Als Tour speichern'),
+      h('button', { class: 'btn danger', onclick: async () => { if (await confirmBox('Aufzeichnung verwerfen?', 'Sie wird gelöscht (eine Sicherungskopie bleibt auf dem Handy).', 'Verwerfen')) { MTApp.discardRecording(); Nav.render(); } } }, 'Verwerfen')] })));
   }
 
   const st = stat();

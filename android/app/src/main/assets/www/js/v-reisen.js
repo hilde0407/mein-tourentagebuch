@@ -197,18 +197,18 @@ Views['/reisen'] = async root => {
   const cfg = await Reisen.settings(), names = await DB.kvGet('tripNames', {}), places = await DB.kvGet('tripRegion', {});
   const home = Reisen.homes(all);
   const body = h('div', { class: 'pad' });
-  root.append(topbar('Reisen & Alben', { back: true, noMenu: true }), body);
+  root.append(topbar('Reisen & Alben', { back: true }), body);
   const multi = await Reisen.multiday(all);
   const ed = await Reisen.edits();
   let tab = 'reisen';
   const draw = () => {
     body.innerHTML = '';
-    body.append(h('div', { class: 'chips' }, [['reisen', 'Reisen'], ['alben', 'Alben']].map(([k, l]) => h('button', { class: 'chip' + (tab === k ? ' on' : ''), onclick: () => { tab = k; draw(); } }, l))));
+    body.append(UI.seg([['reisen', 'Reisen'], ['alben', 'Alben']], tab, k => { tab = k; draw(); }, { label: 'Ansicht' }));
     if (tab === 'reisen') {
       const trips = Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).filter(r => !ed.hidden[r.id]), gone = Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).filter(r => ed.hidden[r.id]);
       if (!Reisen._busy) { Reisen._busy = true; (async () => { let ch = false; for (const r of trips) { if (names[r.id] || r.id in places) continue; try { places[r.id] = await Reisen.place(r); ch = true; await new Promise(k => setTimeout(k, 1100)); } catch (e) { break; } } Reisen._busy = false; if (ch && tab === 'reisen' && body.isConnected) draw(); })(); }
       body.append(h('p', { class: 'muted small' }, `Als Reise gelten Touren mehr als 60 km von deinem Zuhause (automatisch erkannt, oder der Heimatort aus den Einstellungen) an mindestens ${Math.max(2, cfg.days)} Tagen; bis 7 Tage Pause im gleichen Gebiet gehören dazu.`));
-      if (!trips.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Reisen gefunden.')));
+      if (!trips.length) body.append(UI.empty({ icon: 'bag', title: 'Noch keine Reise erkannt', text: 'Eine Reise entsteht von selbst, sobald Touren weit weg von zu Hause an mehreren Tagen im Tagebuch stehen.' }));
       body.append(h('div', { class: 'list' }, trips.map(r => h('a', { class: 'li', href: '#/reise/' + r.id },
         Reisen.icon(r, '🧳'), h('span', { class: 'li-t' }, h('b', null, Reisen.title(r, names, places)),
           h('small', null, `${Reisen.range(r.first, r.last)} · ${r.tours.length} Touren an ${r.days} Tagen · ${F.km(r.km)} · ↑ ${F.m(r.up)}`))))));
@@ -221,7 +221,7 @@ Views['/reisen'] = async root => {
     } else {
       const m = Reisen.tags(all), list = [...m.entries()].map(([g, ts]) => [g, Reisen.sum(ts.slice().sort((a, b) => a.start - b.start))]).sort((a, b) => b[1].last - a[1].last);
       body.append(h('p', { class: 'muted small' }, 'Alben entstehen aus Schlagworten, die du einer Tour gibst (Tour öffnen → ⋮ → „Tags & Alben“).'));
-      if (!list.length) body.append(h('div', { class: 'empty' }, h('p', null, 'Noch keine Alben.')));
+      if (!list.length) body.append(UI.empty({ icon: 'tag', title: 'Noch keine Alben', text: 'Gib einer Tour ein Schlagwort – alle Touren mit demselben Schlagwort bilden ein Album.' }));
       body.append(h('div', { class: 'list' }, list.map(([g, r]) => h('a', { class: 'li', href: '#/album/' + encodeURIComponent(g) },
         Reisen.icon(r, '🏷️'), h('span', { class: 'li-t' }, h('b', null, g), h('small', null, `${r.tours.length} Touren · ${F.km(r.km)} · ${Reisen.range(r.first, r.last)}`))))));
     }
@@ -239,7 +239,7 @@ async function groupPage(root, title, tours, opts) {
   const photos = [];
   for (const t of sorted) photos.push(...(await DB.byIndex('photos', 'tour', t.id)));
   photos.sort((a, b) => a.ts - b.ts);
-  const kpi = (v, l) => h('div', { class: 'kpi' }, h('b', null, v), h('small', null, l));
+  const kpi = (v, l) => UI.fig(v, l);
   body.append(h('div', { class: 'sub' }, Reisen.range(r.first, r.last)),
     h('div', { class: 'kpis' }, kpi(sorted.length, 'Touren'), kpi(r.days, r.days === 1 ? 'Tag' : 'Tage'), kpi(F.km(r.km), 'Strecke'), kpi(F.m(r.up), 'Aufstieg'), kpi(F.dur(r.dur), 'Zeit unterwegs'), kpi(photos.length, 'Fotos')));
   body.append(h('div', { class: 'row' }, h('button', { class: 'btn', id: 'gflug', onclick: () => { Flug.title = title; Nav.go('/flug/set:' + sorted.map(t => t.id).join(',')); } }, '🚁 ' + (sorted.length > 1 ? 'Reiseflug' : '3D-Flug'))));
@@ -264,7 +264,7 @@ Views['/reise'] = async (root, [id]) => {
   const home = Reisen.homes(all);
   const ed = await Reisen.edits();
   const r = id.startsWith('m:') ? (await Reisen.multiday(all)).find(x => x.id === id) : Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).find(x => x.id === id);
-  if (!r) { root.append(topbar('Reise', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
+  if (!r) { root.append(topbar('Reise', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
   if (!r.multi && !names[id] && !(id in places)) { try { places[id] = await Reisen.place(r); } catch (e) { /* offline: Zeitraum */ } }
   await groupPage(root, Reisen.title(r, names, places), r.tours, {
     multi: r.multi ? r : null,
@@ -294,7 +294,7 @@ Views['/reise'] = async (root, [id]) => {
 Views['/album'] = async (root, [tag0]) => {
   const tag = decodeURIComponent(tag0 || '');
   const ts = (await Tours.list()).filter(t => !t.hidden && (t.tags || []).includes(tag));
-  if (!ts.length) { root.append(topbar('Album', { back: true, noMenu: true }), h('div', { class: 'empty' }, h('p', null, 'Dieses Album ist leer.'))); return; }
+  if (!ts.length) { root.append(topbar('Album', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Dieses Album ist leer.'))); return; }
   await groupPage(root, tag, ts, {
     rename: async () => {
       const v = ((await askText('Name des Albums', 'Name', tag, 'Speichern')) || '').trim(); if (!v || v === tag) return;

@@ -1,7 +1,7 @@
 'use strict';
 Views['/import'] = async root => {
   const body = h('div', { class: 'pad' });
-  root.append(topbar('Touren importieren', { back: true, noMenu: true }), body);
+  root.append(topbar('Touren importieren', { back: true }), body);
   const run = async (title, fn) => {
     try {
       const r = await PhotoSources.progress(title, (upd, txt) => fn(upd, txt));
@@ -9,16 +9,16 @@ Views['/import'] = async root => {
       Tours.invalidate(); toast(msg, 7000);
     } catch (e) { toast(e.message, 8000); }
   };
-  const card = (ico, t, sub, fn) => h('button', { class: 'li big', onclick: fn }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, t), h('small', null, sub)));
+  const card = (ico, t, sub, fn) => UI.row({ icon: ico, title: t, sub, onclick: fn });
   body.append(h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
     h('div', { class: 'list' },
-      card('📄', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
-      card('🟢', 'Komoot', 'Alle aufgezeichneten (und geplanten) Touren', komoot),
-      card('🟠', 'Strava', 'Aktivitäten über die Strava-Schnittstelle', strava),
-      card('⌚', 'Zepp / Amazfit', 'Aktivitäten mit GPS direkt aus der Zepp-Cloud', zepp),
-      card('🚲', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
-      card('🧭', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
-      card('🔗', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)));
+      card('file', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
+      card('route', 'Komoot', 'Alle aufgezeichneten (und geplanten) Touren', komoot),
+      card('run', 'Strava', 'Aktivitäten über die Strava-Schnittstelle', strava),
+      card('watch', 'Zepp / Amazfit', 'Aktivitäten mit GPS direkt aus der Zepp-Cloud', zepp),
+      card('bike', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
+      card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
+      card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)));
 
   async function komoot() {
     const c = await DB.kvGet('komoot', null);
@@ -28,7 +28,7 @@ Views['/import'] = async root => {
       h('p', { class: 'muted' }, 'Es wird dein Komoot-Zugang genutzt, um deine eigenen Touren zu laden. Das Passwort wird nicht gespeichert, nur ein Zugriffsschlüssel auf diesem Handy.'),
       c ? h('p', null, '✓ Angemeldet als ' + c.email) : null,
       c ? null : h('label', { class: 'fld' }, 'E-Mail', em), c ? null : h('label', { class: 'fld' }, 'Passwort', pw),
-      h('label', { class: 'sw' }, pl, ' auch geplante Touren laden'),
+      h('label', { class: 'sw' }, pl, h('span', null, 'Auch geplante Touren laden')),
       h('div', { class: 'row end' }, c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'komoot'); s.close(); komoot(); } }, 'Abmelden') : null,
         h('button', { class: 'btn pri', onclick: async () => {
           s.close();
@@ -64,7 +64,7 @@ Views['/import'] = async root => {
     const loggedIn = h('div', null, h('p', null, '✓ Angemeldet' + (c && c.viaToken ? ' (mit Token)' : '')),
       h('div', { class: 'row end wrap' },
         h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Abmelden'),
-        h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert ✓'); } catch (e) { toast(e.message, 8000); } } }, 'Zugang testen'),
+        h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert'); } catch (e) { toast(e.message, 8000); } } }, 'Zugang testen'),
         h('button', { class: 'btn', onclick: () => { s.close(); run('Höhe aus Uhr', async (upd, txt) => { txt.textContent = 'Zepp-Trainings laden …'; const r = await Fix.zeppEleAll(c, upd); return `Höhe aus Uhr abgeglichen: ${r.done} von ${r.total} passenden Touren` + (r.none ? `, ${r.none} ohne brauchbare Höhendaten` : '') + (r.fail ? `, ${r.fail} fehlgeschlagen` : ''); }); } }, '⌚ Höhe für alle Touren abgleichen'),
         h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Aktivitäten laden')));
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
@@ -120,7 +120,7 @@ Views['/import'] = async root => {
 
 Views['/settings'] = async root => {
   const body = h('div', { class: 'pad' });
-  root.append(topbar('Einstellungen', { back: true, noMenu: true }), body);
+  root.append(topbar('Einstellungen', { back: true }), body);
   const sel = (label, key, opts) => h('label', { class: 'fld' }, label, h('select', { onchange: async e => { await Set_.set(key, e.target.value); } }, opts.map(([v, l]) => h('option', { value: v, selected: String(Set_.get(key)) === String(v) }, l))));
   const homeBox = () => {      // Heimatort suchen und übernehmen (Kartenmitte der Planung, Wetter, Vorschläge)
     const q = h('input', { type: 'text', placeholder: 'Ort oder Adresse suchen …', value: Set_.get('homeName') || '', autocapitalize: 'off' }),
@@ -134,7 +134,7 @@ Views['/settings'] = async root => {
         if (r.status !== 200) throw new Error('Ortssuche: HTTP ' + r.status);
         const l = JSON.parse(r.body); res.innerHTML = '';
         if (!l.length) { res.textContent = 'Nichts gefunden.'; return; }
-        l.forEach(e => res.append(h('div', null, h('button', { class: 'btn sm', style: { margin: '2px 0', textAlign: 'left' }, onclick: async () => {
+        l.forEach(e => res.append(h('div', null, h('button', { class: 'btn sm', style: { margin: '4px 0', textAlign: 'left', justifyContent: 'flex-start' }, onclick: async () => {
           const name = e.display_name.split(',').slice(0, 2).join(',').trim();
           await Set_.set('homeName', name); await Set_.set('homeLat', (+e.lat).toFixed(5)); await Set_.set('homeLon', (+e.lon).toFixed(5));
           q.value = name; res.innerHTML = ''; show(); toast('Heimatort gespeichert');
@@ -165,7 +165,7 @@ Views['/settings'] = async root => {
     h('h3', null, 'Puls'), inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
     h('p', { class: 'muted small' }, 'Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
-    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', onclick: backup }, '💾 Sicherung speichern'), h('button', { class: 'btn', onclick: restore }, '↩ Sicherung einspielen')),
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', onclick: backup }, '💾 Sicherung speichern'), h('button', { class: 'btn', onclick: restore }, '📥 Sicherung einspielen')),
     h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
     h('div', { class: 'row wrap' }, window.MTApp ? h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll') : null,
       h('button', { class: 'btn sm danger', onclick: wipe }, 'Alle Daten löschen')));
@@ -187,7 +187,7 @@ Views['/settings'] = async root => {
       if (data.app !== 'tourentagebuch') throw new Error('Das ist keine Sicherung von Mein Tourentagebuch.');
       if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto-Dateien selbst sind nicht Teil der Sicherung.)`, 'Einspielen')) return;
       await DB.putMany('tours', data.tours); await DB.putMany('tracks', data.tracks); await DB.putMany('photos', data.photos);
-      Tours.invalidate(); toast('Sicherung eingespielt ✓'); Nav.render();
+      Tours.invalidate(); toast('Sicherung eingespielt'); Nav.render();
     } catch (e) { toast(e.message, 7000); }
   }
   async function wipe() {

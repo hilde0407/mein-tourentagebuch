@@ -76,7 +76,7 @@ Views['/flug'] = async (root, [id]) => {
   const tours = [];
   for (const x of (SET ? id.slice(4).split(',') : [id])) { const q = await DB.get('tours', x); if (q) tours.push(q); }
   tours.sort((a, b) => a.start - b.start);
-  if (!tours.length) { root.append(topbar('3D-Flug', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Tour gibt es nicht mehr.'))); return; }
+  if (!tours.length) { root.append(topbar('3D-Flug', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr' })); return; }
   const t = SET ? { name: Flug.title || 'Reiseflug', sport: tours[0].sport } : tours[0];
   const msg = h('div', { class: 'fmsg' }, 'Lädt …');
   const mapEl = h('div', { class: 'fm' });

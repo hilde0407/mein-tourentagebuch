@@ -40,17 +40,28 @@ function toast(msg, ms) {
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms || 3200);
 }
 
-/** Unterer Dialog („Sheet“). Gibt {el, close} zurück. */
+/** Blatt: Dialog, der von unten hochfährt. Gibt {el, close} zurück. Schließt mit ✕, Tipp daneben, Zurück-Taste oder Escape. */
 function sheet(title, content, opts) {
   const back = h('div', { class: 'sheet-back', onclick: e => { if (e.target === back) close(); } });
-  const box = h('div', { class: 'sheet', role: 'dialog', 'aria-label': title },
+  const box = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' },
     h('div', { class: 'sheet-h' }, h('b', null, title), h('button', { class: 'ico', 'aria-label': 'Schließen', onclick: () => close() }, '✕')),
     h('div', { class: 'sheet-b' }, content));
+  const before = document.activeElement;
   back.append(box); document.body.append(back);
   requestAnimationFrame(() => back.classList.add('on'));
-  function close() { back.classList.remove('on'); setTimeout(() => back.remove(), 180); sheet.stack = sheet.stack.filter(x => x !== api); if (opts && opts.onclose) opts.onclose(); }
+  const onKey = e => { if (e.key === 'Escape' && sheet.stack[sheet.stack.length - 1] === api) { e.stopPropagation(); close(); } };
+  document.addEventListener('keydown', onKey);
+  let closed = false;
+  function close() {
+    if (closed) return; closed = true;
+    document.removeEventListener('keydown', onKey);
+    back.classList.remove('on'); setTimeout(() => back.remove(), 180); sheet.stack = sheet.stack.filter(x => x !== api);
+    try { if (before && before.isConnected && before.focus) before.focus({ preventScroll: true }); } catch (e) { /* egal */ }
+    if (opts && opts.onclose) opts.onclose();
+  }
   const api = { el: box, close };
   (sheet.stack = sheet.stack || []).push(api);
+  try { box.focus({ preventScroll: true }); } catch (e) { /* egal */ }
   return api;
 }
 function confirmBox(title, text, okLabel) {
@@ -72,12 +83,13 @@ function askText(title, label, value, okLabel) {
   });
 }
 
-/** Leerzustand ohne Touren – auf Start- und Tourenseite derselbe. */
+/** Leerer Zustand ohne Touren – auf Start- und Tourenseite derselbe: sagt, wie es losgeht. */
 function welcomeHero() {
-  return h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '⛰️'), h('h2', null, 'Willkommen im Tourentagebuch'),
-    h('p', null, 'Alle Touren und Fotos bleiben auf deinem Handy. Hol deine bisherigen Touren herein oder starte gleich eine neue.'),
-    h('div', { class: 'col' }, h('a', { class: 'btn pri', href: '#/import' }, '📥 Touren importieren'),
-      h('a', { class: 'btn', href: '#/rec' }, '● Aufzeichnung starten'), h('a', { class: 'btn', href: '#/plan' }, '✏️ Tour planen')));
+  return UI.empty({ icon: 'peak', cls: 'welcome', title: 'Willkommen im Tourentagebuch',
+    text: 'Hier stehen bald deine Touren: Strecke, Höhenprofil, Fotos. Zeichne die erste auf oder hol die bisherigen herein. Alles bleibt auf deinem Handy.',
+    actions: [UI.sign('Aufzeichnung starten', { href: '#/rec' }),
+      h('a', { class: 'btn', href: '#/import', html: Ico.svg('download') + '<span>Touren importieren</span>' }),
+      h('a', { class: 'btn', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' })] });
 }
 
 /* ---- Brücke zur Android-Hülle (Promise-Wrapper um MTApp.call) ---- */

@@ -1,0 +1,115 @@
+'use strict';
+/* Bausteine der Oberfläche (Gestaltung 2.0, siehe docs/gestaltung-2.0.md).
+   Jede Ansicht baut ihre Abschnitte, Kennzahlen, Listen, Chips, Schalter und leeren Zustände hiermit –
+   so sehen alle Seiten gleich aus, und neue Bausteine (Ziele, Serie, Fitness …) brauchen kein eigenes CSS. */
+const UI = {
+  /** Zahl und Einheit getrennt setzen: „3,7 km“ → 3,7 groß, km klein; „↑ 168 m“ → Pfeil klein davor. */
+  num(v) {
+    const s = String(v == null ? '–' : v);
+    const m = s.match(/^([↑↓±Ø]\s?)?([\d.,:+−–-]*\d)\s*(.*)$/);
+    if (!m) return h('b', null, s);
+    return h('b', null, m[1] ? h('span', { class: 'pre' }, m[1].trim()) : null, m[2], m[3] ? h('span', { class: 'u' }, m[3]) : null);
+  },
+  /** Eine Kennzahl: Wert (mit Einheit) und Etikett darunter. */
+  fig(value, label) { return h('div', { class: 'kpi' }, UI.num(value), label ? h('small', null, label) : null); },
+  /** Kennzahlenzeile. values: [[wert, etikett], …]; opts.big = große Ziffern, opts.cols = feste Spaltenzahl, opts.id. */
+  figs(values, opts) {
+    opts = opts || {};
+    return h('div', { class: 'kpis' + (opts.big ? ' big' : '') + (opts.cols ? ' c' + opts.cols : '') + (opts.cls ? ' ' + opts.cls : ''), id: opts.id },
+      values.filter(Boolean).map(v => UI.fig(v[0], v[1])));
+  },
+  /** Leise Wertetabelle „Etikett … Wert“ für nachrangige Angaben. pairs: [[etikett, wert], …]. */
+  facts(pairs) { return h('dl', { class: 'facts' }, pairs.filter(Boolean).map(p => h('div', null, h('dt', null, p[0]), h('dd', null, p[1])))); },
+  /** Abschnitt mit Überschrift. opts: id, sub (Erklärzeile), link + linkText (Verweis rechts), linkId, action (Element rechts). */
+  section(title, content, opts) {
+    opts = opts || {};
+    const right = opts.action || (opts.link ? h('a', { class: 'sec-l', href: opts.link, id: opts.linkId }, opts.linkText || 'Alle') : null);
+    return h('section', { class: 'sec' + (opts.cls ? ' ' + opts.cls : ''), id: opts.id },
+      h('div', { class: 'sec-h' }, h('h3', null, title), right),
+      opts.sub ? h('p', { class: 'muted small sec-s' }, opts.sub) : null, content);
+  },
+  /** Linierte Liste aus Zeilen (UI.row oder eigene .li-Elemente). */
+  list(rows, opts) { return h('div', { class: 'list' + (opts && opts.cls ? ' ' + opts.cls : ''), id: opts && opts.id }, rows); },
+  /** Listenzeile. opts: icon (Name/Zeichen) oder img (Bildadresse), title, sub, href oder onclick, trail (Element/Text rechts), id. */
+  row(opts) {
+    const lead = opts.img ? h('span', { class: 'li-i cov' }, h('img', { src: opts.img, alt: '', loading: 'lazy' }))
+      : opts.icon ? h('span', { class: 'li-i', html: Ico.svg(opts.icon, 22) || esc(opts.icon) }) : null;
+    const kids = [lead, h('span', { class: 'li-t' }, h('b', null, opts.title), opts.sub ? h('small', null, opts.sub) : null),
+      opts.trail != null ? h('span', { class: 'li-r' }, opts.trail) : null];
+    if (opts.href) return h('a', { class: 'li', href: opts.href, id: opts.id }, kids);
+    if (opts.onclick) return h('button', { class: 'li', id: opts.id, onclick: opts.onclick }, kids);
+    return h('div', { class: 'li', id: opts.id }, kids);
+  },
+  /** Chip (Filter, Auswahl). on = gewählt. */
+  chip(label, on, onclick, opts) {
+    return h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false', id: opts && opts.id, onclick }, label);
+  },
+  chips(kids, opts) { return h('div', { class: 'chips' + (opts && opts.wrap ? ' wrap' : ''), id: opts && opts.id }, kids); },
+  /** Umschalter mit zwei bis vier Segmenten. options: [[schlüssel, text, href?], …]. */
+  seg(options, active, onpick, opts) {
+    return h('div', { class: 'seg' + (opts && opts.cls ? ' ' + opts.cls : ''), role: 'group', 'aria-label': opts && opts.label },
+      options.map(o => o[2] ? h('a', { class: o[0] === active ? 'on' : '', href: o[2], 'aria-current': o[0] === active ? 'page' : null }, o[1])
+        : h('button', { class: o[0] === active ? 'on' : '', 'aria-pressed': o[0] === active ? 'true' : 'false', onclick: () => onpick && onpick(o[0]) }, o[1])));
+  },
+  /** Schalter mit Beschriftung. onchange(an, ereignis). */
+  toggle(label, on, onchange, opts) {
+    return h('label', { class: 'sw', id: opts && opts.id }, h('input', { type: 'checkbox', checked: !!on, onchange: e => onchange && onchange(e.target.checked, e) }), h('span', null, label));
+  },
+  /** Fortschrittsbalken. frac 0…1; opts.mark = Soll-Marke 0…1, opts.title. */
+  bar(frac, opts) {
+    return h('div', { class: 'gbar' }, h('i', { style: { width: Math.max(0, Math.min(100, frac * 100)) + '%' } }),
+      opts && opts.mark != null ? h('u', { style: { left: Math.max(0, Math.min(100, opts.mark * 100)) + '%' }, title: opts.title || 'Soll heute' }) : null);
+  },
+  /** Leerer Zustand: sagt, was fehlt, und bietet die nächste Handlung an. actions: Elemente (Knöpfe/Verweise). */
+  empty(opts) {
+    return h('div', { class: 'empty' + (opts.cls ? ' ' + opts.cls : '') }, opts.icon ? h('div', { class: 'empty-i', html: Ico.svg(opts.icon, 34) }) : null,
+      opts.title ? h('h2', null, opts.title) : null, opts.text ? h('p', null, opts.text) : null,
+      opts.actions ? h('div', { class: 'col' }, opts.actions) : null);
+  },
+  /** Hinweis mit Handlung. */
+  banner(content, actions, opts) { return h('div', { class: 'banner', id: opts && opts.id }, h('div', null, content), actions ? h('div', { class: 'row wrap' }, actions) : null); },
+  /** Gelbes Wegweiserschild – nur für „Aufzeichnung starten“. opts: href oder onclick, id, cls, icon. */
+  sign(text, opts) {
+    opts = opts || {};
+    const kids = [h('span', { class: 'sign-i', html: Ico.svg(opts.icon || 'rec', 26) }), h('span', { class: 'sign-t' }, text)];
+    return opts.href ? h('a', { class: 'sign ' + (opts.cls || ''), href: opts.href, id: opts.id }, kids)
+      : h('button', { class: 'sign ' + (opts.cls || ''), id: opts.id, onclick: opts.onclick }, kids);
+  },
+  /** Blatt mit Aktionsliste. items: [symbol, text, fn, unterzeile, id] oder null. Gibt das Blatt zurück. */
+  menu(title, items) {
+    const s = sheet(title, UI.list(items.filter(Boolean).map(it => UI.row({ icon: it[0], title: it[1], sub: it[3], id: it[4], onclick: () => { s.close(); it[2](); } })), { cls: 'menu' }));
+    return s;
+  },
+  /** „Mo., 21.09.“ – im Tagebuch steht das Jahr in der Monatsüberschrift. */
+  day: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '–',
+
+  /** Miniatur einer Tour füllen: Foto, sonst die Strecke in der Farbe der Sportart. Merkt sich das Ergebnis in `memo` (kv „tilebg“). */
+  async thumb(pv, t, memo, save) {
+    const pts = await Tours.points(t.id);
+    const svg = () => { pv.innerHTML = pts.length > 1 ? previewSvg(pts, MapKit.routeColor(t.sport, '#2e7d32'), { w: 72, h: 72, pad: 11, sw: 2.8 }) : ''; };
+    let en = memo && memo[t.id];
+    if (!en || en.kind === 'map') {      // „map“ stammt aus älteren Versionen (Kartenbild als Kachelhintergrund) und wird neu bestimmt
+      const ph = await pickPhoto(t.id);
+      en = ph ? { kind: 'photo', ph: ph.id } : { kind: 'svg' };
+      if (memo) { memo[t.id] = en; if (save) save(); }
+    }
+    if (en.kind !== 'photo') return svg();
+    const img = h('img', { alt: '', loading: 'lazy', src: Photos.thumb(en.ph) });
+    img.onerror = () => { if (memo) { memo[t.id] = { kind: 'svg' }; if (save) save(); } svg(); };
+    pv.innerHTML = ''; pv.append(img);
+  },
+  /** Zeile einer Tour: Miniatur, Titel, „Datum · Sportart“, Kennzahlen. opts: photos (Anzahl), stage (Etappentext), year (Jahr im Datum zeigen), io (IntersectionObserver für die Miniatur). */
+  tourRow(t, opts) {
+    opts = opts || {};
+    const pv = h('span', { class: 'tr-pv' }); pv.__t = t;
+    if (opts.io) opts.io.observe(pv); else UI.thumb(pv, t, opts.memo, opts.save).catch(() => {});
+    const k = h('span', { class: 'met' }, h('span', null, F.km(t.dist)), t.up ? h('span', null, '↑ ' + F.m(t.up)) : null, t.dur ? h('span', null, F.dur(t.dur)) : null,
+      t.hrAvg ? h('span', { class: 'hr', title: 'Ø Puls' }, h('span', { html: Ico.svg('heart', 13) }), t.hrAvg) : null,
+      opts.photos ? h('span', { class: 'ph', title: 'Fotos' }, h('span', { html: Ico.svg('photo', 14) }), opts.photos) : null);
+    return h('a', { class: 'tour', href: '#/tour/' + t.id },
+      pv, h('span', { class: 'tb' },
+        h('b', null, t.name, t.fav ? h('span', { class: 'favm', title: 'Favorit', html: Ico.svg('star', 15) }) : null),
+        h('small', null, (opts.year ? F.date(t.start) : UI.day(t.start)) + ' · ' + Sports.label(t.sport) + (t.status === 'planned' ? ' · geplant' : '')),
+        opts.stage ? h('small', { class: 'stage' }, opts.stage) : null, k));
+  },
+};

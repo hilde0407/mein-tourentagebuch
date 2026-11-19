@@ -113,7 +113,7 @@ const MapKit = {
   },
   /** Pin mit Kommentar. */
   pin(p) {
-    const k = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'mk', html: '<span style="background:#6a1b9a">📍</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) });
+    const k = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'mk', html: '<span style="background:#6a1b9a">' + Ico.svg('pin', 15) + '</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) });
     if (p.text) k.bindPopup(String(p.text).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])));
     return k;
   },

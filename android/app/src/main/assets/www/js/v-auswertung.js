@@ -5,7 +5,7 @@ const Ausw = {
   day: ms => { const d = new Date(ms); return Math.floor((ms - d.getTimezoneOffset() * -60000 * -1) / 86400000); },
   dkey: ms => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
   monday: ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; },
-  kpi: (v, l) => h('div', { class: 'kpi' }, h('b', null, v), h('small', null, l)),
+  kpi: (v, l) => UI.fig(v, l),
   link: (t, main, sub) => h('a', { class: 'li', href: '#/tour/' + t.id }, h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, main), h('small', null, sub))),
   sec: (title, sub) => [h('h3', null, title), sub ? h('p', { class: 'muted small' }, sub) : null],
 

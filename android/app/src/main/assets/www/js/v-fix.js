@@ -75,7 +75,7 @@ const Fix = {
       landen wie bei demFix in trk.origEle und kommen über restoreEle zurück. Gibt die neue Tour zurück. */
   async zeppEle(t) {
     const Z = Import.Zepp, acc = await DB.kvGet('zepp', null);
-    if (!acc || !acc.token) throw new Error('Zepp-Zugang fehlt – bitte unter Einstellungen → Import einrichten');
+    if (!acc || !acc.token) throw new Error('Zepp-Zugang fehlt – bitte unter Mehr → Touren importieren → Zepp einrichten');
     const trk = await DB.get('tracks', t.id);
     if (!trk || trk.lat.length < 5) throw new Error('Keine Streckenpunkte vorhanden');
     let sum = null, nxt = null;
@@ -179,7 +179,7 @@ const Fix = {
 
 Views['/fix'] = async (root, [id]) => {
   const t = await DB.get('tours', id);
-  if (!t) { root.append(topbar('Track korrigieren', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Tour gibt es nicht mehr.'))); return; }
+  if (!t) { root.append(topbar('Track korrigieren', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr' })); return; }
   const pts = await Tours.points(id);
   const trk = await DB.get('tracks', id);
   const found = Fix.detect(pts, t.sport);
@@ -198,7 +198,7 @@ Views['/fix'] = async (root, [id]) => {
   const done = async msg => { await Tours.recalc(id); toast(msg); Nav.render(); };
   info.append(
     h('p', { class: 'muted' }, 'Rote Punkte sind Ausreißer, orange Abschnitte sind für diese Sportart zu schnell (zum Beispiel Auto, Seilbahn oder GPS-Sprung). Grau gestrichelt ist bereits ausgeschlossen.'),
-    h('div', { class: 'card' }, h('div', { id: 'fx-sum' }, `${found.spike.length} Ausreißer · ${found.fast.length} schnelle Abschnitte` + (skipped ? ` · ${skipped} ausgeschlossene Punkte` : ''))),
+    h('p', { class: 'fxsum' }, h('b', { id: 'fx-sum' }, `${found.spike.length} Ausreißer · ${found.fast.length} schnelle Abschnitte` + (skipped ? ` · ${skipped} ausgeschlossene Punkte` : ''))),
     h('div', { class: 'col' },
       h('button', { class: 'btn pri', id: 'fx-spike', disabled: !found.spike.length, onclick: async () => { await Fix.removePoints(id, new Set(found.spike)); await done(found.spike.length + ' Ausreißer entfernt'); } }, 'Ausreißer entfernen'),
       h('button', { class: 'btn pri', id: 'fx-fast', disabled: !found.fast.length, onclick: async () => { await Fix.excludeRuns(id, found.fast); await done('Schnelle Abschnitte ausgeschlossen'); } }, 'Schnelle Abschnitte ausschließen'),

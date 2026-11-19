@@ -47,7 +47,7 @@ async function pickTour() {
   const ts = (await Tours.list()).filter(t => t.status !== 'planned');
   return new Promise(res => {
     let done = false;
-    const s = sheet('Tour wählen', h('div', { class: 'list' }, h('button', { class: 'li', onclick: () => { done = true; s.close(); res(null); } }, h('span', { class: 'li-t' }, h('b', null, 'Keine Tour'))),
+    const s = sheet('Tour wählen', h('div', { class: 'list menu' }, h('button', { class: 'li', onclick: () => { done = true; s.close(); res(null); } }, h('span', { class: 'li-t' }, h('b', null, 'Keine Tour'))),
       ts.slice(0, 120).map(t => h('button', { class: 'li', onclick: () => { done = true; s.close(); res(t); } }, h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, t.name), h('small', null, F.date(t.start)))))), { onclose: () => { if (!done) res(undefined); } });
   });
 }
@@ -94,7 +94,7 @@ const PhotoSources = {
   sheet(tour, done) {
     const run = async fn => { s.close(); try { const n = await fn(); if (n != null) toast(n + ' Foto(s) hinzugefügt', 4000); window.dispatchEvent(new Event('photos-changed')); if (done) await done(); } catch (e) { toast(e.message, 6000); } };
     const it = (ico, t, sub, fn) => h('button', { class: 'li', onclick: () => run(fn) }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, t), h('small', null, sub)));
-    const s = sheet('Fotos hinzufügen', h('div', { class: 'list' },
+    const s = sheet('Fotos hinzufügen', h('div', { class: 'list menu' },
       it('🖼️', 'Aus der Galerie wählen', 'Einzelne Fotos auswählen', async () => { const m = await Native.json('pickPhotos'); return Photos.addMeta(m); }),
       tour ? it('✨', 'Passende Fotos automatisch finden', 'Galerie nach Aufnahmezeit dieser Tour durchsuchen', () => PhotoSources.galleryForTours([tour])) : it('✨', 'Passende Fotos zu allen Touren finden', 'Galerie nach Aufnahmezeit durchsuchen', async () => PhotoSources.galleryForTours((await Tours.list()).filter(t => t.status !== 'planned' && t.timed))),
       it('📁', 'Ordner auf dem Handy', 'z. B. Kamera-Ordner, Syncthing, Cloud-Ordner', () => PhotoSources.folder()),
@@ -265,11 +265,11 @@ Views['/photos'] = async root => {
     const all = await Photos.all(); const tours = Object.fromEntries((await Tours.list()).map(t => [t.id, t]));
     all.forEach(p => { p.tourName = p.tour && tours[p.tour] ? tours[p.tour].name : ''; });
     seg.innerHTML = '';
-    [['all', `Alle (${all.length})`], ['free', `Ohne Tour (${all.filter(p => !p.tour).length})`], ['map', 'Karte']].forEach(([k, l]) => seg.append(h('button', { class: mode === k ? 'on' : '', onclick: () => { mode = k; draw(); } }, l)));
+    [['all', `Alle (${all.length})`], ['free', `Ohne Tour (${all.filter(p => !p.tour).length})`], ['map', 'Karte']].forEach(([k, l]) => seg.append(h('button', { class: mode === k ? 'on' : '', 'aria-pressed': mode === k ? 'true' : 'false', onclick: () => { mode = k; draw(); } }, l)));
     if (map) { map.remove(); map = null; }
     body.innerHTML = '';
     const list = (mode === 'free' ? all.filter(p => !p.tour) : all).slice().reverse();
-    if (!all.length) { body.append(h('div', { class: 'empty hero' }, h('div', { class: 'big' }, '🖼️'), h('h2', null, 'Noch keine Fotos'), h('p', null, 'Hol Fotos aus der Galerie, von einem Ordner, deinem NAS oder Nextcloud. Sie werden über die Aufnahmezeit automatisch der passenden Tour zugeordnet und auf der Karte angezeigt.'), h('button', { class: 'btn pri', onclick: () => PhotoSources.sheet(null, null) }, 'Fotos hinzufügen'))); return; }
+    if (!all.length) { body.append(UI.empty({ icon: 'photo', title: 'Noch keine Fotos', text: 'Hol Fotos aus der Galerie, einem Ordner, vom NAS oder aus Nextcloud. Die App ordnet sie über die Aufnahmezeit der passenden Tour zu und zeigt sie auf der Karte.', actions: [h('button', { class: 'btn pri', onclick: () => PhotoSources.sheet(null, null) }, 'Fotos hinzufügen')] })); return; }
     if (mode === 'map') {
       const el = h('div', { class: 'map full' }); body.append(el);
       map = MapKit.create(el);
@@ -279,7 +279,7 @@ Views['/photos'] = async root => {
       setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 150);
       return;
     }
-    if (!list.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Alle Fotos sind einer Tour zugeordnet.'))); return; }
+    if (!list.length) { body.append(UI.empty({ icon: 'check', title: 'Alles zugeordnet', text: 'Jedes Foto gehört zu einer Tour.' })); return; }
     let last = '';
     let grid = null;
     list.forEach(p => {
@@ -295,7 +295,7 @@ Views['/photos'] = async root => {
 
 Views['/sources'] = async root => {
   const body = h('div', { class: 'pad' });
-  root.append(topbar('Foto-Quellen', { back: true, noMenu: true }), body);
+  root.append(topbar('Foto-Quellen', { back: true }), body);
   const folders = await DB.kvGet('photoFolders', []);
   body.append(h('p', { class: 'muted' }, 'Fotos werden verkleinert (max. 2400 Pixel) in den privaten Speicher der App kopiert. Originale bleiben unverändert.'),
     h('div', { class: 'list' },
