@@ -23,8 +23,10 @@ Import, Statistik, Reisen und Einstellungen sind zweite Reihe.
 2. **Zahlen wie auf dem Wegweiser.** Strecke, Aufstieg und Dauer sind der Inhalt einer Tour. Sie stehen groß, fett und
    schmal (Barlow Semi Condensed), die Einheit klein dahinter. Wo die Einheit alles sagt („3,7 km“, „↑ 168 m“), gibt es
    kein zusätzliches Etikett.
-3. **Gelb heißt: los.** Wegweiser-Gelb trägt genau eine Bedeutung – die wichtigste Handlung der Seite und „hier bist du“
-   (aktiver Reiter, laufender Monat). Rot heißt: Aufzeichnung läuft, Beenden, Löschen. Sonst ist die Seite Papier und Tinte.
+3. **Gelb heißt: los.** Wegweiser-Gelb trägt genau eine Bedeutung – die wichtigste Handlung der Seite („Aufzeichnung
+   starten“, „Speichern“) und die Marke am aktiven Reiter. Gelb steht immer als Fläche mit dunkler Schrift oder auf Petrol,
+   nie als Schrift oder dünne Linie auf Papier (dort wäre es in der Sonne unsichtbar). Rot heißt: Aufzeichnung läuft,
+   Beenden, Löschen. Sonst ist die Seite Papier und Tinte; in Diagrammen ist der laufende Monat tintenschwarz.
 4. **Lesbar in der Sonne, bedienbar mit dem Daumen.** Tinte auf Papier (14 : 1), keine grauen Flächen als Träger von
    Information, Tippflächen mindestens 44 px, die Hauptknöpfe unten.
 
@@ -83,7 +85,7 @@ Fünf Reiter in einer Petrol-Leiste, „Aufnehmen“ in der Mitte als gelbe Sche
 | Reiter     | Adresse   | Enthält                                                                    |
 |------------|-----------|----------------------------------------------------------------------------|
 | Start      | `#/start` | Letzte Tour, Aufzeichnen · Planen · Importieren, Dieses Jahr, Letzte Touren |
-| Touren     | `#/`      | Liste ⇄ Karte (`#/map`), Suche, Filter, ＋ (Planen, Importieren, Aufzeichnen) |
+| Touren     | `#/`      | Liste, oben rechts „Karte“ (`#/map`, dort „Liste“), Suche, Filter, ＋ (Planen, Importieren, Aufzeichnen) |
 | Aufnehmen  | `#/rec`   | Aufzeichnung, Route mit Ansagen                                            |
 | Fotos      | `#/photos`| Alle · Ohne Tour · Karte, Diashow, Fotos hinzufügen                         |
 | Mehr       | `#/mehr`  | Tour planen, Reisen & Alben, Statistik, Importieren, Foto-Quellen, Einstellungen |
@@ -114,7 +116,7 @@ Startseite – die eine mutige Stelle: Die letzte Tour füllt den Kopf der Seite
 │                              │
 │ Dieses Jahr            Ziele ›
 │ 34,5 km    5 Touren  ↑ 1.593 m
-│ ▁ ▁ ▂ ▁ ▁ ▁ ▁ ▅ █ ▁ ▁ ▁      │  Monate, laufender in Gelb
+│ ▁ ▁ ▂ ▁ ▁ ▁ ▁ ▅ █ ▁ ▁ ▁      │  Monate, laufender in Tinte
 │ ──────────────────────────── │
 │ Letzte Touren          Alle ›│
 │ ▢ Zweite Tour ins Tal        │
@@ -129,8 +131,7 @@ Startseite – die eine mutige Stelle: Die letzte Tour füllt den Kopf der Seite
 Tourenliste – ruhig, eine Zeile je Tour, keine Kästen:
 
 ```
-│ Touren                 ⌕   ＋ │
-│ [ Liste | Karte ]            │
+│ Touren            [Karte]  ＋ │
 │ [ Suchen …            ] [Filter 1]
 │ (Alle) (★ Favoriten) (Geplant) (Wandern) …
 │ 5 Touren · 34,5 km · ↑ 1.593 m
@@ -204,4 +205,21 @@ ein Etikett. Das wäre jede beliebige Fitness-App gewesen. Geändert:
 | `UI.sign(text, opts)`                    | Gelbes Wegweiserschild (nur für „Aufzeichnung starten“)               |
 | `UI.menu(titel, einträge)`               | Blatt mit Aktionsliste; Einträge `[symbol, text, fn, unterzeile]`     |
 | `sheet(titel, inhalt)` · `confirmBox` · `askText` · `toast` | Blatt/Dialoge wie bisher (`js/util.js`)            |
-| `Ico.svg(name)` / `Ico.el(name)`         | Gezeichnetes Symbol                                                   |
+| `Ico.svg(name)` / `Ico.el(name)`         | Gezeichnetes Symbol (Namen in `js/icons.js`)                          |
+| `topbar(titel, opts)`                    | Kopfzeile; `opts.back` (Unterseite), `opts.actions`, `opts.logo`      |
+| `Home.add(id, reihenfolge, fn)`          | Baustein der Startseite anmelden (`js/v-start.js`); `fn(ctx)` liefert ein Element oder `null`, `ctx = { all, now, year }` |
+
+Reihenfolge der Startseite: Aufmacher 0 · Aktionen 10 · Dieses Jahr 20 · Letzte Touren 40 · An diesem Tag 50.
+Ein neuer Baustein sieht so aus:
+
+```js
+Home.add('serie', 30, async ctx => UI.section('Serie', UI.figs([[4, 'Wochen in Folge'], [11, 'längste Serie']]), { id: 'serie', link: '#/stats/rekorde', linkText: 'Rekorde' }));
+```
+
+Neue Seite unter „Mehr“: `Views['/name'] = async root => { root.append(topbar('Titel', { back: true }), h('div', { class: 'pad' }, …)); }`,
+dazu ein Eintrag in `Nav.home` (welcher Reiter markiert ist) und eine Zeile in `Views['/mehr']` (`js/app.js`).
+
+## Prüfungen
+
+- `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest).
+- `python3 tests/audit_kontrast.py --fail` – Kontrast aller Knöpfe, Felder und Texte in Hell und Dunkel (4,5 : 1; große Schrift 3 : 1).

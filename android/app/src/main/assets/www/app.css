@@ -223,7 +223,7 @@ pre.log{font-size:.72rem;white-space:pre-wrap;word-break:break-all;max-height:60
 /* ---------- Untere Leiste ---------- */
 #tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;height:calc(var(--tab) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--bar);border-top:1px solid var(--bar-line);--focus:#f2c230}
 #tabs.hide{display:none}
-#tabs a{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;color:var(--bar-ink);font-size:.74rem;font-weight:500;line-height:1.1}
+#tabs a{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;color:var(--bar-ink);font-size:clamp(11px,.74rem,13px);font-weight:500;line-height:1.1;white-space:nowrap}
 #tabs a .ti{display:inline-flex;line-height:1}
 #tabs a.on{color:var(--bar-on);font-weight:600}
 #tabs a.on::before{content:"";position:absolute;top:-1px;width:28px;height:3px;background:var(--yellow);border-radius:0 0 3px 3px}

@@ -7,7 +7,7 @@ Views['/map'] = async root => {
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y }, y)));
   const phBtn = UI.chip('🖼 Fotos zeigen', false, () => { showPhotos = !showPhotos; phBtn.classList.toggle('on', showPhotos); phBtn.setAttribute('aria-pressed', showPhotos ? 'true' : 'false'); draw(); });
   // Die Karte ist die zweite Ansicht der Tourenliste: oben rechts geht es zurück zur Liste
-  root.append(topbar('Karte', { actions: h('a', { class: 'btn sm hbtn', id: 'tolist', href: '#/', html: Ico.svg('filter') + '<span>Liste</span>' }) }),
+  root.append(topbar('Karte', { actions: h('a', { class: 'btn sm hbtn', id: 'tolist', href: '#/', html: Ico.svg('list') + '<span>Liste</span>' }) }),
     h('div', { class: 'maptools' }, yearSel, phBtn, h('button', { class: 'chip', onclick: offline }, '⬇ Offline speichern')), mapEl);
   const map = MapKit.create(mapEl);
   const g = L.layerGroup().addTo(map);

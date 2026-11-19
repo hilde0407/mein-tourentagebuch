@@ -1,7 +1,7 @@
 'use strict';
 /* Aufzeichnen: GPS-Spur im Hintergrund (Vordergrunddienst der Hülle), Fotos unterwegs, Sprachansagen auf geplanter Route. */
 Views['/rec'] = async root => {
-  const box = h('div', { class: 'rec' }), head = topbar('Aufzeichnen');
+  const box = h('div', { class: 'rec' }), head = topbar('Aufzeichnen');      // der Titel wechselt während der Aufzeichnung zu „Aufzeichnung läuft“ / „Pause“
   root.append(head, box);
   if (!window.MTApp) { box.append(UI.empty({ icon: 'rec', title: 'Nur in der Android-App', text: 'Die GPS-Aufzeichnung läuft im Hintergrund und braucht die installierte App.' })); return; }
   let timer = null, map = null, line = null, me = null, lastPts = 0;
