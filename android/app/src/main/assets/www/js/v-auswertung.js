@@ -9,8 +9,36 @@ const Ausw = {
   link: (t, main, sub) => h('a', { class: 'li', href: '#/tour/' + t.id }, h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, main), h('small', null, sub))),
   sec: (title, sub) => [h('h3', null, title), sub ? h('p', { class: 'muted small' }, sub) : null].filter(Boolean),
 
+  /* ---------- Bestwerte (ein Abschnitt statt zweier Rekordlisten) und Wochen-Serie ---------- */
+  wk: n => (n === 1 ? '1 Woche' : n + ' Wochen'),
+  /** Abschnitt „Bestwerte“: längste Strecke, größter Aufstieg, längste Dauer, höchster Punkt, stärkster Monat; wählbar die besten 1 oder 3. */
+  bestwerte(ts) {
+    const box = h('div', { id: 'bestwerte' });
+    const draw = () => {
+      const n = +Set_.get('bestN') === 3 ? 3 : 1, b = Bestwerte.berechne(ts, n), list = h('div');
+      const tr = (t, val) => ({ title: val, sub: t.name + ' · ' + F.dshort(t.start), href: '#/tour/' + t.id });
+      const mo = g => ({ title: F.km(g.dist), sub: new Date(g.y, g.m, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }) + ' · ' + g.n + (g.n === 1 ? ' Tour' : ' Touren') });
+      const groups = [['Längste Strecke', b.strecke.map(t => tr(t, F.km(t.dist)))], ['Größter Aufstieg', b.aufstieg.map(t => tr(t, F.m(t.up)))], ['Längste Dauer', b.dauer.map(t => tr(t, F.dur(t.dur)))],
+        ['Höchster Punkt', b.hoehe.map(t => tr(t, F.m(t.maxAlt)))], ['Stärkster Monat', b.monat.map(mo)]].filter(g => g[1].length);
+      if (!groups.length) list.append(h('p', { class: 'muted' }, 'Noch keine Touren mit diesen Werten.'));
+      else if (n === 1) list.append(UI.list(groups.map(([lab, rows]) => UI.row({ icon: 'trophy', title: lab + ': ' + rows[0].title, sub: rows[0].sub, href: rows[0].href }))));
+      else groups.forEach(([lab, rows]) => list.append(h('h3', { class: 'sub' }, lab), UI.list(rows.map((r, i) => UI.row({ icon: 'trophy', title: (i + 1) + '. ' + r.title, sub: r.sub, href: r.href })))));
+      box.innerHTML = '';
+      box.append(UI.section('Bestwerte', [UI.seg([[1, 'Beste'], [3, 'Beste drei']], n, async k => { await Set_.set('bestN', k); draw(); }, { label: 'Anzahl' }), list]));
+    };
+    draw();
+    return box;
+  },
+  /** Abschnitt „Wochen-Serie“: Wochen in Folge mit mindestens einer Tour (Montag bis Sonntag). */
+  serie(tours) {
+    const s = Serie.berechne(tours, new Date());
+    return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'aktuelle Serie'], [Ausw.wk(s.rekord), 'Rekord'], [s.wochenMit + ' von 26', 'letzte Wochen mit Tour']]),
+      h('p', { class: 'muted small' }, s.offen ? 'Diese Woche fehlt noch eine Tour, damit die Serie weiterläuft.' : 'Eine Woche zählt, wenn sie mindestens eine Tour enthält (Montag bis Sonntag).')], { id: 'serie-sec' });
+  },
+
   /* ---------- Rekorde ---------- */
-  rekorde(body, ts) {
+  rekorde(body, ts, ctx) {
+    body.append(Ausw.bestwerte(ts), Ausw.serie(((ctx && ctx.all) || ts).filter(t => !(ctx && ctx.sport) || t.sport === ctx.sport)));
     const real = ts.filter(t => t.dist > 0);
     if (!real.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Noch keine Touren.'))); return; }
     const group = keyFn => { const m = new Map(); real.forEach(t => { const k = keyFn(t.start); const g = m.get(k) || { k, dist: 0, up: 0, n: 0, first: t.start }; g.dist += t.dist; g.up += t.up || 0; g.n++; g.first = Math.min(g.first, t.start); m.set(k, g); }); return [...m.values()]; };
@@ -19,16 +47,15 @@ const Ausw = {
     // Serie aufeinanderfolgender Tage mit Tour
     const ds = [...new Set(real.map(t => Math.round(new Date(new Date(t.start).toDateString()).getTime() / 86400000)))].sort((a, b) => a - b);
     let run = 0, bestRun = 0, runEnd = 0; ds.forEach((d, i) => { run = i && d - ds[i - 1] === 1 ? run + 1 : 1; if (run > bestRun) { bestRun = run; runEnd = d; } });
-    const row = (ico, lab, val, sub, href) => h(href ? 'a' : 'div', href ? { class: 'li', href } : { class: 'li' }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, lab + ': ' + val), h('small', null, sub || '')));
+    const row = (ico, lab, val, sub, href) => h(href ? 'a' : 'div', href ? { class: 'li', href } : { class: 'li' }, h('span', { class: 'li-i', html: Ico.svg(ico, 22) }), h('span', { class: 'li-t' }, h('b', null, lab + ': ' + val), h('small', null, sub || '')));
     const fmtM = k => { const [y, m] = k.split('-'); return new Date(+y, +m, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }); };
     const d1 = best(days, g => g.dist), w1 = best(weeks, g => g.dist), m1 = best(months, g => g.dist), y1 = best(yrs, g => g.n), y2 = best(yrs, g => g.dist);
     body.append(...Ausw.sec('Zeiträume'), h('div', { class: 'list' },
-      row('🏆', 'Bester Tag', F.km(d1.dist), d1.n + (d1.n === 1 ? ' Tour' : ' Touren') + ' am ' + F.date(d1.first)),
-      row('🏆', 'Beste Woche', F.km(w1.dist), 'ab ' + F.date(w1.k) + ' · ' + w1.n + ' Touren · ' + F.m(w1.up) + ' Aufstieg'),
-      row('🏆', 'Bester Monat', F.km(m1.dist), fmtM(m1.k) + ' · ' + m1.n + ' Touren'),
-      row('🏆', 'Meiste Touren in einem Jahr', y1.n, y1.k + ' · ' + F.km(y1.dist)),
-      row('🏆', 'Stärkstes Jahr', F.km(y2.dist), y2.k + ' · ' + y2.n + ' Touren · ' + F.m(y2.up) + ' Aufstieg'),
-      row('🔥', 'Längste Serie', bestRun + (bestRun === 1 ? ' Tag' : ' Tage') + ' in Folge', 'bis ' + F.date(runEnd * 86400000))));
+      row('trophy', 'Bester Tag', F.km(d1.dist), d1.n + (d1.n === 1 ? ' Tour' : ' Touren') + ' am ' + F.date(d1.first)),
+      row('trophy', 'Beste Woche', F.km(w1.dist), 'ab ' + F.date(w1.k) + ' · ' + w1.n + ' Touren · ' + F.m(w1.up) + ' Aufstieg'),
+            row('trophy', 'Meiste Touren in einem Jahr', y1.n, y1.k + ' · ' + F.km(y1.dist)),
+      row('trophy', 'Stärkstes Jahr', F.km(y2.dist), y2.k + ' · ' + y2.n + ' Touren · ' + F.m(y2.up) + ' Aufstieg'),
+      row('flame', 'Längste Serie', bestRun + (bestRun === 1 ? ' Tag' : ' Tage') + ' in Folge', 'bis ' + F.date(runEnd * 86400000))));
     const sports = [...new Set(real.map(t => t.sport))];
     const per = [];
     sports.forEach(s => {

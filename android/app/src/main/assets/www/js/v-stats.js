@@ -2,7 +2,7 @@
 Views['/stats'] = async (root, [tab0]) => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
-  let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'kalender', 'auswertung', 'ziele'].includes(tab0) ? tab0 : 'ueber';
+  let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'kalender', 'auswertung', 'ziele'].includes(tab0) ? tab0 : tab0 === 'bestwerte' ? 'rekorde' : 'ueber';
   const body = h('div', { class: 'pad' });
   root.append(topbar('Statistik', { back: true }), body);
   const draw = () => {
@@ -11,7 +11,7 @@ Views['/stats'] = async (root, [tab0]) => {
     const ss = h('select', { 'aria-label': 'Sportart', onchange: e => { sport = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Sportarten'), Sports.list.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
     if (tab !== 'ziele') body.append(h('div', { class: 'row' }, sel, ss));      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && (!sport || t.sport === sport));
-    body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Rekorde'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
+    body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Bestwerte'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
     const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
     if (tab !== 'ueber') { const r = Ausw[tab](body, ts, { all, year, sport }); return r; }
     if (!ts.length) { body.append(UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' })); return; }
@@ -49,11 +49,6 @@ Views['/stats'] = async (root, [tab0]) => {
       body.append(h('div', { class: 'list' }, hard.map(t => h('a', { class: 'li', href: '#/tour/' + t.id },
         h('span', { class: 'li-i hrt' }, '♥'), h('span', { class: 'li-t' }, h('b', null, t.hrAvg + ' bpm im Schnitt'), h('small', null, t.name + ' · ' + F.dshort(t.start)))))));
     }
-    const rec = (lab, fn, fmt) => { const b = ts.filter(t => fn(t) > 0).sort((a, c) => fn(c) - fn(a))[0]; return b ? h('a', { class: 'li', href: '#/tour/' + b.id }, h('span', { class: 'li-i' }, '🏆'), h('span', { class: 'li-t' }, h('b', null, lab + ': ' + fmt(b)), h('small', null, b.name + ' · ' + F.dshort(b.start)))) : null; };
-    body.append(h('h3', null, 'Rekorde'), h('div', { class: 'list' },
-      rec('Längste Tour', t => t.dist, t => F.km(t.dist)), rec('Größter Aufstieg', t => t.up, t => F.m(t.up)),
-      rec('Höchster Punkt', t => t.maxAlt, t => F.m(t.maxAlt)), rec('Längste Dauer', t => t.dur, t => F.dur(t.dur)),
-      rec('Höchstes Ø Tempo', t => t.moving ? t.dist / t.moving : 0, t => F.speed(t.dist, t.moving))));
   };
   const kpi = (v, l) => UI.fig(v, l);
   draw();

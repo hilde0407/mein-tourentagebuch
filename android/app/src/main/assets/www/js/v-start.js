@@ -6,7 +6,10 @@
    Gibt ein Baustein null zurück, erscheint er nicht. */
 const Home = {
   blocks: [],
-  add(id, order, fn) { Home.blocks = Home.blocks.filter(b => b.id !== id); Home.blocks.push({ id, order, fn }); Home.blocks.sort((a, b) => a.order - b.order); },
+  /** meta (optional): {label, sub, def} macht den Baustein in den Einstellungen („Startseite“) ein- und ausschaltbar; def = Vorgabe (an oder aus). */
+  add(id, order, fn, meta) { Home.blocks = Home.blocks.filter(b => b.id !== id); Home.blocks.push({ id, order, fn, meta }); Home.blocks.sort((a, b) => a.order - b.order); },
+  /** Zeigt die Startseite diesen Baustein? Bausteine ohne meta immer. */
+  shown(b) { if (!b.meta) return true; const v = (Set_.get('homeShow') || {})[b.id]; return v == null ? !!b.meta.def : !!v; },
 
   /** Läuft gerade eine Aufzeichnung (oder ist sie pausiert)? */
   live() { try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; return st.state === 'recording' || st.state === 'paused'; } catch (e) { return false; } },
@@ -114,7 +117,15 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
   if (mine.length) goalBox.append(...mine.slice(0, 3).map(g => Goals.row(g, all, now)), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, mine.length > 3 ? 'Alle ' + mine.length + ' Ziele' : 'Ziele ändern'));
   else goalBox.append(h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));
   return UI.section('Dieses Jahr', [chips, box, goalBox], { cls: 'year', id: 'year', link: '#/stats', linkText: 'Statistik' });
-});
+}, { label: 'Dieses Jahr und Ziele', sub: 'Strecke, Touren, Aufstieg, Monate, Ziele', def: true });
+
+/* ---- Wochen-Serie: Wochen in Folge mit mindestens einer Tour (standardmäßig aus; einschaltbar unter Einstellungen → Startseite) ---- */
+Home.add('serie', 30, async ({ all, now }) => {
+  const s = Serie.berechne(all, now);
+  return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'in Folge'], [Ausw.wk(s.rekord), 'Rekord']]),
+    h('p', { class: 'muted small' }, s.offen ? 'Diese Woche fehlt noch eine Tour.' : s.aktuell ? 'Diese Woche ist geschafft.' : 'Keine laufende Serie. Eine Tour diese Woche beginnt eine neue.')],
+    { id: 'serie', link: '#/stats/bestwerte', linkText: 'Bestwerte' });
+}, { label: 'Wochen-Serie', sub: 'Wochen in Folge mit mindestens einer Tour', def: false });
 
 /* ---- Letzte Touren (die allerletzte steht schon oben) ---- */
 Home.add('recent', 40, async ({ all }) => {
@@ -122,7 +133,7 @@ Home.add('recent', 40, async ({ all }) => {
   const memo = await DB.kvGet('tilebg', {});
   return UI.section('Letzte Touren', h('div', { class: 'recent' }, all.slice(1, 5).map(t => UI.tourRow(t, { year: true, memo }))),
     { id: 'recent', link: '#/', linkText: 'Alle ' + all.length });
-});
+}, { label: 'Letzte Touren', sub: 'Die nächsten vier nach der letzten', def: true });
 
 /* ---- An diesem Tag: Touren vom gleichen Kalendertag früherer Jahre ---- */
 Home.add('memo', 50, async ({ all, now, year }) => {
@@ -130,7 +141,7 @@ Home.add('memo', 50, async ({ all, now, year }) => {
   const memo = all.filter(t => { const d = new Date(t.start); return d.getDate() === dd && d.getMonth() === mm && d.getFullYear() < year; });
   if (!memo.length) return null;
   return UI.section('An diesem Tag', UI.list(memo.slice(0, 5).map(t => UI.row({ icon: Sports.icon(t.sport), title: t.name, sub: new Date(t.start).getFullYear() + ' · ' + F.km(t.dist), href: '#/tour/' + t.id }))), { id: 'memo' });
-});
+}, { label: 'An diesem Tag', sub: 'Touren vom gleichen Datum früherer Jahre', def: true });
 
 Views['/start'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
@@ -142,6 +153,7 @@ Views['/start'] = async root => {
   root.append(body);
   const now = new Date(), ctx = { all, now, year: now.getFullYear() };
   for (const b of Home.blocks) {
+    if (!Home.shown(b)) continue;
     try { const el = await b.fn(ctx); if (el) body.append(el); }
     catch (e) { console.error('Baustein ' + b.id, e); }      // ein kaputter Baustein nimmt nicht die ganze Startseite mit
   }
