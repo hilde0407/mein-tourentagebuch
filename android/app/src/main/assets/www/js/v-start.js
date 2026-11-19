@@ -66,6 +66,16 @@ Home.add('actions', 10, async () => h('div', { class: 'home-acts' },
     h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
     h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' }))));
 
+/* ---- Sicherungs-Erinnerung: ruhiger Hinweis, wenn es Touren gibt und die letzte Sicherung zu alt ist (Schwelle in den Einstellungen) ---- */
+Home.add('backup', 12, async ({ all, now }) => {
+  const r = Sicherung.hinweis(all.length, await DB.kvGet('lastBackup', null), now.getTime(), Set_.get('backupDays'), await DB.kvGet('backupSnooze', 0));
+  if (!r.zeigen) return null;
+  const box = UI.banner([h('b', null, r.text), h('div', { class: 'muted small' }, 'Deine Touren liegen nur auf diesem Handy.')], [
+    h('button', { class: 'btn sm', id: 'bk-now', onclick: async () => { try { await Backup.save(); Nav.render(); } catch (e) { toast(e.message, 7000); } } }, 'Jetzt sichern'),
+    h('button', { class: 'btn sm', id: 'bk-later', onclick: async () => { await DB.kvSet('backupSnooze', Date.now() + 7 * 86400000); box.remove(); toast('Ich erinnere dich in 7 Tagen wieder.'); } }, 'Später')], { id: 'backupnote' });
+  return box;
+});
+
 /* ---- Dieses Jahr: Strecke, Touren, Aufstieg; Monate als Balken; Jahresziele ---- */
 Home.add('year', 20, async ({ all, now, year: yr }) => {
   const inYear = (t, y) => new Date(t.start).getFullYear() === y;

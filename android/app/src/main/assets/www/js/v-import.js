@@ -147,6 +147,10 @@ Views['/settings'] = async root => {
       h('button', { class: 'btn sm', 'aria-label': 'Heimatort entfernen', onclick: async () => { for (const k of ['homeName', 'homeLat', 'homeLon']) await Set_.set(k, ''); q.value = ''; res.innerHTML = ''; show(); } }, '✕')), res, st);
   };
   const inp = (label, key, ph, type) => h('label', { class: 'fld' }, label, h('input', { type: type || 'text', value: Set_.get(key) || '', placeholder: ph || '', autocapitalize: 'off', onchange: async e => { await Set_.set(key, e.target.value.trim()); } }));
+  const remind = h('div'), lastEl = () => $('#lastbk');
+  const drawRemind = () => { remind.innerHTML = ''; remind.append(UI.chips([[7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage'], [0, 'Aus']].map(([d, l]) => UI.chip(l, +Set_.get('backupDays') === d, async () => { await Set_.set('backupDays', d); drawRemind(); })), { id: 'bk-days' })); };
+  drawRemind();
+  const showLast = async () => { const t = await DB.kvGet('lastBackup', null); if (lastEl()) lastEl().textContent = 'Letzte Sicherung: ' + (t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'noch nie'); };
   const cnt = h('small', { class: 'muted' }, '');
   MapKit.cacheCount().then(n => cnt.textContent = n + ' Kacheln gespeichert');
   const nT = await DB.count('tours'), nP = await DB.count('photos');
@@ -165,31 +169,14 @@ Views['/settings'] = async root => {
     h('h3', null, 'Puls'), inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
     h('p', { class: 'muted small' }, 'Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
-    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', onclick: backup }, '💾 Sicherung speichern'), h('button', { class: 'btn', onclick: restore }, '📥 Sicherung einspielen')),
+    h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toast(e.message, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
+    h('div', { class: 'fld' }, 'Erinnern, wenn die letzte Sicherung älter ist als', remind),
     h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
     h('div', { class: 'row wrap' }, window.MTApp ? h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll') : null,
       h('button', { class: 'btn sm danger', onclick: wipe }, 'Alle Daten löschen')));
 
-  async function backup() {
-    const data = { app: 'tourentagebuch', v: 1, date: Date.now(), tours: await DB.all('tours'), tracks: await DB.all('tracks'), photos: await DB.all('photos'),
-      kv: (await DB.all('kv')).filter(k => !['komoot', 'strava', 'zepp', 'smb', 'webdav'].includes(k.k)) };
-    const gz = fflate.gzipSync(new TextEncoder().encode(JSON.stringify(data)));
-    let bin = ''; gz.forEach(b => bin += String.fromCharCode(b));
-    const name = 'Tourentagebuch-Sicherung-' + new Date().toISOString().slice(0, 10) + '.mtl';
-    try { toast('Gespeichert: ' + await Native.json('saveFile', { name, mime: 'application/octet-stream', b64: btoa(bin) }), 6000); }
-    catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([gz])), download: name }); document.body.append(a); a.click(); a.remove(); }
-  }
-  async function restore() {
-    try {
-      const f = await Native.json('pickFiles'); if (!f.length) return;
-      const buf = await Import.fetchBuf(f[0].url);
-      const data = JSON.parse(new TextDecoder().decode(fflate.gunzipSync(buf)));
-      if (data.app !== 'tourentagebuch') throw new Error('Das ist keine Sicherung von Mein Tourentagebuch.');
-      if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto-Dateien selbst sind nicht Teil der Sicherung.)`, 'Einspielen')) return;
-      await DB.putMany('tours', data.tours); await DB.putMany('tracks', data.tracks); await DB.putMany('photos', data.photos);
-      Tours.invalidate(); toast('Sicherung eingespielt'); Nav.render();
-    } catch (e) { toast(e.message, 7000); }
-  }
+  showLast();
   async function wipe() {
     if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht.', 'Alles löschen')) return;
     for (const s of ['tours', 'tracks', 'photos']) await DB.clear(s);

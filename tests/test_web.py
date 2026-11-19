@@ -76,6 +76,29 @@ def layout_check(pg, routes, widths=((360, 100), (390, 100), (430, 100), (360, 1
     pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
     return sorted(set(bad))
 
+
+def neue_funktionen(pg):
+    """Funktionen aus „Meine Touren“ (2.0.0): Sicherungs-Erinnerung, Ziele, Bestwerte, Rückblick, Planung, Fitness, Startseite einrichten."""
+    DAY = 86400000
+    # --- 1. Sicherungs-Erinnerung ---
+    pg.evaluate("async () => { await DB.del('kv', 'lastBackup'); await DB.del('kv', 'backupSnooze'); await Set_.set('backupDays', 14); }")
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#backupnote")
+    assert "Noch keine Sicherung gemacht" in pg.inner_text("#backupnote"), pg.inner_text("#backupnote")
+    pg.click("#bk-later"); pg.wait_for_selector("#backupnote", state="detached")
+    assert pg.evaluate("DB.kvGet('backupSnooze', 0).then(v => v > Date.now() + 6.9 * 86400000)")
+    pg.evaluate("Nav.render()"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300); assert pg.locator("#backupnote").count() == 0, "nach „Später“ sieben Tage Ruhe"
+    pg.evaluate("async ([d]) => { await DB.kvSet('backupSnooze', 0); await DB.kvSet('lastBackup', Date.now() - 23 * d); }", [DAY])
+    pg.evaluate("Nav.render()"); pg.wait_for_selector("#backupnote"); assert "Letzte Sicherung vor 23 Tagen" in pg.inner_text("#backupnote"), pg.inner_text("#backupnote")
+    pg.evaluate("window.__saved = null"); pg.click("#bk-now"); pg.wait_for_function("window.__saved && window.__saved.name.endsWith('.mtl')"); pg.wait_for_selector("#backupnote", state="detached")
+    assert pg.evaluate("DB.kvGet('lastBackup', 0).then(v => Date.now() - v < 20000)"), "Zeitpunkt der Sicherung gemerkt"
+    pg.evaluate("async ([d]) => { await DB.kvSet('lastBackup', Date.now() - 10 * d); }", [DAY]); pg.evaluate("Nav.render()"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300)
+    assert pg.locator("#backupnote").count() == 0, "10 Tage sind unter der Schwelle von 14"
+    pg.evaluate("location.hash = '#/settings'"); pg.wait_for_selector("#bk-days"); pg.click("#bk-days .chip:has-text('7 Tage')"); pg.wait_for_function("Set_.get('backupDays') === 7")
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#backupnote"); assert "vor 10 Tagen" in pg.inner_text("#backupnote")
+    pg.evaluate("location.hash = '#/settings'"); pg.wait_for_selector("#bk-days"); pg.click("#bk-days .chip:has-text('Aus')"); pg.wait_for_function("Set_.get('backupDays') === 0")
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300); assert pg.locator("#backupnote").count() == 0, "Erinnerung aus"
+    pg.evaluate("async () => { await Set_.set('backupDays', 14); await DB.kvSet('lastBackup', Date.now()); }")
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -536,6 +559,8 @@ def main():
         assert tz[0]["tour"] == tz[2] and tz[0]["tzOff"] == 4 * 3600000 and tz[0]["ts"] == t0 + 300000 + 4 * 3600000, tz[0]      # ts bleibt unverändert
         assert tz[0]["pos"] == "track" and abs(tz[0]["lat"] - 47.0) < 0.05, tz[0]      # Position aus der Spur zur korrigierten Zeit
         assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
+
+        neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
         pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")

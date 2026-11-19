@@ -1,0 +1,1942 @@
+{
+ "tageslicht": [
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-06-21",
+    "09:00",
+    5.0,
+    20
+   ],
+   "out": {
+    "datum": "2026-06-21",
+    "datum_gewaehlt": true,
+    "start": "09:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 300,
+    "puffer_min": 60,
+    "rueckkehr_min": 900,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 317,
+    "untergang_min": 1275,
+    "daemm_bis_min": 1316,
+    "reserve_min": 375,
+    "ampel": "reserve",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-03-29",
+    "01:00",
+    4.0,
+    0
+   ],
+   "out": {
+    "datum": "2026-03-29",
+    "datum_gewaehlt": true,
+    "start": "01:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 0,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 60,
+    "dauer_min": 240,
+    "puffer_min": 0,
+    "rueckkehr_min": 360,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 422,
+    "untergang_min": 1178,
+    "daemm_bis_min": 1209,
+    "reserve_min": 818,
+    "ampel": "reserve",
+    "start_vor_aufgang": true,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-10-25",
+    "00:30",
+    5.0,
+    0
+   ],
+   "out": {
+    "datum": "2026-10-25",
+    "datum_gewaehlt": true,
+    "start": "00:30",
+    "start_gewaehlt": true,
+    "puffer_pct": 0,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 30,
+    "dauer_min": 300,
+    "puffer_min": 0,
+    "rueckkehr_min": 270,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 406,
+    "untergang_min": 1031,
+    "daemm_bis_min": 1063,
+    "reserve_min": 761,
+    "ampel": "reserve",
+    "start_vor_aufgang": true,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-12-21",
+    "09:00",
+    6.0,
+    20
+   ],
+   "out": {
+    "datum": "2026-12-21",
+    "datum_gewaehlt": true,
+    "start": "09:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 360,
+    "puffer_min": 72,
+    "rueckkehr_min": 972,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 479,
+    "untergang_min": 986,
+    "daemm_bis_min": 1022,
+    "reserve_min": 14,
+    "ampel": "knapp",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-12-21",
+    null,
+    5.0,
+    null
+   ],
+   "out": {
+    "datum": "2026-12-21",
+    "datum_gewaehlt": true,
+    "start": "09:00",
+    "start_gewaehlt": false,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": false,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 300,
+    "puffer_min": 60,
+    "rueckkehr_min": 900,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 479,
+    "untergang_min": 986,
+    "daemm_bis_min": 1022,
+    "reserve_min": 86,
+    "ampel": "reserve",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    70.0,
+    20.0,
+    "2026-06-21",
+    "09:00",
+    5.0,
+    20
+   ],
+   "out": {
+    "datum": "2026-06-21",
+    "datum_gewaehlt": true,
+    "start": "09:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 300,
+    "puffer_min": 60,
+    "rueckkehr_min": 900,
+    "rueckkehr_tag_plus": 0,
+    "status": "polar_tag"
+   }
+  },
+  {
+   "in": [
+    70.0,
+    20.0,
+    "2026-12-21",
+    "09:00",
+    5.0,
+    20
+   ],
+   "out": {
+    "datum": "2026-12-21",
+    "datum_gewaehlt": true,
+    "start": "09:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 300,
+    "puffer_min": 60,
+    "rueckkehr_min": 900,
+    "rueckkehr_tag_plus": 0,
+    "status": "polar_nacht"
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-07-10",
+    "20:00",
+    8.0,
+    20
+   ],
+   "out": {
+    "datum": "2026-07-10",
+    "datum_gewaehlt": true,
+    "start": "20:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 1200,
+    "dauer_min": 480,
+    "puffer_min": 96,
+    "rueckkehr_min": 336,
+    "rueckkehr_tag_plus": 1,
+    "status": "ok",
+    "aufgang_min": 327,
+    "untergang_min": 1272,
+    "daemm_bis_min": 1312,
+    "reserve_min": -504,
+    "ampel": "nach_untergang",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-09-15",
+    "07:30",
+    8.5,
+    20
+   ],
+   "out": {
+    "datum": "2026-09-15",
+    "datum_gewaehlt": true,
+    "start": "07:30",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 450,
+    "dauer_min": 510,
+    "puffer_min": 102,
+    "rueckkehr_min": 1062,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 410,
+    "untergang_min": 1170,
+    "daemm_bis_min": 1201,
+    "reserve_min": 108,
+    "ampel": "reserve",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    -33.9,
+    18.4,
+    "2026-06-21",
+    "09:00",
+    4.0,
+    20
+   ],
+   "out": {
+    "datum": "2026-06-21",
+    "datum_gewaehlt": true,
+    "start": "09:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 240,
+    "puffer_min": 48,
+    "rueckkehr_min": 828,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 470,
+    "untergang_min": 1064,
+    "daemm_bis_min": 1092,
+    "reserve_min": 236,
+    "ampel": "reserve",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    null,
+    null,
+    3.0,
+    null
+   ],
+   "out": {
+    "datum": "2026-11-20",
+    "datum_gewaehlt": false,
+    "start": "09:00",
+    "start_gewaehlt": false,
+    "puffer_pct": 20,
+    "puffer_gewaehlt": false,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 540,
+    "dauer_min": 180,
+    "puffer_min": 36,
+    "rueckkehr_min": 756,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 446,
+    "untergang_min": 995,
+    "daemm_bis_min": 1029,
+    "reserve_min": 239,
+    "ampel": "reserve",
+    "start_vor_aufgang": false,
+    "start_nach_untergang": false
+   }
+  },
+  {
+   "in": [
+    47.5,
+    11.2,
+    "2026-05-01",
+    "05:00",
+    9.0,
+    10
+   ],
+   "out": {
+    "datum": "2026-05-01",
+    "datum_gewaehlt": true,
+    "start": "05:00",
+    "start_gewaehlt": true,
+    "puffer_pct": 10,
+    "puffer_gewaehlt": true,
+    "zeitzone": "Europe/Berlin",
+    "start_min": 300,
+    "dauer_min": 540,
+    "puffer_min": 54,
+    "rueckkehr_min": 894,
+    "rueckkehr_tag_plus": 0,
+    "status": "ok",
+    "aufgang_min": 359,
+    "untergang_min": 1224,
+    "daemm_bis_min": 1258,
+    "reserve_min": 330,
+    "ampel": "reserve",
+    "start_vor_aufgang": true,
+    "start_nach_untergang": false
+   }
+  }
+ ],
+ "metrik": [
+  {
+   "in": [
+    10,
+    [
+     8,
+     9,
+     10,
+     11,
+     12
+    ]
+   ],
+   "out": {
+    "wert": 10,
+    "median": 10,
+    "max": 12,
+    "n": 5,
+    "verhaeltnis_median_pct": 100,
+    "einordnung": "aehnlich",
+    "perzentil": 50,
+    "vs_max_pct": 83,
+    "max_stufe": "unter"
+   }
+  },
+  {
+   "in": [
+    20,
+    [
+     8,
+     9,
+     10,
+     11,
+     12
+    ]
+   ],
+   "out": {
+    "wert": 20,
+    "median": 10,
+    "max": 12,
+    "n": 5,
+    "verhaeltnis_median_pct": 200,
+    "einordnung": "ueber",
+    "perzentil": 100,
+    "vs_max_pct": 167,
+    "max_stufe": "deutlich_ueber"
+   }
+  },
+  {
+   "in": [
+    5,
+    [
+     8,
+     9,
+     10,
+     11,
+     12
+    ]
+   ],
+   "out": {
+    "wert": 5,
+    "median": 10,
+    "max": 12,
+    "n": 5,
+    "verhaeltnis_median_pct": 50,
+    "einordnung": "unter",
+    "perzentil": 0,
+    "vs_max_pct": 42,
+    "max_stufe": "unter"
+   }
+  },
+  {
+   "in": [
+    12.5,
+    [
+     10,
+     10,
+     10,
+     10,
+     10,
+     20
+    ]
+   ],
+   "out": {
+    "wert": 12.5,
+    "median": 10.0,
+    "max": 20,
+    "n": 6,
+    "verhaeltnis_median_pct": 125,
+    "einordnung": "aehnlich",
+    "perzentil": 83,
+    "vs_max_pct": 62,
+    "max_stufe": "unter"
+   }
+  },
+  {
+   "in": [
+    10,
+    [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   ],
+   "out": {
+    "wert": 10,
+    "median": 10,
+    "max": 10,
+    "n": 5,
+    "verhaeltnis_median_pct": 100,
+    "einordnung": "aehnlich",
+    "perzentil": 50,
+    "vs_max_pct": 100,
+    "max_stufe": "etwa"
+   }
+  },
+  {
+   "in": [
+    0,
+    [
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "out": {
+    "wert": 0,
+    "median": 0,
+    "max": 0,
+    "n": 5,
+    "verhaeltnis_median_pct": null,
+    "einordnung": "aehnlich",
+    "perzentil": 50,
+    "vs_max_pct": 100,
+    "max_stufe": "etwa"
+   }
+  },
+  {
+   "in": [
+    7,
+    [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ]
+   ],
+   "out": {
+    "wert": 7,
+    "median": 6.5,
+    "max": 10,
+    "n": 8,
+    "verhaeltnis_median_pct": 108,
+    "einordnung": "aehnlich",
+    "perzentil": 56,
+    "vs_max_pct": 70,
+    "max_stufe": "unter"
+   }
+  },
+  {
+   "in": [
+    13,
+    [
+     10,
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   ],
+   "out": {
+    "wert": 13,
+    "median": 10.0,
+    "max": 10,
+    "n": 6,
+    "verhaeltnis_median_pct": 130,
+    "einordnung": "ueber",
+    "perzentil": 100,
+    "vs_max_pct": 130,
+    "max_stufe": "deutlich_ueber"
+   }
+  },
+  {
+   "in": [
+    12,
+    [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   ],
+   "out": {
+    "wert": 12,
+    "median": 10,
+    "max": 10,
+    "n": 5,
+    "verhaeltnis_median_pct": 120,
+    "einordnung": "aehnlich",
+    "perzentil": 100,
+    "vs_max_pct": 120,
+    "max_stufe": "ueber"
+   }
+  },
+  {
+   "in": [
+    8,
+    [
+     10,
+     10,
+     10,
+     10,
+     10
+    ]
+   ],
+   "out": {
+    "wert": 8,
+    "median": 10,
+    "max": 10,
+    "n": 5,
+    "verhaeltnis_median_pct": 80,
+    "einordnung": "aehnlich",
+    "perzentil": 0,
+    "vs_max_pct": 80,
+    "max_stufe": "unter"
+   }
+  }
+ ],
+ "form_tours": [
+  {
+   "sport": "hike",
+   "start_ts": 1794308400.0,
+   "dist_m": 8000,
+   "dur_s": 9000,
+   "up_m": 300
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1792580400.0,
+   "dist_m": 9500,
+   "dur_s": 10800,
+   "up_m": 400
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1790852400.0,
+   "dist_m": 11000,
+   "dur_s": 12600,
+   "up_m": 500
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1789124400.0,
+   "dist_m": 12500,
+   "dur_s": 14400,
+   "up_m": 600
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1787396400.0,
+   "dist_m": 14000,
+   "dur_s": 16200,
+   "up_m": 700
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1785668400.0,
+   "dist_m": 15500,
+   "dur_s": 18000,
+   "up_m": 800
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1783940400.0,
+   "dist_m": 17000,
+   "dur_s": 19800,
+   "up_m": 900
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1782212400.0,
+   "dist_m": 18500,
+   "dur_s": 21600,
+   "up_m": 1000
+  },
+  {
+   "sport": "bike",
+   "start_ts": 1794740400.0,
+   "dist_m": 50000,
+   "dur_s": 9000,
+   "up_m": 400
+  },
+  {
+   "sport": "hike",
+   "start_ts": 1760612400.0,
+   "dist_m": 30000,
+   "dur_s": 30000,
+   "up_m": 900
+  },
+  {
+   "sport": "mountaineering",
+   "start_ts": 1791716400.0,
+   "dist_m": 12000,
+   "dur_s": 20000,
+   "up_m": null
+  }
+ ],
+ "form": [
+  {
+   "in": [
+    14,
+    600,
+    5.0,
+    "hike"
+   ],
+   "out": {
+    "status": "ok",
+    "n": 9,
+    "min_n": 5,
+    "monate": 12,
+    "km": {
+     "wert": 14,
+     "median": 12.5,
+     "max": 18.5,
+     "n": 9,
+     "verhaeltnis_median_pct": 112,
+     "einordnung": "aehnlich",
+     "perzentil": 61,
+     "vs_max_pct": 76,
+     "max_stufe": "unter"
+    },
+    "up": {
+     "wert": 600,
+     "median": 650.0,
+     "max": 1000,
+     "n": 8,
+     "verhaeltnis_median_pct": 92,
+     "einordnung": "aehnlich",
+     "perzentil": 44,
+     "vs_max_pct": 60,
+     "max_stufe": "unter"
+    },
+    "dauer": {
+     "wert": 5.0,
+     "median": 4.5,
+     "max": 6.0,
+     "n": 9,
+     "verhaeltnis_median_pct": 111,
+     "einordnung": "aehnlich",
+     "perzentil": 61,
+     "vs_max_pct": 83,
+     "max_stufe": "unter"
+    },
+    "deutlich_ueber": []
+   }
+  },
+  {
+   "in": [
+    30,
+    1500,
+    9.0,
+    "hike"
+   ],
+   "out": {
+    "status": "ok",
+    "n": 9,
+    "min_n": 5,
+    "monate": 12,
+    "km": {
+     "wert": 30,
+     "median": 12.5,
+     "max": 18.5,
+     "n": 9,
+     "verhaeltnis_median_pct": 240,
+     "einordnung": "ueber",
+     "perzentil": 100,
+     "vs_max_pct": 162,
+     "max_stufe": "deutlich_ueber"
+    },
+    "up": {
+     "wert": 1500,
+     "median": 650.0,
+     "max": 1000,
+     "n": 8,
+     "verhaeltnis_median_pct": 231,
+     "einordnung": "ueber",
+     "perzentil": 100,
+     "vs_max_pct": 150,
+     "max_stufe": "deutlich_ueber"
+    },
+    "dauer": {
+     "wert": 9.0,
+     "median": 4.5,
+     "max": 6.0,
+     "n": 9,
+     "verhaeltnis_median_pct": 200,
+     "einordnung": "ueber",
+     "perzentil": 100,
+     "vs_max_pct": 150,
+     "max_stufe": "deutlich_ueber"
+    },
+    "deutlich_ueber": [
+     "km",
+     "up",
+     "dauer"
+    ]
+   }
+  },
+  {
+   "in": [
+    9,
+    250,
+    2.5,
+    "mountaineering"
+   ],
+   "out": {
+    "status": "ok",
+    "n": 9,
+    "min_n": 5,
+    "monate": 12,
+    "km": {
+     "wert": 9,
+     "median": 12.5,
+     "max": 18.5,
+     "n": 9,
+     "verhaeltnis_median_pct": 72,
+     "einordnung": "unter",
+     "perzentil": 11,
+     "vs_max_pct": 49,
+     "max_stufe": "unter"
+    },
+    "up": {
+     "wert": 250,
+     "median": 650.0,
+     "max": 1000,
+     "n": 8,
+     "verhaeltnis_median_pct": 38,
+     "einordnung": "unter",
+     "perzentil": 0,
+     "vs_max_pct": 25,
+     "max_stufe": "unter"
+    },
+    "dauer": {
+     "wert": 2.5,
+     "median": 4.5,
+     "max": 6.0,
+     "n": 9,
+     "verhaeltnis_median_pct": 56,
+     "einordnung": "unter",
+     "perzentil": 6,
+     "vs_max_pct": 42,
+     "max_stufe": "unter"
+    },
+    "deutlich_ueber": []
+   }
+  },
+  {
+   "in": [
+    10,
+    null,
+    null,
+    "hike"
+   ],
+   "out": {
+    "status": "ok",
+    "n": 9,
+    "min_n": 5,
+    "monate": 12,
+    "km": {
+     "wert": 10,
+     "median": 12.5,
+     "max": 18.5,
+     "n": 9,
+     "verhaeltnis_median_pct": 80,
+     "einordnung": "aehnlich",
+     "perzentil": 22,
+     "vs_max_pct": 54,
+     "max_stufe": "unter"
+    },
+    "up": null,
+    "dauer": null,
+    "deutlich_ueber": []
+   }
+  },
+  {
+   "in": [
+    20,
+    500,
+    3,
+    "bike"
+   ],
+   "out": {
+    "status": "zu_wenig",
+    "n": 1,
+    "min_n": 5,
+    "monate": 12,
+    "km": null,
+    "up": null,
+    "dauer": null,
+    "deutlich_ueber": []
+   }
+  }
+ ],
+ "form_now": 1795172400.0,
+ "fitness": {
+  "aufstieg": {
+   "in": {
+    "geburtsjahr": 1976,
+    "touren": [
+     {
+      "tag": "2026-11-19",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-15",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-05",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-10",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-22",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-12",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-23",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-03",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1976,
+    "alter": 50,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 12,
+    "umfang": {
+     "wert": 56,
+     "min_woche": 120.0,
+     "who_min": 150,
+     "who_max": 300,
+     "ohne_dauer": 0
+    },
+    "regel": {
+     "wert": 71,
+     "wochen_aktiv": 10,
+     "wochen": 12,
+     "touren": 12
+    },
+    "intensitaet": {
+     "wert": 78,
+     "m_h": 250,
+     "ref_m_h": 320,
+     "quelle": "aufstieg"
+    },
+    "status": "ok",
+    "gesamt": 68,
+    "einordnung": "gut",
+    "trend": "up",
+    "vorher": 33
+   }
+  },
+  "puls": {
+   "in": {
+    "geburtsjahr": 1976,
+    "touren": [
+     {
+      "tag": "2026-11-19",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": {
+       "120": 1500,
+       "135": 1800,
+       "150": 600,
+       "100": 400,
+       "170": 300
+      }
+     },
+     {
+      "tag": "2026-11-15",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": {
+       "120": 1500,
+       "135": 1800,
+       "150": 600,
+       "100": 400,
+       "170": 300
+      }
+     },
+     {
+      "tag": "2026-11-05",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": {
+       "120": 1500,
+       "135": 1800,
+       "150": 600,
+       "100": 400,
+       "170": 300
+      }
+     },
+     {
+      "tag": "2026-10-10",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1976,
+    "alter": 50,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 8,
+    "umfang": {
+     "wert": 37,
+     "min_woche": 80.0,
+     "who_min": 150,
+     "who_max": 300,
+     "ohne_dauer": 0
+    },
+    "regel": {
+     "wert": 43,
+     "wochen_aktiv": 7,
+     "wochen": 12,
+     "touren": 8
+    },
+    "intensitaet": {
+     "wert": 85,
+     "mittel_bpm": 131,
+     "mittel_pct": 76,
+     "zone_pct": 85,
+     "hfmax": 173,
+     "sekunden": 13800,
+     "quelle": "puls"
+    },
+    "status": "ok",
+    "gesamt": 55,
+    "einordnung": "solide",
+    "trend": null,
+    "vorher": null
+   }
+  },
+  "jung": {
+   "in": {
+    "geburtsjahr": 2000,
+    "touren": [
+     {
+      "tag": "2026-11-19",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-15",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-05",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-10",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-22",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-12",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-23",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-03",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 2000,
+    "alter": 26,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 12,
+    "umfang": {
+     "wert": 56,
+     "min_woche": 120.0,
+     "who_min": 150,
+     "who_max": 300,
+     "ohne_dauer": 0
+    },
+    "regel": {
+     "wert": 71,
+     "wochen_aktiv": 10,
+     "wochen": 12,
+     "touren": 12
+    },
+    "intensitaet": {
+     "wert": 62,
+     "m_h": 250,
+     "ref_m_h": 400,
+     "quelle": "aufstieg"
+    },
+    "status": "ok",
+    "gesamt": 63,
+    "einordnung": "gut",
+    "trend": "up",
+    "vorher": 29
+   }
+  },
+  "alt": {
+   "in": {
+    "geburtsjahr": 1945,
+    "touren": [
+     {
+      "tag": "2026-11-19",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-15",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-05",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-10",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-10-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-21",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-11",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-09-01",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-29",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-22",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-12",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-23",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-03",
+      "dauer_s": 5400,
+      "up_m": 300,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1945,
+    "alter": 81,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 12,
+    "umfang": {
+     "wert": 56,
+     "min_woche": 120.0,
+     "who_min": 150,
+     "who_max": 300,
+     "ohne_dauer": 0
+    },
+    "regel": {
+     "wert": 71,
+     "wochen_aktiv": 10,
+     "wochen": 12,
+     "touren": 12
+    },
+    "intensitaet": {
+     "wert": 100,
+     "m_h": 250,
+     "ref_m_h": 200,
+     "quelle": "aufstieg"
+    },
+    "status": "ok",
+    "gesamt": 76,
+    "einordnung": "gut",
+    "trend": "up",
+    "vorher": 46
+   }
+  },
+  "wenig": {
+   "in": {
+    "geburtsjahr": 1980,
+    "touren": [
+     {
+      "tag": "2026-11-17",
+      "dauer_s": 3000,
+      "up_m": null,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1980,
+    "alter": 46,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 1,
+    "umfang": {
+     "wert": 2,
+     "min_woche": 4.2,
+     "who_min": 150,
+     "who_max": 300,
+     "ohne_dauer": 0
+    },
+    "regel": {
+     "wert": 6,
+     "wochen_aktiv": 1,
+     "wochen": 12,
+     "touren": 1
+    },
+    "intensitaet": {
+     "wert": null,
+     "status": "keine_daten"
+    },
+    "status": "ok",
+    "gesamt": 4,
+    "einordnung": "ausbaufaehig",
+    "trend": null,
+    "vorher": null
+   }
+  },
+  "zu_wenig": {
+   "in": {
+    "geburtsjahr": 1980,
+    "touren": [
+     {
+      "tag": "2026-11-17",
+      "dauer_s": null,
+      "up_m": null,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-10",
+      "dauer_s": null,
+      "up_m": 200,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1980,
+    "alter": 46,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 2,
+    "umfang": {
+     "wert": null,
+     "status": "keine_daten"
+    },
+    "regel": {
+     "wert": 12,
+     "wochen_aktiv": 2,
+     "wochen": 12,
+     "touren": 2
+    },
+    "intensitaet": {
+     "wert": null,
+     "status": "keine_daten"
+    },
+    "status": "zu_wenig"
+   }
+  },
+  "keine": {
+   "in": {
+    "geburtsjahr": 1980,
+    "touren": [
+     {
+      "tag": "2026-05-04",
+      "dauer_s": 3000,
+      "up_m": 100,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1980,
+    "alter": 46,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "status": "keine_aktuellen"
+   }
+  },
+  "trend_runter": {
+   "in": {
+    "geburtsjahr": 1980,
+    "touren": [
+     {
+      "tag": "2026-11-19",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-11-17",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-27",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-20",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-13",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-08-06",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-30",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-23",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-16",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-09",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-07-02",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-06-25",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     },
+     {
+      "tag": "2026-06-18",
+      "dauer_s": 7200,
+      "up_m": 500,
+      "hist": null
+     }
+    ]
+   },
+   "out": {
+    "geburtsjahr": 1980,
+    "alter": 46,
+    "wochen": 12,
+    "von": "2026-08-29",
+    "bis": "2026-11-20",
+    "touren": 2,
+    "umfang": {
+     "wert": 9,
+     "min_woche": 20.0,
+     "who_min": 150,
+     "who_max": 300,
+     "ohne_dauer": 0
+    },
+    "regel": {
+     "wert": 6,
+     "wochen_aktiv": 1,
+     "wochen": 12,
+     "touren": 2
+    },
+    "intensitaet": {
+     "wert": 74,
+     "m_h": 250,
+     "ref_m_h": 336,
+     "quelle": "aufstieg"
+    },
+    "status": "ok",
+    "gesamt": 30,
+    "einordnung": "ausbaufaehig",
+    "trend": "down",
+    "vorher": 70
+   }
+  }
+ },
+ "fitness_units": {
+  "umfang": [
+   [
+    0,
+    0
+   ],
+   [
+    75,
+    35
+   ],
+   [
+    150,
+    70
+   ],
+   [
+    225,
+    85
+   ],
+   [
+    300,
+    100
+   ],
+   [
+    400,
+    100
+   ]
+  ],
+  "regel": [
+   [
+    [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    100
+   ],
+   [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     3
+    ],
+    6
+   ],
+   [
+    [
+     2,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    12
+   ],
+   [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    null
+   ]
+  ],
+  "hfmax": [
+   [
+    20,
+    194.0
+   ],
+   [
+    49,
+    173.7
+   ],
+   [
+    80,
+    152.0
+   ]
+  ],
+  "faktor": [
+   [
+    20,
+    1.0
+   ],
+   [
+    30,
+    1.0
+   ],
+   [
+    50,
+    0.8
+   ],
+   [
+    90,
+    0.5
+   ]
+  ],
+  "aufstieg": [
+   [
+    [
+     1200,
+     7200,
+     40
+    ],
+    {
+     "wert": 100,
+     "m_h": 600,
+     "ref_m_h": 360
+    }
+   ],
+   [
+    [
+     300,
+     3000,
+     40
+    ],
+    null
+   ],
+   [
+    [
+     900,
+     7200,
+     80
+    ],
+    {
+     "wert": 100,
+     "m_h": 450,
+     "ref_m_h": 200
+    }
+   ],
+   [
+    [
+     null,
+     7200,
+     40
+    ],
+    null
+   ]
+  ]
+ },
+ "rueckblick": {
+  "rows": [
+   {
+    "dist_m": 8000,
+    "dur_s": 7200,
+    "up_m": 300
+   },
+   {
+    "dist_m": 9000,
+    "dur_s": 8100,
+    "up_m": 350
+   },
+   {
+    "dist_m": 10000,
+    "dur_s": 9000,
+    "up_m": 400
+   },
+   {
+    "dist_m": 11000,
+    "dur_s": 9900,
+    "up_m": 450
+   },
+   {
+    "dist_m": 12000,
+    "dur_s": 10800,
+    "up_m": 500
+   },
+   {
+    "dist_m": 13000,
+    "dur_s": 11700,
+    "up_m": 550
+   }
+  ],
+  "cur_in": {
+   "dist_m": 14000,
+   "dur_s": 14000,
+   "up_m": 900
+  },
+  "cur": {
+   "dauer": 3.888888888888889,
+   "strecke": 14.0,
+   "auf": 900.0,
+   "tempo": 3.6
+  },
+  "out": {
+   "dauer": {
+    "wert": 3.889,
+    "median": 2.625,
+    "n": 6,
+    "verhaeltnis_median_pct": 148,
+    "einordnung": "ueber",
+    "perzentil": 100
+   },
+   "strecke": {
+    "wert": 14.0,
+    "median": 10.5,
+    "n": 6,
+    "verhaeltnis_median_pct": 133,
+    "einordnung": "ueber",
+    "perzentil": 100
+   },
+   "auf": {
+    "wert": 900.0,
+    "median": 425.0,
+    "n": 6,
+    "verhaeltnis_median_pct": 212,
+    "einordnung": "ueber",
+    "perzentil": 100
+   },
+   "tempo": {
+    "wert": 3.6,
+    "median": 4.0,
+    "n": 6,
+    "verhaeltnis_median_pct": 90,
+    "einordnung": "aehnlich",
+    "perzentil": 0
+   }
+  }
+ },
+ "links": [
+  {
+   "in": "https://www.komoot.de/tour/123",
+   "out": "https://www.komoot.de/tour/123"
+  },
+  {
+   "in": "http://example.org/a?b=c#d",
+   "out": "http://example.org/a?b=c#d"
+  },
+  {
+   "in": "javascript:alert(1)",
+   "err": "Nur Adressen mit http:// oder https:// sind erlaubt"
+  },
+  {
+   "in": "data:text/html,<b>x</b>",
+   "err": "Nur Adressen mit http:// oder https:// sind erlaubt"
+  },
+  {
+   "in": "file:///etc/passwd",
+   "err": "Nur Adressen mit http:// oder https:// sind erlaubt"
+  },
+  {
+   "in": "ftp://x.org/f",
+   "err": "Nur Adressen mit http:// oder https:// sind erlaubt"
+  },
+  {
+   "in": "https://user:pw@example.org/",
+   "err": "Adresse ungültig (Server fehlt oder Zugangsdaten in der Adresse)"
+  },
+  {
+   "in": "https:///nohost",
+   "err": "Adresse ungültig (Server fehlt oder Zugangsdaten in der Adresse)"
+  },
+  {
+   "in": "https://exa mple.org",
+   "err": "Adresse enthält Leerzeichen oder Steuerzeichen"
+  },
+  {
+   "in": "",
+   "err": "Adresse fehlt"
+  },
+  {
+   "in": "  https://example.org/x  ",
+   "out": "https://example.org/x"
+  },
+  {
+   "in": "HTTPS://EXAMPLE.ORG",
+   "out": "HTTPS://EXAMPLE.ORG"
+  },
+  {
+   "in": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.de",
+   "err": "Adresse zu lang (höchstens 500 Zeichen)"
+  },
+  {
+   "in": "//example.org",
+   "err": "Nur Adressen mit http:// oder https:// sind erlaubt"
+  },
+  {
+   "in": "example.org",
+   "err": "Nur Adressen mit http:// oder https:// sind erlaubt"
+  },
+  {
+   "in": "https://example.org/ä",
+   "out": "https://example.org/ä"
+  }
+ ]
+}
