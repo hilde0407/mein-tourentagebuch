@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Status- und Navigationsleiste in Petrol, passend zur unteren Leiste der App (Gestaltung 2.0).
+         Nur Farben; Verhalten und Java-Code bleiben unverändert. -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#0C2526</item>
+        <item name="android:navigationBarColor">#0C2526</item>
+    </style>
+</resources>
