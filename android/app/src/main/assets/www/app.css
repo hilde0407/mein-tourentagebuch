@@ -295,6 +295,10 @@ pre.log{font-size:.72rem;white-space:pre-wrap;word-break:break-all;max-height:60
 .ygoal span{font-weight:600;font-size:.94rem}.ygoal em{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
 .ygoal .gbar{grid-column:1/-1}.ygoal small{grid-column:1/-1;color:var(--muted);font-size:.84rem}
 .ylink{display:inline-flex;align-items:center;min-height:44px;font-weight:600;text-decoration:none}
+button.ygoal{width:100%;padding:10px 0;margin:0;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;cursor:pointer;color:var(--ink);min-height:44px}
+button.ygoal:active{background:var(--soft)}
+.ygoal em{white-space:nowrap}
+.ygoal span{min-width:0;overflow-wrap:anywhere}
 
 /* ---------- Tourseite ---------- */
 .tourp{padding:16px var(--gut) 8px}

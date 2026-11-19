@@ -80,18 +80,12 @@ Home.add('backup', 12, async ({ all, now }) => {
 Home.add('year', 20, async ({ all, now, year: yr }) => {
   const inYear = (t, y) => new Date(t.start).getFullYear() === y;
   const tillToday = (t, y) => inYear(t, y) && new Date(t.start) <= new Date(y, now.getMonth(), now.getDate(), 23, 59, 59);
-  const goals = (await DB.kvGet('goals', {}))[yr] || {};
   const sum = (ts, k) => ts.reduce((a, t) => a + (t[k] || 0), 0);
   const cmp = (a, b) => {
     if (!a || !b) return null;      // leeres Jahr: kein „−100 %“ anzeigen
     const d = Math.round((a - b) / b * 100);
     return h('p', { class: 'hcmp ' + (d >= 0 ? 'up' : 'down') }, (d >= 0 ? d + ' % mehr' : -d + ' % weniger') + ' Strecke als ' + (yr - 1) + ' um diese Zeit');
   };
-  // Zielfortschritt wie in der Statistik: Soll heute = Anteil des Jahres, der bis jetzt vergangen ist
-  const frac = Math.min(1, Math.max(0, (Date.now() - new Date(yr, 0, 1)) / (new Date(yr + 1, 0, 1) - new Date(yr, 0, 1))));
-  const nf = v => Math.round(v).toLocaleString('de-DE');
-  const goalRow = (lab, c, goal, unit) => h('div', { class: 'ygoal' }, h('span', null, lab), h('em', null, Math.round(c / goal * 100) + ' %'),
-    UI.bar(c / goal, { mark: frac }), h('small', null, nf(c) + ' von ' + nf(goal) + unit));
   const used = [...new Set(all.filter(t => inYear(t, yr)).map(t => t.sport))];
   let sport = '';      // nur Seitenzustand: filtert allein diesen Abschnitt
   const chips = UI.chips([]), box = h('div');
@@ -107,18 +101,19 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
     const mon = Array(12).fill(0);
     cur.forEach(t => { mon[new Date(t.start).getMonth()] += t.dist; });
     const mx = Math.max(...mon, 1), nowM = now.getMonth();
-    const gl = [['km', 'Strecke', sum(cur, 'dist') / 1000, ' km'], ['up', 'Aufstieg', sum(cur, 'up'), ' m'], ['n', 'Touren', cur.length, '']].filter(g => goals[g[0]] > 0);
     box.append(UI.figs([[F.km(sum(cur, 'dist')), 'Strecke'], [cur.length, cur.length === 1 ? 'Tour' : 'Touren'], ['↑ ' + F.m(sum(cur, 'up')), 'Aufstieg']], { big: true }));
     if (cur.length) {
       const c = cmp(sum(cur, 'dist'), sum(prev, 'dist')); if (c) box.append(c);
       box.append(h('div', { class: 'bars', role: 'img', 'aria-label': 'Strecke je Monat' }, mon.map((v, i) => h('div', { class: 'bar' + (i === nowM ? ' now' : '') },
         h('i', { style: { height: Math.max(v ? 6 : 2, v / mx * 100) + '%' }, title: F.km(v) }), h('small', null, 'JFMAMJJASOND'[i])))));
     } else box.append(h('p', { class: 'muted' }, yr + ' steht noch keine Tour im Tagebuch.'));
-    box.append(gl.length ? h('div', { class: 'ygoals' }, gl.map(g => goalRow(g[1], g[2], goals[g[0]], g[3])), h('a', { class: 'ylink', href: '#/stats/ziele' }, 'Ziele ändern'))
-      : h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));
   };
   draw();
-  return UI.section('Dieses Jahr', [chips, box], { cls: 'year', id: 'year', link: '#/stats', linkText: 'Statistik' });
+  // Ziele (Jahr und laufende Woche) stehen unter den Zahlen; höchstens drei, der Rest in der Statistik
+  const goalBox = h('div', { class: 'ygoals' }), mine = Ziele.fuerJahr(await Goals.list(), yr, yr).sort((a, b) => (a.period === 'week') - (b.period === 'week'));
+  if (mine.length) goalBox.append(...mine.slice(0, 3).map(g => Goals.row(g, all, now)), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, mine.length > 3 ? 'Alle ' + mine.length + ' Ziele' : 'Ziele ändern'));
+  else goalBox.append(h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));
+  return UI.section('Dieses Jahr', [chips, box, goalBox], { cls: 'year', id: 'year', link: '#/stats', linkText: 'Statistik' });
 });
 
 /* ---- Letzte Touren (die allerletzte steht schon oben) ---- */

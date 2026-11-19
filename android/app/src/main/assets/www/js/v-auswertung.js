@@ -170,32 +170,4 @@ const Ausw = {
     };
     draw();
   },
-
-  /* ---------- Jahresziele ---------- */
-  async ziele(body, ts, ctx) {
-    const years = [...new Set(ctx.all.map(t => new Date(t.start).getFullYear()))]; const now = new Date().getFullYear(); if (!years.includes(now)) years.push(now);
-    years.sort((a, b) => b - a);
-    let y = ctx.year === 'all' ? now : ctx.year;
-    const goals = await DB.kvGet('goals', {});
-    const wrap = h('div'); body.append(wrap);
-    const draw = () => {
-      wrap.innerHTML = '';
-      const g = goals[y] || {};
-      const done = ctx.all.filter(t => new Date(t.start).getFullYear() === y && (!ctx.sport || t.sport === ctx.sport));
-      const cur = { km: done.reduce((s, t) => s + t.dist, 0) / 1000, up: done.reduce((s, t) => s + (t.up || 0), 0), n: done.length };
-      const jan1 = new Date(y, 0, 1).getTime(), dec31 = new Date(y + 1, 0, 1).getTime(), frac = Math.min(1, Math.max(0, (Date.now() - jan1) / (dec31 - jan1)));
-      const inp = k => h('input', { type: 'text', inputmode: 'numeric', value: g[k] || '', placeholder: 'kein Ziel', onchange: async e => { const v = parseFloat(String(e.target.value).replace(',', '.')); if (isFinite(v) && v > 0) goals[y] = Object.assign(goals[y] || {}, { [k]: v }); else if (goals[y]) delete goals[y][k]; await DB.kvSet('goals', goals); draw(); } });
-      const line = (k, lab, unit, fmt) => {
-        const goal = g[k], c = cur[k], pct = goal ? Math.min(100, c / goal * 100) : 0, pace = frac > 0.02 ? c / frac : null, soll = goal ? goal * frac : 0;
-        return h('div', { class: 'goal' }, h('label', { class: 'fld' }, lab + ' (' + unit + ')', inp(k)),
-          goal ? h('div', null, UI.bar(pct / 100, y === now ? { mark: frac } : null),
-            h('p', { class: 'muted small' }, fmt(c) + ' von ' + fmt(goal) + ' · ' + Math.round(c / goal * 100) + ' %' + (y === now ? ' · Soll heute ' + fmt(soll) + (c >= soll ? ' ✓ im Plan' : ' · ' + fmt(soll - c) + ' im Rückstand') + (pace ? ' · Hochrechnung ' + fmt(pace) : '') : '')))
-            : h('p', { class: 'muted small' }, 'Bisher ' + fmt(c)));
-      };
-      wrap.append(h('div', { class: 'row' }, h('button', { class: 'btn sm', 'aria-label': 'Vorjahr', onclick: () => { y--; draw(); } }, '‹'), h('b', { class: 'calyear' }, String(y)), h('button', { class: 'btn sm', 'aria-label': 'Folgejahr', onclick: () => { y++; draw(); } }, '›')),
-        h('p', { class: 'muted small' }, 'Lege Ziele für das Jahr fest. Der Strich im Balken zeigt, wo du heute stehen müsstest.'),
-        line('km', 'Strecke', 'km', v => Math.round(v).toLocaleString('de-DE') + ' km'), line('up', 'Aufstieg', 'm', v => Math.round(v).toLocaleString('de-DE') + ' m'), line('n', 'Touren', 'Anzahl', v => Math.round(v) + ' Touren'));
-    };
-    draw();
-  },
 };

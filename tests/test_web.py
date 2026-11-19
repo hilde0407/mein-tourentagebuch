@@ -99,6 +99,42 @@ def neue_funktionen(pg):
     pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300); assert pg.locator("#backupnote").count() == 0, "Erinnerung aus"
     pg.evaluate("async () => { await Set_.set('backupDays', 14); await DB.kvSet('lastBackup', Date.now()); }")
 
+    # --- 2. Ziele: Jahres- und Wochenziele, Prognose in Worten, Pflege in der Statistik, Anzeige auf der Startseite ---
+    pg.evaluate("async () => { await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); }")
+    pg.evaluate("location.hash = '#/stats/ziele'"); pg.wait_for_selector("#goaladd"); assert "Noch kein Ziel für" in pg.inner_text("#view")
+    pg.click("#goaladd"); pg.wait_for_selector("#goalsave")
+    pg.click("#goalsave"); pg.wait_for_selector(".sheet .err:not(:empty)"); assert "Zielwert über 0" in pg.inner_text(".sheet .err"), "ohne Wert wird nichts gespeichert"
+    pg.fill("#goalval", "0"); pg.click("#goalsave"); assert pg.evaluate("DB.kvGet('goals2', null)") is None
+    pg.fill("#goalval", "500"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_selector("#goals .ygoal")
+    row = pg.inner_text("#goals .ygoal"); assert "/ 500 km" in row and ("Prognose zum Jahresende" in row or "erreicht" in row), row
+    assert pg.evaluate("DB.kvGet('goals2', []).then(l => l.length === 1 && l[0].metric === 'km' && l[0].target === 500 && l[0].period === 'year')")
+    # Wochenziel: zwei Touren pro Woche
+    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.click(".sheet .seg button:has-text('Wochenziel')"); assert pg.locator("#goalyear").is_hidden()
+    pg.click("#goalmetric .chip:has-text('Touren')"); pg.fill("#goalval", "2"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
+    pg.wait_for_selector("text=Wochenziele"); wk = pg.inner_text("#goals .sec:has(h3:text-is('Wochenziele')) .ygoal")
+    assert "Touren pro Woche" in wk and "/ 2 Touren" in wk and ("Noch" in wk or "letzte Tag" in wk or "erreicht" in wk), wk
+    # Sportart je Ziel; dasselbe Ziel zweimal ändert das vorhandene
+    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.select_option("#goalsport", "grp:foot"); pg.click("#goalmetric .chip:has-text('Aufstieg')"); pg.fill("#goalval", "12000"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
+    assert "Aufstieg · Wandern und Bergsteigen" in pg.inner_text("#goals") and "/ 12.000 m" in pg.inner_text("#goals")
+    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.select_option("#goalsport", "grp:foot"); pg.click("#goalmetric .chip:has-text('Aufstieg')"); pg.fill("#goalval", "15000"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("DB.kvGet('goals2', []).then(l => l.length === 3 && l.filter(g => g.metric === 'up').length === 1 && l.find(g => g.metric === 'up').target === 15000)")
+    # Ändern und Löschen
+    pg.locator("#goals .ygoal", has_text="Strecke").first.click(); pg.wait_for_selector("#goaldel"); assert pg.input_value("#goalval") == "500"
+    pg.fill("#goalval", "800"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached"); assert "/ 800 km" in pg.inner_text("#goals")
+    # Startseite: Jahresziel und Wochenziel im Abschnitt „Dieses Jahr“ (höchstens drei), Verweis zur Pflege
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector(".year .ygoal"); assert pg.locator(".year .ygoal").count() == 3, pg.inner_text(".year")
+    assert "/ 800 km" in pg.inner_text(".year") and pg.locator("#year .ygoals a.ylink").count() == 1
+    pg.evaluate("location.hash = '#/stats/ziele'"); pg.wait_for_selector("#goals .ygoal")
+    pg.locator("#goals .ygoal", has_text="Aufstieg").first.click(); pg.wait_for_selector("#goaldel"); pg.click("#goaldel"); pg.wait_for_selector(".sheet .btn.pri:has-text('Löschen')"); pg.click(".sheet .btn.pri:has-text('Löschen')"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("DB.kvGet('goals2', []).then(l => l.length === 2)")
+    # Ältere Jahresziele (kv „goals“) bleiben lesbar und gehen beim ersten Ändern in die neue Liste über
+    pg.evaluate("async () => { await DB.del('kv', 'goals2'); await DB.kvSet('goals', {[new Date().getFullYear()]: {km: 300, up: 9000, n: 20}}); }")
+    pg.evaluate("Nav.go('/stats/ziele')"); pg.wait_for_selector("#goals .ygoal"); assert pg.locator("#goals .ygoal").count() == 3 and "/ 300 km" in pg.inner_text("#goals"), pg.inner_text("#goals")
+    pg.locator("#goals .ygoal", has_text="Touren").first.click(); pg.wait_for_selector("#goalsave"); pg.fill("#goalval", "25"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("DB.kvGet('goals2', []).then(l => l.length === 3 && l.find(g => g.metric === 'count').target === 25 && l.find(g => g.metric === 'km').target === 300)")
+    pg.evaluate("async () => { await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); }")
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -245,7 +281,7 @@ def main():
             pg.locator(".home .chips .chip").first.click(); pg.wait_for_timeout(200)
             assert pg.locator(".year .kpi b").first.inner_text() == big0
         pg.click(".year .ylink"); pg.wait_for_function("location.hash==='#/stats/ziele'")
-        pg.wait_for_selector(".goal"); assert pg.locator(".chips .chip.on").inner_text() == "Ziele"
+        pg.wait_for_selector("#goals .ygoal"); assert pg.locator(".chips .chip.on").inner_text() == "Ziele"
         pg.evaluate("DB.kvSet('goals', {})"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#yset")
         # Foto-Quellen: Galerie zu Tour
         pg.evaluate("window.__gts = %d; window.__gallery=[{uri:'content://m/1',ts:%d,name:'q'}]" % (t0 + 100000, t0 + 100000))
@@ -286,9 +322,7 @@ def main():
         assert len(nl) >= 3 and nl[0][1] > 0 and any(x[0] == 100 for x in nl), nl
         pg.get_by_role("button", name="Wetter laden").click(); pg.wait_for_selector("text=Touren mit Wetterdaten", timeout=15000)
         assert "an Regentagen" in pg.inner_text("#view") and "Kälteste Tour" in pg.inner_text("#view")
-        pg.get_by_role("button", name="Ziele", exact=True).click(); pg.wait_for_selector("text=Lege Ziele")
-        pg.locator(".goal input").first.fill("500"); pg.locator(".goal input").first.dispatch_event("change"); pg.wait_for_selector(".gbar")
-        assert "von 500 km" in pg.inner_text("#view")
+        pg.get_by_role("button", name="Ziele", exact=True).click(); pg.wait_for_selector("#goaladd")
 
         pg.route("**/nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=500, body="x", headers={"access-control-allow-origin": "*"}))
         # Reisen & Alben: Reise aus 4 weit entfernten Tagen erkennen, Tags vergeben, Album-Seite

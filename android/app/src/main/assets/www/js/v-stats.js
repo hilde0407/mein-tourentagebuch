@@ -9,7 +9,7 @@ Views['/stats'] = async (root, [tab0]) => {
     body.innerHTML = '';
     const sel = h('select', { 'aria-label': 'Zeitraum', onchange: e => { year = e.target.value === 'all' ? 'all' : +e.target.value; draw(); } }, h('option', { value: 'all', selected: year === 'all' }, 'Gesamt'), years.map(y => h('option', { value: y, selected: y === year }, y)));
     const ss = h('select', { 'aria-label': 'Sportart', onchange: e => { sport = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Sportarten'), Sports.list.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
-    body.append(h('div', { class: 'row' }, sel, ss));
+    if (tab !== 'ziele') body.append(h('div', { class: 'row' }, sel, ss));      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && (!sport || t.sport === sport));
     body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Rekorde'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
     const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
