@@ -1,4 +1,5 @@
-"""Prüft die Lesbarkeit aller Knöpfe, Chips und Links (WCAG-Kontrast) in Hell und Dunkel. Aufruf: python tests/audit_kontrast.py [--fail]"""
+"""Prüft die Lesbarkeit (WCAG-Kontrast) in Hell und Dunkel: alle Knöpfe, Chips, Links und Felder mit 4,5 : 1,
+dazu jeden sichtbaren Text (große Schrift ab 24 px bzw. 18,66 px fett mit 3 : 1). Aufruf: python tests/audit_kontrast.py [--fail]"""
 import json, socketserver, sys, threading, os
 sys.path.insert(0, os.path.dirname(__file__))
 from playwright.sync_api import sync_playwright
@@ -8,19 +9,29 @@ JS = """() => {
   const parse = c => { const m = c.match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
   const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(c.r) + .7152 * f(c.g) + .0722 * f(c.b); };
   const over = (top, bot) => ({ r: top.r * top.a + bot.r * (1 - top.a), g: top.g * top.a + bot.g * (1 - top.a), b: top.b * top.a + bot.b * (1 - top.a), a: 1 });
-  const bgOf = el => { const layers = []; for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c && c.a > 0) { layers.push(c); if (c.a >= 1) break; } } let base = { r: 255, g: 255, b: 255, a: 1 }; for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base); return base; };
-  const out = [];
-  document.querySelectorAll('button, a:not(.leaflet-marker-icon), .btn, .chip, [role=button], label.sw, summary, select, input:not([type=checkbox]):not([type=radio])').forEach(el => {
-    if (el.closest('.leaflet-marker-icon')) return;
+  /* Hintergrund: eigene Fläche oder eine vollflächige ::before-Fläche (so ist das Wegweiserschild gebaut) */
+  const layer = e => { const c = parse(getComputedStyle(e).backgroundColor); if (c && c.a > 0) return c;
+    const p = getComputedStyle(e, '::before'); if (p.content !== 'none' && p.position === 'absolute' && p.top === '0px' && p.bottom === '0px' && p.left === '0px' && p.right === '0px') { const q = parse(p.backgroundColor); if (q && q.a > 0) return q; } return null; };
+  const bgOf = el => { const layers = []; for (let e = el; e; e = e.parentElement) { const c = layer(e); if (c) { layers.push(c); if (c.a >= 1) break; } } let base = { r: 255, g: 255, b: 255, a: 1 }; for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base); return base; };
+  const out = [], seen = new Set();
+  const check = (el, kind) => {
+    if (seen.has(el)) return; seen.add(el);
+    if (el.closest('.leaflet-container, .hero.pic, .lb, .sh, .flight, .sph')) return;      // Schrift auf Karten und Bildern: eigene dunkle Unterlage, hier nicht messbar
     const r = el.getBoundingClientRect(); if (r.width < 4 || r.height < 4) return;
     const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) return;
-    const txt = (el.value && el.tagName === 'INPUT' ? '' : (el.innerText || '')).trim(); if (!txt && el.tagName !== 'SELECT') return;
+    for (let e = el.parentElement; e; e = e.parentElement) { const c = getComputedStyle(e); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity === 0) return; }
+    const txt = kind === 'text' ? [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.nodeValue).join(' ').trim() : (el.value && el.tagName === 'INPUT' ? '' : (el.innerText || '')).trim();
+    if (!txt && el.tagName !== 'SELECT') return;
     const fg0 = parse(cs.color); if (!fg0) return;
     const bg = bgOf(el), fg = over(fg0, bg);
     const L1 = lum(fg), L2 = lum(bg), ratio = (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05);
     const dis = el.disabled || el.getAttribute('aria-disabled') === 'true';
-    if (ratio < 4.5) out.push({ ratio: Math.round(ratio * 100) / 100, txt: txt.slice(0, 30), cls: (el.className && el.className.baseVal === undefined ? el.className : '') + '|' + el.tagName, fg: cs.color, bg: `rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)})`, dis });
-  });
+    const px = parseFloat(cs.fontSize), big = px >= 24 || (px >= 18.66 && +cs.fontWeight >= 700);      // große Schrift: 3 : 1 genügt (WCAG)
+    if (ratio < (kind === 'text' && big ? 3 : 4.5)) out.push({ ratio: Math.round(ratio * 100) / 100, txt: txt.slice(0, 30), cls: (el.className && el.className.baseVal === undefined ? el.className : '') + '|' + el.tagName + (kind === 'text' ? ' (Text)' : ''), fg: cs.color, bg: `rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)})`, dis });
+  };
+  document.querySelectorAll('button, a:not(.leaflet-marker-icon), .btn, .chip, [role=button], label.sw, summary, select, input:not([type=checkbox]):not([type=radio])').forEach(el => { if (!el.closest('.leaflet-marker-icon')) check(el, 'ctl'); });
+  /* dazu jeder sichtbare Text: Überschriften, Kennzahlen, Etiketten, Fließtext */
+  document.querySelectorAll('#view *, #tabs *, .sheet *, #toast').forEach(el => { if ([...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())) check(el, 'text'); });
   return out;
 }"""
 
@@ -39,9 +50,9 @@ def main():
             t0 = 1700000000000
             pg.evaluate("""async ([a,b]) => { const e=s=>new TextEncoder().encode(s); await Import.fromData('a.gpx',e(a),'file'); await Import.fromData('b.gpx',e(b),'file'); }""",
                         [T.gpx(t0, name="Hüttenrunde"), T.gpx(t0 + 86400000 * 40, lat=47.2, name="Zweite Tour")])
-            routes = ["#/start", "#/tours", "#/rec", "#/map", "#/photos", "#/stats", "#/import", "#/settings", "#/sources", "#/plan", "#/reisen"]
+            routes = ["#/start", "#/", "#/mehr", "#/rec", "#/map", "#/photos", "#/stats", "#/import", "#/settings", "#/sources", "#/plan", "#/reisen"]
             tid = pg.evaluate("DB.all('tours').then(a => a[0].id)")
-            routes += [f"#/tour/{tid}", f"#/story/{tid}"]
+            routes += [f"#/tour/{tid}", f"#/story/{tid}", f"#/fix/{tid}"]
             for r in routes:
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(700)
                 for item in pg.evaluate(JS): bad.setdefault((r, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
@@ -58,7 +69,7 @@ def main():
                 pg.get_by_role("button", name=tabname, exact=True).click(); pg.wait_for_timeout(500)
                 for item in pg.evaluate(JS): bad.setdefault(("Statistik " + tabname, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             # Aktionsmenüs auf Tour- und Listenseiten
-            for r in (f"#/tour/{tid}", "#/tours", "#/photos"):
+            for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
                 for el in pg.locator("header.top button[aria-label]").all()[:4]:
                     try:
@@ -66,6 +77,28 @@ def main():
                         for item in pg.evaluate(JS): bad.setdefault((r + " Menü", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
                         pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.keyboard.press("Escape"); pg.wait_for_timeout(150)
                     except Exception: pass
+            # Filter und „Neue Tour“ in der Tourenliste, leerer Suchtreffer
+            pg.evaluate("location.hash='#/'"); pg.wait_for_selector("#filterbtn")
+            for sel in ("#filterbtn", "#touradd"):
+                pg.click(sel); pg.wait_for_timeout(350)
+                for item in pg.evaluate(JS): bad.setdefault(("Touren " + sel, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+                pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.fill("input[type=search]", "gibtesnicht"); pg.wait_for_timeout(250)
+            for item in pg.evaluate(JS): bad.setdefault(("Touren leer", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            pg.fill("input[type=search]", "")
+            # Startseite ohne Kartenbild (gezeichneter Aufmacher: weiße Schrift auf Petrol) und mit Jahreszielen
+            pg.evaluate("(async () => { await DB.kvSet('heroMap', null); await caches.delete('tiles-v1'); await DB.kvSet('goals', {[new Date().getFullYear()]: {km: 500, up: 9000}}); })()")
+            pg.unroute("**/tile.openstreetmap.org/**"); pg.route("**/tile.openstreetmap.org/**", lambda r: r.abort())
+            pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(700)
+            assert pg.locator("#hero.pic").count() == 0, "ohne Kacheln muss der gezeichnete Aufmacher stehen"
+            for item in pg.evaluate(JS): bad.setdefault(("Start gezeichnet", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            # Laufende und pausierte Aufzeichnung (rote Scheibe, große Ziffern, Beenden)
+            pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector(".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime"); pg.wait_for_timeout(500)
+            for item in pg.evaluate(JS): bad.setdefault(("Aufzeichnung läuft", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            pg.click("#rpause"); pg.wait_for_timeout(1400)
+            for item in pg.evaluate(JS): bad.setdefault(("Aufzeichnung Pause", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#startrec.live"); pg.wait_for_timeout(300)
+            for item in pg.evaluate(JS): bad.setdefault(("Start, Aufzeichnung läuft", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             ctx.close()
         b.close()
     for (r, txt, cls, fg, bg, scheme), it in sorted(bad.items(), key=lambda kv: kv[1]["ratio"]):

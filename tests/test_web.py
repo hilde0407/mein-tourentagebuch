@@ -38,6 +38,44 @@ def gpx(t0, n=60, lat=47.0, lon=11.0, ele0=800, name="T"):
         f'<trkpt lat="{lat+i*0.0005}" lon="{lon+i*0.0004}"><ele>{ele0+i*3}</ele><time>{__import__("datetime").datetime.fromtimestamp(t0/1000+i*30, __import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}</time></trkpt>' for i in range(n))
     return f'<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>{name}</name><type>hiking</type><trkseg>{pts}</trkseg></trk></gpx>'
 
+LAYOUT_JS = """() => {
+  /* Prüft die sichtbare Seite: kein Querrollen, Tippflächen mindestens 44 px (gemessen per Treffertest, nicht per Kastenmaß). */
+  const out = [], v = document.querySelector('#view');
+  if (v.scrollWidth > v.clientWidth + 1) out.push('Querrollen: Inhalt ' + v.scrollWidth + ' px breit, Platz ' + v.clientWidth + ' px');
+  if (document.documentElement.scrollWidth > innerWidth + 1) out.push('Querrollen: Seite ' + document.documentElement.scrollWidth + ' px');
+  const head = document.querySelector('#view > header.top:not(.over)'), tabs = document.querySelector('#tabs:not(.hide)');
+  const top = head ? head.getBoundingClientRect().bottom : 0, bottom = tabs ? tabs.getBoundingClientRect().top - 32 : innerHeight;
+  document.querySelectorAll('#view button, #view a[href], #view select, #view input, #view textarea, #view summary, #tabs a, .sheet button, .sheet a[href], .sheet select, .sheet input').forEach(el0 => {
+    if (el0.closest('.leaflet-control-attribution, .leaflet-popup, .leaflet-marker-pane, .leaflet-overlay-pane')) return;
+    const el = el0.type === 'checkbox' && el0.closest('label') ? el0.closest('label') : el0;      // beim Schalter zählt die ganze Zeile
+    const r = el.getBoundingClientRect(), inTabs = !!el.closest('#tabs, header.top');
+    if (r.width < 2 || r.height < 2 || r.left < 0 || r.right > innerWidth + 1) return;
+    if (!inTabs && (r.top < top || r.bottom > bottom)) return;      // (teilweise) verdeckt oder außerhalb: wird nach dem Rollen geprüft
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const hit = (x, y) => { const e = document.elementFromPoint(x, y); return !!e && (e === el || el.contains(e)); };
+    if (!hit(cx, cy)) return;
+    const miss = [[0, -21], [0, 21], [-21, 0], [21, 0]].filter(([dx, dy]) => !hit(cx + dx, cy + dy));
+    if (miss.length) out.push('Tippfläche unter 44 px: <' + el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).join('.') : '') + '> „' + (el.innerText || el.getAttribute('aria-label') || el.placeholder || '').trim().slice(0, 28) + '“ ' + Math.round(r.width) + '×' + Math.round(r.height));
+  });
+  return [...new Set(out)];
+}"""
+
+def layout_check(pg, routes, widths=((360, 100), (390, 100), (430, 100), (360, 130))):
+    """Jede Hauptansicht bei 360–430 px Breite und mit 130 % Schriftgröße: nichts ragt seitlich hinaus, alles ist gut tippbar."""
+    bad = []
+    for w, fs in widths:
+        pg.set_viewport_size({"width": w, "height": 800})
+        pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+        for r in routes:
+            pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", r)
+            pg.wait_for_function("h => !Nav._busy && Nav.cur === '/' + (h.slice(2).split('/')[0] || '') && document.querySelector('#view').children.length > 0", arg=r); pg.wait_for_timeout(350)
+            steps = pg.evaluate("Math.min(6, Math.ceil(document.querySelector('#view').scrollHeight / 500))")
+            for k in range(max(1, steps)):
+                pg.evaluate("k => { document.querySelector('#view').scrollTop = k * 500 }", k); pg.wait_for_timeout(60)
+                for m in pg.evaluate(LAYOUT_JS): bad.append(f"{w} px, {fs} %, {r}: {m}")
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    return sorted(set(bad))
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -499,6 +537,22 @@ def main():
         assert tz[0]["pos"] == "track" and abs(tz[0]["lat"] - 47.0) < 0.05, tz[0]      # Position aus der Spur zur korrigierten Zeit
         assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
 
+        # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
+        pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
+        lt = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0].id)")
+        bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
+        # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
+        pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
+        pg.evaluate("id => { location.hash = '#/tour/' + id }", lt); pg.wait_for_selector("header.top button[aria-label=Aktionen]"); pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250)
+        bad += ["Aktionen: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
+        pg.evaluate("location.hash = '#/rec'"); pg.wait_for_selector(".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime")
+        for w, fs in ((360, 100), (360, 130)):
+            pg.set_viewport_size({"width": w, "height": 800}); pg.evaluate("fs => { document.getElementById('fs-test').textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}' }", fs); pg.wait_for_timeout(1200)
+            for k in range(3):
+                pg.evaluate("k => { document.querySelector('#view').scrollTop = k * 400 }", k); pg.wait_for_timeout(60); bad += [f"Aufzeichnung {w} px {fs} %: " + m for m in pg.evaluate(LAYOUT_JS)]
+        pg.evaluate("document.getElementById('fs-test').textContent = ''; window.__rec.state = 'idle'; window.__rec.unsent = false"); pg.set_viewport_size({"width": 390, "height": 800})
+        assert not bad, "\n".join(sorted(set(bad)))
         b.close()
     assert not errs, "\n".join(errs)
     print("OK")
