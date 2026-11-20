@@ -4,6 +4,16 @@ Eigenständige Android-App: Touren, Fotos, Aufzeichnung, Planung und Routing –
 
 ![Startseite, Tourenliste, Tour und Aufzeichnung](docs/bilder/2.0/ueberblick.png)
 
+## Installation und Prüfung
+1. Auf GitHub **Releases** öffnen, die neueste Version wählen und **Tourentagebuch.apk** laden (daneben liegt **Tourentagebuch.apk.sha256**).
+2. Datei öffnen. Android fragt einmal, ob der Browser oder Dateimanager Apps installieren darf – erlauben.
+3. Google Play Protect kann die App prüfen oder warnen, weil sie nicht aus dem Play Store kommt. Die Prüfung zulassen und nach eigener Abwägung fortfahren.
+4. **Prüfsumme vergleichen** (optional, aber empfohlen): `sha256sum Tourentagebuch.apk` muss denselben Wert ergeben wie in der Versionsbeschreibung bzw. in der `.sha256`-Datei (`sha256sum -c Tourentagebuch.apk.sha256` im selben Ordner). Unter Windows: `certutil -hashfile Tourentagebuch.apk SHA256`.
+5. **Signatur:** Veröffentlichte Versionen sind mit dem Schlüssel des Projekts signiert ([docs/signieren.md](docs/signieren.md)); Android installiert Updates nur über dieselbe Signatur. Selbst gebaute oder Test-APKs tragen eine andere Signatur und lassen sich nicht über eine veröffentlichte Version legen. Die Signatur zeigt `apksigner verify --print-certs Tourentagebuch.apk`.
+
+**Datenschutz:** Touren, Fotos und Einstellungen bleiben auf dem Gerät (Datenbank in der App, Android-Datensicherung ist ausgeschaltet); im Code gibt es keine Werbung, Analyse- oder Absturzmeldedienste. Das Internet nutzt die App für Karten-Kacheln (OpenStreetMap, OpenTopoMap, Satellitenbilder), Routing (BRouter), Ortsnamen und Wegedaten (OpenStreetMap), Höhendaten und Wetter (Open-Meteo) sowie für Importe und Abgleiche, die du selbst startest (Komoot, Strava, Zepp, Meine Touren, Nextcloud/WebDAV).
+Berechtigungen: Standort (Aufzeichnung), Fotos und deren Aufnahmeort (Zuordnung zu Touren), Benachrichtigungen (laufende Aufzeichnung).
+
 ## Bedienung
 Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das laufende Jahr), **Touren** (Liste und Karte), **Aufnehmen**, **Fotos**, **Mehr** (Tour planen, Reisen & Alben, Statistik, Import, Foto-Quellen, Einstellungen & Sicherung). Was sich mit 2.0 geändert hat: [docs/versionen/2.0.0.md](docs/versionen/2.0.0.md). Aufstieg wie in „Meine Touren“ (2.0.1): [docs/versionen/2.0.1.md](docs/versionen/2.0.1.md).
 

@@ -86,3 +86,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ inputs.tag }}" Tourentagebuch.apk --clobber
+      # Prüfsumme der tatsächlich angehängten APK (heruntergeladen, nicht die lokale Kopie).
+      # Ein Fehler hier lässt den Schritt rot erscheinen, hält den Lauf aber nicht an; die APK ist dann schon angehängt.
+      # Mehrfaches Ausführen (z. B. nachträgliches Anhängen per Hand) ersetzt Datei und Abschnitt, es entsteht nichts doppelt.
+      - name: Prüfsumme (SHA-256) anhängen und in die Beschreibung schreiben
+        if: inputs.tag != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          trap 'echo "::error::Prüfsumme konnte nicht angehängt werden (die APK ist trotzdem angehängt). Nachholen: Actions -> Android-App -> Run workflow mit Tag $TAG."' ERR
+          set -eE
+          D="$RUNNER_TEMP/pruefsumme"; rm -rf "$D"; mkdir -p "$D"
+          gh release download "$TAG" --pattern Tourentagebuch.apk --dir "$D" --clobber
+          ( cd "$D" && sha256sum Tourentagebuch.apk > Tourentagebuch.apk.sha256 )
+          H=$(cut -d' ' -f1 "$D/Tourentagebuch.apk.sha256")
+          [[ "$H" =~ ^[0-9a-f]{64}$ ]] || { echo "Ungültiger Hash: $H"; exit 1; }
+          gh release upload "$TAG" "$D/Tourentagebuch.apk.sha256" --clobber
+          # bestehende Beschreibung ohne einen früheren Prüfsummen-Abschnitt (bis zur nächsten Überschrift)
+          gh release view "$TAG" --json body --jq .body | tr -d '\r' | awk '
+            /^## Prüfsumme \(SHA-256\)[[:space:]]*$/ { skip=1; next }
+            skip && /^## / { skip=0 }
+            !skip { print }' > "$D/alt.md"
+          # Leerzeilen am Ende entfernen
+          sed -i -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$D/alt.md"
+          {
+            cat "$D/alt.md"
+            [ -s "$D/alt.md" ] && printf '\n'
+            printf '## Prüfsumme (SHA-256)\n\n`%s`\n\nSo prüfst du: `sha256sum Tourentagebuch.apk`\n' "$H"
+          } > "$D/neu.md"
+          gh release edit "$TAG" --notes-file "$D/neu.md"
+          echo "SHA-256 von Tourentagebuch.apk ($TAG): $H" >> "$GITHUB_STEP_SUMMARY"
