@@ -249,8 +249,10 @@ def main():
             assert o["g1"]["note"] == "Früh los, oben Gämsen gesehen." and o["g1"]["stars"] == 5 and sorted(o["g1"]["tags"]) == ["Gipfel", "Wetterstein"] and o["g1"]["hr"] and o["g1"]["src"] == "mt", o["g1"]
             sports = {t["sport"]: o[t["id"]]["sport"] for t in srv if o.get(t["id"])}
             print("Sportarten:", sports)
-            assert sports == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run", "skialpin": "skialpin", "skitour": "skitour",
-                              "snowshoe": "hike", "nordic": "nordic", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}, sports
+            erw = {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run", "skialpin": "skialpin", "skitour": "skitour",
+                              "snowshoe": "hike", "nordic": "nordic", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
+            if "snowshoe" not in sports: erw.pop("snowshoe")      # neuere Server (ab 3.50.0) führen Schneeschuhwandern schon selbst als Wandern mit Schlagwort
+            assert sports == erw, sports
             sumS = (sum(t["dist_m"] for t in srv if t["id"] != "987654322"), sum(t["up_m"] for t in srv if t["id"] != "987654322"))
             sumA = pg.evaluate("Tours.list().then(l => [l.reduce((s, t) => s + t.dist, 0), l.reduce((s, t) => s + t.up, 0)])")
             assert abs(sumS[0] - sumA[0]) < 0.01 and abs(sumS[1] - sumA[1]) < 0.01, (sumS, sumA); print("Summen gleich: %.1f km, ↑ %.0f m" % (sumA[0] / 1000, sumA[1]))
@@ -301,6 +303,63 @@ def main():
             assert "nicht erreichbar" in down and "x" not in down.split("erreichbar")[1].replace("prüfen", ""), down
             other = pg.evaluate("async (u) => { try { await Import.MT.login(u, 'x', 'y'); return 'ok'; } catch (e) { return e.message; } }", f"http://127.0.0.1:{web.server_address[1]}")
             assert "antwortet kein „Meine Touren“" in other, other
+            # K. 2.5.0 Senden gegen den echten Server: hochladen (Sportart, Notiz, Sterne), wiederholen ohne Doppelte, Betrachter bekommt 403, danach holt „Aus Meine Touren holen“ nichts doppelt
+            vt = login_direct(url, "Tagebuch"); ot = login_direct(url, "Volker")
+            n_srv = len(json.loads(direct(url, "/api/tours", cookie=ot)[2]))
+            T0 = 1796112000000      # 01.12.2026 08:00 UTC: weit weg von den Beispieltouren
+            mk = """async ([t0]) => { const line = (t, n) => Array.from({ length: n }, (_, i) => ({ lat: 47.5 + i * 0.0004, lon: 11.2 + i * 0.0002, ele: 800 + 40 * Math.sin(i / 4), t: t + i * 30000 }));
+              const a = (await Tours.add({ name: 'Sendetest Hüttenrunde', sport: 'hike', pts: line(t0, 60), src: 'file' })).tour; a.note = 'Schöner Tag, Quellwasser am Wegkreuz.'; a.stars = 3; await Tours.save(a);
+              const b = (await Tours.add({ name: 'Sendetest Radrunde', sport: 'bike', pts: line(t0 + 86400000, 50), src: 'file' })).tour;
+              return { a: a.id, b: b.id }; }"""
+            mine = pg.evaluate(mk, [T0]); gid_a = "g" + str(T0 // 1000); gid_b = "g" + str((T0 + 86400000) // 1000)
+            # K1. Betrachter-Konto: Erklärung in der App, nichts geht über die Leitung
+            pg.evaluate("async ([u, k]) => { await DB.kvSet('mt', { base: u, name: 'Tagebuch', role: 'viewer', token: k, since: Date.now() }); }", [url, vt])
+            LOG.clear(); pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", mine["a"]); pg.wait_for_selector(".tourp h1"); pg.click("button[aria-label=Aktionen]"); pg.click("#mt-senden-tour")
+            pg.wait_for_selector("#send-grund"); assert "Schreibrechten" in pg.inner_text("#send-grund") and not [x for x in LOG if x[0] == "POST"], LOG; pg.click("#send-ok")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
+            # K1b. Dieselbe Sitzung gegen den Server (App-Prüfung umgangen): der Server lehnt mit 403 ab, die App übersetzt es verständlich
+            pg.evaluate("async ([u, k]) => { await DB.kvSet('mt', { base: u, name: 'Tagebuch', role: 'user', token: k, since: Date.now() }); }", [url, vt])
+            e403 = pg.evaluate("async (id) => { try { await Senden.eine(await DB.kvGet('mt'), await DB.get('tours', id)); return null; } catch (e) { return { m: e.message, v: !!e.verboten }; } }", mine["a"])
+            assert e403 and e403["v"] and "Schreibrechten" in e403["m"], e403
+            assert len(json.loads(direct(url, "/api/tours", cookie=ot)[2])) == n_srv and "mtId" not in pg.evaluate("id => DB.get('tours', id)", mine["a"]), "nichts angelegt, nichts gemerkt"
+            st, _, body = direct(url, "/api/record/upload", "POST", {"gpx": "<trkpt/>", "name": "x"}, cookie=vt); assert st == 403, (st, body)
+            # K2. Besitzer: über die Oberfläche senden (Rückfrage, Fortschritt, Ergebnis)
+            pg.evaluate("async ([u, n, p]) => Import.MT.login(u, n, p)", [url, "Volker", PW["Volker"]])
+            LOG.clear(); pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", mine["a"]); pg.wait_for_selector(".tourp h1"); pg.click("button[aria-label=Aktionen]"); pg.click("#mt-senden-tour")
+            pg.wait_for_selector("#send-ja"); assert "127.0.0.1" in pg.inner_text("#send-frage") and "Hüttenrunde" in pg.inner_text("#send-name"); pg.click("#send-ja")
+            pg.wait_for_function("document.querySelector('#toast') && /an Meine Touren gesendet/.test(document.querySelector('#toast').textContent)", timeout=60000)
+            ups = [x for x in LOG if x[0] == "POST"]; print("Senden:", [(x[1], x[2]) for x in ups])
+            assert [x[1] for x in ups] == ["api/record/upload", "api/tours/%s/note" % gid_a, "api/tours/%s/rating" % gid_a] and all(x[2] == 200 for x in ups), ups
+            lst = {t["id"]: t for t in json.loads(direct(url, "/api/tours", cookie=ot)[2])}; ta = lst[gid_a]
+            assert len(lst) == n_srv + 1 and ta["name"] == "Sendetest Hüttenrunde" and ta["sport"] == "hike" and ta["note"] == "Schöner Tag, Quellwasser am Wegkreuz." and ta["stars"] == 3 and ta["start_ts"] == T0 // 1000, ta
+            assert abs(ta["dist_m"] - 59 * 0.0004 * 111195) < 600 and ta["status"] == "tour_recorded", ta
+            assert pg.evaluate("id => DB.get('tours', id).then(t => [t.mtId, !!t.mtSent])", mine["a"]) == [gid_a, True]
+            # K3. Zweites Senden: erst die Sperre in der App (Eintrag verschwindet), dann – Kennung vergessen – erkennt die App die Tour am Server; am Server ist nichts doppelt
+            pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", mine["a"]); pg.wait_for_selector("#mtsent"); pg.click("button[aria-label=Aktionen]"); pg.wait_for_selector(".sheet .menu")
+            assert pg.locator("#mt-senden-tour").count() == 0; pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
+            pg.evaluate("async id => { const t = await DB.get('tours', id); delete t.mtId; delete t.mtSent; await Tours.save(t); }", mine["a"])
+            r2 = pg.evaluate("async id => Senden.eine(await DB.kvGet('mt'), await DB.get('tours', id))", mine["a"]); assert r2["status"] == "vorhanden" and r2["id"] == gid_a, r2
+            assert len(json.loads(direct(url, "/api/tours", cookie=ot)[2])) == n_srv + 1, "kein Doppelter"
+            # K3b. Der Server selbst erkennt Doppelte (zweiter Upload mit gleichem Start), auch wenn die Vorabfrage der App übergangen wird
+            gp = pg.evaluate("id => Tours.points(id).then(p => Geo.gpx('x', 'hike', p))", mine["a"]); st, _, body = direct(url, "/api/record/upload", "POST", {"gpx": gp, "name": "x"}, cookie=ot)
+            assert st == 200 and json.loads(body) == {"id": gid_a, "dup": True}, (st, body)
+            # K4. Zweite Tour (Rad, keine Notiz, keine Sterne) mit der Auswahl senden – zusammen mit der schon gesendeten
+            pg.evaluate("location.hash = '#/import'"); pg.wait_for_selector("#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-senden"); pg.click("#mt-senden"); pg.wait_for_selector("#send-liste .send-row")
+            assert pg.locator("#send-liste .send-row[data-id='%s']" % mine["a"]).count() == 0 and pg.locator("#send-liste .send-row[data-id='%s']" % mine["b"]).count() == 1
+            pg.locator("#send-liste .send-row[data-id='%s'] input" % mine["b"]).check(); pg.click("#send-los"); pg.wait_for_selector("#send-ja"); LOG.clear(); pg.click("#send-ja")
+            pg.wait_for_selector("#send-ergebnis-t", timeout=60000); assert "1 Tour gesendet" in pg.inner_text("#send-ergebnis-t"), pg.inner_text("#send-ergebnis-t")
+            assert [x[1] for x in LOG if x[0] == "POST"] == ["api/record/upload"], LOG      # ohne Notiz und Sterne keine Nachträge
+            tb = {t["id"]: t for t in json.loads(direct(url, "/api/tours", cookie=ot)[2])}[gid_b]; assert tb["sport"] == "touringbicycle" and not tb["note"] and not tb["stars"], tb
+            pg.click("#send-fertig"); pg.wait_for_selector("#mt-senden"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
+            # K5. „Aus Meine Touren holen“: die gesendeten Touren sind schon verknüpft – nichts doppelt, ihre Strecken werden nicht noch einmal geladen
+            n_loc = pg.evaluate("Tours.list().then(l => l.length)"); LOG.clear()
+            r3 = pg.evaluate(sync, True); assert r3["added"] == 0, r3
+            assert not [x for x in LOG if x[1] in ("api/tours/%s/gpx" % gid_a, "api/tours/%s/gpx" % gid_b)], LOG
+            l = pg.evaluate("Tours.list().then(l => l.map(t => ({ n: t.name, m: t.mtId, s: t.srcId })))"); assert len(l) == n_loc and sum(1 for t in l if t["n"].startswith("Sendetest")) == 2, [t for t in l if t["n"].startswith("Sendetest")]
+            assert sum(1 for t in l if t["m"] in (gid_a, gid_b)) == 2 and not [t for t in l if t["s"] in ("mt:" + gid_a, "mt:" + gid_b)]
+            kv = pg.evaluate("DB.all('kv')"); assert PW["Volker"] not in json.dumps(kv) and PW["Tagebuch"] not in json.dumps(kv), "Das Passwort darf nirgends gespeichert sein"
+            sk = pg.evaluate("Backup.collect()"); assert pg.evaluate("DB.kvGet('mt')")["token"] not in json.dumps(sk), "Der Sitzungsschlüssel darf nicht in die Sicherung"
+            print("Senden gegen den echten Server geprüft: hochladen, wiederholen ohne Doppelte, Betrachter 403, Holen ohne Doppelte")
             b.close()
         assert not errs, errs
         print("OK – Abgleich gegen den echten Server geprüft")
