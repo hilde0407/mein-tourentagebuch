@@ -564,6 +564,45 @@ def main():
         assert ko["own"] > 40 and ko["a"][0] == ko["own"] and ko["a"][2] is None and ko["a"][3] == 4321 and ko["a"][4] == 4000 and ko["calcV"] == 2, ko      # vorhandene Tour: eigene Rechnung, Komoot-Wert nur aufbewahrt
         assert ko["b"] == [ko["own"], None, 777, 700], ko      # neue Tour genauso
         assert ko["c"] == [612, 600, "komoot", 612], ko      # ohne Höhen in der Spur: Komoot-Wert als Ersatz
+
+        # 2.0.4: Namen von Komoot übernehmen – auch für Touren aus Zepp/Dateien (Abgleich über Startzeit und Länge, ohne die Spur zu laden);
+        # ein in der App von Hand vergebener Name bleibt, ein in Komoot geänderter Name zieht nach
+        kn = pg.evaluate("""async () => {
+          const b2 = 1731000000000;
+          const mk = (i, n) => Array.from({ length: n || 30 }, (_, k) => ({ lat: 28 + i * 0.2 + k * 0.0004, lon: -15.5 + k * 0.0003, ele: 500 + k * 3, t: b2 + i * 86400000 + k * 20000 }));
+          const z = (await Tours.add({ sport: 'hike', pts: mk(1), src: 'zepp', srcId: 'zepp:kn1' })).tour;                       // Zepp: selbst erzeugter Name
+          const m = (await Tours.add({ name: 'Selbst benannt', sport: 'hike', pts: mk(2), src: 'file' })).tour;                  // Datei: Name von Hand
+          const w = (await Tours.add({ sport: 'walk', pts: mk(3), src: 'zepp', srcId: 'zepp:kn3' })).tour;                       // früher „Spazieren“, jetzt Wandern
+          w.sportAlt = 'walk'; w.sport = 'hike'; await Tours.save(w);
+          const auto = z.name, autoW = w.name;
+          let coords = [];
+          const kt = (id, name, i, extra) => Object.assign({ id, name, sport: 'hike', date: new Date(b2 + i * 86400000 + 60000).toISOString(), distance: Geo.stats(mk(i)).dist * 1.02 }, extra || {});
+          let liste = [kt(900, 'Barranco de Azuaje', 1), kt(901, 'Komoot-Name B', 2), kt(902, 'Tamadaba-Runde', 3), kt(903, 'Nur bei Komoot', 9), kt(904, 'Falsche Länge', 1, { date: new Date(b2 + 86400000 + 200000).toISOString(), distance: 99000 })];
+          Import.Komoot.tours = async () => liste;
+          Import.Komoot.coords = async (acc, id) => { coords.push(id); return mk(id === 903 ? 9 : 12).map(c => ({ lat: c.lat, lng: c.lon, alt: c.ele, t: c.t - (b2 + (id === 903 ? 9 : 12) * 86400000) })); };
+          const acc = { user: 'u', token: 't' }, get = async id => DB.get('tours', id);
+          const r1 = await Import.Komoot.importAll(acc, { planned: false }, null), c1 = coords.slice(); coords = [];
+          const s1 = { z: (await get(z.id)).name, zk: (await get(z.id)).komootId, m: (await get(m.id)).name, mk: (await get(m.id)).komootId, w: (await get(w.id)).name, txt: Import.describe(r1) };
+          const r2 = await Import.Komoot.importAll(acc, { planned: false }, null), c2 = coords.slice(); coords = [];           // zweiter Lauf: nichts mehr zu tun, nichts wird geladen
+          liste = liste.map(t => t.id === 900 ? Object.assign({}, t, { name: 'Azuaje, neu benannt' }) : t);
+          const r3 = await Import.Komoot.importAll(acc, { planned: false }, null);                                              // in Komoot umbenannt: zieht nach
+          const s3 = (await get(z.id)).name;
+          const zz = await get(z.id); zz.name = 'Mein eigener Name'; await Tours.save(zz);                                       // in der App umbenannt: bleibt
+          liste = liste.map(t => t.id === 900 ? Object.assign({}, t, { name: 'Dritter Komoot-Name' }) : t);
+          const r4 = await Import.Komoot.importAll(acc, { planned: false }, null);
+          const s4 = (await get(z.id)).name;
+          const all = await Tours.list();
+          const out = { auto, autoW, r1, c1, s1, r2, c2, r3: r3.names, s3, r4: r4.names, s4, neu: all.filter(t => t.srcId === 'komoot:903').length, falsch: all.filter(t => t.srcId === 'komoot:904').length };
+          for (const t of all.filter(t => [z.id, m.id, w.id].includes(t.id) || /^komoot:90[34]$/.test(t.srcId || ''))) await Tours.remove(t.id);
+          return out;
+        }""")
+        assert "Wandern" in kn["auto"] and "Spazieren" in kn["autoW"], kn
+        assert kn["s1"]["z"] == "Barranco de Azuaje" and kn["s1"]["zk"] == "900" and kn["s1"]["w"] == "Tamadaba-Runde", kn      # selbst erzeugte Namen (auch mit früherer Sportart) werden ersetzt
+        assert kn["s1"]["m"] == "Selbst benannt" and kn["s1"]["mk"] == "901", kn                                              # von Hand vergebener Name bleibt, die Zuordnung wird trotzdem gemerkt
+        assert kn["r1"]["names"] == 2 and kn["r1"]["added"] == 2 and sorted(kn["c1"]) == [903, 904] and "Name bei 2 Touren von Komoot übernommen" in kn["s1"]["txt"], kn      # nur wirklich neue Touren werden geladen
+        assert kn["neu"] == 1 and kn["falsch"] == 1, kn                                                                      # gleiche Zeit, aber ganz andere Länge: keine Zuordnung
+        assert kn["r2"]["names"] == 0 and kn["r2"]["added"] == 0 and kn["c2"] == [], kn
+        assert kn["r3"] == 1 and kn["s3"] == "Azuaje, neu benannt" and kn["r4"] == 0 and kn["s4"] == "Mein eigener Name", kn
         assert "Komoot übernommen" not in ko["txt"] and "up" not in ko["r"], ko
         kid = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'komoot:555').id)")
         pg.evaluate("id => { location.hash = '#/tour/' + id }", kid); pg.wait_for_selector(".tourp .facts"); assert "Komoot nennt" in pg.inner_text(".tourp .facts") and "4.321 m" in pg.inner_text(".tourp .facts"), pg.inner_text(".tourp .facts")

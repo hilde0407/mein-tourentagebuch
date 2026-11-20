@@ -20,6 +20,7 @@ const Import = {
     if (r.added) p.push(r.added + (r.added === 1 ? ' Tour importiert' : ' Touren importiert'));
     if (r.dup) p.push(r.dup + ' schon vorhanden');
     if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
+    if (r.names) p.push('Name bei ' + r.names + (r.names === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
     if (r.fail) p.push(r.fail + ' nicht lesbar');
     return p.join(' · ') || 'Nichts gefunden';
   },
@@ -89,23 +90,65 @@ const Import = {
       }
       return [];
     },
-    /** Alle neuen Touren holen; onProgress(i, n, name). */
+    /** Ist der Name einer Tour selbst erzeugt („Wandern am Mittag · 19.11.26“, auch mit früherer Sportart) oder leer? */
+    autoNamed(e) {
+      if (!e.name || !e.name.trim()) return true;
+      if (e.name === Tours.autoName(e.sport, e.start) || (e.sportAlt && e.name === Tours.autoName(e.sportAlt, e.start))) return true;
+      const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp('^(' + Sports.list.map(x => esc(x[1])).join('|') + ')( (am Morgen|am Mittag|am Nachmittag|am Abend) · .*)?$').test(e.name.trim());
+    },
+    /** Namen von Komoot übernehmen (2.0.4): nur wenn der bisherige Name selbst erzeugt ist oder noch der zuletzt von Komoot übernommene –
+        ein in der App von Hand vergebener Name bleibt. Gibt true zurück, wenn sich der Name geändert hat. */
+    takeName(e, kname) {
+      kname = (kname || '').trim();
+      if (!kname) return false;
+      const frei = Import.Komoot.autoNamed(e) || (e.nameKomoot != null && e.name === e.nameKomoot);
+      const alt = e.name;
+      if (frei) e.name = kname;
+      if (frei || e.name === kname) e.nameKomoot = kname;
+      return e.name !== alt;
+    },
+    /** Gehört ein Komoot-Eintrag (aus der Tourenliste, ohne Spur) zu einer vorhandenen Tour aus anderer Quelle (Zepp, Datei, Aufzeichnung)?
+        Gleicher Start (± 5 Minuten) und, wo beide eine Strecke haben, ähnliche Länge (± 10 %, mindestens 300 m). */
+    match(t, tours) {
+      const st = t.date ? Date.parse(t.date) : NaN, dist = +t.distance || 0;
+      if (!isFinite(st)) return null;
+      let best = null, bd = Infinity;
+      for (const e of tours) {
+        if (e.status === 'planned' || !e.start || e.timed === false || /^komoot:/.test(e.srcId || '')) continue;
+        if (e.komootId && e.komootId !== String(t.id)) continue;
+        const d = Math.abs(e.start - st);
+        if (d > 300000) continue;
+        if (dist && e.dist && Math.abs(e.dist - dist) > Math.max(300, 0.1 * dist)) continue;
+        if (d < bd) { best = e; bd = d; }
+      }
+      return best;
+    },
+    /** Alle neuen Touren holen; onProgress(i, n, name). Vorhandene Touren (auch aus Zepp, Dateien oder eigener Aufzeichnung) bekommen den Komoot-Namen. */
     async importAll(acc, opts, onProgress) {
       const types = opts.planned ? ['tour_recorded', 'tour_planned'] : ['tour_recorded'];
       let list = [];
       for (const ty of types) (await Import.Komoot.tours(acc, ty)).forEach(t => list.push([t, ty]));
-      const mineK = new Map((await Tours.list()).map(t => [t.srcId, t]));
-      const have = new Set(mineK.keys());
-      const todo = list.filter(([t]) => !have.has('komoot:' + t.id));
-      const res = { added: 0, dup: list.length - todo.length, fail: 0 };
-      // Schon vorhandene Komoot-Touren: Komoots Wert nur als Zusatzangabe aufbewahren; der Aufstieg bleibt die eigene Rechnung (Ersatz nur ohne brauchbare Höhen)
-      for (const [t] of list) {
-        const e = mineK.get('komoot:' + t.id);
-        if (e && isFinite(t.elevation_up) && t.elevation_up != null && (e.upKomoot == null || Math.abs(e.upKomoot - t.elevation_up) >= 1)) {
+      const mine = await Tours.list();
+      const mineK = new Map(mine.map(t => [t.srcId, t]));
+      const byKid = new Map(mine.filter(t => t.komootId).map(t => [t.komootId, t]));
+      const res = { added: 0, dup: 0, fail: 0, names: 0 };
+      const todo = [];
+      // Schon vorhandene Touren: Name von Komoot übernehmen; Komoots Höhenwert nur als Zusatzangabe aufbewahren (der Aufstieg bleibt die eigene Rechnung)
+      for (const [t, ty] of list) {
+        const own = mineK.get('komoot:' + t.id);
+        const e = own || byKid.get(String(t.id)) || (ty === 'tour_recorded' ? Import.Komoot.match(t, mine) : null);
+        if (!e) { todo.push([t, ty]); continue; }
+        res.dup++;
+        let ch = false;
+        if (!own && e.komootId !== String(t.id)) { e.komootId = String(t.id); ch = true; }
+        if (Import.Komoot.takeName(e, t.name)) { res.names++; ch = true; }
+        if (isFinite(t.elevation_up) && t.elevation_up != null && (e.upKomoot == null || Math.abs(e.upKomoot - t.elevation_up) >= 1)) {
           e.upKomoot = t.elevation_up; e.downKomoot = isFinite(t.elevation_down) && t.elevation_down != null ? t.elevation_down : (e.downKomoot == null ? null : e.downKomoot);
           Tours.applyHoehe(e, Geo.stats(await Tours.points(e.id)));
-          await Tours.save(e);
+          ch = true;
         }
+        if (ch) await Tours.save(e);
       }
       for (let i = 0; i < todo.length; i++) {
         const [t, ty] = todo[i];
@@ -115,7 +158,13 @@ const Import = {
           const start = t.date ? Date.parse(t.date) : null;
           const pts = items.map(c => ({ lat: c.lat, lon: c.lng, ele: c.alt, t: start && c.t != null && ty === 'tour_recorded' ? start + c.t : null }));
           const r = await Tours.add({ name: t.name, sport: Sports.norm(t.sport), pts, src: 'komoot', srcId: 'komoot:' + t.id, up: t.elevation_up, down: t.elevation_down, status: ty === 'tour_planned' ? 'planned' : 'done', start });
-          if (r.dup) res.dup++; else res.added++;
+          if (r.dup) {
+            res.dup++;      // die Spur gab es schon (erst an der Spur erkannt): Name und Komoot-Kennung nachtragen, damit sie beim nächsten Mal nicht wieder geladen wird
+            const e = r.tour; let ch = false;
+            if (!/^komoot:/.test(e.srcId || '') && e.komootId !== String(t.id)) { e.komootId = String(t.id); ch = true; }
+            if (Import.Komoot.takeName(e, t.name)) { res.names++; ch = true; }
+            if (ch) await Tours.save(e);
+          } else { res.added++; const e = r.tour; if (e && e.nameKomoot == null && (t.name || '').trim()) { e.nameKomoot = t.name.trim(); await Tours.save(e); } }
         } catch (e) { res.fail++; }
       }
       await Photos.assignAll();
