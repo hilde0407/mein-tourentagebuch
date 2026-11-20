@@ -23,7 +23,7 @@ Views['/rec'] = async root => {
       routeBox.innerHTML = '';
       const info = (() => { try { return JSON.parse(MTApp.routeInfo() || '{}'); } catch (e) { return {}; } })();
       if (info.name || info.points) routeBox.append(UI.list([UI.row({ icon: 'compass', title: info.name || 'Geplante Route', sub: 'Die App sagt Abbiegungen an und warnt, wenn du vom Weg abkommst.',
-          trail: h('button', { class: 'btn sm', onclick: () => { MTApp.clearRoute(); drawRoute(); } }, 'Entfernen') })]),
+          trail: h('button', { class: 'btn sm', onclick: () => { MTApp.clearRoute(); TourHelp.disarmPlan(); drawRoute(); } }, 'Entfernen') })]),
         h('div', { class: 'row' }, UI.toggle('Wege ansagen', Set_.get('guide') !== false, async on => { await Set_.set('guide', on); MTApp.setGuide(on); }), h('span', { class: 'sp' }), h('button', { class: 'btn sm', onclick: () => MTApp.guideTest() }, '🔊 Ansage testen')));
       else routeBox.append(h('p', { class: 'muted' }, 'Mit einer Route sagt die App Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
         h('div', { class: 'col' }, h('button', { class: 'btn', id: 'gpxroute', onclick: pickGpx }, '📂 GPX-Datei vom Handy wählen'),
@@ -39,12 +39,12 @@ Views['/rec'] = async root => {
         const a = acts.find(x => x.pts && x.pts.length > 1);
         if (!a) throw new Error('In der Datei ist keine Strecke zu finden.');
         const sp = Geo.simplify(a.pts, 3), nm = (a.name || f[0].name || 'Route').replace(/\.(gpx|tcx|fit)$/i, '');
-        MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), nm); Junctions.load(sp);
+        MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), nm); Junctions.load(sp); TourHelp.disarmPlan();
         if (a.sport) sport = a.sport; name.value = nm; drawChips(); drawRoute();
         toast('Route „' + nm + '“ ist aktiv – Ansagen eingeschaltet');
       } catch (e) { toast(e.message, 6000); }
     }
-    async function startWith0(t) { const pts = await Tours.points(t.id); const sp = Geo.simplify(pts, 3); MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name); Junctions.load(sp); sport = t.sport; name.value = t.name; drawChips(); drawRoute(); }
+    async function startWith0(t) { TourHelp.armPlan(t); const pts = await Tours.points(t.id); const sp = Geo.simplify(pts, 3); MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name); Junctions.load(sp); sport = t.sport; name.value = t.name; drawChips(); drawRoute(); }
     void ri;
     drawRoute();
     const warn = h('div');
@@ -60,6 +60,7 @@ Views['/rec'] = async root => {
         MTApp.setGuide(Set_.get('guide') !== false);
         DB.kvSet('recPins', []);
         MTApp.startRecording(sport, name.value.trim());
+        TourHelp.lockPlan();
         sessionStorage.removeItem('recSport'); sessionStorage.removeItem('recName');
         setTimeout(() => Nav.render(), 400);
       } }),
@@ -215,6 +216,7 @@ Views['/rec'] = async root => {
           toast('Diese Tour war schon gespeichert.');
           return Nav.go('/tour/' + r.tour.id);
         }
+        await TourHelp.attachPlan(r.tour);
         const pins = (await DB.kvGet('recPins', [])) || [];
         if (pins.length) { r.tour.pins = pins; await Tours.save(r.tour); await DB.kvSet('recPins', []); }
         await handlePhotoQueue();

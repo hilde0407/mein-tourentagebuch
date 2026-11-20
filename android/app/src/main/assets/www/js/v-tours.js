@@ -209,6 +209,12 @@ Views['/tour'] = async (root, [id]) => {
   }).catch(() => {});
   const note = h('textarea', { rows: 3, 'aria-label': 'Notiz', placeholder: 'Was war besonders an dieser Tour?', onchange: async e => { t.note = e.target.value; await Tours.save(t); toast('Notiz gespeichert'); } }, t.note || '');
   const src = t.src && t.src !== 'file' ? ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '';
+  // Hilfen aus „Meine Touren“: gelaufene Tour → Rückblick bzw. Plan und Ergebnis; geplante Tour → Passt die Tour zu mir?, Notizen & Quellen
+  const done = (await Tours.list()).filter(x => x.status !== 'planned' && !x.hidden), planned = t.status === 'planned';
+  const ranBy = planned ? done.filter(x => x.plan === t.id).sort((a, b) => b.start - a.start)[0] : null;
+  const helpDone = planned ? null : ((t.plan && await TourHelp.ergebnis(t)) || TourHelp.rueckblick(Object.assign({}, t, { plan: null }), done));
+  const pmeta = planned ? await PlanMeta.get(t.id) : null;
+  const helpPlan = planned ? [await TourHelp.passt(t, done, pmeta), TourHelp.notizen(t, pmeta)] : [];
   body.append(...[title,
     h('div', { class: 'sub' }, F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport) + (src ? ' · ' + src : '')),
     stageBox,
@@ -216,9 +222,11 @@ Views['/tour'] = async (root, [id]) => {
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
     main, more,
+    ranBy ? h('a', { class: 'banner', id: 'ranby', href: '#/tour/' + ranBy.id }, 'Gelaufen am ' + F.date(ranBy.start) + ': ' + ranBy.name) : null,
+    ...helpPlan,
     UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,
     UI.section('Fotos', [strip, noPhotos], { id: 'tphotos', action: h('div', { class: 'row' }, showBtn, h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos')) }),
-    pinList(), UI.section('Notiz', note)].filter(Boolean));
+    pinList(), helpDone, UI.section('Notiz', note)].filter(Boolean));
   title.addEventListener('click', rename);
   drawStrip();
   const xs = MapKit.profile(prof, pts, (i, o) => {
@@ -261,6 +269,7 @@ Views['/tour'] = async (root, [id]) => {
         it('pencil', 'Umbenennen', rename),
         it('bulb', 'Namensvorschläge', suggestNames),
         it('tag', 'Sportart ändern', changeSport),
+        t.status !== 'planned' && !t.plan ? it('route', 'Mit Plan vergleichen', () => TourHelp.linkSheet(t)) : null,
         it('bag', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
         it('camera', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); })]),
       grp('Strecke und Höhen', [
@@ -269,7 +278,7 @@ Views['/tour'] = async (root, [id]) => {
         it('wrench', 'GPS-Track korrigieren', () => Nav.go('/fix/' + id)),
         t.elevFix || t.elevSrc ? it('undo', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
         it('refresh', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id)); toast('Kennzahlen neu berechnet'); Nav.render(); })]),
-      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', onclick: async () => { s.close(); if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Tour löschen')) { await Tours.remove(id); Nav.go('/'); } } }, '🗑️ Tour löschen'))));
+      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', onclick: async () => { s.close(); if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Tour löschen')) { await Tours.remove(id); await DB.del('kv', 'pn:' + id).catch(() => {}); Nav.go('/'); } } }, '🗑️ Tour löschen'))));
   }
   async function suggestNames() {
     const box = h('div', { class: 'list menu' }, h('p', { class: 'muted' }, 'Orte werden gesucht …'));
@@ -304,6 +313,7 @@ Views['/tour'] = async (root, [id]) => {
 
 /** Route an die Hülle geben (Sprachansagen) und zur Aufzeichnung wechseln. */
 function startWith(t, pts) {
+  TourHelp.armPlan(t);
   if (!window.MTApp) { toast('Ansagen gibt es nur in der Android-App'); Nav.go('/rec'); return; }
   const sp = Geo.simplify(pts, 3);
   MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name);

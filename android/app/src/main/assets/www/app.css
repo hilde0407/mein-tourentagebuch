@@ -88,7 +88,7 @@ header.top.over .sp{pointer-events:none}
 .btn.sm{min-height:44px;padding:4px 14px;font-size:.94rem}
 .btn:active{filter:brightness(.93)}
 .btn:disabled,.btn[disabled]{opacity:1;color:var(--muted);background:var(--soft);border-color:var(--soft);cursor:default}
-input[type=text],input[type=search],input[type=email],input[type=password],input[type=url],input[type=number],input[type=date],input:not([type]),select,textarea{width:100%;min-height:48px;padding:10px 12px;border:1.5px solid var(--edge);border-radius:var(--r);background:var(--card);color:var(--ink)}
+input[type=text],input[type=search],input[type=email],input[type=password],input[type=url],input[type=number],input[type=date],input[type=time],input:not([type]),select,textarea{width:100%;min-height:48px;padding:10px 12px;border:1.5px solid var(--edge);border-radius:var(--r);background:var(--card);color:var(--ink)}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0;border-color:var(--ink)}
 select{appearance:none;-webkit-appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),linear-gradient(135deg,var(--ink) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 12px) 50%;background-size:6px 6px;background-repeat:no-repeat;text-overflow:ellipsis}
@@ -283,7 +283,7 @@ pre.log{font-size:.72rem;white-space:pre-wrap;word-break:break-all;max-height:60
 .sign-i svg{width:18px;height:18px}
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .acts .btn{min-height:52px;padding:6px 10px}
-.home .chips{margin-top:-2px;margin-bottom:2px}
+.home .chips{margin-top:12px;margin-bottom:2px}
 .bars{display:flex;gap:4px;height:120px;align-items:flex-end;margin:14px 0 0}
 .bar{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
 .bar i{width:100%;background:var(--mark);border-radius:3px 3px 0 0;min-height:2px}
@@ -410,3 +410,24 @@ button.cd{cursor:pointer;font-weight:700}
 .stage{font-weight:600}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- Hilfen aus „Meine Touren“ (Ziele, Rückblick, Planung, Fitness) ---------- */
+.li-r b{color:var(--ink);font:700 1.15rem/1 var(--d);font-variant-numeric:tabular-nums}
+.li.lnk{cursor:default}
+.li.lnk a.li-t{display:block;align-self:stretch;min-height:44px;padding:6px 0;color:inherit;text-decoration:none}
+.li.lnk a.li-t b{text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}
+.tl-in{display:grid;grid-template-columns:repeat(auto-fit,minmax(8.6rem,1fr));gap:0 10px;margin-bottom:6px}
+.tl-in input{min-width:0}
+.tl-in .fld{margin:6px 0}
+.tl-say{margin:10px 0 4px;padding-left:12px;border-left:4px solid var(--edge);font:600 1.2rem/1.3 var(--d)}
+.tl-say.reserve{border-color:var(--up)}.tl-say.knapp{border-color:var(--down)}.tl-say.nach_untergang{border-color:var(--danger)}
+.tl-note{margin-top:14px}
+.bw-n .seg{margin-left:0;margin-right:0}
+.fit-part{margin:0;border-bottom:1px solid var(--line)}
+.fit-part .gbar{margin:-2px 0 8px}
+.fit-parts{border-top:1px solid var(--line);margin-top:8px}
+.fit-part .li{border-bottom:0;align-items:flex-start}
+.fit-part .li-r{padding-top:1px}
+.how p{margin:10px 0;font-size:.94rem}
+#fit-note{margin-top:14px}
+.hs-row{margin:6px 0}.hs-row .muted{margin:0 0 0 52px}

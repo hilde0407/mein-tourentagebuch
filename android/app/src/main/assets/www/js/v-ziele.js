@@ -23,7 +23,7 @@ const Goals = {
   /** Zahl mit Einheit: „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
   dec: g => (g.metric === 'hours' || (g.metric === 'km' && g.target < 50) ? 1 : 0),
   fmt(v, g) {
-    return Goals.nf(v, Goals.dec(g)) + ({ km: ' km', up: ' m', count: g.target === 1 && v === 1 ? ' Tour' : ' Touren', hours: ' h' }[g.metric]);
+    return Goals.nf(v, Goals.dec(g)) + ({ km: ' km', up: ' m', count: Math.round(v) === 1 ? ' Tour' : ' Touren', hours: ' h' }[g.metric]);
   },
   /** Satz zum Stand: in Worten, nie nur Farbe. */
   text(g, s) {
