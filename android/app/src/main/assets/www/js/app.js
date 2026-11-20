@@ -7,7 +7,7 @@ const Nav = {
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufnehmen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
-    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr' },
+    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr' },
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
   deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
@@ -74,7 +74,8 @@ Views['/mehr'] = async root => {
       UI.row({ icon: 'map', title: 'Karte aller Touren', sub: 'Alle Strecken auf einer Karte, Offline-Karten', href: '#/map', id: 'm-map' })])),
     UI.section('Rückblick', UI.list([
       UI.row({ icon: 'bag', title: 'Reisen & Alben', sub: 'Reisen automatisch erkannt, Alben aus Schlagworten', href: '#/reisen', id: 'm-reisen' }),
-      UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Rekorde, Kalender, Ziele', href: '#/stats', id: 'm-stats' })])),
+      UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Rekorde, Kalender, Ziele', href: '#/stats', id: 'm-stats' }),
+      UI.row({ icon: 'calendar', title: 'Jahresrückblick', sub: 'Dein Jahr in Zahlen, Höhepunkte, Bild zum Teilen', href: '#/jahr', id: 'm-jahr' })])),
     UI.section('Daten', UI.list([
       UI.row({ icon: 'download', title: 'Touren importieren', sub: 'Dateien, Meine Touren, Komoot, Strava, Zepp, Garmin', href: '#/import', id: 'm-import' }),
       UI.row({ icon: 'photo', title: 'Foto-Quellen', sub: 'Galerie, Ordner, Netzwerkfreigabe, Nextcloud', href: '#/sources', id: 'm-sources' }),
@@ -86,7 +87,7 @@ window.mtBack = function () {
   if (sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
   if (window.__lightbox) { window.__lightbox.close(); return true; }
   if (window.__show) { window.__show.close(); return true; }
-  if (Nav.deep.includes(Nav.cur) || ['/stats', '/reisen', '/map'].includes(Nav.cur)) { Nav.back(); return true; }
+  if (Nav.deep.includes(Nav.cur) || ['/stats', '/jahr', '/reisen', '/map'].includes(Nav.cur)) { Nav.back(); return true; }
   if (Nav.cur !== '/start' && Nav.cur !== '') { Nav.go('/start'); return true; }
   return false;
 };
