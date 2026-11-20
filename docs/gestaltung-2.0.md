@@ -215,7 +215,7 @@ ein Etikett. Das wäre jede beliebige Fitness-App gewesen. Geändert:
 | `Home.add(id, reihenfolge, fn, meta)`    | Baustein der Startseite anmelden (`js/v-start.js`); `fn(ctx)` liefert ein Element oder `null`, `ctx = { all, now, year }`. `meta = { label, sub, def }` (optional) macht ihn unter Einstellungen → Startseite schaltbar; `def` ist die Vorgabe |
 
 Reihenfolge der Startseite: Aufmacher 0 · Aktionen 10 · Sicherungs-Hinweis 12 (nur wenn fällig) · Dieses Jahr mit Zielen 20 ·
-Wochen-Serie 30 (Vorgabe aus) · Fitness 35 (Vorgabe aus) · Letzte Touren 40 · An diesem Tag 50.
+Wochen-Serie 30 (Vorgabe aus) · Fitness 35 (Vorgabe aus) · Letzte Touren 40 · Wanderführer 45 (nur mit mindestens einem Buch; eine einzige Zeile) · An diesem Tag 50.
 
 Die Startseite soll kein Stapel werden: Ein neuer Baustein ist in der Regel **aus** (`def: false`) und zeigt höchstens
 eine Kennzahlenzeile und einen Satz; die Einzelheiten stehen auf einer eigenen Seite, zu der der Verweis rechts führt.
@@ -236,9 +236,17 @@ Platzhalterwerte gibt es nicht.
 Neue Seite unter „Mehr“: `Views['/name'] = async root => { root.append(topbar('Titel', { back: true }), h('div', { class: 'pad' }, …)); }`,
 dazu ein Eintrag in `Nav.home` (welcher Reiter markiert ist) und eine Zeile in `Views['/mehr']` (`js/app.js`).
 
+## Wanderführer (2.4.0)
+
+Eine Seite unter „Mehr“ (`#/fuehrer`, `js/v-fuehrer.js`), keine neue Ebene: ein Buch ist eine **eingeklappte Karte** (`.fu-book`), die Liste klappt beim Tippen auf. Die Karte hat vier Spalten:
+Titelbild (52 × 72 px, ohne Bild das Buch-Symbol `Ico.svg('book')` auf `--soft`), Name und „x von y gewandert“, **Ring** und Pfeil. Der Ring (`Buecher.ring`) ist eine eingebettete SVG-Grafik in den Farben `--soft` (offen)
+und `--acc` (gewandert), die Prozentzahl steht in der Mitte (15 px, `--ink`); sie ist mit `role="img"` und `aria-label` („12 von 60 gewandert, 20 Prozent“) zugänglich, der Text darunter sagt dasselbe. Einen zusätzlichen Fortschrittsbalken gibt es nicht.
+Die Tourenzeilen sind `.li`-Zeilen: gewandert = Haken im `.li-i` (`--accbg`/`--acc`) und Datum, offen = leerer Kreis und „offen · Länge · Aufstieg“ – der Zustand steht immer auch als Wort. Gelb nur beim Hauptknopf des Blatts („GPX-Dateien wählen“, „Als Planung übernehmen“)
+und im leeren Zustand („Buch anlegen“). Titelbilder wählt der Mensch selbst; es wird nichts aus dem Netz geladen.
+
 ## Prüfungen
 
-- `node tests/test_calc.js` – Rechenlogik (Ziele, Rückblick, Planungshilfe, Fitness) gegen Werte aus den Vorbildern.
+- `node tests/test_calc.js` – Rechenlogik (Ziele, Rückblick, Planungshilfe, Fitness, Jahr, Wanderführer) gegen Werte aus den Vorbildern bzw. eigene Grenzfälle.
 - `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest) – auch für die neuen Abschnitte und Blätter (`neue_layout`).
 - Neue Seiten und Blätter kommen in die Gestaltungsprüfung (`layout_21` als Muster) und in `audit_kontrast.py`.
 - `python3 tests/audit_kontrast.py --fail` – Kontrast aller Knöpfe, Felder und Texte in Hell und Dunkel (4,5 : 1; große Schrift 3 : 1).

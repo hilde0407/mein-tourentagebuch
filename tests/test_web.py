@@ -1127,6 +1127,8 @@ def fuehrer(pg):
     if shots: os.makedirs(shots, exist_ok=True)
     def shot(name):
         if not shots: return
+        pg.wait_for_function(LEISE, timeout=30000)      # alte Meldung abwarten, damit sie nicht im Bild steht
+        if name == "6-start": pg.evaluate("document.querySelector('#fuehrer-home').scrollIntoView({ block: 'center' })")
         for sch in ("light", "dark"):
             pg.emulate_media(color_scheme=sch); pg.wait_for_timeout(250)
             pg.screenshot(path=os.path.join(shots, f"{name}-{'hell' if sch == 'light' else 'dunkel'}.png"))

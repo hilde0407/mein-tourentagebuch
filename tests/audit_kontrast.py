@@ -113,6 +113,24 @@ def main():
             go("#/doppelt", "section.dup .dup-a"); scan("Doppelte, Paare"); pg.locator("section.dup button[data-a=merge]").first.click(); pg.wait_for_timeout(400); scan("Doppelte, Rückfrage"); zu()
             go("#/tour/" + dup["K"], "#mtinfo"); scan("Tour, Zahlen aus Meine Touren")
             pg.evaluate("async (d) => { for (const k of ['K', 'Z', 'X', 'Y']) await Tours.remove(d[k]); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'mt'); await DB.del('kv', 'zepp'); }", dup)
+            # 2.4.0: Wanderführer (leer, Bücher zugeklappt und aufgeklappt, Filter, Blätter, Startseite, Tourseite)
+            go("#/fuehrer", "#fu-add2"); scan("Wanderführer, leer")
+            pg.click("#fu-add2"); pg.wait_for_selector("#fu-go"); pg.click("#fu-go"); pg.wait_for_selector("#fu-err:not(:empty)"); scan("Wanderführer, Buch anlegen mit Hinweis"); zu()
+            fb = T.fu_buch_a()[:4]
+            fid = pg.evaluate("""async ([tp, bs, cov]) => { const tid = (await Tours.add({ name: 'Roque-Runde', sport: 'hike', src: 'file', pts: tp.map((p, i) => ({ lat: p[0], lon: p[1], ele: p[2], t: 1747000000000 + i * 20000 })) })).tour.id;
+              const r = await Buecher.speichere(null, 'Rother Wanderführer Fantasia Süd', { ok: bs.map(([n, text]) => ({ name: n, text })), bad: [] });
+              await Buecher.speichere(null, 'Fantasia Nord', { ok: [], bad: [] }); await Buecher.setzeCover(r.buch.id, cov); Buecher.ui.offen.clear(); Buecher.ui.offen.add(r.buch.id); return { tid, bid: r.buch.id }; }""",
+                [[list(p) for p in T.fu_kurve(28.0, -15.6, 400, 6000, amp=0.09, noise=7, seed=2)], [[f"T{k + 1}.gpx", T.fu_gpx(T.FU_TITEL[k], fb[k])] for k in range(4)],
+                 pg.evaluate("() => { const c = document.createElement('canvas'); c.width = 200; c.height = 280; const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 0, 280); gr.addColorStop(0, '#1e5a78'); gr.addColorStop(1, '#f0aa5a'); g.fillStyle = gr; g.fillRect(0, 0, 200, 280); return c.toDataURL('image/jpeg', .8); }")])
+            pg.evaluate("Buecher.sync()"); go("#/fuehrer", ".fu-t"); pg.wait_for_function("() => !Buecher._run && document.querySelector('#fu-sync').hidden", timeout=30000); scan("Wanderführer, aufgeklappt")
+            pg.evaluate("Buecher.ui.offen.clear()"); go("#/fuehrer", ".fu-book"); pg.wait_for_function("() => !document.querySelector('.fu-t')"); scan("Wanderführer, zugeklappt")
+            pg.evaluate("id => Buecher.ui.offen.add(id)", fid["bid"]); pg.evaluate("Buecher.ui.filter = 'offen'"); go("#/fuehrer", ".fu-t"); scan("Wanderführer, Filter offen"); pg.evaluate("Buecher.ui.filter = 'gewandert'"); go("#/fuehrer", ".fu-t"); scan("Wanderführer, Filter gewandert")
+            pg.evaluate("Buecher.ui.filter = 'alle'; Buecher.ui.suche = 'gibtesnicht'"); go("#/fuehrer", "#fu-leer"); scan("Wanderführer, nichts gefunden"); pg.evaluate("Buecher.ui.suche = ''")
+            go("#/fuehrer", ".fu-t"); pg.locator("button.fu-t.open").first.click(); pg.wait_for_selector("#fu-plan"); pg.wait_for_timeout(500); scan("Wanderführer, Karte der Buchtour"); zu()
+            pg.locator("[data-a=manage]").first.click(); pg.wait_for_selector("#fu-m-del"); scan("Wanderführer, Buch verwalten"); zu()
+            go("#/start", "#fuehrer-home-row"); scan("Start, Wanderführer-Zeile")
+            go("#/tour/" + fid["tid"], "#imbuch"); scan("Tour, Aus dem Buch")
+            pg.evaluate("async (f) => { await Tours.remove(f.tid); for (const b of await Buecher.liste()) await Buecher.entferne(b.id); await DB.del('kv', 'guides'); await DB.del('kv', 'guideMatch'); }", fid)
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)

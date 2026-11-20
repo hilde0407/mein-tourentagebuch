@@ -185,7 +185,7 @@ const Buecher = {
       `<text class="fu-pct" x="30" y="30" text-anchor="middle" dominant-baseline="central">${pr} %</text></svg>`;
   },
   datum: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',
-  zahlen: bt => [F.km(bt.km * 1000), bt.up != null ? '↑ ' + F.m(bt.up) : null].filter(Boolean).join(' · '),
+  zahlen: bt => [F.km(bt.km * 1000), bt.up != null ? '↑ ' + F.m(bt.up) : null].filter(Boolean).map(x => x.replace(/ /g, '\u00a0')).join(' · '),      // Zahl und Einheit bleiben zusammen
 
   /** Blatt „Buch anlegen“ (id leer) bzw. „GPX-Dateien hinzufügen“ (id gesetzt). */
   anlegen(id, fertig) {
