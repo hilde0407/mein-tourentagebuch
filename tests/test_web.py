@@ -387,8 +387,8 @@ def meine_touren(pg):
     assert {t["sport"]: st[t["id"]]["sport"] for t in srv if st[t["id"]]} == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run",
         "skialpin": "ski", "skitour": "ski", "snowshoe": "ski", "nordic": "ski", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
     # Tourseite: Quelle, maßgebliche Zahlen mit eigener Rechnung daneben, Bewertung
-    pg.evaluate("id => { location.hash = '#/tour/' + id }", g1["id"]); pg.wait_for_selector(".tourp .facts"); f = pg.inner_text(".tourp")
-    assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "Zahlen aus" in f and "Eigene Rechnung" in f and "5 von 5 Sternen" in f, f
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", g1["id"]); pg.wait_for_selector("#mtinfo"); f = pg.inner_text("#mtinfo")
+    assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "stammen aus Meine Touren" in f and "Eigene Rechnung aus der Spur: 4,5 km · ↑ " in f and "5 von 5 Sternen" in f, f
     # Verbundenes Blatt, Wiederholung: nichts doppelt, keine Strecke wird noch einmal geladen (außer dem Versuch für die Tour ohne Strecke)
     go(); pg.wait_for_selector("#mt-state"); assert pg.inner_text("#mt-state") == "✓ Verbunden mit mt.test als Tagebuch (nur ansehen)", pg.inner_text("#mt-state")
     n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); assert toast("schon vorhanden") == "16 schon vorhanden · 1 ohne Strecke auf dem Server"
@@ -397,7 +397,7 @@ def meine_touren(pg):
     # Rangfolge der Zahlen: nach einer Korrektur der Spur von Hand gilt die eigene Rechnung – bis zum nächsten Abgleich
     own = pg.evaluate("id => Tours.recalc(id, { eigen: true }).then(t => [t.up, t.dist, t.zMt === undefined, t.upSrc === undefined, t.upMt])", pre["a"]["id"])
     assert abs(own[0] - pre["a"]["up"]) < 1e-6 and abs(own[1] - pre["a"]["dist"]) < 1e-6 and own[2] and own[3] and own[4] == 655, own
-    pg.evaluate("id => { location.hash = '#/tour/' + id }", pre["a"]["id"]); pg.wait_for_selector(".tourp .facts"); f = pg.inner_text(".tourp .facts"); assert "Meine Touren nennt" in f and "655 m" in f and "Zahlen aus" not in f, f
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", pre["a"]["id"]); pg.wait_for_selector("#mtinfo"); f = pg.inner_text("#mtinfo"); assert "Meine Touren nennt" in f and "↑ 655 m" in f and "stammen aus" not in f, f
     r = pg.evaluate(sync, True); assert r["zahlen"] == 1 and r["added"] == 0 and r["dup"] == 16 and r["namesMt"] == 0, r
     assert pg.evaluate("id => DB.get('tours', id).then(t => [t.up, t.zMt, t.dist])", pre["a"]["id"]) == [655, 1, by["g2"]["dist_m"]]
     # … eine Neuberechnung ohne Korrektur (z. B. Uhr-Höhen beim Zepp-Import, Reparatur) lässt die Zahlen aus Meine Touren stehen
@@ -602,6 +602,32 @@ def neue_layout(pg, ids):
     bad += sheet_check(pg, "Ziel", lambda: (go("#/stats/ziele", "#goaladd"), pg.evaluate("document.querySelector('#goaladd').click()")))
     bad += sheet_check(pg, "Aktionen (gelaufene Tour)", lambda: (go(tour("big"), "header.top button[aria-label=Aktionen]"), pg.click("header.top button[aria-label=Aktionen]")))
     pg.evaluate("async () => { await DB.del('kv', 'goals2'); }")
+    return sorted(set(bad))
+
+
+def layout_21(pg):
+    """Gestaltungsprüfung der Neuerungen aus 2.1.0: Seite „Doppelte Touren“ (mit Paaren und leer), Importseite mit den neuen Zeilen, Tourseite mit den Zahlen aus
+    Meine Touren, und die Blätter (Meine Touren: anmelden / verbunden, zweiter Schritt, Fortschritt mit „Abbrechen“, Zepp mit Schalter, Rückfrage beim Zusammenführen)."""
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    bad = ["leer: " + m for m in layout_check(pg, ["#/doppelt"], widths=((360, 100), (360, 130)))]
+    d = pg.evaluate(DUP_DATEN)
+    pg.evaluate("async id => { const t = await DB.get('tours', id); Object.assign(t, { mtId: 'g1', zMt: 1, upMt: 655, downMt: 650, distMt: Math.round(t.dist) + 40, starsMt: 4, upSrc: 'mt', up: 655, down: 650, dist: Math.round(t.dist) + 40 }); await Tours.save(t); }", d["K"])
+    bad += layout_check(pg, ["#/doppelt", "#/import", "#/tour/" + d["K"]])
+    pg.evaluate("location.hash = '#/doppelt'"); pg.wait_for_selector("section.dup .dup-a"); assert pg.locator("section.dup").count() == 2
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", d["K"]); pg.wait_for_selector("#mtinfo"); assert "stammen aus Meine Touren" in pg.inner_text("#mtinfo") and "4 von 5 Sternen" in pg.inner_text("#mtinfo")
+    def go(h, sel): pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h); pg.wait_for_selector(sel); pg.wait_for_timeout(250)
+    def mt_login(): go("#/import", "#imp-mt"); pg.evaluate("DB.del('kv', 'mt')"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "http://touren.example.org"); pg.wait_for_selector("#mt-http:not([hidden])")
+    def mt_on(): go("#/import", "#imp-mt"); pg.evaluate("DB.kvSet('mt', { base: 'http://192.168.178.20:8000', name: 'Volker', role: 'admin', token: 'x' })"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-off")
+    def zepp(on): go("#/import", "#imp-mt"); pg.evaluate("on => on ? DB.kvSet('zepp', { token: 'x', viaToken: true }) : DB.del('kv', 'zepp')", on); pg.get_by_text("Zepp / Amazfit").click(); pg.wait_for_selector("#zp-ele")
+    bad += sheet_check(pg, "Meine Touren, anmelden", mt_login)
+    bad += sheet_check(pg, "Meine Touren, verbunden", mt_on)
+    bad += sheet_check(pg, "Zweiter Schritt", lambda: (go("#/import", "#imp-mt"), pg.evaluate("() => { askText('Zweiter Schritt', 'Code aus der Authenticator-App', '', 'Anmelden'); }")))
+    bad += sheet_check(pg, "Fortschritt mit Abbrechen", lambda: (go("#/import", "#imp-mt"), pg.evaluate("() => { PhotoSources.progress('Meine Touren', upd => new Promise(r => { upd(3, 12, 'Kramerspitz über den Kramersteig'); window.__progEnd = r; }), { cancel: () => {} }); }"), pg.wait_for_selector("#prog-stop")))
+    pg.evaluate("window.__progEnd && window.__progEnd()")
+    bad += sheet_check(pg, "Zepp, angemeldet", lambda: zepp(True))
+    bad += sheet_check(pg, "Zepp, anmelden", lambda: zepp(False))
+    bad += sheet_check(pg, "Zusammenführen", lambda: (go("#/doppelt", "section.dup .dup-a"), pg.locator("section.dup button[data-a=merge]").first.click()))
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); await DB.del('kv', 'mt'); await DB.del('kv', 'zepp'); }", vorher)
     return sorted(set(bad))
 
 
@@ -1245,6 +1271,7 @@ def main():
         lt = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0].id)")
         bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
         bad += neue_layout(pg, neu)
+        bad += layout_21(pg)
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

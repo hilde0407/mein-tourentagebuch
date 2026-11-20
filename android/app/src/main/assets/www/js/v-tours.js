@@ -187,22 +187,22 @@ Views['/tour'] = async (root, [id]) => {
   (t.pins || []).filter(p => p.lat != null).forEach(p => MapKit.pin(p).addTo(pm));
   setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
-  /** Zahlen aus „Meine Touren“ (2.1.0): sind sie maßgeblich, steht daneben die eigene Rechnung aus der Spur – sonst nur, was Meine Touren nennt. */
-  function mtFacts() {
-    if (t.upMt == null && t.distMt == null && !t.starsMt) return [];
-    const z = (up, dist) => [up != null ? '↑ ' + F.m(up) : null, dist ? F.km(dist) : null].filter(Boolean).join(' · ');
-    const st = t.zMt ? Geo.stats(pts) : null;
-    return [t.zMt ? ['Zahlen aus', 'Meine Touren'] : null,
-      t.zMt ? ['Eigene Rechnung', z(Hoehe.brauchbar(st.nEle) ? st.up : null, st.dist) || '–'] : (t.upMt != null || t.distMt ? ['Meine Touren nennt', z(t.upMt, t.distMt)] : null),
-      t.starsMt ? ['Bewertung in Meine Touren', t.starsMt + ' von 5 Sternen'] : null];
+  /** Zahlen aus „Meine Touren“ (2.1.0), als leiser Satz unter den Angaben: Sind sie maßgeblich, steht die eigene Rechnung aus der Spur daneben – sonst nur, was Meine Touren nennt. */
+  function mtInfo() {
+    if (t.upMt == null && t.distMt == null && !t.starsMt) return null;
+    const z = (up, dist) => [dist ? F.km(dist) : null, up != null ? '↑ ' + F.m(up) : null].filter(Boolean).join(' · ');
+    const st = t.zMt ? Geo.stats(pts) : null, o = [];
+    if (t.zMt) o.push('Strecke und Aufstieg stammen aus Meine Touren. Eigene Rechnung aus der Spur: ' + (z(Hoehe.brauchbar(st.nEle) ? st.up : null, st.dist) || '–') + '.');
+    else if (t.upMt != null || t.distMt) o.push('Meine Touren nennt ' + z(t.upMt, t.distMt) + '.');
+    if (t.starsMt) o.push('Bewertung in Meine Touren: ' + t.starsMt + ' von 5 Sternen.');
+    return h('p', { class: 'muted small', id: 'mtinfo' }, o.join(' '));
   }
   // Die drei wichtigsten Zahlen groß, alles Weitere leise darunter
   const main = UI.figs([[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']], { big: true, cls: 'tmain' });
   const more = UI.facts([['Abstieg', F.m(t.down)], ['In Bewegung', t.moving ? F.dur(t.moving) : '–'], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : '–'],
     ['Höchster Punkt', t.maxAlt != null ? F.m(t.maxAlt) : '–'], ['Tiefster Punkt', t.minAlt != null ? F.m(t.minAlt) : '–'],
     t.hrAvg ? ['Ø Puls', t.hrAvg + ' bpm'] : null, t.hrAvg ? ['Höchster Puls', t.hrMax + ' bpm'] : null,
-    t.upKomoot != null && t.upSrc !== 'komoot' ? ['Komoot nennt', F.m(t.upKomoot)] : null,
-    ...mtFacts()]);
+    t.upKomoot != null && t.upSrc !== 'komoot' ? ['Komoot nennt', F.m(t.upKomoot)] : null]);
   const prof = h('canvas', { class: 'prof', 'aria-label': 'Höhenprofil' });
   const profInfo = h('small', { class: 'muted' }, 'Profil berühren, um die Stelle auf der Karte zu sehen.');
   const strip = h('div', { class: 'strip' }), noPhotos = h('p', { class: 'muted' }, 'Noch keine Fotos zu dieser Tour.');
@@ -232,7 +232,7 @@ Views['/tour'] = async (root, [id]) => {
     Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
-    main, more,
+    main, more, mtInfo(),
     ranBy ? h('a', { class: 'banner', id: 'ranby', href: '#/tour/' + ranBy.id }, 'Gelaufen am ' + F.date(ranBy.start) + ': ' + ranBy.name) : null,
     ...helpPlan,
     UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,

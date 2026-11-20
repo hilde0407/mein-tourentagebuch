@@ -58,7 +58,7 @@ def main():
                 for item in pg.evaluate(JS): bad.setdefault((r, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             # Blätter (Sheets) der Importseite
             pg.evaluate("location.hash='#/import'"); pg.wait_for_selector(".list")
-            for name in ("Komoot", "Strava", "Zepp / Amazfit", "Bosch eBike Flow", "Garmin, Suunto", "Link auf eine GPX-Datei"):
+            for name in ("Meine Touren", "Komoot", "Strava", "Zepp / Amazfit", "Bosch eBike Flow", "Garmin, Suunto", "Link auf eine GPX-Datei"):
                 try:
                     pg.get_by_text(name, exact=False).first.click(); pg.wait_for_timeout(400)
                     for item in pg.evaluate(JS): bad.setdefault(("import:" + name, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
@@ -100,6 +100,19 @@ def main():
             go("#/stats/rekorde", "#bestwerte .li"); pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_timeout(300); scan("Bestwerte, beste drei"); pg.click("#bestwerte .seg button:text-is('Beste')"); pg.wait_for_timeout(200)
             go("#/settings", "#homeset"); scan("Einstellungen, Startseite")
             pg.evaluate("(async () => { await Set_.set('homeShow', {}); await DB.kvSet('lastBackup', Date.now()); })()")
+            # 2.1.0: Meine Touren (anmelden mit Hinweis, verbunden, zweiter Schritt, Fortschritt mit „Abbrechen“), Zepp mit Schalter, Doppelte Touren (Paare, Rückfrage, leer), Tourseite mit Zahlen aus Meine Touren
+            zu = lambda: (pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_timeout(250))
+            go("#/import", "#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "http://touren.example.org"); pg.fill("#mt-name", "Tagebuch"); pg.wait_for_timeout(300); scan("Meine Touren, anmelden"); zu()
+            pg.evaluate("DB.kvSet('mt', { base: 'http://192.168.178.20:8000', name: 'Volker', role: 'admin', token: 'x' })"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-off"); pg.wait_for_timeout(300); scan("Meine Touren, verbunden"); zu()
+            pg.evaluate("() => { askText('Zweiter Schritt', 'Code aus der Authenticator-App', '', 'Anmelden'); }"); pg.wait_for_timeout(400); scan("Zweiter Schritt"); zu()
+            pg.evaluate("() => { PhotoSources.progress('Meine Touren', upd => new Promise(r => { upd(3, 12, 'Kramerspitz'); window.__progEnd = r; }), { cancel: () => {} }); }"); pg.wait_for_selector("#prog-stop"); pg.wait_for_timeout(300); scan("Fortschritt"); pg.click("#prog-stop"); pg.wait_for_timeout(150); scan("Fortschritt, abgebrochen"); zu(); pg.evaluate("window.__progEnd()")
+            pg.evaluate("DB.kvSet('zepp', { token: 'x', viaToken: true })"); pg.get_by_text("Zepp / Amazfit").click(); pg.wait_for_selector("#zp-ele"); pg.wait_for_timeout(300); scan("Zepp, angemeldet"); zu()
+            go("#/doppelt", "text=Keine doppelten Touren gefunden"); scan("Doppelte, leer")
+            dup = pg.evaluate(T.DUP_DATEN)
+            pg.evaluate("async id => { const t = await DB.get('tours', id); Object.assign(t, { mtId: 'g1', zMt: 1, upMt: 655, downMt: 650, distMt: Math.round(t.dist) + 40, starsMt: 4, upSrc: 'mt', up: 655, down: 650, dist: Math.round(t.dist) + 40 }); await Tours.save(t); }", dup["K"])
+            go("#/doppelt", "section.dup .dup-a"); scan("Doppelte, Paare"); pg.locator("section.dup button[data-a=merge]").first.click(); pg.wait_for_timeout(400); scan("Doppelte, Rückfrage"); zu()
+            go("#/tour/" + dup["K"], "#mtinfo"); scan("Tour, Zahlen aus Meine Touren")
+            pg.evaluate("async (d) => { for (const k of ['K', 'Z', 'X', 'Y']) await Tours.remove(d[k]); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'mt'); await DB.del('kv', 'zepp'); }", dup)
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
