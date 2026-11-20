@@ -236,4 +236,32 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(Z.sicherungHinweis(5, d(30), now, '14', null).zeigen, 'Schwelle als Text');
 }
 
+/* ---------- Aufstieg/Abstieg wie in Meine Touren (js/calc-hoehe.js gegen app/elev.py) ---------- */
+(() => {
+  const H = require(W + 'calc-hoehe.js'), Geo = require(W + 'geo.js');
+  let maxAbw = 0;
+  const abw = (a, b, m) => { n++; const d = Math.abs(a - b); maxAbw = Math.max(maxAbw, d); A.ok(d < 0.01, m + ': ' + a + ' ≠ ' + b); };
+  for (const c of E.hoehe) {
+    const v = c.in.filter(x => x !== null);
+    const cl = H.clean(v); A.strictEqual(cl.length, c.clean.length, c.name); n++;
+    cl.forEach((x, i) => abw(x, c.clean[i], c.name + ' clean ' + i));
+    const sm = H.smooth(cl, 3, 3); sm.forEach((x, i) => abw(x, c.smooth[i], c.name + ' smooth ' + i));
+    const [u, d] = H.ascent(sm); abw(u, c.up, c.name + ' auf'); abw(d, c.down, c.name + ' ab');
+    const l = H.lauf(c.in); abw(l[0], c.up, c.name + ' lauf auf'); abw(l[1], c.down, c.name + ' lauf ab');       // Lücken (null) werden übersprungen
+  }
+  console.log('Höhenrechnung: ' + E.hoehe.length + ' Reihen gegen Python, größte Abweichung ' + maxAbw.toExponential(2) + ' m');
+  // Läufe: ein ausgeschlossener Abschnitt trennt die Höhenreihen, jeder Lauf für sich (kein Sprung zwischen den Läufen)
+  const a = E.hoehe.find(x => x.name === 'verrauscht_anstieg'), b = E.hoehe.find(x => x.name === 'abstieg');
+  const r = H.aufstieg([a.in, b.in.map(x => x + 5000)]);
+  abw(r.up, a.up + b.up, 'Läufe auf'); abw(r.down, a.down + b.down, 'Läufe ab'); ok(r.n === 300, 'Punkte mit Höhe');
+  ok(H.aufstieg([[], [null, null]]).n === 0 && H.aufstieg([[], [null]]).up === 0, 'leer');
+  ok(H.brauchbar(6) && !H.brauchbar(5), 'mehr als 5 Punkte mit Höhe');
+  // Geo.stats nutzt dieselbe Rechnung und trennt Läufe an p.skip
+  const pts = []; for (let i = 0; i < 40; i++) pts.push({ lat: 47 + i * 1e-4, lon: 11, ele: 500 + i * 2, t: 1e12 + i * 10000 });
+  for (let i = 0; i < 40; i++) pts.push({ lat: 47.01 + i * 1e-4, lon: 11, ele: 1500 + i * 2, t: 1e12 + 500000 + i * 10000, skip: i === 0 });   // Seilbahn: 1000 m Sprung zählt nicht
+  const st = Geo.stats(pts), e1 = H.lauf(pts.slice(0, 40).map(p => p.ele)), e2 = H.lauf(pts.slice(40).map(p => p.ele));
+  abw(st.up, e1[0] + e2[0], 'Geo.stats Läufe'); ok(st.up < 200 && st.nEle === 80, 'Seilbahn zählt nicht: ' + st.up);
+  ok(Geo.stats(pts.map(p => ({ lat: p.lat, lon: p.lon, ele: null, t: p.t }))).nEle === 0, 'ohne Höhen');
+})();
+
 console.log('OK (' + n + ' Prüfungen)');

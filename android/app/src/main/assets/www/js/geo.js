@@ -1,5 +1,6 @@
 'use strict';
 /* Geometrie und Kennzahlen einer Spur. Punkte: {lat, lon, ele, t} (t in ms, ele in m, beide evtl. null). */
+const Hoehe_ = typeof module !== 'undefined' ? require('./calc-hoehe.js') : Hoehe;
 const Geo = {
   R: 6371008.8,
   dist(a, b, c, d) {
@@ -34,7 +35,7 @@ const Geo = {
   },
   /** Kennzahlen aus Punktliste (Punkte dürfen newSeg haben: dann kein Abstand zum Vorgänger). */
   stats(pts) {
-    const o = { dist: 0, dur: 0, moving: 0, up: 0, down: 0, maxAlt: null, minAlt: null, start: null, end: null, n: pts.length };
+    const o = { dist: 0, dur: 0, moving: 0, up: 0, down: 0, nEle: 0, maxAlt: null, minAlt: null, start: null, end: null, n: pts.length };
     if (!pts.length) return o;
     const runs = [[]]; let excl = 0;          // Höhenläufe: ein ausgeschlossener Abschnitt (Seilbahn, Auto …) trennt sie, damit er keine Höhenmeter zählt
     for (let i = 0; i < pts.length; i++) {
@@ -53,7 +54,8 @@ const Geo = {
     const ts = pts.map(p => p.t).filter(Boolean);
     if (ts.length > 1) { o.start = ts[0]; o.end = ts[ts.length - 1]; o.dur = Math.max(0, (o.end - o.start) / 1000 - excl); }
     else if (ts.length) o.start = ts[0];
-    for (const r of runs) { const [u, d] = Geo.climb(Geo.smooth(r, 2), 4); o.up += u; o.down += d; }
+    const h = Hoehe_.aufstieg(runs);      // gleiche Rechnung wie „Meine Touren“ (js/calc-hoehe.js)
+    o.up = h.up; o.down = h.down; o.nEle = h.n;
     return o;
   },
   bbox(pts) {

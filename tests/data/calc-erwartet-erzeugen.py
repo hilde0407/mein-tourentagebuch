@@ -67,5 +67,34 @@ for u in ['https://www.komoot.de/tour/123', 'http://example.org/a?b=c#d', 'javas
     try: links.append({'in': u, 'out': p.pruefe_url(u)})
     except ValueError as e: links.append({'in': u, 'err': str(e)})
 out['links'] = links
+# Aufstieg/Abstieg: Reihen mit der Rechnung aus app/elev.py (clean, smooth 3/3, ascent 4 m)
+import random, app.elev as elev
+random.seed(7)
+reihen = {
+ 'verrauscht_anstieg': [round(800 + i * 1.5 + random.uniform(-3, 3), 1) for i in range(200)],
+ 'verrauscht_auf_ab': [round(1000 + 300 * __import__('math').sin(i / 25) + random.uniform(-4, 4), 1) for i in range(300)],
+ 'ausreisser': [800, 802, 805, -20000, -20000, 812, 9500, 815, 820, 825, 830, 12000, 835, 840],
+ 'platzhalter_am_rand': [-20000, -20000, 500, 510, 520, 530, 540, 550, -20000],
+ 'nur_platzhalter': [-20000.0] * 8,
+ 'sehr_kurz': [500.0, 520.0],
+ 'ein_wert': [500.0],
+ 'sechs': [100, 110, 120, 130, 140, 150],
+ 'konstant': [1234.5] * 40,
+ 'zickzack_unter_4': [500 + (3 if i % 2 else 0) for i in range(60)],
+ 'zickzack_ueber_4': [500 + (5 if i % 2 else 0) for i in range(60)],
+ 'zickzack_gross': [500 + (40 if i % 2 else 0) for i in range(60)],
+ 'treppe': [500 + 4 * (i // 3) for i in range(60)],
+ 'abstieg': [2000 - i * 2.2 for i in range(100)],
+}
+hoehe = []
+for k, v in reihen.items():
+    c = elev.clean(v); s_ = elev.smooth(c, 3, 3); up, down = elev.ascent(s_)
+    hoehe.append({'name': k, 'in': v, 'clean': c, 'smooth': s_, 'up': up, 'down': down})
+# mit None-Lücken: Meine Touren filtert Punkte ohne Höhe vorher heraus
+luecken = [None, 500, 502, None, 510, 520, None, None, 535, 540, 560, None, 580, 579, 600]
+f_ = [x for x in luecken if x is not None]
+up, down = elev.ascent(elev.smooth(elev.clean(f_), 3, 3))
+hoehe.append({'name': 'mit_luecken', 'in': luecken, 'clean': elev.clean(f_), 'smooth': elev.smooth(elev.clean(f_), 3, 3), 'up': up, 'down': down})
+out['hoehe'] = hoehe
 json.dump(out, open(__import__('os').path.join(__import__('os').path.dirname(__file__), 'calc-erwartet.json'), 'w'), default=str, ensure_ascii=False, indent=1)
 print('ok')

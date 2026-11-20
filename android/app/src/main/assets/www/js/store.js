@@ -32,10 +32,12 @@ const Tours = {
     const t = {
       id, name: (o.name && o.name.trim()) || Tours.autoName(o.sport, st.start), sport: o.sport || 'other', status: o.status || 'done',
       start: st.start || o.start || Date.now(), end: st.end, dur: st.dur, moving: st.moving, dist: o.dist || st.dist,
-      up: isFinite(o.up) && o.up != null ? o.up : st.up, down: isFinite(o.down) && o.down != null ? o.down : st.down, upSrc: isFinite(o.up) && o.up != null ? o.src : undefined,
+      up: st.up, down: st.down, calcV: Tours.CALC,
       maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: bb, src: o.src || 'file', srcId: o.srcId || '',
       note: o.note || '', fav: false, hidden: false, timed: !!st.start, created: Date.now(),
     };
+    if (isFinite(o.up) && o.up != null) { t.upKomoot = o.up; t.downKomoot = isFinite(o.down) && o.down != null ? o.down : null; }      // Komoots Wert: nur Zusatzangabe
+    Tours.applyHoehe(t, st);
     Object.assign(t, Tours.hrSummary(pts));
     if (o.status === 'planned' && !st.start) t.start = o.start || Date.now();
     await DB.put('tours', t);
@@ -45,6 +47,53 @@ const Tours = {
     await DB.put('tracks', trk);
     Tours.invalidate();
     return { tour: t, dup: false };
+  },
+  CALC: 2,      // Version der Aufstiegsrechnung (Tour.calcV und kv „calcVer“)
+  /** Aufstieg/Abstieg der Tour setzen: immer die eigene Rechnung (wie „Meine Touren“), sofern die Spur mehr als 5 Höhenpunkte hat;
+      sonst, falls vorhanden, der aufbewahrte Komoot-Wert (upSrc 'komoot'), sonst die (leere) eigene Rechnung. st = Geo.stats(Punkte). */
+  applyHoehe(t, st) {
+    if (Hoehe.brauchbar(st.nEle)) { t.up = st.up; t.down = st.down; delete t.upSrc; }
+    else if (t.upKomoot != null) { t.up = t.upKomoot; t.down = t.downKomoot != null ? t.downKomoot : st.down; t.upSrc = 'komoot'; }
+    else { t.up = st.up; t.down = st.down; delete t.upSrc; }
+    return t;
+  },
+  /** Einmalige Neuberechnung bestehender Touren (Aufstieg wie in Meine Touren; Zepp „Spazieren“ → Wandern). In kleinen Portionen, wiederaufnehmbar
+      (Tour.calcV = 2 nach der Bearbeitung), idempotent; ein Fehler bei einer Tour bricht den Rest nicht ab. Gibt {up, sport, n} zurück oder null, wenn nichts zu tun war. */
+  async migrate(opts) {
+    opts = opts || {};
+    if ((await DB.kvGet('calcVer', 0)) >= Tours.CALC) return null;
+    const ids = (await DB.all('tours')).filter(t => (t.calcV || 0) < Tours.CALC).map(t => t.id);
+    const res = { up: 0, sport: 0, n: ids.length, fail: 0 };
+    for (let i = 0; i < ids.length; i += (opts.batch || 8)) {
+      for (const id of ids.slice(i, i + (opts.batch || 8))) {
+        try {
+          const trk = await DB.get('tracks', id);
+          let st = null;
+          if (trk && trk.lat && trk.lat.length > 1) {
+            const pts = trk.lat.map((la, k) => ({ lat: la, lon: trk.lon[k], ele: trk.ele ? trk.ele[k] : null, t: trk.t ? trk.t[k] : null, skip: !!(trk.skip && trk.skip[k]) }));
+            st = Geo.stats(pts);
+          }
+          const t = await DB.get('tours', id);       // frisch lesen: zwischenzeitliche Änderungen der Oberfläche gehen nicht verloren
+          if (!t) continue;
+          if (t.upSrc === 'komoot' && t.upKomoot == null) { t.upKomoot = t.up; t.downKomoot = t.down; }      // alter Komoot-Wert bleibt als Zusatzangabe
+          const o = { up: t.up, down: t.down };
+          if (st && Hoehe.brauchbar(st.nEle)) {
+            Tours.applyHoehe(t, st);
+            if (Math.abs((t.up || 0) - (o.up || 0)) >= 1 || Math.abs((t.down || 0) - (o.down || 0)) >= 1) { if (t.upAlt === undefined) { t.upAlt = o.up; t.downAlt = o.down; } res.up++; }
+            else { t.up = o.up; t.down = o.down; delete t.upSrc; if (o.up == null) { t.up = st.up; t.down = st.down; } }      // unter 1 m Unterschied: Wert unverändert lassen
+          }
+          if (t.sport === 'walk' && !t.sportMan && (t.src === 'zepp' || /^zepp:/.test(t.srcId || ''))) { t.sportAlt = t.sportAlt || 'walk'; t.sport = 'hike'; res.sport++; }
+          t.calcV = Tours.CALC;
+          await DB.put('tours', t);
+        } catch (e) { res.fail++; console.error('Neuberechnung', id, e); }
+      }
+      Tours.invalidate();
+      await new Promise(r => setTimeout(r, 0));
+    }
+    await DB.kvSet('calcVer', Tours.CALC);
+    if (res.up || res.sport) await DB.kvSet('calcNote', { up: res.up, sport: res.sport });
+    Tours.invalidate();
+    return res;
   },
   async points(id) {
     const r = await DB.get('tracks', id);
@@ -107,8 +156,8 @@ const Tours = {
   async recalc(id) {
     const t = await DB.get('tours', id), pts = await Tours.points(id);
     const st = Geo.stats(pts);
-    delete t.upSrc;      // nach einer Änderung der Spur wieder aus den Höhenwerten gerechnet
-    Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, up: st.up, down: st.down, maxAlt: st.maxAlt, minAlt: st.minAlt }, Tours.hrSummary(pts));
+    Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, maxAlt: st.maxAlt, minAlt: st.minAlt }, Tours.hrSummary(pts));
+    Tours.applyHoehe(t, st);      // nach einer Änderung der Spur wieder aus den Höhenwerten gerechnet (Komoot-Wert nur als Ersatz ohne Höhen)
     await Tours.save(t); return t;
   },
 };

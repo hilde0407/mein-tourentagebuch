@@ -69,6 +69,17 @@ Home.add('actions', 10, async () => h('div', { class: 'home-acts' },
     h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
     h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' }))));
 
+/* ---- Einmaliger Hinweis nach der Neuberechnung (Version 2.0.1) ---- */
+Home.add('calcnote', 11, async () => {
+  const n = await DB.kvGet('calcNote', null);
+  if (!n) return null;
+  const parts = [];
+  if (n.up) parts.push('Aufstieg neu berechnet – gleiche Rechnung wie in Meine Touren. ' + n.up + (n.up === 1 ? ' Tour' : ' Touren') + ' geändert.');
+  if (n.sport) parts.push(n.sport + (n.sport === 1 ? ' Zepp-Tour' : ' Zepp-Touren') + ' „Spazieren“ zählt jetzt als Wandern.');
+  const box = UI.banner(parts.map(x => h('div', null, x)), [h('button', { class: 'btn sm', id: 'calc-ok', onclick: async () => { await DB.kvSet('calcNote', null); box.remove(); } }, 'Verstanden')], { id: 'calcnote' });
+  return box;
+});
+
 /* ---- Sicherungs-Erinnerung: ruhiger Hinweis, wenn es Touren gibt und die letzte Sicherung zu alt ist (Schwelle in den Einstellungen) ---- */
 Home.add('backup', 12, async ({ all, now }) => {
   const r = Sicherung.hinweis(all.length, await DB.kvGet('lastBackup', null), now.getTime(), Set_.get('backupDays'), await DB.kvGet('backupSnooze', 0));

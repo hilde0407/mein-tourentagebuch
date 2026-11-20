@@ -191,7 +191,8 @@ Views['/tour'] = async (root, [id]) => {
   const main = UI.figs([[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']], { big: true, cls: 'tmain' });
   const more = UI.facts([['Abstieg', F.m(t.down)], ['In Bewegung', t.moving ? F.dur(t.moving) : '–'], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : '–'],
     ['Höchster Punkt', t.maxAlt != null ? F.m(t.maxAlt) : '–'], ['Tiefster Punkt', t.minAlt != null ? F.m(t.minAlt) : '–'],
-    t.hrAvg ? ['Ø Puls', t.hrAvg + ' bpm'] : null, t.hrAvg ? ['Höchster Puls', t.hrMax + ' bpm'] : null]);
+    t.hrAvg ? ['Ø Puls', t.hrAvg + ' bpm'] : null, t.hrAvg ? ['Höchster Puls', t.hrMax + ' bpm'] : null,
+    t.upKomoot != null && t.upSrc !== 'komoot' ? ['Komoot nennt', F.m(t.upKomoot)] : null]);
   const prof = h('canvas', { class: 'prof', 'aria-label': 'Höhenprofil' });
   const profInfo = h('small', { class: 'muted' }, 'Profil berühren, um die Stelle auf der Karte zu sehen.');
   const strip = h('div', { class: 'strip' }), noPhotos = h('p', { class: 'muted' }, 'Noch keine Fotos zu dieser Tour.');
@@ -301,7 +302,7 @@ Views['/tour'] = async (root, [id]) => {
     catch (e) { toast(e.message); }
   }
   async function changeSport() {
-    const s = sheet('Sportart', UI.list(Sports.list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' }));
+    const s = sheet('Sportart', UI.list(Sports.list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; t.sportMan = 1; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' }));
   }
   async function exportGpx() {
     const wp = photos.filter(p => p.lat != null).map(p => ({ lat: p.lat, lon: p.lon, name: p.name }));

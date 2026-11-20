@@ -65,10 +65,8 @@ const Fix = {
   async restoreEle(t) {
     const trk = await DB.get('tracks', t.id);
     if (trk && trk.origEle) { trk.ele = trk.origEle; delete trk.origEle; await DB.put('tracks', trk); }
-    const o = { up: t.origUp, down: t.origDown };
     const r = await Tours.recalc(t.id);
     delete r.elevFix; delete r.elevSrc; delete r.origUp; delete r.origDown;
-    if (o.up != null && t.src === 'komoot') { r.up = o.up; r.down = o.down; r.upSrc = 'komoot'; }
     await Tours.save(r); return r;
   },
   /** Höhen aus der Uhr (Zepp, Barometer) übernehmen. Zuordnung Training ↔ Tour wie beim Puls-Nachtrag (Import.Zepp.match), Originalhöhen

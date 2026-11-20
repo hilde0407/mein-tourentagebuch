@@ -95,6 +95,7 @@ async function boot() {
   window.addEventListener('mtshared', handleShared);
   window.addEventListener('mtphoto', handlePhotoQueue);
   await Nav.render();
+  setTimeout(() => { Tours.migrate().then(r => { if (r && (r.up || r.sport) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
   setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); }, 600);
 }
 async function handleShared() {

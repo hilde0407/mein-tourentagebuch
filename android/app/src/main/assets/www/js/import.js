@@ -19,7 +19,6 @@ const Import = {
     const p = [];
     if (r.added) p.push(r.added + (r.added === 1 ? ' Tour importiert' : ' Touren importiert'));
     if (r.dup) p.push(r.dup + ' schon vorhanden');
-    if (r.up) p.push('Höhenmeter bei ' + r.up + (r.up === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
     if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
     if (r.fail) p.push(r.fail + ' nicht lesbar');
     return p.join(' · ') || 'Nichts gefunden';
@@ -98,13 +97,13 @@ const Import = {
       const mineK = new Map((await Tours.list()).map(t => [t.srcId, t]));
       const have = new Set(mineK.keys());
       const todo = list.filter(([t]) => !have.has('komoot:' + t.id));
-      const res = { added: 0, dup: list.length - todo.length, fail: 0, up: 0 };
-      // Schon vorhandene Komoot-Touren: Auf-/Abstieg von Komoot übernehmen (wie „Meine Touren“), statt ihn aus den Höhenwerten der Spur zu rechnen
+      const res = { added: 0, dup: list.length - todo.length, fail: 0 };
+      // Schon vorhandene Komoot-Touren: Komoots Wert nur als Zusatzangabe aufbewahren; der Aufstieg bleibt die eigene Rechnung (Ersatz nur ohne brauchbare Höhen)
       for (const [t] of list) {
         const e = mineK.get('komoot:' + t.id);
-        if (e && e.upSrc !== 'komoot' && isFinite(t.elevation_up) && t.elevation_up != null) {
-          if (Math.abs((e.up || 0) - t.elevation_up) >= 1) res.up++;
-          e.up = t.elevation_up; e.down = isFinite(t.elevation_down) && t.elevation_down != null ? t.elevation_down : e.down; e.upSrc = 'komoot';
+        if (e && isFinite(t.elevation_up) && t.elevation_up != null && (e.upKomoot == null || Math.abs(e.upKomoot - t.elevation_up) >= 1)) {
+          e.upKomoot = t.elevation_up; e.downKomoot = isFinite(t.elevation_down) && t.elevation_down != null ? t.elevation_down : (e.downKomoot == null ? null : e.downKomoot);
+          Tours.applyHoehe(e, Geo.stats(await Tours.points(e.id)));
           await Tours.save(e);
         }
       }
@@ -285,7 +284,7 @@ const Import = {
       }
       const mine = await Tours.list();
       const res = { added: 0, dup: 0, fail: 0, hr: 0 };
-      const types = { 1: 'run', 6: 'walk', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'walk' };
+      const types = { 1: 'run', 6: 'hike', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'hike', 22: 'hike' }      // „Gehen“ zählt wie in Meine Touren als Wandern; Laufen bleibt getrennt;
       // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur den Puls nachtragen – sonst neu laden
       const todo = [];
       for (const s of sums) {

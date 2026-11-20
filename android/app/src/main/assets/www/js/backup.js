@@ -5,7 +5,7 @@
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten und Zwischenspeicher. */
-  SKIP: ['komoot', 'strava', 'zepp', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze'],
+  SKIP: ['komoot', 'strava', 'zepp', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote'],
   /** Diese Einträge werden beim Einspielen zurückgeholt, wenn es sie auf dem Gerät noch nicht gibt (Planung und Notizen einer Tour: die Sicherung gilt). */
   RESTORE_KEYS: ['goals', 'goals2', 'comments', 'places', 'tripHidden', 'tripNames', 'tripPeriod', 'tripRegion', 'tripSet'],
   RESTORE_PREFIX: ['plan:', 'pn:'],
@@ -68,5 +68,7 @@ const Backup = {
     await DB.putMany('tours', data.tours); await DB.putMany('tracks', data.tracks || []); await DB.putMany('photos', data.photos || []);
     await Backup.restoreKv(data.kv);
     Tours.invalidate();
+    await DB.kvSet('calcVer', 0);      // alte Sicherungen: Aufstieg nach dem Einspielen neu rechnen (Touren mit calcV 2 werden übersprungen)
+    Tours.migrate().then(r => { if (r && (r.up || r.sport)) Nav.render(); }).catch(() => {});
   },
 };
