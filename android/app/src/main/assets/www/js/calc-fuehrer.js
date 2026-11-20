@@ -180,14 +180,14 @@
       buecher: [{id, touren: [{id, ord, bb}]}]; touren: gelaufene Touren (nur die, die `zaehlt` erfüllen, werden verglichen). */
   function stand(buecher, touren, cache) {
     const c = sauber(cache), ts = (touren || []).filter(zaehlt).sort((a, b) => (b.start || 0) - (a.start || 0)), fehlt = { paare: 0, touren: new Set() };
-    const out = {};
+    const sigs = ts.map(sig), out = {};      // die Kennung einmal je Tour, nicht je Paar
     for (const b of buecher || []) {
       const o = out[b.id] = { gesamt: b.touren.length, fertig: 0, touren: {} };
       for (const bt of b.touren) {
         const hit = [];
-        for (const t of ts) {
-          if (!nahe(bt.bb, t.bbox)) continue;
-          const z = zeichen(c, t.id, sig(t), b.id, bt.ord);
+        for (let i = 0; i < ts.length; i++) {
+          const t = ts[i]; if (!nahe(bt.bb, t.bbox)) continue;
+          const z = zeichen(c, t.id, sigs[i], b.id, bt.ord);
           if (z === '1') hit.push(t.id); else if (z === '-') { fehlt.paare++; fehlt.touren.add(t.id); }
         }
         o.touren[bt.id] = hit; if (hit.length) o.fertig++;
@@ -230,7 +230,7 @@
         if (Date.now() - t0 > ms) { if (o.fortschritt) o.fortschritt(i / offen.length, i); await warte(); t0 = Date.now(); if (o.abbrechen && o.abbrechen()) { res.abgebrochen = true; break; } }
       }
       if (res.abgebrochen) break;
-      if (o.teil && Date.now() - nTeil > 700) { nTeil = Date.now(); o.teil(stand(buecher, ts, cache)); }
+      if (o.teil && Date.now() - nTeil > 2500) { nTeil = Date.now(); o.teil(stand(buecher, ts, cache)); }
       if (o.fortschritt && (i % 8 === 7 || i === offen.length - 1)) o.fortschritt((i + 1) / offen.length, i + 1);
     }
     raeume(cache, ts, buecher);

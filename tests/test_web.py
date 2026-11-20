@@ -1956,7 +1956,7 @@ def main():
         # Jede bisherige Funktion bleibt erreichbar: „Mehr“ führt zu Planen, Karte, Reisen, Statistik, Import, Foto-Quellen, Einstellungen
         pg.click("#tabs a[data-p='/mehr']"); pg.wait_for_selector("#m-settings")
         hrefs = pg.evaluate("[...document.querySelectorAll('#view a.li')].map(a => a.getAttribute('href'))")
-        assert hrefs == ["#/plan", "#/map", "#/reisen", "#/stats", "#/jahr", "#/import", "#/sources", "#/settings"], hrefs
+        assert hrefs == ["#/plan", "#/map", "#/fuehrer", "#/reisen", "#/stats", "#/jahr", "#/import", "#/sources", "#/settings"], hrefs
         # Reisen liegt unter „Mehr“; die Leiste bleibt dort sichtbar und „Mehr“ markiert, auf Arbeitsseiten verschwindet sie
         pg.click("#m-reisen"); pg.wait_for_selector("text=Mehrtagestouren"); pg.wait_for_function("document.querySelector(\"#tabs a[data-p='/mehr']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')", timeout=10000)
         anyid = pg.evaluate("Tours.list().then(l => l[0].id)")
