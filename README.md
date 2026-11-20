@@ -20,7 +20,7 @@ Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das 
 - **Import**: Dateien (GPX/FIT/TCX/ZIP/GZ), Komoot, Strava, Zepp/Amazfit (E-Mail/Passwort oder Token für Google-, Apple- und Mi-Konten), Bosch eBike Flow (Datei/Teilen), Garmin/Suunto/Polar/Wahoo/Coros (Export, Teilen-Menü, überwachter Ordner), Link. Duplikate werden erkannt.
   Der Zepp-Import legt auf Wunsch (Vorgabe: an) die Barometerhöhen der Uhr auf vorhandene Touren aus Komoot, Dateien oder eigener Aufzeichnung – rückholbar an der Tour.
 - **Aus „Meine Touren“ holen** (Mehr → Touren importieren → Meine Touren): Wer daneben die Server-App „Meine Touren“ betreibt, verbindet sie mit Serveradresse, Name und Passwort
-  (bei Zwei-Faktor mit Code). Ein Konto „nur ansehen“ genügt und wird empfohlen; die App liest nur. Neue Touren kommen mit Strecke, vorhandene bekommen Name, Sportart, Notiz – und auf
+  (bei Zwei-Faktor mit Code). Ein Betrachter-Konto („nur ansehen“) genügt und wird empfohlen; die App liest nur. Neue Touren kommen mit Strecke, vorhandene bekommen Name, Sportart, Notiz – und auf
   Wunsch Strecke und Aufstieg aus Meine Touren als maßgebliche Zahlen, damit beide Apps dasselbe zeigen. Gemerkt wird nur ein Sitzungsschlüssel (nie das Passwort, nie in der Sicherung).
   Einzelheiten: `docs/versionen/2.1.0.md`.
 - **Doppelte Touren prüfen** (Mehr → Touren importieren → Aufräumen): findet dieselbe Tour aus zwei Quellen, schlägt vor, welche bleibt, und führt auf Wunsch zusammen

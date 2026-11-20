@@ -222,7 +222,7 @@ const Import = {
     async probe(base) {
       const r = await Import.MT.http(base, '/api/me');
       let j = null; try { j = JSON.parse(r.body); } catch (e) { /* kein JSON */ }
-      if (r.status === 401) throw new Error('Dieser Server ist nur mit einem gemeinsamen Passwort geschützt. Bitte in Meine Touren Benutzer einrichten (Einstellungen → Benutzer), dann klappt die Anmeldung.');
+      if (r.status === 401) throw new Error('Dieser Server ist nur mit einem gemeinsamen Passwort geschützt. Bitte in Meine Touren die Benutzerverwaltung einrichten, dann klappt die Anmeldung.');
       if (r.status !== 200 || !j || typeof j.users_enabled !== 'boolean') throw new Error('Unter ' + base + ' antwortet kein „Meine Touren“ (HTTP ' + r.status + '). Bitte die Adresse prüfen.');
       return j;
     },

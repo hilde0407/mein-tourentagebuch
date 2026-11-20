@@ -7,7 +7,8 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  const A=require('assert');A.strictEqual(r[0].name,'Test');A.strictEqual(r[0].sport,'hike');A.strictEqual(r[0].pts.length,3);A.ok(Geo.stats(r[0].pts).dist>200);
  const z=fflate.zipSync({'activities/1.gpx.gz':fflate.gzipSync(new TextEncoder().encode(gpx))});
  const r2=await Parse.any('x.zip',z); A.strictEqual(r2.length,1);
- for (const [s,e] of [['Run','run'],['MountainBikeRide','mtb'],['e_touringbicycle','ebike'],['hike','hike'],['touringbicycle','bike'],['racebike','racebike'],['Walk','walk'],['EBikeRide','ebike'],['Hiking','hike'],['jogging','run']]) A.strictEqual(Sports.norm(s),e,s);
+ for (const [s,e] of [['Run','run'],['MountainBikeRide','mtb'],['e_touringbicycle','ebike'],['hike','hike'],['touringbicycle','bike'],['racebike','racebike'],['Walk','walk'],['EBikeRide','ebike'],['Hiking','hike'],['jogging','run'],
+   ['nordicwalking','hike'],['Nordic Walking','hike'],['nordic','ski'],['skitour','ski'],['skialpin','ski'],['snowshoe','ski'],['e_mtb','ebike'],['mtb','mtb'],['mountaineering','mountaineering'],['other','other'],['kitesurfen','other']]) A.strictEqual(Sports.norm(s),e,s);      // letzte Zeile: Sportarten aus „Meine Touren“ (2.1.0)
  // Zepp-Token aus der Zwischenablage
  const T='a1B2c3D4e5F6g7H8i9J0kLmN',Z=Parse.zeppToken;
  A.strictEqual(Z(T),T);A.strictEqual(Z('  "'+T+'"\n'),T);A.strictEqual(Z('apptoken='+T+'; Path=/'),T);A.strictEqual(Z('Bearer '+T),T);

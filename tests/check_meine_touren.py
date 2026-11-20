@@ -308,6 +308,7 @@ def main():
         pr.terminate()
         try: pr.wait(10)
         except subprocess.TimeoutExpired: pr.kill()
+        import shutil; shutil.rmtree(tmp, ignore_errors=True)      # Datenverzeichnis des Testservers wieder entfernen
 
 
 if __name__ == "__main__":

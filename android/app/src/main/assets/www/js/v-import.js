@@ -67,7 +67,7 @@ Views['/import'] = async root => {
       h('p', { class: 'muted' }, 'Holt deine Touren aus „Meine Touren“ auf deinem eigenen Server: neue Touren mit Strecke, für vorhandene den Namen, die Sportart und die Zahlen. Die App liest nur – am Server ändert sie nichts.'),
       h('label', { class: 'fld' }, 'Serveradresse', url), warn,
       h('label', { class: 'fld' }, 'Name', nm), h('label', { class: 'fld' }, 'Passwort', pw),
-      h('p', { class: 'muted small' }, 'Empfohlen: in Meine Touren ein eigenes Konto „nur ansehen“ anlegen (Einstellungen → Benutzer) und hier verwenden. Das Passwort wird nicht gespeichert, nur ein Sitzungsschlüssel auf diesem Handy. Er kommt in keine Sicherung.'),
+      h('p', { class: 'muted small' }, 'Empfohlen: in Meine Touren unter „Konto & Freigaben“ einen Betrachter (nur ansehen) anlegen und hier verwenden. Das Passwort wird nicht gespeichert, nur ein Sitzungsschlüssel auf diesem Handy. Er kommt in keine Sicherung.'),
       zahlen, zHint,
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'mt-go', onclick: async () => {
         let base; try { base = M.base(url.value); } catch (e) { toast(e.message, 6000); return; }
