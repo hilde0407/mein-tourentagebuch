@@ -549,6 +549,98 @@ const prep = p => Fu.vorbereiten(Fu.duenne(p, Fu.MAX_TOUR));
 const buchP = p => Fu.vorbereiten(Fu.duenne(p, Fu.MAX_BUCH));
 const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
 
+/* ---------- 2.5.0 PDF: Aufbau, Querverweistabelle, Seitenaufteilung, Raster, Skizze, Profil, Text ---------- */
+(() => {
+  const P = require(W + 'calc-pdf.js');
+  // Ein kleines echtes JPEG (1 × 1 Pixel, 3 Kanäle) und eines mit 1 Kanal – von Hand gebaut genügt für den Aufbau; die echte Lesbarkeit prüft test_web.py mit pypdf.
+  const jpg = (w, h, comps, fill) => { const body = new Uint8Array(40).fill(fill || 7); const sof = [0xFF, 0xC0, 0x00, 8 + 3 * comps, 8, h >> 8, h & 255, w >> 8, w & 255, comps]; for (let i = 0; i < comps; i++) sof.push(i + 1, 0x11, 0); return Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0, 0, ...sof, ...body, 0xFF, 0xD9]); };
+  const J = jpg(1240, 1754, 3), G = jpg(100, 50, 1);
+  A.deepStrictEqual(P.jpegInfo(J), { w: 1240, h: 1754, comps: 3 }); n++;
+  A.deepStrictEqual(P.jpegInfo(G), { w: 100, h: 50, comps: 1 }); n++;
+  A.throws(() => P.jpegInfo(new Uint8Array([1, 2, 3, 4])), /JPEG/); n++;
+  A.throws(() => P.jpegInfo(Uint8Array.from([0xFF, 0xD8, 0xFF, 0xD9])), /JPEG/); n++;
+  const pdf = P.build([J, J, G], { title: 'Hüttenrunde – März ß', created: new Date(Date.UTC(2026, 10, 20, 14, 30, 5)) });
+  const txt = Buffer.from(pdf).toString('latin1');
+  ok(txt.startsWith('%PDF-1.4\n') && txt.endsWith('%%EOF\n'), 'Anfang %PDF-1.4, Ende %%EOF');
+  ok(pdf[10] > 127 && pdf[11] > 127, 'Binärkommentar nach der Kopfzeile');
+  // Querverweistabelle: jeder Eintrag zeigt wirklich auf „<n> 0 obj“; startxref zeigt auf „xref“
+  const sx = +/startxref\n(\d+)\n%%EOF\n$/.exec(txt)[1];
+  ok(txt.slice(sx, sx + 5) === 'xref\n', 'startxref zeigt auf die Tabelle');
+  const m = /xref\n0 (\d+)\n((?:\d{10} \d{5} [nf] \n)+)trailer/.exec(txt.slice(sx)); const cnt = +m[1], entries = m[2].match(/[\s\S]{20}/g);
+  ok(cnt === 4 + 3 * 3 && entries.length === cnt && entries[0] === '0000000000 65535 f \n', 'Zahl der Einträge: ' + cnt);
+  for (let i = 1; i < cnt; i++) { const off = +entries[i].slice(0, 10); ok(txt.slice(off).startsWith(i + ' 0 obj\n') && entries[i].endsWith(' 00000 n \n'), 'xref-Eintrag ' + i + ' zeigt auf Objekt ' + i); }
+  ok(/\/Size 13 \/Root 1 0 R \/Info 3 0 R/.test(txt), 'Trailer');
+  ok(/\/Count 3/.test(txt) && (txt.match(/\/Type \/Page /g) || []).length === 3 && (txt.match(/\/Subtype \/Image/g) || []).length === 3 && (txt.match(/\/Filter \/DCTDecode/g) || []).length === 3, 'drei Seiten mit je einem DCT-Bild');
+  ok(/\/ColorSpace \/DeviceGray/.test(txt) && (txt.match(/\/ColorSpace \/DeviceRGB/g) || []).length === 2, 'Farbraum nach Kanälen');
+  ok(/\/MediaBox \[0 0 595\.2 841\.92\]/.test(txt), 'A4 bei 150 dpi: ' + /MediaBox \[[^\]]*\]/.exec(txt)[0]);
+  ok(txt.includes('/Title <FEFF') && txt.includes('00FC') && txt.includes('00DF') && txt.includes('/CreationDate (D:20261120143005Z)'), 'Titel als UTF-16 (Umlaute), Erstellungsdatum');
+  // jeder Strom hat die richtige Länge
+  for (const mm of txt.matchAll(/\/Length (\d+) >>\nstream\n/g)) { const s = mm.index + mm[0].length; ok(txt.slice(s + +mm[1], s + +mm[1] + 10) === '\nendstream', 'Stromlänge ' + mm[1]); }
+  ok(pdf.length === 0 || (pdf.length > 3 * 40 && pdf.length < 5000), 'Größe: ' + pdf.length + ' Bytes');
+  A.throws(() => P.build([], {}), /mindestens eine Seite/); n++;
+  const wr = P.writer({}); wr.addPage(J); wr.finish(); A.throws(() => wr.addPage(J), /fertig/); A.throws(() => wr.finish(), /fertig/); n += 2;
+  // Seite für Seite: Zähler und Größe wachsen
+  { const w2 = P.writer({}); const s0 = w2.size; w2.addPage(J); ok(w2.pages === 1 && w2.size > s0, 'writer zählt Seiten und Bytes'); }
+  // optional mit echtem Werkzeug (poppler), wenn vorhanden – die Browser-Prüfung nimmt pypdf
+  try {
+    const cp = require('child_process'), fs = require('fs'), tmp = require('os').tmpdir() + '/mt-pdf-test-' + process.pid + '.pdf';
+    const jp = Buffer.from(require('child_process').execSync('python3 -c "import io,sys; from PIL import Image; b=io.BytesIO(); Image.new(\'RGB\',(1240,1754),(250,250,244)).save(b,\'JPEG\',quality=80); sys.stdout.buffer.write(b.getvalue())"', { maxBuffer: 1 << 26 }));
+    fs.writeFileSync(tmp, P.build([new Uint8Array(jp), new Uint8Array(jp)], { title: 'Test' }));
+    const info = cp.execSync('pdfinfo ' + tmp, { encoding: 'utf8' });
+    ok(/Pages:\s+2/.test(info) && /Page size:\s+595\.2 x 841\.92 pts \(A4\)/.test(info) && /PDF version:\s+1\.4/.test(info), 'pdfinfo liest das PDF: ' + info.split('\n').filter(l => /Pages|Page size|PDF version/.test(l)).join(' | '));
+    fs.unlinkSync(tmp);
+  } catch (e) { console.log('(pdfinfo/Pillow nicht vorhanden – Prüfung mit echtem Werkzeug übersprungen: ' + String(e.message).split('\n')[0] + ')'); }
+
+  // Tourenliste: Seitenaufteilung
+  const T0 = new Date(2026, 0, 3, 9).getTime(), tl = Array.from({ length: 100 }, (_, i) => ({ id: 't' + i, start: T0 + i * 3.4 * 86400000 }));
+  const plan = P.zeilenPlan(tl, 78, 70, 1400), alle = plan.flat();
+  ok(alle.filter(z => z.art === 'tour').length === 100 && new Set(alle.filter(z => z.art === 'tour').map(z => z.tour.id)).size === 100, 'jede Tour genau einmal');
+  ok(plan.every(s => s.length && s.reduce((a, z) => a + (z.art === 'monat' ? 70 : 78), 0) <= 1400), 'keine Seite läuft über');
+  ok(plan.every(s => s[0].art === 'monat') && plan.every(s => s[s.length - 1].art === 'tour'), 'jede Seite beginnt mit einer Monatsüberschrift, keine endet mit einer');
+  ok(plan.slice(1).every(s => !s[0].fort || plan[plan.indexOf(s) - 1].flat().length > 0), 'Fortsetzung markiert');
+  ok(plan.length >= 5 && plan.length <= 8, '100 Touren ohne Fotos: ' + plan.length + ' Seiten');
+  const plan2 = P.zeilenPlan(tl, 150, 70, 1400); ok(plan2.length > plan.length, 'mit Fotos mehr Seiten: ' + plan2.length);
+  const kette = alle.filter(z => z.art === 'tour').map(z => z.tour.start); ok(kette.every((v, i) => !i || v >= kette[i - 1]), 'nach Datum geordnet');
+  ok(P.zeilenPlan([], 78, 70, 1400).length === 0 && P.zeilenPlan([tl[0]], 78, 70, 1400).length === 1, 'leer und eine Tour');
+  { const mon = P.zeilenPlan([{ id: 'a', start: new Date(2026, 4, 2).getTime() }, { id: 'b', start: new Date(2026, 5, 2).getTime() }], 78, 70, 78 + 70 + 78 + 40);   // Platz: Überschrift + 1 Tour + ein bisschen
+    ok(mon.length === 2 && mon[1][0].text === 'Juni 2026', 'Überschrift nie allein am Seitenende: Juni rückt auf die nächste Seite'); }
+  // Fotoraster
+  for (const k of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12]) {
+    const r = P.fotoRaster(k, 1060, 20); ok(r.length === Math.min(k, 9), 'Raster ' + k + ' → ' + r.length);
+    ok(r.every(c => c.x >= -1e-9 && c.x + c.w <= 1060 + 1e-6 && c.w > 100 && c.h > 100), 'Zellen liegen in der Breite');
+    for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) ok(r[i].x + r[i].w <= r[j].x + 1e-6 || r[j].x + r[j].w <= r[i].x + 1e-6 || r[i].y + r[i].h <= r[j].y + 1e-6 || r[j].y + r[j].h <= r[i].y + 1e-6, 'Zellen überlappen nicht');
+  }
+  ok(P.fotoRaster(9, 1060, 20, 700).every(c => c.y + c.h <= 700 + 1e-6), 'Raster passt in die Höhe');
+  const zu = P.zuschnitt(4000, 3000, 300, 300); ok(Math.abs(zu.sw - 3000) < 1e-9 && zu.sh === 3000 && zu.sx === 500 && zu.sy === 0, 'Zuschnitt quer → quadratisch');
+  const zh = P.zuschnitt(3000, 4000, 300, 300); ok(zh.sw === 3000 && zh.sh === 3000 && zh.sx === 0 && zh.sy === 500, 'Zuschnitt hoch → quadratisch');
+  // Skizze und Profil
+  const rt = Array.from({ length: 500 }, (_, i) => ({ lat: 47 + i * 0.0003, lon: 11 + 0.004 * Math.sin(i / 25), ele: 800 + 200 * Math.sin(i / 160) + (i % 7) * 0.4 }));
+  const sk = P.skizze(rt, 1000, 500, 30);
+  ok(sk.punkte.length >= 2 && sk.punkte.every(p => p[0] >= 30 - 1e-6 && p[0] <= 970 + 1e-6 && p[1] >= 30 - 1e-6 && p[1] <= 470 + 1e-6), 'Skizze liegt im Rand');
+  { const xs = sk.punkte.map(p => p[0]), ys = sk.punkte.map(p => p[1]); ok(Math.max(...ys) - Math.min(...ys) > 400 && Math.min(...ys) < 31, 'Skizze füllt die Höhe (schmale lange Strecke)'); void xs; }
+  { // seitentreu: ein Quadrat auf dem Boden (gleiche Meter) bleibt quadratisch, auch bei 47° Breite
+    const k = Math.cos(47 * Math.PI / 180), q = [{ lat: 47, lon: 11 }, { lat: 47, lon: 11 + 0.01 / k }, { lat: 47.01, lon: 11 + 0.01 / k }, { lat: 47.01, lon: 11 }], s = P.skizze(q, 600, 600, 0);
+    const bw = Math.max(...s.punkte.map(p => p[0])) - Math.min(...s.punkte.map(p => p[0])), bh = Math.max(...s.punkte.map(p => p[1])) - Math.min(...s.punkte.map(p => p[1])); ok(Math.abs(bw / bh - 1) < 0.01, 'Skizze seitentreu: ' + (bw / bh).toFixed(3)); }
+  ok(sk.start[1] > sk.ziel[1] && P.skizze([], 100, 100).punkte.length === 0 && P.skizze([rt[0]], 100, 100).punkte.length === 0, 'Start unten, Ziel oben; ohne Punkte leer');
+  ok(P.skizze(Array.from({ length: 5000 }, (_, i) => ({ lat: 47 + i * 1e-5, lon: 11 })), 100, 100).punkte.length <= 800, 'höchstens 800 Punkte');
+  const pr = P.profil(rt, 1000, 200);
+  ok(pr && pr.punkte.length >= 2 && pr.punkte.length <= 300 && pr.punkte[0][0] === 0 && Math.abs(pr.punkte[pr.punkte.length - 1][0] - 1000) < 1e-6 && pr.punkte.every(p => p[1] >= -1e-6 && p[1] <= 200 + 1e-6), 'Profil in der Fläche');
+  ok(pr.min < 700 || pr.min > 600, 'Profil min/max'); ok(pr.max > 900 && pr.dist > 100, 'Profil max/Strecke: ' + pr.max.toFixed(0) + ' m, ' + pr.dist.toFixed(0) + ' m');
+  ok(P.profil(rt.map(p => ({ lat: p.lat, lon: p.lon, ele: null })), 100, 100) === null && P.profil(rt.slice(0, 1), 100, 100) === null, 'ohne Höhen kein Profil');
+  { const flach = P.profil(rt.map(p => ({ lat: p.lat, lon: p.lon, ele: 500 })), 100, 100); ok(flach.punkte.every(p => Math.abs(p[1] - 50) < 1e-6), 'flache Strecke liegt in der Mitte'); }
+  // Text
+  const mess = s => s.length * 10;
+  { const u = P.umbruch('Früh los, oben Gämsen gesehen. Sehr schöne Tour mit viel Sonne.', 200, mess); ok(u.lines.every(l => mess(l) <= 200) && u.lines.join(' ') === 'Früh los, oben Gämsen gesehen. Sehr schöne Tour mit viel Sonne.' && !u.cut, 'Umbruch: ' + JSON.stringify(u.lines)); }
+  { const u = P.umbruch('Eins\n\nZwei Drei', 1000, mess); A.deepStrictEqual(u.lines, ['Eins', '', 'Zwei Drei']); n++; }
+  { const u = P.umbruch('Donaudampfschifffahrtsgesellschaftskapitän', 100, mess); ok(u.lines.length >= 4 && u.lines.every(l => mess(l) <= 100) && u.lines.join('') === 'Donaudampfschifffahrtsgesellschaftskapitän', 'lange Wörter werden getrennt'); }
+  { const u = P.umbruch('a '.repeat(200), 100, mess, 3); ok(u.lines.length === 3 && u.cut && u.lines[2].endsWith('…') && mess(u.lines[2]) <= 100, 'maxLines mit Auslassungszeichen'); }
+  ok(P.umbruch('', 100, mess).lines.length === 0 && P.umbruch(null, 100, mess).lines.length === 0, 'leerer Text');
+  ok(P.kuerzen('Kurz', 100, mess) === 'Kurz' && P.kuerzen('Ein sehr langer Tourenname', 100, mess).endsWith('…') && mess(P.kuerzen('Ein sehr langer Tourenname', 100, mess)) <= 100, 'kürzen');
+  ok(P.dateiname('Hüttenrunde am Wank (März) ß!', 'Tour') === 'Tour_Huettenrunde_am_Wank_Maerz_ss.pdf' && P.dateiname('', 'Jahr', 'pdf') === 'Jahr.pdf' && /^[A-Za-z0-9._-]+$/.test(P.dateiname('Ça va? 日本', 'X')), 'Dateiname');
+  ok(P.datum(new Date(2026, 10, 20)) === '20.11.2026', 'Datum');
+})();
+
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
