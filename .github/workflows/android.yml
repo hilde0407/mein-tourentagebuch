@@ -33,6 +33,7 @@ jobs:
       - name: Tests (Parser, Aufzeichnungslogik, Wegansagen)
         run: |
           node tests/test_parse.js
+          node tests/test_calc.js
           mkdir -p /tmp/jc
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/TrackStore.java tests/android/TrackStoreCheck.java
           java -cp /tmp/jc TrackStoreCheck

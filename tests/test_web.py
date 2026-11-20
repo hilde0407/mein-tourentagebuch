@@ -244,11 +244,15 @@ def neue_funktionen(pg):
     assert pg.locator("#homeset input[type=checkbox]").count() >= 5 and "Sicherung" in pg.inner_text("#view")
     assert not pg.is_checked("#hs-serie input") and not pg.is_checked("#hs-fitness input") and pg.is_checked("#hs-recent input") and pg.is_checked("#hs-memo input")
     pg.click("#hs-serie"); pg.click("#hs-recent"); pg.wait_for_function("Set_.get('homeShow').serie === true && Set_.get('homeShow').recent === false")
+    # Geburtsjahr auch hier: entfernen und wieder eintragen, das Feld zeichnet sich selbst neu
+    assert pg.input_value("#fit-year") == "1975"; pg.click("#fit-del"); pg.wait_for_selector("#fit-del", state="detached"); assert pg.evaluate("Set_.get('birthYear')") == "" and pg.input_value("#fit-year") == ""
+    pg.fill("#fit-year", "abcd"); pg.click("#fit-save"); pg.wait_for_selector("#fit-yearbox .err:not(:empty)"); assert pg.evaluate("Set_.get('birthYear')") == ""
+    pg.fill("#fit-year", "1975"); pg.click("#fit-save"); pg.wait_for_selector("#fit-del"); assert pg.evaluate("Set_.get('birthYear')") == 1975
     pg.evaluate("Nav.go('/start')"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(400)
     assert pg.locator("#serie").count() == 1 and pg.locator("#recent").count() == 0 and pg.locator("#hero").count() == 1
     pg.evaluate("async () => { await Set_.set('homeShow', {}); }")
     # --- Sicherung hin und zurück: neue Daten reisen mit, alte Sicherungen laden ---
-    pg.evaluate("async () => { await Goals.save([{ id: 'gbk', period: 'year', year: 2026, metric: 'km', target: 555, sport: '' }]); await Set_.set('homeShow', { serie: true }); await Set_.set('backupDays', 30); }")
+    pg.evaluate("async () => { await Goals.save([{ id: 'gbk', period: 'year', year: new Date().getFullYear(), metric: 'km', target: 555, sport: '' }]); await Set_.set('homeShow', { serie: true }); await Set_.set('backupDays', 30); }")
     pg.evaluate("async id => { const m = await PlanMeta.get(id); m.note = 'Sicherungsnotiz'; await DB.kvSet('pn:' + id, m); }", plan)
     pg.evaluate("async () => { window.__bk = JSON.parse(JSON.stringify(await Backup.collect())); }")
     assert pg.evaluate("__bk.kv.some(e => e.k === 'goals2') && __bk.kv.some(e => e.k.startsWith('pn:')) && __bk.kv.some(e => e.k === 'settings' && e.v.birthYear == 1975 && e.v.backupDays === 30) && !__bk.kv.some(e => e.k === 'lastBackup')")
@@ -259,7 +263,31 @@ def neue_funktionen(pg):
     assert pg.evaluate("Set_.get('birthYear') == 1975 && Set_.get('homeShow').serie === true && Set_.get('backupDays') === 30")
     pg.evaluate("async () => { await Backup.apply({ app: 'tourentagebuch', v: 1, tours: [], tracks: [], photos: [], kv: [{ k: 'goals', v: { 2025: { km: 700 } } }] }); await Backup.apply({ app: 'tourentagebuch', v: 1, tours: [], tracks: [], photos: [] }); }")
     assert pg.evaluate("Goals.list().then(l => l.some(g => g.year === 2025 && g.target === 700) && l.some(g => g.id === 'gbk'))"), "ältere Ziele werden ergänzt, nichts geht verloren"
-    pg.evaluate("async () => { await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); await Set_.set('homeShow', {}); await Set_.set('backupDays', 14); }")
+    # Dasselbe über die gepackte Datei (.mtl), wie sie wirklich gespeichert und wieder eingelesen wird; auch die Verknüpfung Plan ↔ Tour und die Links reisen mit
+    pg.evaluate("window.__saved = null"); pg.evaluate("Backup.save()"); pg.wait_for_function("window.__saved && window.__saved.name.endsWith('.mtl')")
+    pg.evaluate("async ([pid, lid]) => { await DB.del('kv', 'goals2'); await DB.del('kv', 'pn:' + pid); await Tours.remove(lid); await Set_.set('birthYear', ''); await Set_.set('homeShow', {}); await Set_.set('bestN', 1); }", [plan, lid])
+    n = pg.evaluate("async () => { const u = Uint8Array.from(atob(__saved.b64), c => c.charCodeAt(0)), d = Backup.parse(u); await Backup.apply(d); return [d.v, d.tours.length, d.kv.length]; }")
+    assert n[0] == 1 and n[1] > 10 and n[2] > 3, n
+    assert pg.evaluate("async ([pid, lid, pn]) => { const t = await DB.get('tours', lid), m = await PlanMeta.get(pid); return !!t && t.plan === pn && m.note === 'Sicherungsnotiz' && Planhilfe.ladeLinks(m.links).length === 1 && (await Tours.points(lid)).length === 30; }", [plan, lid, plan_n])
+    assert pg.evaluate("Goals.list().then(l => l.some(g => g.id === 'gbk')) && Set_.get('birthYear') == 1975 && Set_.get('homeShow').serie === true")
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", lid); pg.wait_for_selector("#planergebnis")
+    # Alte Sicherung (Stand 1.8: Touren ohne die neuen Felder, ältere Einstellungen, ältere Jahresziele, Zwischenspeicher): lädt, nichts Vorhandenes geht verloren, nichts Fremdes kommt herein
+    old = pg.evaluate("""async () => {
+      const pts = Array.from({ length: 20 }, (_, i) => ({ lat: 44 + i * 0.0005, lon: 7, ele: 500 + i, t: Date.UTC(2021, 5, 1, 8) + i * 60000 }));
+      const data = { app: 'tourentagebuch', v: 1, date: Date.UTC(2024, 0, 1),
+        tours: [{ id: 'alt18tour', name: 'Aus alter Sicherung', sport: 'hike', status: 'done', start: pts[0].t, end: pts[19].t, dur: 1140, moving: 1140, dist: 1056, up: 19, down: 0, maxAlt: 519, minAlt: 500, lat: 44, lon: 7, src: 'file', srcId: '', note: 'alt', fav: false, hidden: false, timed: true, created: 1 }],
+        tracks: [{ id: 'alt18tour', lat: pts.map(p => p.lat), lon: pts.map(p => p.lon), ele: pts.map(p => p.ele), t: pts.map(p => p.t), seg: pts.map(() => 0) }], photos: [],
+        kv: [{ k: 'settings', v: { photoMargin: 45, tiles: 'osm', gibtEsNicht: 1 } }, { k: 'goals', v: { 2024: { km: 444, n: 12 } } }, { k: 'tilebg', v: { x: 1 } }, { k: 'heroMap', v: { id: 'x', data: 'y' } }, { k: 'komoot', v: { token: 'geheim' } }, { k: 'plan:alt18plan', v: { wps: [] } }] };
+      const gz = fflate.gzipSync(new TextEncoder().encode(JSON.stringify(data)));
+      const before = { n: (await Tours.list()).length, heroMap: JSON.stringify(await DB.kvGet('heroMap', null)), komoot: JSON.stringify(await DB.kvGet('komoot', null)), by: Set_.get('birthYear') };
+      await Backup.apply(Backup.parse(gz));
+      return { added: (await Tours.list()).length - before.n, pm: Set_.get('photoMargin'), by: Set_.get('birthYear') == before.by, junk: 'gibtEsNicht' in Set_.v,
+        goal: (await Goals.list()).some(g => g.year === 2024 && g.metric === 'km' && g.target === 444) && (await Goals.list()).some(g => g.id === 'gbk'),
+        cache: JSON.stringify(await DB.kvGet('heroMap', null)) === before.heroMap, cred: JSON.stringify(await DB.kvGet('komoot', null)) === before.komoot, plan: !!(await DB.kvGet('plan:alt18plan', null)) }; }""")
+    assert old == {"added": 1, "pm": 45, "by": True, "junk": False, "goal": True, "cache": True, "cred": True, "plan": True}, old
+    pg.evaluate("location.hash = '#/tour/alt18tour'"); pg.wait_for_selector(".tourp h1"); pg.wait_for_timeout(300)
+    assert "Aus alter Sicherung" in pg.inner_text(".tourp") and pg.locator("#rueckblick, #planergebnis, #passt-sec").count() == 0, "alte Tour ohne neue Felder öffnet wie bisher"
+    pg.evaluate("async () => { await Tours.remove('alt18tour'); await DB.del('kv', 'plan:alt18plan'); await Set_.set('photoMargin', 20); await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); await Set_.set('homeShow', {}); await Set_.set('backupDays', 14); await DB.kvSet('lastBackup', Date.now()); }")
     return {"big": big, "plan": plan, "linked": lid}
 
 

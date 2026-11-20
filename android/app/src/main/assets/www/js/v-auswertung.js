@@ -32,7 +32,7 @@ const Ausw = {
   /** Abschnitt „Wochen-Serie“: Wochen in Folge mit mindestens einer Tour (Montag bis Sonntag). */
   serie(tours) {
     const s = Serie.berechne(tours, new Date());
-    return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'aktuelle Serie'], [Ausw.wk(s.rekord), 'Rekord'], [s.wochenMit + ' von 26', 'letzte Wochen mit Tour']]),
+    return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'aktuelle Serie'], [Ausw.wk(s.rekord), 'Rekord'], [s.wochenMit + ' von 26', 'Wochen mit Tour']]),
       h('p', { class: 'muted small' }, s.offen ? 'Diese Woche fehlt noch eine Tour, damit die Serie weiterläuft.' : 'Eine Woche zählt, wenn sie mindestens eine Tour enthält (Montag bis Sonntag).')], { id: 'serie-sec' });
   },
 

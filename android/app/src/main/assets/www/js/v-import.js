@@ -168,7 +168,7 @@ Views['/settings'] = async root => {
     h('h3', null, 'Heimatort'), homeBox(),
     h('h3', null, 'Puls'), inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
     h('p', { class: 'muted small' }, 'Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
-    h('h3', null, 'Fitness-Einordnung'), h('p', { class: 'muted small' }, 'Das Geburtsjahr braucht die Fitness-Einordnung in der Statistik (nur das Jahr). Es bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.'), FitUI.yearBox(() => {}, { label: 'Geburtsjahr' }),
+    h('h3', null, 'Fitness-Einordnung'), h('p', { class: 'muted small' }, 'Das Geburtsjahr braucht die Fitness-Einordnung in der Statistik (nur das Jahr). Es bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.'), FitUI.yearBox(null, { label: 'Geburtsjahr' }),
     h('h3', { id: 'homeset-h' }, 'Startseite'), h('p', { class: 'muted small' }, 'Was unter den Hauptknöpfen steht. Die Reihenfolge ist fest. Den Hinweis auf die Sicherung stellst du unter Datensicherung ein.'),
     h('div', { id: 'homeset' }, Home.blocks.filter(b => b.meta).map(b => h('div', { class: 'hs-row' }, UI.toggle(b.meta.label, Home.shown(b), async on => {
       const m = Object.assign({}, Set_.get('homeShow') || {}); m[b.id] = !!on; await Set_.set('homeShow', m);
@@ -185,6 +185,7 @@ Views['/settings'] = async root => {
   async function wipe() {
     if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht.', 'Alles löschen')) return;
     for (const s of ['tours', 'tracks', 'photos']) await DB.clear(s);
+    for (const e of await DB.all('kv')) if (e.k.startsWith('pn:')) await DB.del('kv', e.k);      // Notizen und Links der gelöschten Planungen
     Tours.invalidate(); toast('Gelöscht'); Nav.render();
   }
 };

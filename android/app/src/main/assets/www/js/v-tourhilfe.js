@@ -96,8 +96,8 @@ const TourHelp = {
       form.append(UI.list(rows));
       const mx = ['km', 'up'].filter(k => f[k]).map(k => (k === 'km' ? 'Strecke' : 'Aufstieg') + ' ' + f[k].vs_max_pct + ' %');
       if (mx.length) form.append(h('p', { class: 'muted small' }, 'Im Vergleich zu deiner längsten bzw. höchsten Tour der letzten 12 Monate: ' + mx.join(', ') + '.'));
-      if (f.deutlich_ueber.length) form.append(UI.banner([h('b', null, 'Mehr als sonst: '), (f.deutlich_ueber.filter(k => k !== 'dauer').map(k => k === 'km' ? 'die Strecke' : 'der Aufstieg').join(' und ') || 'die Dauer').replace(/^./, c => c.toUpperCase()) + ' liegt deutlich über allem, was du in den letzten 12 Monaten gegangen bist (über 120 %). Plane mehr Zeit und Reserven ein.']));
-      form.append(h('p', { class: 'muted small' }, 'Basis: ' + f.n + ' deiner Touren (' + sport + ' und verwandte Sportarten) aus den letzten 12 Monaten. Unter 80 % gilt als kürzer, über 125 % als länger.'));
+      if (f.deutlich_ueber.length) form.append(UI.banner([h('b', null, 'Mehr als sonst: '), (f.deutlich_ueber.filter(k => k !== 'dauer').map(k => k === 'km' ? 'die Strecke' : 'der Aufstieg').join(' und ') || 'die Dauer').replace(/^./, c => c.toUpperCase()) + ' liegt deutlich über allem, was du in den letzten 12 Monaten gemacht hast (über 120 %). Plane mehr Zeit und Reserven ein.']));
+      form.append(h('p', { class: 'muted small' }, 'Basis: ' + f.n + ' deiner Touren (' + sport + ' und verwandte Sportarten) aus den letzten 12 Monaten. Unter 80 % gilt als weniger, über 125 % als mehr.'));
     }
     // Tageslicht
     const today = new Date(), iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -127,7 +127,7 @@ const TourHelp = {
         if (r.start_vor_aufgang) say += ' Der Start liegt vor Sonnenaufgang.';
         if (r.start_nach_untergang) say += ' Der Start liegt nach Sonnenuntergang.';
       }
-      out.append(h('p', { class: 'tl-say' + cls, id: 'tl-say' }, say), UI.facts(facts));
+      out.append(h('p', { class: 'tl-say' + cls, id: 'tl-say' }, say), UI.facts(facts), h('p', { class: 'muted small' }, 'Uhrzeiten in der Zeitzone dieses Handys, gerechnet für den Startpunkt der Tour.'));
     };
     const ch = () => calc(true);
     [dIn, sIn, pIn].forEach(e => e.addEventListener('change', ch));

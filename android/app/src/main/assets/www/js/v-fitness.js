@@ -28,12 +28,19 @@ const FitUI = {
   TREND: { up: 'steigend gegenüber den 12 Wochen davor', down: 'sinkend gegenüber den 12 Wochen davor', flat: 'gleichbleibend gegenüber den 12 Wochen davor' },
   /** Eingabe des Geburtsjahres (Statistik und Einstellungen). done() nach dem Speichern. */
   yearBox(done, opts) {
-    const err = h('p', { class: 'err small', role: 'alert' }), inp = h('input', { type: 'text', inputmode: 'numeric', maxlength: 4, id: 'fit-year', placeholder: 'z. B. 1975', value: FitUI.year() || '', 'aria-label': 'Geburtsjahr',
-      onkeydown: e => { if (e.key === 'Enter') save(); } });
-    const save = async () => { try { await FitUI.setYear(inp.value); err.textContent = ''; toast('Geburtsjahr gespeichert'); done && done(); } catch (e) { err.textContent = e.message; } };
-    return h('div', null, h('label', { class: 'fld' }, (opts && opts.label) || 'Geburtsjahr', inp), err,
-      h('div', { class: 'row' }, h('button', { class: 'btn pri', id: 'fit-save', onclick: save }, 'Speichern'),
-        FitUI.year() ? h('button', { class: 'btn', id: 'fit-del', onclick: async () => { await Set_.set('birthYear', ''); toast('Geburtsjahr entfernt'); done && done(); } }, 'Entfernen') : null));
+    const box = h('div', { id: 'fit-yearbox' });
+    const after = () => { if (done) done(); else draw(); };      // ohne eigene Fortsetzung (Einstellungen) zeichnet sich das Feld selbst neu
+    const draw = () => {
+      const err = h('p', { class: 'err small', role: 'alert' }), inp = h('input', { type: 'text', inputmode: 'numeric', maxlength: 4, id: 'fit-year', placeholder: 'z. B. 1975', value: FitUI.year() || '', 'aria-label': 'Geburtsjahr',
+        onkeydown: e => { if (e.key === 'Enter') save(); } });
+      const save = async () => { try { await FitUI.setYear(inp.value); err.textContent = ''; toast('Geburtsjahr gespeichert'); after(); } catch (e) { err.textContent = e.message; } };
+      box.innerHTML = '';
+      box.append(h('label', { class: 'fld' }, (opts && opts.label) || 'Geburtsjahr', inp), err,
+        h('div', { class: 'row' }, h('button', { class: 'btn pri', id: 'fit-save', onclick: save }, 'Speichern'),
+          FitUI.year() ? h('button', { class: 'btn', id: 'fit-del', onclick: async () => { await Set_.set('birthYear', ''); toast('Geburtsjahr entfernt'); after(); } }, 'Entfernen') : null));
+    };
+    draw();
+    return box;
   },
 };
 

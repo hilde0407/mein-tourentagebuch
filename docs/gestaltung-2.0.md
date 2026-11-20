@@ -84,7 +84,7 @@ Fünf Reiter in einer Petrol-Leiste, „Aufnehmen“ in der Mitte als gelbe Sche
 
 | Reiter     | Adresse   | Enthält                                                                    |
 |------------|-----------|----------------------------------------------------------------------------|
-| Start      | `#/start` | Letzte Tour, Aufzeichnen · Planen · Importieren, Dieses Jahr, Letzte Touren |
+| Start      | `#/start` | Letzte Tour, Aufzeichnen · Planen · Importieren, Sicherungs-Hinweis (nur wenn fällig), Dieses Jahr mit Zielen, Letzte Touren, An diesem Tag |
 | Touren     | `#/`      | Liste, oben rechts „Karte“ (`#/map`, dort „Liste“), Suche, Filter, ＋ (Planen, Importieren, Aufzeichnen) |
 | Aufnehmen  | `#/rec`   | Aufzeichnung, Route mit Ansagen                                            |
 | Fotos      | `#/photos`| Alle · Ohne Tour · Karte, Diashow, Fotos hinzufügen                         |
@@ -122,7 +122,7 @@ Startseite – die eine mutige Stelle: Die letzte Tour füllt den Kopf der Seite
 │ ▢ Zweite Tour ins Tal        │
 │   Sa., 12.09. · Wandern      │
 │ ──────────────────────────── │
-│ (Platz für Ziele, Serie, Fitness: je ein Abschnitt)
+│ (einschaltbar: Wochen-Serie, Fitness – je ein Abschnitt)
 ├──────────────────────────────┤
 │ Start  Touren  (●)  Fotos Mehr
 └──────────────────────────────┘
@@ -207,19 +207,32 @@ ein Etikett. Das wäre jede beliebige Fitness-App gewesen. Geändert:
 | `sheet(titel, inhalt)` · `confirmBox` · `askText` · `toast` | Blatt/Dialoge wie bisher (`js/util.js`)            |
 | `Ico.svg(name)` / `Ico.el(name)`         | Gezeichnetes Symbol (Namen in `js/icons.js`)                          |
 | `topbar(titel, opts)`                    | Kopfzeile; `opts.back` (Unterseite), `opts.actions`, `opts.logo`      |
-| `Home.add(id, reihenfolge, fn)`          | Baustein der Startseite anmelden (`js/v-start.js`); `fn(ctx)` liefert ein Element oder `null`, `ctx = { all, now, year }` |
+| `Home.add(id, reihenfolge, fn, meta)`    | Baustein der Startseite anmelden (`js/v-start.js`); `fn(ctx)` liefert ein Element oder `null`, `ctx = { all, now, year }`. `meta = { label, sub, def }` (optional) macht ihn unter Einstellungen → Startseite schaltbar; `def` ist die Vorgabe |
 
-Reihenfolge der Startseite: Aufmacher 0 · Aktionen 10 · Dieses Jahr 20 · Letzte Touren 40 · An diesem Tag 50.
-Ein neuer Baustein sieht so aus:
+Reihenfolge der Startseite: Aufmacher 0 · Aktionen 10 · Sicherungs-Hinweis 12 (nur wenn fällig) · Dieses Jahr mit Zielen 20 ·
+Wochen-Serie 30 (Vorgabe aus) · Fitness 35 (Vorgabe aus) · Letzte Touren 40 · An diesem Tag 50.
+
+Die Startseite soll kein Stapel werden: Ein neuer Baustein ist in der Regel **aus** (`def: false`) und zeigt höchstens
+eine Kennzahlenzeile und einen Satz; die Einzelheiten stehen auf einer eigenen Seite, zu der der Verweis rechts führt.
+Aufmacher, Aktionen und Sicherungs-Hinweis haben kein `meta` und lassen sich nicht abschalten. Ein neuer Baustein sieht so aus:
 
 ```js
-Home.add('serie', 30, async ctx => UI.section('Serie', UI.figs([[4, 'Wochen in Folge'], [11, 'längste Serie']]), { id: 'serie', link: '#/stats/rekorde', linkText: 'Rekorde' }));
+Home.add('serie', 30, async ctx => UI.section('Wochen-Serie', UI.figs([['4 Wochen', 'in Folge'], ['11 Wochen', 'Rekord']]), { id: 'serie', link: '#/stats/bestwerte', linkText: 'Bestwerte' }),
+  { label: 'Wochen-Serie', sub: 'Wochen in Folge mit mindestens einer Tour', def: false });
 ```
+
+Was der Mensch ein- und ausschaltet, steht in der Einstellung `homeShow` (`{ id: true | false }`); `Home.shown(baustein)` wertet sie aus.
+
+Abschnitte, die eine Tour einordnen (Rückblick, Plan und Ergebnis, Passt die Tour zu mir?, Fitness), folgen einem Muster:
+linierte Zeilen mit einem Satz als Titel („Strecke: länger als üblich“) und den Zahlen leise darunter – das Urteil steht
+immer in Worten, nie nur als Farbe. Fehlen die Daten für ein Urteil, entfällt der Abschnitt oder sagt, was fehlt;
+Platzhalterwerte gibt es nicht.
 
 Neue Seite unter „Mehr“: `Views['/name'] = async root => { root.append(topbar('Titel', { back: true }), h('div', { class: 'pad' }, …)); }`,
 dazu ein Eintrag in `Nav.home` (welcher Reiter markiert ist) und eine Zeile in `Views['/mehr']` (`js/app.js`).
 
 ## Prüfungen
 
-- `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest).
+- `node tests/test_calc.js` – Rechenlogik (Ziele, Rückblick, Planungshilfe, Fitness) gegen Werte aus den Vorbildern.
+- `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest) – auch für die neuen Abschnitte und Blätter (`neue_layout`).
 - `python3 tests/audit_kontrast.py --fail` – Kontrast aller Knöpfe, Felder und Texte in Hell und Dunkel (4,5 : 1; große Schrift 3 : 1).
