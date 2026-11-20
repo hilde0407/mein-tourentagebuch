@@ -633,6 +633,22 @@ def main():
         assert bk["ver"] == 2 and bk["upAlt"] == 7777 and bk["upKomoot"] == 7777 and abs(bk["up"] - ou) < 0.01 and bk["sport"] == "hike", bk
         pg.evaluate("async () => { for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) await Tours.remove(id); await DB.kvSet('calcNote', null); }")
 
+        # 2.0.3: Die Tourenliste merkt sich die Rollposition – Tour öffnen, zurückgehen, gleiche Stelle; der Reiter „Touren“ führt wieder nach oben
+        pg.evaluate("""async gs => { const enc = s => new TextEncoder().encode(s); for (const [n, g] of gs) await Import.fromData(n, enc(g), 'file'); }""",
+                    [[f"rp{i}.gpx", gpx(1600000000000 + 86400000 * i * 3, lat=45.0 + i * 0.05, name=f"Rollprobe {i}")] for i in range(14)])
+        pg.evaluate("location.hash = '#/start'"); pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#view input[type=search]")
+        pg.fill("#view input[type=search]", "Rollprobe"); pg.wait_for_function("() => document.querySelectorAll('#view a.tour').length === 14")
+        y0 = pg.evaluate("() => { const v = document.querySelector('#view'); v.scrollTop = Math.min(600, v.scrollHeight - v.clientHeight); return v.scrollTop; }")
+        assert y0 > 200, y0
+        pg.evaluate("() => { const v = document.querySelector('#view').getBoundingClientRect(); const a = [...document.querySelectorAll('#view a.tour')].find(e => { const r = e.getBoundingClientRect(); return r.top > v.top + 80 && r.bottom < v.bottom - 120; }); a.click(); }")
+        pg.wait_for_function("() => location.hash.startsWith('#/tour/')"); pg.wait_for_selector("#view .kpis")
+        assert pg.evaluate("document.querySelector('#view').scrollTop") == 0
+        pg.evaluate("history.back()")
+        pg.wait_for_function("y => location.hash === '#/' && document.querySelectorAll('#view a.tour').length === 14 && Math.abs(document.querySelector('#view').scrollTop - y) <= 2", arg=y0)
+        pg.click("#tabs a[data-p='/']"); pg.wait_for_function("() => document.querySelector('#view').scrollTop === 0 && document.querySelectorAll('#view a.tour').length === 14")
+        pg.fill("#view input[type=search]", "")
+        pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^Rollprobe/.test(t.name))) await Tours.remove(t.id); }")
+
         # 2.0.2: Spur aus einer FIT-Datei mit vorzeichenlos gelesener Länge (344,4° statt −15,6°) und Punkten ohne Position (180°/180°) wird berichtigt
         fx = pg.evaluate("""async () => {
           const n = 200, id = 'fxA';

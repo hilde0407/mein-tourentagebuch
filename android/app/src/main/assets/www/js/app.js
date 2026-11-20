@@ -28,7 +28,14 @@ const Nav = {
     if (!Views[key]) key = '/';      // unbekannte Adresse: Tourenliste
     const route = Views[key];
     if (Nav.cleanup) { try { Nav.cleanup(); } catch (e) { /* weiter */ } Nav.cleanup = null; }
-    const root = $('#view'); root.innerHTML = ''; root.scrollTop = 0;
+    const root = $('#view');
+    /* Rollposition je Adresse merken: Wer aus der Tourenliste eine Tour öffnet und zurückgeht, steht wieder an derselben Stelle (2.0.3).
+       „Zurück“ erkennt man daran, dass die neue Adresse die vorletzte im eigenen Verlauf ist. */
+    if (Nav.raw) Nav.pos[Nav.raw] = root.scrollTop;
+    const st = Nav.stack, isBack = st.length > 1 && st[st.length - 2] === raw;
+    if (isBack) st.pop(); else if (st[st.length - 1] !== raw) { st.push(raw); if (st.length > 60) st.shift(); }
+    Nav.raw = raw;
+    root.innerHTML = ''; root.scrollTop = 0;
     Nav.cur = key;
     const tab = Nav.home[key] || key, deep = Nav.deep.includes(key);
     $$('#tabs a').forEach(a => { const on = a.dataset.p === tab; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
@@ -36,7 +43,9 @@ const Nav = {
     Nav.syncRec();
     try { Nav.cleanup = await route(root, parts.slice(1).map(decodeURIComponent)); }
     catch (e) { root.append(UI.empty({ title: 'Das hat nicht geklappt', text: String(e.message || e) })); console.error(e); }
+    if (isBack && Nav.pos[raw] && Nav.raw === raw) root.scrollTop = Nav.pos[raw];
   },
+  pos: {}, stack: [], raw: '',
   /** Die Scheibe „Aufnehmen“ wird rot, solange eine Aufzeichnung läuft oder pausiert ist. */
   syncRec() {
     const a = $('#tabs a.rec'); if (!a) return;
@@ -89,7 +98,8 @@ async function boot() {
     document.body.innerHTML = '<div class="empty"><h2>Die Daten lassen sich nicht öffnen</h2><p>' + esc(e.message) + '</p><p>Bitte die App schließen und neu starten.</p></div>'; return;
   }
   const tabs = $('#tabs');
-  Nav.tabs.forEach(([p, t, i]) => tabs.append(h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '' }, h('span', { class: 'ti', html: Ico.svg(i, 23) }), h('span', null, t))));
+  Nav.tabs.forEach(([p, t, i]) => tabs.append(h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '', onclick: () => { if (location.hash === '#' + p) $('#view').scrollTop = 0; } },      // Tippen auf den schon offenen Reiter: zurück nach oben
+     h('span', { class: 'ti', html: Ico.svg(i, 23) }), h('span', null, t))));
   if (!location.hash) history.replaceState(null, '', '#/start');      // ohne hashchange-Ereignis, sonst wird die Startseite doppelt aufgebaut
   window.addEventListener('hashchange', () => { Nav.depth++; Nav.render(); });
   window.addEventListener('mtshared', handleShared);
