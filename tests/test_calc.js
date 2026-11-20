@@ -533,4 +533,208 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(Math.abs(J.berechne(viele, 2025, new Date(2030, 0, 1)).monate.reduce((a, g) => a + g.dist, 0) - alt(viele, 2025).dist) < 1e-6 && J.berechne(viele, 2025, new Date(2030, 0, 1)).monate.reduce((a, g) => a + g.n, 0) === alt(viele, 2025).n, 'Monate ergeben zusammen die Gesamtzahlen');
 })();
 
-console.log('OK (' + n + ' Prüfungen)');
+/* ---------- Wanderführer (2.4.0): Buchtouren lesen, Abgleich „folgt der Tour der Buchstrecke?“, Zwischenspeicher, Blöcke, Anzeige ---------- */
+const Fu = require(W + 'calc-fuehrer.js');
+let fseed = 11; const frnd = () => (fseed = (fseed * 1103515245 + 12345) % 2147483648) / 2147483648;
+const FM = 111195, LA0 = 47.5, LO0 = 11.2, KOS = Math.cos(LA0 * Math.PI / 180);
+/** Geschwungene Strecke von `laenge` m mit n Punkten; Anfang bei (dx, dy) m; Rauschen in m; form = Verlauf der Breite. */
+const strecke = (laenge, n, o) => {
+  o = o || {}; const dx = o.dx || 0, dy = o.dy || 0, noise = o.noise || 0, amp = o.amp == null ? 0.12 : o.amp, ph = o.ph || 0;
+  return Array.from({ length: n }, (_, i) => { const t = i / (n - 1), x = laenge * t, y = laenge * amp * Math.sin(4 * Math.PI * t + ph) + laenge * 0.05 * t;
+    return { lat: LA0 + (y + dy + (frnd() - .5) * 2 * noise) / FM, lon: LO0 + (x + dx + (frnd() - .5) * 2 * noise) / (FM * KOS), ele: 800 + 300 * t }; });
+};
+const teil = (p, a, b) => p.slice(Math.round(a * (p.length - 1)), Math.round(b * (p.length - 1)) + 1);
+const umk = p => p.slice().reverse();
+const prep = p => Fu.vorbereiten(Fu.duenne(p, Fu.MAX_TOUR));
+const buchP = p => Fu.vorbereiten(Fu.duenne(p, Fu.MAX_BUCH));
+const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
+
+(async () => {
+  // --- GPX einer Buchtour lesen ---
+  const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
+  const trk = (name, pts) => '<trk>' + (name ? '<name>' + name + '</name>' : '') + '<trkseg>' + pts.map(p => '<trkpt lat="' + p.lat + '" lon="' + p.lon + '">' + (p.ele != null ? '<ele>' + p.ele + '</ele>' : '') + '</trkpt>').join('') + '</trkseg></trk>';
+  const rampe = Array.from({ length: 60 }, (_, i) => ({ lat: 47.5 + i * 0.0003, lon: 11.2 + i * 0.0002, ele: 1000 + i * 5 }));      // 295 m Anstieg, ≈ 2,2 km
+  let g = Fu.lies(gpx(trk('Rother 12 · Hochalm &amp; Seilbahn', rampe)), 'tour12.gpx');
+  A.strictEqual(g.titel, 'Rother 12 · Hochalm & Seilbahn'); A.strictEqual(g.pts.length, 60); n += 2;
+  ok(g.km > 2.0 && g.km < 2.6, 'Länge in km ' + g.km); ok(g.up >= 280 && g.up <= 300, 'Aufstieg ' + g.up);
+  A.strictEqual(Fu.lies(gpx(trk('', rampe)), 'pfad/Tour 7 Gipfel.gpx').titel, 'Tour 7 Gipfel'); n++;                         // ohne Namen: Dateiname
+  A.strictEqual(Fu.lies(gpx(trk('tour7.gpx', rampe)), 'x.gpx').titel, 'x'); n++;                                              // Name ist selbst ein Dateiname
+  A.strictEqual(Fu.lies(gpx(trk('Spur', rampe), '<metadata><name><![CDATA[Buchtitel Nr. 3]]></name></metadata>'), 'a.gpx').titel, 'Buchtitel Nr. 3'); n++;      // Metadaten vor Track, CDATA
+  A.strictEqual(Fu.lies(gpx('<wpt lat="47.5" lon="11.2"><name>Parkplatz</name></wpt>' + trk('Die Runde', rampe)), 'a.gpx').titel, 'Die Runde'); n++;      // Wegpunkt ist kein Titel
+  const route = '<rte><name>Routenname</name>' + rampe.map(p => '<rtept lat="' + p.lat + '" lon="' + p.lon + '"/>').join('') + '</rte>';
+  g = Fu.lies(gpx(route), 'r.gpx'); A.strictEqual(g.titel, 'Routenname'); A.strictEqual(g.up, null); ok(g.pts.length === 60, 'Route ohne Höhen: Punkte, kein Aufstieg'); n += 2;
+  for (const bad of ['', 'kein xml', gpx(trk('x', rampe.slice(0, 2))), gpx('<trk><trkseg><trkpt lat="99" lon="11"/><trkpt lat="a" lon="b"/><trkpt lat="1" lon="1"/></trkseg></trk>')]) { A.throws(() => Fu.lies(bad, 'x.gpx'), /keine Streckenpunkte/); n++; }
+  ok(Fu.lies(gpx(trk('Nur drei', rampe.slice(0, 3))), 'x.gpx').pts.length === 3, 'drei Punkte genügen');
+  // Aufstieg: Rauschen unter 3 m zählt nicht, echte Stufen schon
+  A.strictEqual(Fu.aufstieg([100, 101, 100, 101, 100, 101, 100, 101]), 0); A.strictEqual(Fu.aufstieg([100, 100]), null); n += 2;
+  const stufe = [].concat(Array(10).fill(100), Array(10).fill(150), Array(10).fill(200));
+  ok(Math.abs(Fu.aufstieg(stufe) - 100) <= 8, 'Stufen: ' + Fu.aufstieg(stufe));
+  // Länge: 1 Breitengrad = 111,2 km
+  ok(Math.abs(Fu.laenge([{ lat: 47, lon: 11 }, { lat: 48, lon: 11 }]) / 1000 - 111.195) < 0.05, 'Länge eines Breitengrads');
+
+  // --- Packen / Ausdünnen / Titel-Reihenfolge ---
+  const roh = strecke(9000, 500, { noise: 3 }), pk = Fu.entpacke(JSON.parse(JSON.stringify(Fu.packe(roh))));
+  ok(pk.length === 500 && roh.every((p, i) => Math.abs(p.lat - pk[i].lat) < 6e-6 && Math.abs(p.lon - pk[i].lon) < 6e-6 && Math.abs(p.ele - pk[i].ele) <= 0.5), 'packen und entpacken: höchstens 0,5 m Höhe, 0,6 m Lage Abweichung');
+  ok(Fu.packe(roh).la.length === 500 && JSON.stringify(Fu.packe(roh)).length < JSON.stringify(roh).length / 3, 'gepackt deutlich kleiner');
+  A.deepStrictEqual(Fu.entpacke(null), []); A.deepStrictEqual(Fu.entpacke({ la: [1], lo: [1, 2] }), []); n += 2;
+  ok(Fu.packe(roh.map(p => ({ lat: p.lat, lon: p.lon, ele: null }))).e === undefined, 'ohne Höhen kein Höhenfeld'); A.strictEqual(Fu.entpacke(Fu.packe(roh.map(p => ({ lat: p.lat, lon: p.lon })))).length, 500); n++;
+  const d3 = Fu.duenne(Array.from({ length: 1001 }, (_, i) => ({ lat: i, lon: 0 })), 400); ok(d3.length <= 401 && d3[0].lat === 0 && d3[d3.length - 1].lat === 1000, 'ausdünnen behält Anfang und Ende');
+  ok(Fu.duenne([{ lat: 1, lon: 1 }], 400).length === 1, 'kurze Strecke bleibt');
+  A.deepStrictEqual(['Tour 10', 'Tour 2', 'Tour 1'].sort(Fu.natuerlich), ['Tour 1', 'Tour 2', 'Tour 10']); n++;
+  const bt = Fu.buchtour(Fu.lies(gpx(trk('Eins', rampe)), 'tour1.gpx'), 4, 'ordner/tour1.gpx');
+  A.strictEqual(bt.meta.id, 't4'); A.strictEqual(bt.meta.ord, 4); A.strictEqual(bt.meta.f, 'tour1.gpx'); ok(bt.meta.bb[0] === 47.5 && bt.pts.length === 60 && bt.meta.n === 60, 'Buchtour'); n += 3;
+
+  // --- Abgleich: Treffer, Fast-Treffer, Richtung, Teilstück, Abkürzung ---
+  const BUCH = strecke(10000, 330, { noise: 0 });
+  let r = folgt(BUCH, strecke(10000, 1500, { noise: 8 }));
+  ok(r.folgt && r.buch > .95 && r.tour > .95 && r.wert > .9, 'gleiche Strecke, dichter und mit GPS-Rauschen: folgt (' + JSON.stringify(r) + ')');
+  ok(folgt(BUCH, umk(strecke(10000, 1500, { noise: 8 }))).folgt, 'Gegenrichtung zählt');
+  ok(folgt(umk(BUCH), strecke(10000, 900, { noise: 5 })).folgt, 'Buch rückwärts, Tour vorwärts zählt');
+  // Querversatz: 70 m daneben folgt, 100 m daneben nicht (die Tour liegt dann nicht mehr auf der Buchstrecke: 80 m), 130 m auch nicht
+  const GER = strecke(10000, 330, { amp: 0 });      // (fast) gerade, damit der Querversatz dem Abstand entspricht
+  ok(folgt(GER, strecke(10000, 900, { amp: 0, dy: 70 })).folgt, '70 m Querversatz folgt');
+  r = folgt(GER, strecke(10000, 900, { amp: 0, dy: 100 })); ok(r.buch > .95 && r.tour === 0 && !r.folgt, '100 m Querversatz: Buch ist abgedeckt (120 m), die Tour liegt aber nicht auf dem Buch (80 m): ' + JSON.stringify(r));
+  ok(!folgt(GER, strecke(10000, 900, { amp: 0, dy: 130 })).folgt, '130 m Querversatz folgt nicht');
+  // Anteil der Buchstrecke: die Tour geht nur den ersten Teil
+  const T10 = strecke(10000, 1500, { noise: 5 });
+  ok(folgt(BUCH, teil(T10, 0, .8)).folgt, '80 % der Buchstrecke genügen'); ok(!folgt(BUCH, teil(T10, 0, .6)).folgt, '60 % genügen nicht');
+  ok(folgt(BUCH, teil(T10, .2, 1)).folgt && folgt(BUCH, teil(T10, .15, .9)).folgt, 'Abkürzung am Anfang oder Ende (80 %, 75 %): folgt');
+  ok(!folgt(BUCH, teil(T10, 0, .3)).folgt, 'Teilstück (30 %): folgt nicht');
+  // Abkürzung mitten in der Strecke: die Tour lässt 20 % aus (stark geschwungen) und geht stattdessen gerade
+  const BUCH3 = strecke(10000, 330, { amp: .3 }), T3 = strecke(10000, 1500, { amp: .3, noise: 5 }), i40 = Math.round(.3 * 329), i60 = Math.round(.5 * 329);
+  const gerade = Array.from({ length: 80 }, (_, i) => ({ lat: BUCH3[i40].lat + (BUCH3[i60].lat - BUCH3[i40].lat) * i / 79, lon: BUCH3[i40].lon + (BUCH3[i60].lon - BUCH3[i40].lon) * i / 79 }));
+  r = folgt(BUCH3, [].concat(teil(T3, 0, .3), gerade, teil(T3, .5, 1))); ok(r.folgt && r.buch < .9 && r.buch >= .7, 'Abkürzung in der Mitte: folgt, Buch nicht ganz abgedeckt ' + JSON.stringify(r));
+  ok(!folgt(BUCH3, [].concat(teil(T3, 0, .2), strecke(10000, 100, { amp: 0, dy: 4000 }).slice(10, 70), teil(T3, .6, 1))).folgt, 'große Auslassung (40 %): folgt nicht');
+  // die Tour ist viel länger als die Buchstrecke: 50 % der Tour auf dem Buch genügen, 30 % nicht (Anteil der Tour)
+  const Lbuch = strecke(4000, 200, { amp: 0.05 });
+  const auf = (anteil) => { const mit = Fu.duenne(strecke(4000, 800, { amp: 0.05, noise: 3 }), 800), k = Math.round(mit.length * (1 - anteil) / anteil); return mit.concat(Array.from({ length: k }, (_, i) => ({ lat: LA0 + 0.3 + i * 5e-4, lon: LO0 + 0.3 }))); };
+  ok(folgt(Lbuch, auf(.5)).folgt, 'Tour: 50 % auf dem Buch genügen'); ok(!folgt(Lbuch, auf(.3)).folgt, 'Tour: 30 % auf dem Buch genügen nicht');
+  r = folgt(Lbuch, auf(.5)); ok(Math.abs(r.tour - .5) < .06 && r.buch > .95, 'Anteile gemessen: ' + JSON.stringify(r));
+  // Entfernte Strecke: nichts
+  ok(!folgt(BUCH, strecke(10000, 900, { dy: 5000 })).folgt && !folgt(BUCH, strecke(10000, 900, { dx: 20000 })).folgt, 'ganz woanders: folgt nicht');
+  // Grenzen der Regel gegen die Werte des Vorbilds (0,7 · 120 m / 0,4 · 80 m)
+  A.deepStrictEqual([Fu.R_BUCH, Fu.ANTEIL_BUCH, Fu.R_TOUR, Fu.ANTEIL_TOUR], [120, .7, 80, .4]); n++;
+  // leere und kaputte Eingaben
+  A.deepStrictEqual(Fu.vergleiche(null, prep(T10)), { buch: 0, tour: 0, folgt: false, wert: 0 }); A.deepStrictEqual(Fu.vergleiche(buchP(BUCH), null), { buch: 0, tour: 0, folgt: false, wert: 0 });
+  ok(!Fu.vergleiche(buchP([]), prep(T10)).folgt && !Fu.vergleiche(buchP(BUCH), prep([])).folgt && !Fu.vergleiche(buchP(BUCH), prep(T10.slice(0, 5))).folgt, 'leere Strecke, weniger als 6 Tourpunkte: folgt nicht');
+  ok(!Fu.vergleiche(buchP(BUCH.slice(0, 1)), prep(T10)).folgt, 'ein einzelner Buchpunkt: folgt nicht'); n += 2;
+  // Ein Punkt weit weg vom Rest und sehr lange Strecken ohne Zwischenpunkte stören das Raster nicht
+  ok(folgt(BUCH, T10.concat([{ lat: 10, lon: 10 }])).folgt, 'ein ferner Ausreißerpunkt am Ende ändert nichts Wesentliches');
+  ok(folgt([{ lat: LA0, lon: LO0 }, { lat: LA0, lon: LO0 + 0.09 }, { lat: LA0, lon: LO0 + 0.18 }], Array.from({ length: 30 }, (_, i) => ({ lat: LA0, lon: LO0 + i * 0.0062 }))).folgt, 'lange gerade Strecke (12 km Abstand der Punkte) wird richtig gerastert');
+  // Umrandung
+  ok(Fu.nahe([47, 11, 47.1, 11.1], [47.11, 11.11, 47.2, 11.2]) && !Fu.nahe([47, 11, 47.1, 11.1], [47.13, 11.0, 47.2, 11.2]) && !Fu.nahe([47, 11, 47.1, 11.1], [47, 11.14, 47.1, 11.2]) && !Fu.nahe(null, [1, 1, 2, 2]), 'Vorfilter: 0,02° Breite, 0,03° Länge'); n++;
+
+  // --- Bücher, Touren, Zwischenspeicher ---
+  const mkBuch = (id, name, strecken) => ({ id, name, touren: strecken.map((s, k) => ({ id: 't' + k, ord: k, title: name + ' ' + k, km: Math.round(Fu.laenge(s)) / 1000, up: 100 + k, bb: Fu.umrandung(Fu.duenne(s, Fu.MAX_BUCH)), n: s.length })) });
+  const speicher = { };
+  const mkLauf = (buecher, touren, pts, extra) => {
+    const zaehler = { punkte: 0, buch: 0, ys: 0 };
+    return { zaehler, o: Object.assign({ buecher, touren, cache: speicher.c, ladePunkte: async id => { zaehler.punkte++; return pts[id] || []; },
+      ladeBuch: async id => { zaehler.buch++; const b = buecher.find(x => x.id === id); return Object.fromEntries(b.touren.map((bt, k) => [bt.id, speicher.b[id][k]])); }, pause: async () => { zaehler.ys++; } }, extra || {}) };
+  };
+  const BA = [strecke(8000, 250, { dy: 0 }), strecke(6000, 200, { dx: 12000, dy: 3000 }), strecke(5000, 160, { dx: -30000 })];      // drei Buchtouren, die dritte weit weg
+  const BB = [strecke(8000, 250, { dy: 40, amp: .12 })];      // ein zweites Buch mit fast derselben Strecke wie BA[0]
+  speicher.b = { A: BA, B: BB };
+  const buecher = [mkBuch('A', 'Buch A', BA), mkBuch('B', 'Buch B', BB)];
+  const mkTour = (id, start, p, extra) => Object.assign({ id, name: id, start, dist: Fu.laenge(p), bbox: Fu.umrandung(p), status: 'done', hidden: false }, extra);
+  const pts = {};
+  const tA0 = strecke(8000, 900, { noise: 6 }), tA0b = strecke(8000, 700, { noise: 6 }), tA1 = umk(strecke(6000, 700, { dx: 12000, dy: 3000, noise: 6 }));
+  pts.t1 = tA0; pts.t2 = tA0b; pts.t3 = tA1; pts.t4 = strecke(3000, 200, { dx: 100000 });      // t4 weit weg von allem
+  pts.t5 = tA0; pts.t6 = tA0;                            // t5 versteckt, t6 geplant
+  const touren = [mkTour('t1', day(2025, 6, 1), tA0), mkTour('t2', day(2026, 3, 1), tA0b), mkTour('t3', day(2024, 5, 5), tA1), mkTour('t4', day(2026, 1, 1), pts.t4),
+    mkTour('t5', day(2026, 8, 1), tA0, { hidden: true }), mkTour('t6', day(2026, 9, 1), tA0, { status: 'planned' }), mkTour('t7', day(2026, 9, 2), tA0, { bbox: null })];      // t7 ohne Umrandung
+  ok(!Fu.zaehlt(touren[4]) && !Fu.zaehlt(touren[5]) && !Fu.zaehlt(touren[6]) && Fu.zaehlt(touren[0]), 'versteckt, geplant und ohne Umrandung zählen nicht');
+  let L = mkLauf(buecher, touren, pts); let e = await Fu.rechne(L.o); speicher.c = e.cache;
+  const sA = e.stand.buecher.A, sB = e.stand.buecher.B;
+  A.deepStrictEqual(sA.touren.t0, ['t2', 't1']); n++;                                  // zwei Touren folgen Buchtour 0: die jüngste zuerst
+  A.deepStrictEqual(sA.touren.t1, ['t3']); A.deepStrictEqual(sA.touren.t2, []); n += 2;   // Gegenrichtung zählt; weit entfernt: offen
+  A.deepStrictEqual([sA.fertig, sA.gesamt, sB.fertig, sB.gesamt], [2, 3, 1, 1]); n++;   // dieselbe Tour zählt in zwei Büchern (Buch B ist 40 m daneben)
+  A.deepStrictEqual(sB.touren.t0, ['t2', 't1']); n++;
+  A.deepStrictEqual([e.stand.fertig, e.stand.gesamt, e.stand.fehlendePaare], [3, 4, 0]); n++;
+  ok(e.berechnet > 0 && e.berechnet <= 12 && L.zaehler.punkte === 3, 'nur nahe Touren werden geladen und verglichen: ' + e.berechnet + ' Vergleiche, ' + L.zaehler.punkte + ' Touren geladen (t4, t5, t6, t7 nicht)');
+  ok(!e.abgebrochen && e.cache.v === Fu.VERSION, 'Zwischenspeicher mit Version');
+  // zweiter Lauf: nichts mehr zu tun, keine Punkte geladen
+  const c1 = JSON.stringify(speicher.c); L = mkLauf(buecher, touren, pts, { cache: JSON.parse(c1) }); e = await Fu.rechne(L.o);
+  A.deepStrictEqual([e.berechnet, e.geladen, L.zaehler.punkte, L.zaehler.buch], [0, 0, 0, 0]); A.strictEqual(e.stand.fertig, 3); n += 2;
+  A.strictEqual(JSON.stringify(e.cache), c1); n++;
+  // Stand allein aus dem Zwischenspeicher, ohne Rechnen
+  A.deepStrictEqual(Fu.stand(buecher, touren, JSON.parse(c1)).buecher.A.touren.t0, ['t2', 't1']); A.strictEqual(Fu.stand(buecher, touren, JSON.parse(c1)).fehlendePaare, 0); n += 2;
+  ok(Fu.stand(buecher, touren, null).fehlendePaare > 0 && Fu.stand(buecher, touren, { v: 0, t: {} }).fehlendePaare > 0 && Fu.stand([], [], null).gesamt === 0, 'ohne oder mit alter Version: alles offen');
+  // neue Tour: nur sie wird geladen; geänderte Strecke (andere Kennung): wird neu verglichen; neues Buch: nur dessen Vergleiche
+  pts.t8 = strecke(6000, 600, { dx: 12000, dy: 3000, noise: 4 }); const t8 = mkTour('t8', day(2026, 10, 1), pts.t8), t8s = touren.concat([t8]);
+  L = mkLauf(buecher, t8s, pts, { cache: JSON.parse(c1) }); e = await Fu.rechne(L.o);
+  A.deepStrictEqual([L.zaehler.punkte, e.geladen], [1, 1]); A.deepStrictEqual(e.stand.buecher.A.touren.t1, ['t8', 't3']); n += 2;
+  const cg = JSON.stringify(e.cache), geaendert = t8s.map(t => t.id === 't1' ? Object.assign({}, t, { dist: t.dist + 800 }) : t);
+  L = mkLauf(buecher, geaendert, pts, { cache: JSON.parse(cg) }); e = await Fu.rechne(L.o); A.deepStrictEqual([L.zaehler.punkte, e.berechnet > 0], [1, true]); n++;
+  const BC = [strecke(8000, 200, { dy: 0, amp: .12 }), strecke(3000, 100, { dx: 50000 })]; speicher.b.C = BC; const buecher3 = buecher.concat([mkBuch('C', 'Buch C', BC)]);
+  L = mkLauf(buecher3, t8s, pts, { cache: JSON.parse(cg) }); e = await Fu.rechne(L.o);
+  A.deepStrictEqual(e.stand.buecher.C.touren.t0.slice().sort(), ['t1', 't2'].sort()); ok(e.berechnet <= 4 && L.zaehler.buch === 1, 'neues Buch: nur dessen Vergleiche (' + e.berechnet + '), nur sein Buch geladen (' + L.zaehler.buch + ')'); n++;
+  // Bücher und Touren verschwinden: aufräumen
+  L = mkLauf([buecher[0]], touren.slice(0, 2), pts, { cache: JSON.parse(JSON.stringify(e.cache)) }); e = await Fu.rechne(L.o);
+  ok(Object.keys(e.cache.t).every(k => ['t1', 't2'].includes(k)) && Object.values(e.cache.t).every(x => Object.keys(x.b).every(k => k === 'A')), 'Einträge gelöschter Touren und Bücher werden entfernt');
+  // Abbrechen und Blöcke
+  L = mkLauf(buecher, touren, pts, { cache: null, ms: -1, abbrechen: () => L.zaehler.ys >= 2 }); e = await Fu.rechne(L.o);
+  ok(e.abgebrochen && L.zaehler.ys >= 2, 'Abbruch nach zwei Blöcken');
+  L = mkLauf(buecher, touren, pts, { cache: e.cache, ms: -1 }); e = await Fu.rechne(L.o); ok(!e.abgebrochen && e.stand.fertig === 3 && e.stand.fehlendePaare === 0, 'nach dem Abbruch genügt ein weiterer Lauf: nichts geht verloren');
+  let fort = [], teile = 0; L = mkLauf(buecher, touren, pts, { cache: null, ms: -1, fortschritt: a => fort.push(a), teil: () => teile++ }); await Fu.rechne(L.o);
+  ok(fort.length > 1 && fort.every((x, i) => i === 0 || x >= fort[i - 1]) && fort[fort.length - 1] === 1 && L.zaehler.ys > 0, 'Fortschritt steigt bis 1, die Pause wird genutzt');
+  // Fehler beim Laden einer Tour: sie gilt als nicht folgend, der Rest läuft weiter
+  L = mkLauf(buecher, touren, pts, { cache: null }); L.o.ladePunkte = async id => { if (id === 't1') throw new Error('weg'); return pts[id]; }; e = await Fu.rechne(L.o);
+  A.deepStrictEqual(e.stand.buecher.A.touren.t0, ['t2']); n++;
+  // leere Eingaben
+  e = await Fu.rechne({ buecher: [], touren: [], ladePunkte: async () => [], ladeBuch: async () => ({}) }); A.deepStrictEqual([e.berechnet, e.stand.gesamt, e.stand.fertig], [0, 0, 0]); n++;
+  e = await Fu.rechne({ buecher, touren: [], ladePunkte: async () => [], ladeBuch: async () => ({}) }); A.deepStrictEqual([e.berechnet, e.stand.gesamt, e.stand.fertig], [0, 4, 0]); n++;
+  e = await Fu.rechne({ buecher: [{ id: 'X', name: 'leer', touren: [] }], touren, ladePunkte: async () => [], ladeBuch: async () => ({}) }); A.deepStrictEqual([e.stand.gesamt, Fu.prozent(0, 0)], [0, 0]); n++;
+  e = await Fu.rechne({ buecher, touren, ladePunkte: async () => [], ladeBuch: async () => null }); A.strictEqual(e.stand.fertig, 0); n++;      // fehlende Daten: nichts gewandert, kein Absturz
+  A.strictEqual(Fu.sig(touren[0]), Fu.sig(Object.assign({}, touren[0]))); ok(Fu.sig(touren[0]) !== Fu.sig(Object.assign({}, touren[0], { dist: touren[0].dist + 5 })) && Fu.sig(touren[0]) !== Fu.sig(Object.assign({}, touren[0], { start: 1 })), 'Kennung ändert sich mit Strecke und Beginn'); n++;
+
+  // --- Eine Tour gegen alle Bücher (Tourseite, Namensvorschlag) ---
+  const lb = async id => Object.fromEntries(buecher.find(x => x.id === id).touren.map((b, k) => [b.id, speicher.b[id][k]]));
+  let ft = await Fu.fuerTour(touren[0], pts.t1, buecher, lb); A.deepStrictEqual(ft.map(x => [x.buchId, x.id]).sort(), [['A', 't0'], ['B', 't0']]); ok(ft[0].wert >= ft[1].wert && ft[0].title && ft[0].buch, 'Treffer mit Titel und Buch, der beste zuerst'); n++;
+  A.deepStrictEqual(await Fu.fuerTour(touren[3], pts.t4, buecher, lb), []); A.deepStrictEqual(await Fu.fuerTour(null, pts.t1, buecher, lb), []); A.deepStrictEqual(await Fu.fuerTour(touren[0], [], buecher, lb), []); A.deepStrictEqual(await Fu.fuerTour(touren[5], pts.t1, buecher, lb), []); n += 4;
+  ok((await Fu.fuerTour(touren[0], pts.t1, buecher, lb, 1)).length === 1, 'höchstens so viele Treffer wie verlangt');
+  let geladen = 0; await Fu.fuerTour(touren[3], pts.t4, buecher, async id => { geladen++; return lb(id); }); A.strictEqual(geladen, 0); n++;      // weit weg: kein Buch wird geladen
+
+  // --- Anzeige: Filter, Suche, Reihenfolge ---
+  const st = Fu.stand(buecher, touren, speicher.c), ans = (sel) => Fu.ansicht(buecher, st, sel);
+  let v = ans(); A.deepStrictEqual(v.map(x => [x.buch.id, x.touren.length, x.fertig, x.gesamt]), [['A', 3, 2, 3], ['B', 1, 1, 1]]); n++;
+  v = ans({ filter: 'offen' }); A.deepStrictEqual(v.map(x => [x.buch.id, x.touren.map(t => t.id)]), [['A', ['t2']]]); n++;        // Buch B hat nichts Offenes: entfällt; die Zahlen bleiben die des ganzen Buchs
+  A.deepStrictEqual([v[0].fertig, v[0].gesamt], [2, 3]); n++;
+  v = ans({ filter: 'gewandert' }); A.deepStrictEqual(v.map(x => [x.buch.id, x.touren.map(t => t.id)]), [['A', ['t0', 't1']], ['B', ['t0']]]); n++;
+  v = ans({ suche: 'buch b' }); A.deepStrictEqual(v.map(x => x.buch.id), ['B']); n++;                                                  // Buchname trifft
+  v = ans({ suche: 'a 2' }); A.deepStrictEqual(v.map(x => [x.buch.id, x.touren.map(t => t.id)]), [['A', ['t2']]]); n++;                // Titel trifft
+  v = ans({ suche: 'BUCH A', filter: 'offen' }); A.deepStrictEqual(v[0].touren.map(t => t.id), ['t2']); n++;
+  A.deepStrictEqual(ans({ suche: 'gibtesnicht' }), []); A.deepStrictEqual(Fu.ansicht([], null, {}), []); n += 2;
+  const lg = Fu.ansicht(buecher, st, { sort: 'laenge' })[0].touren.map(t => t.id); A.deepStrictEqual(lg, ['t2', 't1', 't0']); n++;           // 5 km, 6 km, 8 km
+  A.deepStrictEqual(Fu.ansicht(buecher, st, { sort: 'buch' })[0].touren.map(t => t.id), ['t0', 't1', 't2']); n++;
+  A.deepStrictEqual(Fu.ansicht([{ id: 'Z', name: 'Leer', touren: [] }], null, {}).map(x => [x.gesamt, x.fertig]), [[0, 0]]); n++;      // leeres Buch ohne Stand bleibt sichtbar
+  A.deepStrictEqual([Fu.prozent(12, 60), Fu.prozent(1, 3), Fu.prozent(2, 3), Fu.prozent(3, 3), Fu.prozent(0, 5)], [20, 33, 67, 100, 0]); n++;
+
+  // --- Leistung: 800 Touren × 300 Buchtouren (6 Bücher à 50); gestreut über vier Regionen und – ungünstigster Fall – alle im selben Gebiet (alle Umrandungen überlappen) ---
+  const leistung = async (REG, sp, name, grenze) => {
+    const buchGross = [], ptsGross = {}, bp = {};
+    for (let b = 0; b < 6; b++) {
+      const reg = REG[b % REG.length], ss = [];
+      for (let k = 0; k < 50; k++) { const s = strecke(5000 + frnd() * 9000, 300 + Math.floor(frnd() * 100), { amp: .06 + frnd() * .1, ph: frnd() * 6 }); const dla = reg[0] - LA0 + (frnd() - .5) * sp[0], dlo = reg[1] - LO0 + (frnd() - .5) * sp[1]; ss.push(s.map(p => ({ lat: p.lat + dla, lon: p.lon + dlo, ele: p.ele }))); }
+      bp['G' + b] = ss; buchGross.push(mkBuch('G' + b, 'Buch ' + b, ss));
+    }
+    const tg = [];
+    for (let i = 0; i < 800; i++) {
+      let p;
+      if (i % 4 === 0) { const j = i / 4, b = j % 6, k = Math.floor(j / 6) % 50, s = bp['G' + b][k]; p = Fu.duenne(s, 2500).map(q => ({ lat: q.lat + (frnd() - .5) * 2e-4, lon: q.lon + (frnd() - .5) * 3e-4, ele: q.ele })); if (i % 8 === 0) p = umk(p); while (p.length < 1800) p = p.concat(p.slice(-50)); }
+      else { const reg = REG[i % REG.length], s = strecke(4000 + frnd() * 12000, 1500 + Math.floor(frnd() * 1500), { amp: .05 + frnd() * .1, ph: frnd() * 6 }); const dla = reg[0] - LA0 + (frnd() - .5) * sp[0], dlo = reg[1] - LO0 + (frnd() - .5) * sp[1]; p = s.map(q => ({ lat: q.lat + dla, lon: q.lon + dlo, ele: q.ele })); }
+      ptsGross['g' + i] = p; tg.push(mkTour('g' + i, day(2020, 0, 1) + i * 86400000 * 2, p));
+    }
+    let yields = 0; const z0 = Date.now();
+    const gross = await Fu.rechne({ buecher: buchGross, touren: tg, cache: null, ladePunkte: async id => ptsGross[id], ladeBuch: async id => Object.fromEntries(bp[id].map((s, k) => ['t' + k, s])), pause: async () => { yields++; } });
+    const ms = Date.now() - z0;
+    ok(gross.stand.fertig >= 150 && gross.stand.fertig <= 300 && gross.stand.fehlendePaare === 0, name + ': ' + gross.stand.fertig + ' von ' + gross.stand.gesamt + ' gewandert');
+    ok(ms < grenze, name + ': 800 Touren × 300 Buchtouren in ' + ms + ' ms (' + gross.berechnet + ' Vergleiche, ' + gross.geladen + ' Touren geladen, ' + yields + ' Pausen)');
+    const kb = Math.round(JSON.stringify(gross.cache).length / 1024), z2 = Date.now();
+    const g2 = await Fu.rechne({ buecher: buchGross, touren: tg, cache: JSON.parse(JSON.stringify(gross.cache)), ladePunkte: async () => { throw new Error('darf nicht laden'); }, ladeBuch: async () => { throw new Error('darf nicht laden'); } });
+    ok(g2.berechnet === 0 && Date.now() - z2 < 3000 && g2.stand.fertig === gross.stand.fertig, name + ': zweiter Lauf nur aus dem Zwischenspeicher: ' + (Date.now() - z2) + ' ms; Zwischenspeicher ' + kb + ' KB');
+    if (process.env.FUEHRER_MESSUNG) console.log('MESSUNG ' + name + ': ' + ms + ' ms, ' + gross.berechnet + ' Vergleiche, ' + gross.geladen + ' Touren geladen, ' + yields + ' Pausen, Zwischenspeicher ' + kb + ' KB, zweiter Lauf ' + (Date.now() - z2) + ' ms, gewandert ' + gross.stand.fertig + '/' + gross.stand.gesamt);
+  };
+  await leistung([[28.0, -15.6], [47.5, 11.2], [50.1, 8.4], [43.2, 6.3]], [0.3, 0.4], 'gestreut', 20000);
+  await leistung([[47.5, 11.2]], [0.08, 0.1], 'ein Gebiet (ungünstigster Fall)', 30000);
+})().then(() => { console.log('OK (' + n + ' Prüfungen)'); }, e => { console.error(e); process.exit(1); });
