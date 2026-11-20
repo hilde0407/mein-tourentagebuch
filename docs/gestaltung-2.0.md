@@ -250,3 +250,20 @@ und im leeren Zustand („Buch anlegen“). Titelbilder wählt der Mensch selbst
 - `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest) – auch für die neuen Abschnitte und Blätter (`neue_layout`).
 - Neue Seiten und Blätter kommen in die Gestaltungsprüfung (`layout_21` als Muster) und in `audit_kontrast.py`.
 - `python3 tests/audit_kontrast.py --fail` – Kontrast aller Knöpfe, Felder und Texte in Hell und Dunkel (4,5 : 1; große Schrift 3 : 1).
+
+## PDF und Senden (2.5.0)
+
+**PDF-Seiten** (`js/v-pdf.js`) sind gezeichnete A4-Seiten (1240 × 1754 px): ein 96 px hohes Petrolband mit der Wortmarke oben, darunter Papierweiß; Titel in der Überschriftschrift (76 px, bei langen Namen verkleinert, dann erst gekürzt),
+Kennzahlen als ruhige Reihe mit großer Zahl und kleiner Beschriftung, Streckenskizze und Höhenprofil in den App-Farben, Fotos im Raster ohne Rahmen. Unten steht „Mein Tourentagebuch · Datum“ und „Seite x von n“. Was nicht bekannt ist, wird weggelassen, nie mit Platzhalter gefüllt.
+
+**Knöpfe:** „Als PDF“ ist im Tourmenü eine normale Zeile (Symbol `file`) in der Gruppe „Ansehen und teilen“, im Jahresrückblick ein zweiter, **nicht gelber** Knopf unter „Als Bild teilen“ (`#jahr-pdf`) mit dem Schalter „Mit Foto je Tour“ (`#jahr-pdf-fotos`). Gelb bleibt der Hauptaktion. „An Meine Touren senden“ ist im Tourmenü eine Zeile mit dem Symbol `server`
+(`#mt-senden-tour`); „Touren senden …“ und der Schalter „Neue Aufzeichnungen automatisch senden“ stehen im Blatt „Meine Touren“ unter den Zahlen.
+
+**Blätter:**
+- Rückfrage vor dem Senden (`#send-frage`): Tourname fett, Datum · Strecke · Aufstieg leise, der Server im Satz; „Abbrechen“ links, „Senden“ als Hauptknopf (gelb) rechts.
+- Auswahl (`#send-auswahl`): Zeilen mit Kontrollkästchen (`.send-row`), Zähler „x von y ausgewählt“, „Alle markieren“ und „Keine“ als kleine Knöpfe; der Senden-Knopf nennt die Zahl („3 Touren senden“) und ist leer ausgegraut.
+- Erklärung für ein Konto „nur ansehen“ (`#send-grund`): Satz in Worten, ein Knopf zu „Touren importieren“, OK. Nie nur eine Farbe oder ein stilles Scheitern.
+- Fortschritt: das gemeinsame Fortschrittsblatt (`PhotoSources.progress`) mit Hinweis „Bitte die App geöffnet lassen …“ und „Abbrechen“ bei längeren Vorgängen.
+- Ergebnis (`#send-ergebnis`) und „PDF gespeichert“ (`#pdf-fertig`): ein Satz, der sagt, was geschah; „Teilen“ ist zweitrangig, OK/Fertig der Hauptknopf.
+
+Neue Blätter und der Jahresrückblick sind in `blaetter()` (Layout bei 360/390/430 px und 130 % Schrift) und in `audit_kontrast.py` (Hell und Dunkel) aufgenommen.

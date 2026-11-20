@@ -931,6 +931,64 @@ def senden(pg):
     if new_: pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i); Tours.invalidate(); }", new_)      # was „Aus Meine Touren holen“ aus dem Beispielserver mitgebracht hat
 
 
+def blaetter_setup(pg):
+    """2.5.0: Touren eines Jahres (mit Notiz) und ein nachgestellter Server für die neuen Blätter. Gibt { tour, jahr } zurück; aufräumen mit blaetter_ende."""
+    fx = mt_fixture(); pg.evaluate(MT_FAKE, fx)
+    return pg.evaluate("""async () => {
+      const mk = async (name, sport, t0, n, extra) => { const pts = Array.from({ length: n }, (_, i) => ({ lat: 47.5 + i * 0.0004, lon: 11.2 + Math.sin(i / 9) * 0.004, ele: 800 + 60 * Math.sin(i / 7), t: t0 + i * 30000 }));
+        const t = (await Tours.add({ name, sport, pts, src: 'file' })).tour; Object.assign(t, extra || {}); await Tours.save(t); return t.id; };
+      const ids = [await mk('Blatt Hüttenrunde mit einem recht langen Namen am Wank', 'hike', Date.UTC(2023, 4, 6, 8), 120, { note: 'Schöner Tag, Quellwasser am Wegkreuz.', stars: 4 }), await mk('Blatt Radrunde', 'bike', Date.UTC(2023, 5, 17, 8), 90), await mk('Blatt Abendlauf', 'run', Date.UTC(2023, 8, 2, 17), 60)];
+      return { tour: ids[0], ids, jahr: 2023 }; }""")
+
+
+def blaetter_zustaende(pg, d):
+    """Öffnet nacheinander die neuen Blätter (PDF und Senden) und gibt jeweils eine Bezeichnung zurück; danach sind sie wieder zu. Der Aufrufer prüft, was er will (Layout, Kontrast)."""
+    zu = lambda: (pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_function("() => !document.querySelector('.sheet-back')"))
+    toene = lambda: pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000)
+    konto = lambda r, k: pg.evaluate("async ([r, k]) => { await DB.kvSet('mt', { base: 'https://mt.test', name: 'Tagebuch', role: r, token: k, since: Date.now() }); window.__mt.sessions.add(k); }", [r, k])
+    route = lambda h: (pg.evaluate("h => { if (location.hash === h) return Nav.render(); location.hash = h; }", h), pg.wait_for_selector(".tourp h1" if "tour" in h else ".view, #view"), pg.wait_for_timeout(300))
+    konto("user", "SITZUNG-SCHREIBER-BEISPIEL")
+    route("#/tour/" + d["tour"]); pg.click("button[aria-label=Aktionen]"); pg.wait_for_selector("#mt-senden-tour"); yield "Tour, Menü mit Als PDF und Senden"; zu()
+    pg.evaluate("id => { window.__d = DB.get('tours', id).then(t => Senden.dialog(t)); }", d["tour"]); pg.wait_for_selector("#send-ja"); yield "Senden, Rückfrage"
+    pg.click("#send-nein"); zu()
+    pg.evaluate("() => { PhotoSources.progress('An Meine Touren senden', upd => new Promise(r => { upd(3, 12, 'Blatt Hüttenrunde'); window.__pe = r; }), { cancel: () => {}, note: 'Bitte die App geöffnet lassen, bis das Senden fertig ist.' }); }")
+    pg.wait_for_selector("#prog-stop"); yield "Senden, Fortschritt mit Abbrechen"; pg.evaluate("window.__pe()"); zu()
+    pg.evaluate("() => { window.__r = Senden.auswahl(() => {}); }"); pg.wait_for_selector("#send-liste .send-row")
+    yield "Senden, Auswahl leer"
+    pg.click("#send-alle"); yield "Senden, Auswahl alle markiert"; zu()
+    pg.evaluate("Senden.erklaeren(SendenCalc.pruefen({ timed: true, start: 1, status: 'done' }, { base: 'x', token: 'k', role: 'viewer' }))"); pg.wait_for_selector("#send-grund"); yield "Senden, Betrachter-Erklärung"; zu()
+    pg.evaluate("() => { window.__r = Senden.mitFortschritt({ base: 'https://mt.test', token: 'SITZUNG-SCHREIBER-BEISPIEL', role: 'user', name: 'x' }, [], () => {}); }")
+    pg.wait_for_selector("#send-ergebnis-t"); yield "Senden, Ergebnis"; zu()
+    route("#/import"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-senden"); yield "Meine Touren, verbunden (Schreibkonto)"; zu()
+    konto("viewer", "SITZUNG-BETRACHTER-BEISPIEL"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-viewer"); yield "Meine Touren, verbunden (nur ansehen)"; zu()
+    pg.evaluate("async id => { PdfUI.tour(await DB.get('tours', id)); }", d["tour"]); pg.wait_for_selector("#pdf-fertig", timeout=60000); yield "PDF, fertig (Speichern und Teilen)"; zu()
+    pg.evaluate("() => { PhotoSources.progress('Jahresrückblick 2023 als PDF', upd => new Promise(r => { upd(7, 30, 'Seite 2 von 5'); window.__pe = r; }), { cancel: () => {}, note: 'Bitte die App geöffnet lassen.' }); }")
+    pg.wait_for_selector("#prog-stop"); yield "PDF, Fortschritt mit Abbrechen"; pg.evaluate("window.__pe()"); zu()
+    pg.evaluate("DB.kvSet('mt', null)")
+
+
+def blaetter_ende(pg, d):
+    pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
+    pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i); await DB.del('kv', 'mt'); Tours.invalidate(); }", d["ids"])
+
+
+def blaetter(pg):
+    """2.5.0: Layout der neuen Bedienelemente (Jahresrückblick „Als PDF“, Tourmenü, Blätter zum PDF und zum Senden) bei 360–430 px und 130 % Schrift."""
+    d = blaetter_setup(pg); bad = []
+    try:
+        bad += layout_check(pg, ["#/jahr/%d" % d["jahr"]])
+        pg.evaluate("location.hash = '#/jahr/%d'" % d["jahr"]); pg.wait_for_selector("#jahr-pdf"); pg.wait_for_selector("#jahr-pdf-fotos")
+        for w, fs in ((360, 100), (390, 100), (430, 100), (360, 130)):
+            pg.set_viewport_size({"width": w, "height": 800})
+            pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+            for lab in blaetter_zustaende(pg, d):
+                pg.wait_for_timeout(250)
+                for m in pg.evaluate(LAYOUT_JS): bad.append(f"{w} px, {fs} %, {lab}: {m}")
+        pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    finally: blaetter_ende(pg, d)
+    assert not bad, "Layout der neuen Blätter:\n" + "\n".join(sorted(set(bad))[:20])
+
+
 def alles(pg):
     """2.2.0, Punkt C: „Alles abgleichen“ – nur mit verbundenen Quellen, Reihenfolge, gespeicherte Einstellungen, gemeinsames Fortschrittsblatt, Abbruch, Fehler einer Quelle,
     Zusammenfassung, Zeile auf der Startseite, automatischer Abgleich (24 h, nie während einer Aufzeichnung, Vorgabe aus)."""
@@ -2339,6 +2397,7 @@ def main():
         alles_echt(pg)
         jahr_bad = jahr(pg)
         pdf(pg)
+        blaetter(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
 
