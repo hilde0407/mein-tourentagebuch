@@ -1382,6 +1382,192 @@ def fuehrer(pg):
     pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['guides', 'guideMatch']) await DB.del('kv', k); Buecher.coverMem = {}; }", vorher)
     return sorted(set(bad))
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------
+# 2.5.0 Als PDF: Tour (1–2 Seiten) und Jahr (Deckblatt, Zeile je Tour), Aufbau des PDF, Fotos, Abbruch, Teilen/Download
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------
+PDF_LANG = ("Früh los, oben Gämsen gesehen und ein Murmeltier direkt am Weg. Der Aufstieg über den Kramersteig war nass, aber gut zu gehen; "
+            "oben gab es Kaiserschmarrn auf der Hütte, der Wirt hat uns noch einen Schnaps ausgegeben. ") * 3
+PDF_FARBEN = [((120, 170, 225), (225, 235, 245), (70, 100, 90)), ((250, 190, 120), (255, 230, 190), (110, 80, 70)), ((90, 130, 190), (190, 210, 235), (60, 90, 80)),
+              ((200, 150, 190), (245, 220, 235), (90, 70, 90)), ((110, 190, 170), (220, 245, 235), (60, 100, 90)), ((230, 200, 110), (250, 240, 200), (100, 90, 60)),
+              ((140, 150, 200), (215, 220, 245), (70, 80, 110)), ((180, 210, 130), (235, 245, 210), (80, 110, 60)), ((100, 160, 210), (210, 235, 250), (60, 90, 110)),
+              ((220, 130, 110), (250, 215, 200), (110, 70, 60)), ((130, 200, 200), (215, 245, 245), (60, 100, 100))]
+_PDF_BILDER = {}
+
+def pdf_bild(i, hoch=False):
+    """Erfundenes Illustrationsfoto (Himmel, Sonne, Berge) als JPEG – kein echtes Foto, keine Personen."""
+    k = (i, hoch)
+    if k in _PDF_BILDER: return _PDF_BILDER[k]
+    import io, random
+    from PIL import Image, ImageDraw
+    w, h = (360, 480) if hoch else (480, 360)
+    top, bot, berg = PDF_FARBEN[i % len(PDF_FARBEN)]; rnd = random.Random(i)
+    im = Image.new("RGB", (w, h)); d = ImageDraw.Draw(im)
+    for y in range(h): f = y / h; d.line([(0, y), (w, y)], fill=tuple(int(top[c] + (bot[c] - top[c]) * f) for c in range(3)))
+    sx = int(w * (0.15 + 0.6 * rnd.random())); d.ellipse([sx, int(h * 0.1), sx + 54, int(h * 0.1) + 54], fill=(255, 245, 200))
+    for ebene in range(3):
+        c = tuple(int(berg[q] * (0.7 + 0.15 * ebene) + 40 * (2 - ebene)) % 256 for q in range(3)); pts = [(0, h)]
+        for x in range(0, w + 40, 40): pts.append((x, int(h * (0.45 + 0.12 * ebene) - rnd.random() * h * 0.22)))
+        pts.append((w, h)); d.polygon(pts, fill=c)
+    b = io.BytesIO(); im.save(b, "JPEG", quality=85); _PDF_BILDER[k] = b.getvalue(); return _PDF_BILDER[k]
+
+PDF_ROUTE_JS = """async ([name, note, nFotos, stars]) => {
+  const N = 420, t0 = Date.UTC(2026, 8, 21, 14, 13);
+  const pts = Array.from({ length: N }, (_, i) => { const a = i / (N - 1) * Math.PI * 2;
+    return { lat: 47.60 + 0.011 * Math.sin(a) + 0.004 * Math.sin(3 * a), lon: 11.20 + 0.019 * Math.cos(a) * (1 + 0.25 * Math.sin(2 * a)), ele: 880 + 520 * Math.pow(Math.sin(Math.PI * i / (N - 1)), 1.2) + 14 * Math.sin(i / 9), t: t0 + i * 25000, hr: 112 + Math.round(26 * Math.sin(i / 40) + 18 * Math.sin(Math.PI * i / N)) }; });
+  const r = await Tours.add({ name, sport: 'hike', pts, src: 'file' }); const t = r.tour;
+  t.note = note; if (stars) Abgleich.sterneSetzen(t, stars); await Tours.save(t);
+  for (let k = 0; k < nFotos; k++) await DB.put('photos', { id: 'pdfph' + k, name: 'p' + k + '.jpg', ts: t0 + 120000 + k * 400000, w: k % 3 === 1 ? 360 : 480, h: k % 3 === 1 ? 480 : 360, src: 'galerie', tour: t.id, lat: pts[k * 30].lat, lon: pts[k * 30].lon });
+  return t.id; }"""
+
+PDF_JAHR_JS = """async ([year, n, mitFotos]) => {
+  const NAMEN = ['Hüttenrunde am Wank', 'Kramerspitz über den Kramersteig', 'Loisach-Radweg bis Eschenlohe', 'Feierabendrunde', 'Zugspitze durchs Reintal', 'Herzogstand und Heimgarten, Überschreitung mit Abstieg nach Walchensee und Rückfahrt mit dem Bus',
+    'Morgenlauf am See', 'Schneeschuh zur Wallgauer Alm', 'Skitour Brunstkogel', 'Partnachklamm'], SP = ['hike', 'hike', 'bike', 'run', 'hike', 'hike', 'run', 'hike', 'skitour', 'hike'];
+  const ids = [];
+  for (let i = 0; i < n; i++) {
+    const day = 1 + Math.floor(i * 360 / n), d0 = new Date(year, 0, day, 8 + (i % 6), (i * 7) % 60).getTime(), len = 30 + (i * 37) % 160, lat0 = 47.2 + (i % 13) * 0.02, lon0 = 11.0 + (i % 7) * 0.03;
+    const pts = Array.from({ length: len }, (_, k) => ({ lat: lat0 + k * (0.0004 + (i % 5) * 0.00006), lon: lon0 + 0.003 * Math.sin(k / 7 + i), ele: 700 + (i % 9) * 60 + 120 * Math.sin(Math.PI * k / len), t: d0 + k * 40000 }));
+    const t = (await Tours.add({ name: i === 0 ? NAMEN[5] : NAMEN[i % NAMEN.length] + (i >= 10 ? ' ' + (i + 1) : ''), sport: SP[i % SP.length], pts, src: 'file' })).tour;
+    ids.push(t.id);
+    if (mitFotos && i % 3 === 0) await DB.put('photos', { id: 'pdfjh' + i, name: 'j' + i + '.jpg', ts: d0 + 60000, w: 480, h: 360, src: 'galerie', tour: t.id });
+  }
+  Tours.invalidate(); return ids; }"""
+
+PDF_FANG = """() => { const c0 = window.MTApp.call; window.__cache = {}; window.__ticks = []; window.MTApp.call = (id, m, a) => { if (m === 'appendCache') { const o = JSON.parse(a); (window.__cache[o.name] = o.reset ? [] : (window.__cache[o.name] || [])).push(o.b64); } return c0.call(window.MTApp, id, m, a); }; }"""
+
+def pdf_bytes(pg, name):
+    import base64
+    ch = pg.evaluate("n => window.__cache[n] || null", name)
+    assert ch, "Das PDF wurde nicht an die Hülle übergeben: " + name
+    return b"".join(base64.b64decode(c) for c in ch)
+
+def pdf_pruefen(data, seiten, wo=""):
+    """Das PDF mit einem echten Werkzeug lesen: Kopf, Ende, Seitenzahl, Seitengröße (A4), ein Bild je Seite, Bilder lassen sich entpacken."""
+    import io
+    assert data.startswith(b"%PDF-1.4") and data.rstrip().endswith(b"%%EOF"), wo + ": Kopf/Ende"
+    assert data.count(b"/Subtype /Image") == seiten and data.count(b"/Filter /DCTDecode") == seiten, (wo, data.count(b"/Subtype /Image"))
+    from pypdf import PdfReader
+    r = PdfReader(io.BytesIO(data), strict=True)
+    assert len(r.pages) == seiten, (wo, len(r.pages))
+    bilder = []
+    for pgn in r.pages:
+        assert abs(float(pgn.mediabox.width) - 595.2) < 0.1 and abs(float(pgn.mediabox.height) - 841.92) < 0.1, pgn.mediabox
+        assert len(pgn.images) == 1, wo
+        im = pgn.images[0].image; assert im.size == (1240, 1754), im.size
+        bilder.append(im.convert("RGB"))
+    return r, bilder
+
+def pdf_anteil(im, box=None):
+    """Anteil der Pixel, die nicht Papierfarbe sind (so erkennt man gefüllte Flächen: Fotos, Diagramme)."""
+    from PIL import ImageChops, Image
+    c = im.crop(box) if box else im
+    d = ImageChops.difference(c, Image.new("RGB", c.size, (251, 252, 248))).convert("L").point(lambda v: 255 if v > 24 else 0)
+    return sum(1 for v in d.getdata() if v) / (c.size[0] * c.size[1])
+
+def pdf(pg, aus=None):
+    """2.5.0 Als PDF. aus: Ordner für Beispieldateien (PDF und PNG je Seite), sonst nichts schreiben."""
+    import os, subprocess, tempfile
+    from PIL import Image
+    zeigen = lambda data, name: aus and (os.makedirs(aus, exist_ok=True), open(os.path.join(aus, name), "wb").write(data))
+    pg.evaluate(PDF_FANG)
+    zaehl = {"thumb": 0, "foto": 0}
+    def thumb(r):
+        zaehl["thumb"] += 1; m = __import__("re").search(r"/thumb/(pdf(?:ph|jh)(\d+))\.jpg", r.request.url)
+        r.fulfill(status=200, body=pdf_bild(int(m.group(2)) if m else 0, bool(m and m.group(1).startswith("pdfph") and int(m.group(2)) % 3 == 1)), content_type="image/jpeg")
+    pg.route("**/thumb/pdf*", thumb)
+    pg.evaluate("() => { const f = PdfUI.foto; window.__fotoCalls = 0; PdfUI.foto = function () { window.__fotoCalls++; return f.apply(this, arguments); }; }")
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    bad = []
+    # ---- Tour ohne Fotos und ohne Notiz: eine Seite
+    tid = pg.evaluate(PDF_ROUTE_JS, ["Hüttenrunde am Wank mit Blick auf den See und das Wettersteingebirge", "", 0, 4])
+    go(pg, "#/tour/" + tid, "header.top button[aria-label=Aktionen]"); pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector(".sheet-back.on")
+    assert pg.get_by_text("Als PDF", exact=True).count() == 1, "Menüpunkt „Als PDF“"
+    pg.get_by_text("Als PDF", exact=True).click(); pg.wait_for_selector("#pdf-fertig", timeout=60000)
+    assert "Download/Tourentagebuch/Tour_Huettenrunde_am_Wank_mit_Blick_auf_den_See_und_das_Wetterst" in pg.inner_text("#pdf-ort") and pg.inner_text("#pdf-ort").endswith(".pdf")
+    sv = pg.evaluate("window.__saved"); assert sv["mime"] == "application/pdf" and sv["name"].endswith(".pdf") and sv["path"] == sv["name"], sv
+    d1 = pdf_bytes(pg, sv["name"]); r1, b1 = pdf_pruefen(d1, 1, "Tour ohne Fotos"); zeigen(d1, "tour-1-seite.pdf")
+    assert pdf_anteil(b1[0]) > 0.08, "Seite 1 ist nicht leer"
+    assert (r1.metadata.title or "").startswith("Hüttenrunde am Wank"), r1.metadata.title
+    assert pg.evaluate("window.__fotoCalls") == 0
+    zu(pg)
+    print("Tour-PDF ohne Fotos: 1 Seite,", len(d1) // 1024, "KB")
+    # ---- Tour mit Notiz und elf Fotos: zwei Seiten, neun Fotos
+    pg.evaluate("async ([id, n]) => { const t = await DB.get('tours', id); t.note = n; await Tours.save(t); for (let k = 0; k < 11; k++) await DB.put('photos', { id: 'pdfph' + k, name: 'p' + k + '.jpg', ts: t.start + 120000 + k * 90000, w: 480, h: 360, src: 'galerie', tour: id }); }", [tid, PDF_LANG])
+    zaehl["thumb"] = 0
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000)
+    sv = pg.evaluate("window.__saved"); d2 = pdf_bytes(pg, sv["name"]); r2, b2 = pdf_pruefen(d2, 2, "Tour mit Fotos"); zeigen(d2, "tour-2-seiten.pdf")
+    assert pg.evaluate("window.__fotoCalls") == 9 and zaehl["thumb"] == 9, (pg.evaluate("window.__fotoCalls"), zaehl)      # höchstens neun Fotos, gleichmäßig verteilt
+    assert pdf_anteil(b2[1], (90, 700, 1150, 1650)) > 0.5, "Fotoraster füllt die zweite Seite: %.2f" % pdf_anteil(b2[1], (90, 700, 1150, 1650))
+    assert len(d2) > len(d1) + 30000, (len(d1), len(d2))
+    zu(pg); print("Tour-PDF mit 9 Fotos und Notiz: 2 Seiten,", len(d2) // 1024, "KB")
+    # ---- Tour mit Notiz, ohne Fotos: eine Seite (Notiz passt); mit sehr langer Notiz: zwei Seiten, auf Seite 2 gekürzt
+    pg.evaluate("async id => { for (let k = 0; k < 11; k++) await DB.del('photos', 'pdfph' + k); const t = await DB.get('tours', id); t.note = 'Kurz und schön.'; await Tours.save(t); }", tid)
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000); d3 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); pdf_pruefen(d3, 1, "Tour mit kurzer Notiz"); zu(pg)
+    pg.evaluate("async ([id, n]) => { const t = await DB.get('tours', id); t.note = n.repeat(8); await Tours.save(t); }", [tid, PDF_LANG])
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000); d4 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); r4, b4 = pdf_pruefen(d4, 2, "Tour mit sehr langer Notiz"); zeigen(d4, "tour-lange-notiz.pdf"); zu(pg)
+    # ---- Tour ohne Höhen und ohne Zeit: keine Fehler, Profil entfällt
+    tid2 = pg.evaluate("""async () => { const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 47.0 + i * 0.0006, lon: 11.0 + 0.002 * Math.sin(i / 5), ele: null, t: null }));
+      return (await Tours.add({ name: 'Ohne Höhen und Zeit', sport: 'other', pts, src: 'file' })).tour.id; }""")
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2); pg.wait_for_selector("#pdf-fertig", timeout=60000); d5 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); pdf_pruefen(d5, 1, "Tour ohne Höhen"); zeigen(d5, "tour-ohne-hoehen.pdf"); zu(pg)
+    # ---- Teilen aus dem Ergebnisblatt: gleiche Datei noch einmal an die Hülle, mit dem Typ application/pdf
+    pg.evaluate("() => { window.__shared = null; const c1 = window.MTApp.call; window.MTApp.call = (id, m, a) => { if (m === 'shareCache') window.__shared = JSON.parse(a); return c1.call(window.MTApp, id, m, a); }; }")
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2); pg.wait_for_selector("#pdf-teilen", timeout=60000); pg.click("#pdf-teilen")
+    pg.wait_for_function("window.__shared", timeout=10000); sh = pg.evaluate("window.__shared"); assert sh["mime"] == "application/pdf" and sh["name"].endswith(".pdf") and "Ohne_Hoehen_und_Zeit" in sh["name"], sh
+    assert pg.evaluate("window.__cache[__shared.name].length") >= 1; pg.wait_for_selector(".sheet", state="detached")
+    # ---- Im Browser (ohne Hülle): Download statt Speichern
+    pg.evaluate("window.__mtapp = window.MTApp; window.MTApp = undefined")
+    with pg.expect_download(timeout=60000) as dl: pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2)
+    d6 = open(dl.value.path(), "rb").read(); pdf_pruefen(d6, 1, "Download"); assert dl.value.suggested_filename == "Tour_Ohne_Hoehen_und_Zeit.pdf", dl.value.suggested_filename
+    assert "PDF gespeichert" in toast_text(pg, "PDF gespeichert"); pg.evaluate("window.MTApp = window.__mtapp")
+    # ---- Jahr: 100 Touren, ohne und mit Fotos; die Oberfläche bleibt bedienbar
+    ids = pg.evaluate(PDF_JAHR_JS, [2015, 100, True]); jahr_start = ids
+    go(pg, "#/jahr/2015", "#jahr-pdf"); assert pg.locator("#jahr-pdf").inner_text() == "Als PDF" and "Als Bild teilen" in pg.inner_text("#jahr-teilen")
+    assert not pg.locator("#jahr-pdf-fotos input").is_checked()
+    pg.evaluate("window.__ticks = []; let l = performance.now(); window.__iv = setInterval(() => { const n = performance.now(); window.__ticks.push(n - l); l = n; }, 10)")
+    pg.click("#jahr-pdf"); pg.wait_for_selector("#pdf-fertig", timeout=120000)
+    tk = pg.evaluate("clearInterval(window.__iv) || window.__ticks"); luecke = max(tk)
+    sv = pg.evaluate("window.__saved"); dj = pdf_bytes(pg, sv["name"]); assert sv["name"] == "Tourentagebuch_Jahr_2015.pdf", sv
+    rj, bj = pdf_pruefen(dj, len(pdf_seiten_erwartet(100)) , "Jahr ohne Fotos"); zeigen(dj, "jahr-100-touren.pdf"); zu(pg)
+    print("Jahres-PDF 100 Touren ohne Fotos:", len(rj.pages), "Seiten,", len(dj) // 1024, "KB; größte Pause der Oberfläche", round(luecke), "ms bei", len(tk), "Takten")
+    assert len(tk) > 30 and luecke < 1500, ("Oberfläche blockiert", luecke, len(tk))
+    pg.click("#jahr-pdf-fotos input"); assert pg.locator("#jahr-pdf-fotos input").is_checked()
+    pg.evaluate("window.__fotoCalls = 0"); pg.click("#jahr-pdf"); pg.wait_for_selector("#pdf-fertig", timeout=180000)
+    dj2 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); rj2, bj2 = pdf_pruefen(dj2, len(pdf_seiten_erwartet(100, True)), "Jahr mit Fotos"); zeigen(dj2, "jahr-100-touren-mit-fotos.pdf"); zu(pg)
+    assert pg.evaluate("window.__fotoCalls") == 34, pg.evaluate("window.__fotoCalls")      # jede dritte Tour hat ein Foto (0, 3, …, 99)
+    assert len(dj2) > len(dj), (len(dj), len(dj2))
+    print("Jahres-PDF 100 Touren mit Fotos:", len(rj2.pages), "Seiten,", len(dj2) // 1024, "KB")
+    # ---- Abbrechen: nichts wird gespeichert, die Oberfläche ist danach wieder frei
+    pg.evaluate("window.__saved = null; window.__cache = {}"); pg.unroute("**/thumb/pdf*")
+    def langsam(r):
+        __import__("time").sleep(0.12); thumb(r)
+    pg.route("**/thumb/pdf*", langsam)
+    pg.click("#jahr-pdf"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/Seite [2-9] von/.test(document.querySelector('.sheet').innerText)", timeout=60000)
+    pg.click("#prog-stop"); pg.wait_for_selector(".sheet", state="detached", timeout=30000)
+    assert "Abgebrochen" in toast_text(pg, "Abgebrochen") and pg.evaluate("window.__saved") is None and pg.evaluate("Object.keys(window.__cache).length") == 0, "Abbruch speichert nichts"
+    assert pg.evaluate("PdfUI.busy") is False and pg.locator("#jahr-pdf").is_enabled()
+    pg.unroute("**/thumb/pdf*"); pg.route("**/thumb/pdf*", thumb)
+    # ---- Leeres Jahr: freundlich, kein PDF
+    pg.evaluate("() => PdfUI.jahr(Jahr.berechne([], 2001, new Date()), [])"); assert "keine Touren" in toast_text(pg, "keine Touren")
+    # ---- Aufräumen
+    pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const p of await DB.all('photos')) if (/^pdf(ph|jh)/.test(p.id)) await DB.del('photos', p.id); Tours.invalidate(); }", vorher)
+    pg.unroute("**/thumb/pdf*")
+    return bad
+
+def pdf_seiten_erwartet(n, mit_fotos=False):
+    """Seitenaufteilung wie in PdfUI.jahrPdf, aus den 100 Beispieltouren (Monate gleichmäßig über das Jahr) – gerechnet mit denselben Zahlen."""
+    zeilen = 140 if mit_fotos else 66; platz = 1754 - 150 - 130; kopf = 92
+    from datetime import datetime
+    tage = [1 + (i * 360) // n for i in range(n)]
+    monat = lambda t: min(11, (t - 1) // 30)       # nur zur Schätzung der Seitenzahl; genau prüft das Python-Gegenstück unten
+    seiten = [[]]; y = 0; m = None
+    for t in tage:
+        d = datetime(2015, 1, 1).toordinal() + t - 1; mo = datetime.fromordinal(d).month
+        if mo != m:
+            if seiten[-1] and y + kopf + zeilen > platz: seiten.append([]); y = 0
+            seiten[-1].append("m"); y += kopf; m = mo
+        elif y + zeilen > platz: seiten.append(["m"]); y = kopf
+        seiten[-1].append("t"); y += zeilen
+    return [None] * (1 + len(seiten))
+
 def sheet_check_open(pg, label):
     """Das gerade offene Blatt bei 360 px mit 100 % und 130 % Schrift prüfen (es bleibt offen)."""
     bad = []

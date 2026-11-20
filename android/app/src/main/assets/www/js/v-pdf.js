@@ -30,7 +30,7 @@ const PdfUI = {
   },
   font: (w, px, fam) => `${w} ${px}px ${fam === 'D' ? JahrKarte.D : JahrKarte.B}`,
   txt(ctx, s, x, y, font, color, align) { ctx.font = font; ctx.fillStyle = color || PdfUI.C.ink; ctx.textAlign = align || 'left'; ctx.fillText(s, x, y); ctx.textAlign = 'left'; },
-  measure: (ctx, font) => { ctx.font = font; return s => ctx.measureText(s).width; },
+  measure: (ctx, font) => s => { ctx.font = font; return ctx.measureText(s).width; },
   /** Stern (Fläche = bewertet, Rahmen = nicht) mit Mittelpunkt cx, cy und Radius r. */
   stern(ctx, cx, cy, r, an) {
     ctx.beginPath();
@@ -82,7 +82,6 @@ const PdfUI = {
     ctx.beginPath(); pr.punkte.forEach((p, i) => ctx[i ? 'lineTo' : 'moveTo'](p[0], p[1])); ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = C.acc; ctx.stroke();
     ctx.restore();
     PdfUI.txt(ctx, F.m(pr.max), x + 18, y + 38, PdfUI.font(600, 26), C.ink);
-    PdfUI.txt(ctx, F.m(pr.min), x + 18, y + hh - 16, PdfUI.font(600, 26), C.ink);
     PdfUI.txt(ctx, '0 km', x, y + hh + 34, PdfUI.font(500, 24), C.muted);
     PdfUI.txt(ctx, F.km(pr.dist), x + w, y + hh + 34, PdfUI.font(500, 24), C.muted, 'right');
     return true;
@@ -104,12 +103,14 @@ const PdfUI = {
   },
   /** Seite 1: Titel, Datum, Sterne, Kennzahlen, Skizze, Profil, Anfang der Notiz. Gibt { cv, ctx, rest: übrige Notizzeilen } zurück. */
   tourSeite1(t, d, now) {
-    const { W, M, IW, C } = PdfUI, { cv, ctx } = PdfUI.page('Tour · ' + now.getFullYear());
+    const { W, M, IW, C } = PdfUI, { cv, ctx } = PdfUI.page('Tour · ' + new Date(t.start).getFullYear());
     let y = 190;
-    // Titel: höchstens zwei Zeilen
-    const tf = PdfUI.font(700, 76, 'D'), ti = Pdf.umbruch(t.name || 'Tour', IW, PdfUI.measure(ctx, tf), 2).lines;
-    ti.forEach((l, i) => PdfUI.txt(ctx, l, M, y + i * 84, tf, C.ink));
-    y += (ti.length - 1) * 84 + 54;
+    // Titel: höchstens zwei Zeilen; ein langer Name wird erst kleiner gesetzt (76 → 64 → 54 px) und erst dann gekürzt
+    let tsz = 76, tf, ti;
+    for (;;) { tf = PdfUI.font(700, tsz, 'D'); ti = Pdf.umbruch(t.name || 'Tour', IW, PdfUI.measure(ctx, tf), 2); if (!ti.cut || tsz <= 54) break; tsz -= tsz > 64 ? 12 : 10; }
+    const lh = Math.round(tsz * 1.1); ti = ti.lines;
+    ti.forEach((l, i) => PdfUI.txt(ctx, l, M, y + i * lh, tf, C.ink));
+    y += (ti.length - 1) * lh + 54;
     const sub = F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport);
     PdfUI.txt(ctx, Pdf.kuerzen(sub, IW, PdfUI.measure(ctx, PdfUI.font(500, 34))), M, y, PdfUI.font(500, 34), C.muted);
     const n = Abgleich.sterne(t);
@@ -117,14 +118,14 @@ const PdfUI = {
     // Kennzahlen: Strecke, Aufstieg, Dauer
     y += 150;
     const cw = IW / 3;
-    [[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']].forEach(([v, l], i) => {
+    [[F.km(t.dist), 'Strecke'], [t.maxAlt != null ? '↑ ' + F.m(t.up) : '–', 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']].forEach(([v, l], i) => {
       const x = M + i * cw, arrow = v.startsWith('↑ ');
       if (arrow) { PdfUI.txt(ctx, '↑', x, y, PdfUI.font(600, 56, 'D'), C.muted); JahrKarte.num(ctx, v.slice(2), x + 48, y, 100, cw - 70); }
       else JahrKarte.num(ctx, v, x, y, 100, cw - 24);
       PdfUI.txt(ctx, l, x, y + 44, PdfUI.font(500, 28), C.muted);
     });
     // weitere Angaben: bis zu sechs in zwei Reihen
-    const fa = [['Abstieg', t.down != null ? F.m(t.down) : null], ['In Bewegung', t.moving ? F.dur(t.moving) : null], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : null],
+    const fa = [['Abstieg', t.maxAlt != null && t.down != null ? F.m(t.down) : null], ['In Bewegung', t.moving ? F.dur(t.moving) : null], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : null],
       ['Höchster Punkt', t.maxAlt != null ? F.m(t.maxAlt) : null], ['Tiefster Punkt', t.minAlt != null ? F.m(t.minAlt) : null], ['Ø Puls', t.hrAvg ? t.hrAvg + ' bpm' : null], ['Höchster Puls', t.hrMax ? t.hrMax + ' bpm' : null]]
       .filter(x => x[1] && x[1] !== '–').slice(0, 6);
     ctx.fillStyle = C.line; ctx.fillRect(M, y + 84, IW, 2);
@@ -136,31 +137,31 @@ const PdfUI = {
     y += Math.ceil(fa.length / 3) * 96 - 20;
     // Skizze und Profil teilen sich den Rest; für eine Notiz bleibt Platz, wenn es eine gibt
     const note = String(d.note || t.note || '').trim(), hasPr = !!Pdf.profil(d.pts, 100, 100);
-    const profH = hasPr ? 230 : 0, profT = hasPr ? 116 : 0, noteMin = note ? 250 : 0, frei = PdfUI.BOT - y - 20;
-    const skH = Math.max(300, Math.min(560, frei - profH - profT - noteMin - 40));
+    const profH = hasPr ? 200 : 0, profT = hasPr ? 116 : 0, noteMin = note ? 220 : 0, frei = PdfUI.BOT - y - 20;
+    const skH = Math.max(240, Math.min(hasPr ? 560 : 820, frei - profH - profT - noteMin - 40));
     PdfUI.skizze(ctx, d.pts, M, y, IW, skH); y += skH + 34;
     if (hasPr) { PdfUI.txt(ctx, 'Höhenprofil', M, y + 30, PdfUI.font(600, 38, 'D'), C.ink); y += 52; PdfUI.profil(ctx, d.pts, M, y, IW, profH); y += profH + 80; }
     // Notiz: so viele Zeilen wie passen, der Rest geht auf Seite 2
-    let rest = [];
+    let rest = [], fort = false;
     if (note) {
       const nf = PdfUI.font(400, 32), all = Pdf.umbruch(note, IW, PdfUI.measure(ctx, nf)).lines, fit = Math.floor((PdfUI.BOT - y - 60) / 46);
       if (fit >= 2) {
         PdfUI.txt(ctx, 'Notiz', M, y + 30, PdfUI.font(600, 38, 'D'), C.ink); y += 76;
-        const take = all.slice(0, fit); take.forEach((l, i) => PdfUI.txt(ctx, l, M, y + i * 46, nf, C.ink)); rest = all.slice(fit);
+        const take = all.slice(0, fit); take.forEach((l, i) => PdfUI.txt(ctx, l, M, y + i * 46, nf, C.ink)); rest = all.slice(fit); fort = true;
       } else rest = all;
     }
-    return { cv, ctx, rest, W };
+    return { cv, ctx, rest, fort, W };
   },
   /** Seite 2: Rest der Notiz und das Fotoraster. */
-  tourSeite2(t, d, rest, now) {
-    const { M, IW, C } = PdfUI, { cv, ctx } = PdfUI.page('Tour · ' + now.getFullYear());
+  tourSeite2(t, d, rest, now, fort) {
+    const { M, IW, C } = PdfUI, { cv, ctx } = PdfUI.page('Tour · ' + new Date(t.start).getFullYear());
     let y = 190;
     PdfUI.txt(ctx, Pdf.kuerzen(t.name || 'Tour', IW, PdfUI.measure(ctx, PdfUI.font(600, 40, 'D'))), M, y, PdfUI.font(600, 40, 'D'), C.ink); y += 40;
     PdfUI.txt(ctx, F.date(t.start), M, y, PdfUI.font(500, 28), C.muted); y += 70;
     if (rest.length) {
       const nf = PdfUI.font(400, 32), nl = rest.slice(0, 16);
       if (rest.length > 16) nl[15] = Pdf.kuerzen(nl[15] + ' …', IW, PdfUI.measure(ctx, nf));
-      PdfUI.txt(ctx, 'Notiz', M, y + 30, PdfUI.font(600, 38, 'D'), C.ink); y += 76;
+      PdfUI.txt(ctx, fort ? 'Notiz (Fortsetzung)' : 'Notiz', M, y + 30, PdfUI.font(600, 38, 'D'), C.ink); y += 76;
       nl.forEach((l, i) => PdfUI.txt(ctx, l, M, y + i * 46, nf, C.ink)); y += nl.length * 46 + 50;
     }
     if (d.bilder.length) {
@@ -184,7 +185,7 @@ const PdfUI = {
     if (zwei) {
       if (ctl.stop()) return 0;
       ctl.upd(2, 3, 'Seite 2');
-      const s2 = PdfUI.tourSeite2(t, d, s1.rest, now);
+      const s2 = PdfUI.tourSeite2(t, d, s1.rest, now, s1.fort);
       PdfUI.fuss(s2.ctx, 1, n, datum); w.addPage(await PdfUI.jpeg(s2.cv)); s2.cv.width = s2.cv.height = 0;
     }
     ctl.upd(3, 3, '');
@@ -238,10 +239,15 @@ const PdfUI = {
         ctx.fillStyle = C.ink; ctx.fillRect(M, y + 70, IW, 3); y += PdfUI.HEAD; return;
       }
       const t = z.tour, up = t.up ? '↑ ' + F.m(t.up) : '', dt = new Date(t.start), dd = String(dt.getDate()).padStart(2, '0') + '.' + String(dt.getMonth() + 1).padStart(2, '0') + '.';
-      const xt = mitFotos ? M + 134 : M + 128, maxN = M + IW - 330 - xt;
+      const xt = mitFotos ? M + 134 : M + 128, maxN = M + IW - (mitFotos ? 215 : 330) - xt;
       if (mitFotos) {
         const im = fotos && fotos.get(t.id);
-        if (im) PdfUI.foto(ctx, im, M, y + 16, 108, 108, 8); else { ctx.fillStyle = C.soft; JahrKarte.rr(ctx, M, y + 16, 108, 108, 8); ctx.fill(); }
+        if (im && im.naturalWidth) PdfUI.foto(ctx, im, M, y + 16, 108, 108, 8);
+        else {      // ohne Foto die Strecke als kleine Skizze (wie in der Tourenliste der App)
+          ctx.fillStyle = C.soft; JahrKarte.rr(ctx, M, y + 16, 108, 108, 8); ctx.fill();
+          const sk = im && im.pts ? Pdf.skizze(im.pts, 108, 108, 16) : { punkte: [] };
+          if (sk.punkte.length) { ctx.save(); ctx.translate(M, y + 16); ctx.lineCap = ctx.lineJoin = 'round'; ctx.beginPath(); sk.punkte.forEach((p, i) => { if (i && !p[2]) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.lineWidth = 4; ctx.strokeStyle = C.petrol; ctx.stroke(); ctx.restore(); }
+        }
         PdfUI.txt(ctx, Pdf.kuerzen(t.name, maxN, mf), xt, y + 62, PdfUI.font(600, 31), C.ink);
         PdfUI.txt(ctx, [dd + dt.getFullYear(), Sports.label(t.sport), t.dur ? F.dur(t.dur) : null].filter(Boolean).join(' · '), xt, y + 104, PdfUI.font(500, 26), C.muted);
         PdfUI.txt(ctx, F.km(t.dist), M + IW, y + 62, PdfUI.font(600, 31), C.ink, 'right'); if (up) PdfUI.txt(ctx, up, M + IW, y + 104, PdfUI.font(500, 28), C.muted, 'right');
@@ -272,8 +278,8 @@ const PdfUI = {
         for (const z of plan[i]) {
           if (z.art !== 'tour') continue;
           if (ctl.stop()) return 0;
-          const p = await pickPhoto(z.tour.id).catch(() => null);
-          if (p) { const im = await PdfUI.bild(Photos.thumb(p.id), 6000); if (im) fotos.set(z.tour.id, im); }
+          const p = await pickPhoto(z.tour.id).catch(() => null), im = p ? await PdfUI.bild(Photos.thumb(p.id), 6000) : null;
+          if (im) fotos.set(z.tour.id, im); else fotos.set(z.tour.id, { pts: await Tours.points(z.tour.id).catch(() => []) });
         }
       }
       const s = PdfUI.jahrListe(plan[i], d, fotos, mitFotos);
