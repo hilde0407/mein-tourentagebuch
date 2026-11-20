@@ -313,8 +313,8 @@ MT_FAKE = """(fx) => {
     if (m !== 'GET') return { status: 405, headers: {}, body: '{"detail":"Method Not Allowed"}' };      // die App ruft sonst nur lesend auf
     if (!S.sessions.has(tok)) return R(A.ohne_sitzung);
     if (path === '/api/tours') { let l = JSON.parse(A.tours.body); if (S.edit) l = S.edit(l); return { status: 200, headers: {}, body: JSON.stringify(l) }; }
-    const g = path.match(/^\\/api\\/tours\\/([^/]+)\\/gpx$/);
-    if (g) return fx.gpx[g[1]] ? { status: 200, headers: {}, body: fx.gpx[g[1]] } : R(A.gpx_fehlt);
+    const g = path.match(/^\\/api\\/tours\\/([^/]+)\\/gpx$/), gid = g && ((S.gleich || {})[g[1]] || g[1]);
+    if (g) return fx.gpx[gid] ? { status: 200, headers: {}, body: fx.gpx[gid] } : R(A.gpx_fehlt);
     return { status: 404, headers: {}, body: '{"detail":"Not Found"}' };
   };
   window.__mt = S; }"""
@@ -365,7 +365,8 @@ def meine_touren(pg):
     # Anmeldung als Betrachter und erster Abgleich
     pg.wait_for_selector(".sheet", state="detached"); go(); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "mt.test"); pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234")
     pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); msg = toast("importiert", 60000)
-    assert msg == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server", msg
+    nur = " · %d Touren nur in der App" % (1 + pg.evaluate("ids => Tours.list().then(l => l.filter(t => ids.includes(t.id) && t.status !== 'planned' && !t.hidden).length)", vorher))      # was vorher da war, und die „andere Tour zur selben Zeit“
+    assert msg == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server" + nur, msg
     log = pg.evaluate("window.__mt.log"); assert log[:3] == ["GET /api/me", "POST /api/login", "GET /api/tours"] and len([x for x in log if x.endswith("/gpx")]) == 14 and not [x for x in log if x.split()[0] != "GET" and "login" not in x], log
     assert not [x for x in log if "/g2/" in x or "/g4/" in x or "/987654321/" in x], "für vorhandene Touren wird keine Strecke geladen"
     kv = pg.evaluate("DB.all('kv')"); acc = [k for k in kv if k["k"] == "mt"][0]["v"]
@@ -391,7 +392,7 @@ def meine_touren(pg):
     assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "stammen aus Meine Touren" in f and "Eigene Rechnung aus der Spur: 4,5 km · ↑ " in f and "5 von 5 Sternen" in f, f
     # Verbundenes Blatt, Wiederholung: nichts doppelt, keine Strecke wird noch einmal geladen (außer dem Versuch für die Tour ohne Strecke)
     go(); pg.wait_for_selector("#mt-state"); assert pg.inner_text("#mt-state") == "✓ Verbunden mit mt.test als Tagebuch (nur ansehen)", pg.inner_text("#mt-state")
-    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); assert toast("schon vorhanden") == "16 schon vorhanden · 1 ohne Strecke auf dem Server"
+    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); assert toast("schon vorhanden") == "16 schon vorhanden · 1 ohne Strecke auf dem Server" + nur
     assert pg.evaluate("window.__mt.log") == ["GET /api/tours", "GET /api/tours/987654322/gpx"] and pg.evaluate("Tours.list().then(l => l.length)") == n1
     sync = "async (z) => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: z }, null)"
     # Rangfolge der Zahlen: nach einer Korrektur der Spur von Hand gilt die eigene Rechnung – bis zum nächsten Abgleich
@@ -418,6 +419,24 @@ def meine_touren(pg):
     r = pg.evaluate(sync, True); g = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:g1'))"); assert r["namesMt"] == 0 and g["name"] == "Von Hand in der App" and g["note"] == "Neue Notiz am Server", (r, g)
     assert pg.evaluate("id => DB.get('tours', id).then(t => [Import.Komoot.takeName(t, 'Name aus Komoot'), t.name])", pre["k"]) == [False, "Zugspitze durchs Reintal"]
     pg.evaluate("window.__mt.edit = null")
+    # Am Server doppelt vorhanden (gleiche Spur unter zweiter Kennung): in der App bleibt es eine Tour, die Strecke wird nur einmal geholt
+    pg.evaluate("() => { window.__mt.gleich = { g3b: 'g3' }; window.__mt.edit = l => l.concat([Object.assign({}, l.find(t => t.id === 'g3'), { id: 'g3b' })]); window.__mt.log = []; }")
+    n2 = pg.evaluate("Tours.list().then(l => l.length)"); r = pg.evaluate(sync, True); lg = pg.evaluate("window.__mt.log"); assert r["added"] == 0 and r["dup"] == 17 and "GET /api/tours/g3b/gpx" in lg, (r, lg)
+    pg.evaluate("window.__mt.log = []"); r = pg.evaluate(sync, True); lg = pg.evaluate("window.__mt.log")
+    assert r["dup"] == 17 and r["zahlen"] == 0 and "GET /api/tours/g3b/gpx" not in lg and pg.evaluate("Tours.list().then(l => [l.length, l.find(t => t.srcId === 'mt:g3').alias])") == [n2, ["mt:g3b"]], (r, lg)
+    # Großer Bestand: 800 Touren am Server, alle schon in der App – ein Listenabruf, keine Strecke, Zahlen und Namen in Portionen angeglichen
+    big = pg.evaluate("""async () => { const base = 1500000000, N = 800;
+      window.__mt.edit = () => Array.from({ length: N }, (_, i) => ({ id: 'p' + i, name: 'Tour Nummer ' + i, sport: 'hike', start_ts: base + i * 86400, end_ts: base + i * 86400 + 7200, dist_m: 10000 + i, dur_s: 7200, up_m: 500 + i, down_m: 480, source: 'local' }));
+      await DB.putMany('tours', Array.from({ length: N }, (_, i) => ({ id: 'big' + i, name: Tours.autoName('hike', (base + i * 86400) * 1000 + 60000), sport: 'hike', status: 'done', start: (base + i * 86400) * 1000 + 60000, end: (base + i * 86400) * 1000 + 7260000,
+        dur: 7200, dist: 10300, up: 450, down: 450, src: 'zepp', srcId: 'zepp:big' + i, note: '', fav: false, hidden: false, timed: true, created: 1, calcV: 2 }))); Tours.invalidate();
+      window.__mt.log = []; const t0 = performance.now(); const r = await Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null); const ms = Math.round(performance.now() - t0);
+      const l = (await Tours.list()).filter(t => /^big/.test(t.id)), ok = l.filter(t => t.zMt === 1 && t.up === 500 + +t.mtId.slice(1) && t.name === 'Tour Nummer ' + t.mtId.slice(1)).length;
+      const log = window.__mt.log.slice(); window.__mt.log = []; const t1 = performance.now(); const r2 = await Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null); const ms2 = Math.round(performance.now() - t1);
+      await DB._tx('tours', 'readwrite', st => { l.forEach(t => st.delete(t.id)); }); Tours.invalidate(); window.__mt.edit = null;
+      return { r, ms, ok, log, r2, ms2 }; }""")
+    print(f"Meine Touren, 800 vorhandene Touren abgleichen: {big['ms']} ms (Wiederholung {big['ms2']} ms)")
+    assert big["r"]["dup"] == 800 and big["r"]["added"] == 0 and big["r"]["zahlen"] == 800 and big["r"]["namesMt"] == 800 and big["ok"] == 800 and big["log"] == ["GET /api/tours"] and big["ms"] < 20000, big
+    assert big["r2"]["zahlen"] == 0 and big["r2"]["namesMt"] == 0 and big["r2"]["dup"] == 800, big["r2"]
     # Abbruch: langsamer Server, „Abbrechen“ im Fortschrittsblatt – der Rest kommt beim nächsten Mal, nichts doppelt
     pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^mt:s\\d+$/.test(t.srcId))) await Tours.remove(t.id); window.__mt.delay = 250; }")
     go(); pg.wait_for_selector("#mt-go"); pg.click("#mt-go"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/\\d+ von 12/.test(document.querySelector('.sheet p').textContent)"); pg.click("#prog-stop")

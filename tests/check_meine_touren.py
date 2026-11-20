@@ -292,7 +292,7 @@ def main():
             # I. Zwei-Faktor: falscher Code, richtiger Code
             two = pg.evaluate("async ([u, n, p]) => { const a = await Import.MT.login(u, n, p); let bad = ''; try { await Import.MT.login2fa(u, a.ticket, '000000'); } catch (e) { bad = e.message; } return { need: a.need2fa, ticket: a.ticket, bad }; }", [url, "Zweifach", PW["Zweifach"]])
             assert two["need"] and two["bad"] == "Der Code stimmt nicht", two
-            acc3 = pg.evaluate("async ([u, t, c]) => { const a = await Import.MT.login2fa(u, t, c); return { a, n: (await Import.MT.tours(a)).length }; }", [url, two["ticket"], totp()])
+            acc3 = pg.evaluate("async ([u, t, c]) => { const a = await Import.MT.login2fa(u, t, c); return { a, n: (await Import.MT.tours(a)).length }; }", [url, two["ticket"], totp(t=time.time() + 30)])      # ein Zeitschritt gilt am Server nur einmal (oben schon benutzt); der nächste wird angenommen (± 30 s)
             assert acc3["a"]["name"] == "Zweifach" and acc3["n"] == 1, acc3
             pg.evaluate("async () => Import.MT.logout(await DB.kvGet('mt'))")
             # J. Server nicht erreichbar, falsche Adresse

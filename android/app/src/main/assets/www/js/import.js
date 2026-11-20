@@ -25,6 +25,7 @@ const Import = {
     if (r.zahlen) p.push('Zahlen bei ' + r.zahlen + (r.zahlen === 1 ? ' Tour' : ' Touren') + ' angeglichen');
     if (r.eleUhr) p.push('Höhen bei ' + r.eleUhr + (r.eleUhr === 1 ? ' Tour' : ' Touren') + ' von der Uhr übernommen');
     if (r.ohne) p.push(r.ohne + ' ohne Strecke auf dem Server');
+    if (r.nurApp) p.push(r.nurApp + (r.nurApp === 1 ? ' Tour' : ' Touren') + ' nur in der App');
     if (r.fail) p.push(r.fail + ' nicht lesbar');
     if (r.stopped) p.push('abgebrochen – der Rest kommt beim nächsten Mal');
     return p.join(' · ') || 'Nichts gefunden';
@@ -355,7 +356,9 @@ const Import = {
       const used = new Set(), pairs = [], rest = [], todo = [];
       for (const t of list) {      // 1. sichere Zuordnung über Kennungen (auch die Komoot-Nummer, wenn die Tour am Server von Komoot stammt)
         const id = String(t.id), e = bySrc.get('mt:' + id) || byMt.get(id) || (t.source === 'komoot' && byK.get(id) && !byK.get(id).mtId ? byK.get(id) : null);
-        if (e && !used.has(e.id)) { used.add(e.id); pairs.push([t, e]); } else rest.push(t);
+        if (e && !used.has(e.id)) { used.add(e.id); pairs.push([t, e]); }
+        else if (e && bySrc.get('mt:' + id) === e) res.dup++;      // am Server doppelt, in der App schon eine Tour: nichts zu tun
+        else rest.push(t);
       }
       for (const t of rest) {      // 2. Zuordnung über Startzeit und Länge
         const e = M.match(t, mine, used);
@@ -394,6 +397,9 @@ const Import = {
           const start = t.start_ts * 1000;
           const r = await Tours.add({ name: t.name, sport: M.sport(t.sport), pts: acts[0].pts, src: 'mt', srcId: 'mt:' + id, start, note: String(t.note || '').trim() });
           const e = r.tour;
+          if (r.dup && (e.mtId || /^mt:/.test(e.srcId || '')) && e.srcId !== 'mt:' + id && e.mtId !== id) {      // am Server doppelt: die Tour der App gehört schon zu einem anderen Eintrag – nur die Kennung merken
+            res.dup++; e.alias = [...new Set((e.alias || []).concat('mt:' + id))]; await Tours.save(e); continue;
+          }
           if (r.dup) { res.dup++; if (e.srcId !== 'mt:' + id) e.mtId = id; }      // die Spur gab es schon (erst an der Spur erkannt): Zuordnung merken
           else {
             res.added++;
@@ -408,6 +414,10 @@ const Import = {
       }
       if (res.added) await Photos.assignAll();
       Tours.invalidate();
+      if (!res.stopped) {      // Touren, die es nur in der App gibt (erklärt eine unterschiedliche Tourenzahl); gelöscht wird nie etwas
+        const ids = new Set(list.map(t => String(t.id)));
+        res.nurApp = (await Tours.list()).filter(e => e.status !== 'planned' && !e.hidden && !(e.mtId && ids.has(String(e.mtId))) && ![e.srcId].concat(e.alias || []).some(k => /^mt:/.test(k || '') && ids.has(k.slice(3)))).length;
+      }
       return res;
     },
   },

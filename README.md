@@ -18,6 +18,13 @@ Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das 
   Auf der Seite der geplanten Tour: **Notizen & Quellen** (Notiz, Herkunft, bis 20 Links – nie automatisch abgerufen) und **Passt die Tour zu mir?** (Strecke, Aufstieg, Dauer gegen die eigenen Touren; Tageslicht mit Datum, Startzeit und Pausenpuffer).
 - **Nach der Tour**: **Wie ist es gelaufen?** (Einordnung gegen die eigenen Touren der 12 Monate davor, ab 5 Vergleichstouren) oder **Plan und Ergebnis** (geplant gegen gelaufen, wenn die Tour aus einer Planung gestartet oder von Hand verknüpft wurde).
 - **Import**: Dateien (GPX/FIT/TCX/ZIP/GZ), Komoot, Strava, Zepp/Amazfit (E-Mail/Passwort oder Token für Google-, Apple- und Mi-Konten), Bosch eBike Flow (Datei/Teilen), Garmin/Suunto/Polar/Wahoo/Coros (Export, Teilen-Menü, überwachter Ordner), Link. Duplikate werden erkannt.
+  Der Zepp-Import legt auf Wunsch (Vorgabe: an) die Barometerhöhen der Uhr auf vorhandene Touren aus Komoot, Dateien oder eigener Aufzeichnung – rückholbar an der Tour.
+- **Aus „Meine Touren“ holen** (Mehr → Touren importieren → Meine Touren): Wer daneben die Server-App „Meine Touren“ betreibt, verbindet sie mit Serveradresse, Name und Passwort
+  (bei Zwei-Faktor mit Code). Ein Konto „nur ansehen“ genügt und wird empfohlen; die App liest nur. Neue Touren kommen mit Strecke, vorhandene bekommen Name, Sportart, Notiz – und auf
+  Wunsch Strecke und Aufstieg aus Meine Touren als maßgebliche Zahlen, damit beide Apps dasselbe zeigen. Gemerkt wird nur ein Sitzungsschlüssel (nie das Passwort, nie in der Sicherung).
+  Einzelheiten: `docs/versionen/2.1.0.md`.
+- **Doppelte Touren prüfen** (Mehr → Touren importieren → Aufräumen): findet dieselbe Tour aus zwei Quellen, schlägt vor, welche bleibt, und führt auf Wunsch zusammen
+  (Fotos, Puls, Notiz, Pins, Zuordnungen wandern mit) – oder merkt sich „keine Doppelten“. Nie von selbst.
 - **Heimatort** (Mehr → Einstellungen): Ort oder Adresse suchen und übernehmen; dient als Kartenmitte der Planung.
 - **Erzählung** (Tour öffnen → ⋮ → „Erzählung“): die Tour als Zeitleiste mit Start, Fotogruppen und Ziel, Ortsnamen (OpenStreetMap, zwischengespeichert), Fotostandorten auf der Karte und **Kommentaren zu Fotos** (lokal auf dem Handy).
 - **Reisen & Alben**, **Statistik** (Übersicht, Bestwerte mit Wochen-Serie, Kalender, Auswertung, **Ziele** für Jahr und Woche mit Prognose, **Fitness-Einordnung** der letzten 12 Wochen – Orientierung, keine medizinische Aussage), **Sicherung/Wiederherstellung** (`.mtl`, nimmt Ziele, Planungsnotizen und Einstellungen mit) – alle unter „Mehr“. Hell/Dunkel automatisch.
@@ -26,7 +33,8 @@ Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das 
 - `android/` – Java-Hülle: WebView unter `https://app.local/`, Brücke `MTApp` (Netzwerk ohne CORS, Dateien, Fotos/EXIF, SMB, Aufnahmedienst, TTS).
 - `android/app/src/main/assets/www/` – Oberfläche (HTML/CSS/JS ohne Framework und ohne Bauschritt), Daten in IndexedDB. `app.css` enthält das Gestaltungssystem, `js/ui.js` die Bausteine (Abschnitt, Kennzahl, Liste, Chip, Schalter, leerer Zustand …), `js/icons.js` die Symbole, `js/v-*.js` je eine Ansicht.
 - `docs/gestaltung-2.0.md` – Gestaltungsregeln (Farben, Schrift, Abstände, Navigation) und die Liste der Bausteine.
-- `tests/` – `test_parse.js` (Parser), `test_calc.js` (Rechenlogik für Ziele, Rückblick, Planungshilfe, Fitness), `test_web.py` (Playwright mit simulierter Brücke: Abläufe, Navigation, Querrollen, Tippflächen), `audit_kontrast.py` (Kontrast in Hell und Dunkel), `android/*Check.java` (Aufnahme und Ansagen).
+- `tests/` – `test_parse.js` (Parser), `test_calc.js` (Rechenlogik für Ziele, Rückblick, Planungshilfe, Fitness, Aufstieg, doppelte Touren), `test_web.py` (Playwright mit simulierter Brücke: Abläufe, Navigation, Querrollen, Tippflächen), `audit_kontrast.py` (Kontrast in Hell und Dunkel), `android/*Check.java` (Aufnahme und Ansagen).
+  `check_meine_touren.py` (nicht in der CI) startet einen echten „Meine Touren“-Server aus dem Nachbarordner mit Testdaten und prüft den Abgleich dagegen; mit `--fixtures` schreibt es die bereinigten Antworten nach `tests/data/meine-touren-beispiel.json`, die `test_web.py` abspielt.
 
 ## Bauen
 Per GitHub Actions (`.github/workflows/android.yml`) oder lokal mit Android SDK: `gradle -p android assembleDebug`.

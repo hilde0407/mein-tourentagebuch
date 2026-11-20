@@ -90,6 +90,9 @@ Fünf Reiter in einer Petrol-Leiste, „Aufnehmen“ in der Mitte als gelbe Sche
 | Fotos      | `#/photos`| Alle · Ohne Tour · Karte, Diashow, Fotos hinzufügen                         |
 | Mehr       | `#/mehr`  | Tour planen, Reisen & Alben, Statistik, Importieren, Foto-Quellen, Einstellungen |
 
+Unter „Mehr → Touren importieren“ stehen die Quellen (ab 2.1.0 auch „Meine Touren“) und der Abschnitt „Aufräumen“ mit „Doppelte Touren prüfen“ (`#/doppelt`).
+Die Seite der Doppelten trägt bewusst kein Gelb: Zusammenführen ist keine Hauptaktion, sondern eine Entscheidung je Paar – welche Tour bleibt, steht in Worten daneben.
+
 Alle bisherigen Adressen bleiben gültig. Die Leiste bleibt sichtbar, solange man blättert (Reiter, Karte, Reisen,
 Statistik); sie verschwindet, wenn man an einer Sache arbeitet (Tour, Planung, Import, Einstellungen, Flug, Korrektur).
 Unterseiten haben oben links „Zurück“.
@@ -235,4 +238,5 @@ dazu ein Eintrag in `Nav.home` (welcher Reiter markiert ist) und eine Zeile in `
 
 - `node tests/test_calc.js` – Rechenlogik (Ziele, Rückblick, Planungshilfe, Fitness) gegen Werte aus den Vorbildern.
 - `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest) – auch für die neuen Abschnitte und Blätter (`neue_layout`).
+- Neue Seiten und Blätter kommen in die Gestaltungsprüfung (`layout_21` als Muster) und in `audit_kontrast.py`.
 - `python3 tests/audit_kontrast.py --fail` – Kontrast aller Knöpfe, Felder und Texte in Hell und Dunkel (4,5 : 1; große Schrift 3 : 1).
