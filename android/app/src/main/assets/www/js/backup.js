@@ -6,7 +6,7 @@
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten (auch die Sitzung bei „Meine Touren“, kv „mt“) und Zwischenspeicher. */
-  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich', 'guideMatch'],
+  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich', 'guideMatch', 'mtOffen'],
   /** Diese Einträge werden beim Einspielen zurückgeholt, wenn es sie auf dem Gerät noch nicht gibt (Planung und Notizen einer Tour: die Sicherung gilt). */
   RESTORE_KEYS: ['goals', 'goals2', 'comments', 'places', 'tripHidden', 'tripNames', 'tripPeriod', 'tripRegion', 'tripSet', 'dupIgnore'],
   RESTORE_PREFIX: ['plan:', 'pn:'],

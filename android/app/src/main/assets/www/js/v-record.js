@@ -224,6 +224,7 @@ Views['/rec'] = async root => {
         MTApp.discardRecording();
         toast('Tour gespeichert ✓');
         Nav.go('/tour/' + r.tour.id);
+        Senden.auto(r.tour);      // 2.5.0: nur wenn „Neue Aufzeichnungen automatisch senden“ eingeschaltet ist; still, im Hintergrund
       } catch (e) {
         toast('Speichern fehlgeschlagen: ' + e.message + ' – die Aufzeichnung bleibt erhalten.', 7000);
         Nav.render();

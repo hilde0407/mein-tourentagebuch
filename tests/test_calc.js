@@ -641,6 +641,38 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
 })();
 
 
+/* ---------- An Meine Touren senden (calc-senden.js) ---------- */
+{
+  const S = require(W + 'calc-senden.js');
+  const acc = { base: 'https://mt.test', token: 'k', role: 'admin' }, viewer = Object.assign({}, acc, { role: 'viewer' });
+  const t0 = Date.UTC(2026, 5, 1, 7, 0), tr = (x) => Object.assign({ id: 'a', status: 'done', timed: true, start: t0, dist: 10000, sport: 'hike', tags: [] }, x);
+  A.strictEqual(S.sport(tr()), 'hike'); A.strictEqual(S.sport(tr({ sport: 'walk' })), 'hike'); A.strictEqual(S.sport(tr({ tags: ['Schneeschuh'] })), 'snowshoe');
+  A.strictEqual(S.sport(tr({ sport: 'run' })), 'jogging'); A.strictEqual(S.sport(tr({ sport: 'bike' })), 'touringbicycle'); A.strictEqual(S.sport(tr({ sport: 'ebike' })), 'e_touringbicycle');
+  A.strictEqual(S.sport(tr({ sport: 'other' })), null); A.strictEqual(S.sport(tr({ sport: 'ski' })), null); A.strictEqual(S.sport(null), null); n += 7;
+  ok(S.pruefen(tr(), acc).ok, 'normal'); ok(S.pruefen(tr(), null).code === 'verbindung', 'keine Verbindung'); ok(S.pruefen(tr(), { base: 'x' }).code === 'verbindung', 'ohne Schlüssel');
+  ok(S.pruefen(tr(), { base: 'x', open: true, role: 'admin' }).ok, 'Server ohne Anmeldung');
+  ok(S.pruefen(tr({ status: 'planned' }), acc).code === 'geplant', 'geplant'); ok(S.pruefen(tr({ src: 'mt' }), acc).code === 'schon', 'aus MT');
+  ok(S.pruefen(tr({ mtId: '5' }), acc).code === 'schon', 'mtId'); ok(S.pruefen(tr({ srcId: 'mt:7' }), acc).code === 'schon', 'srcId');
+  ok(S.pruefen(tr({ timed: false }), acc).code === 'zeit', 'ohne Zeit'); ok(S.pruefen(tr(), viewer).code === 'betrachter', 'Betrachter');
+  ok(/Schreibrechten/.test(S.pruefen(tr(), viewer).grund), 'Betrachter-Text'); ok(S.pruefen(null, acc).code === 'spur', 'keine Tour');
+  ok(S.sichtbar(tr(), acc) && S.sichtbar(tr(), viewer), 'sichtbar auch für Betrachter'); ok(!S.sichtbar(tr(), null), 'unsichtbar ohne Verbindung');
+  ok(!S.sichtbar(tr({ src: 'mt' }), acc) && !S.sichtbar(tr({ mtId: '1' }), acc) && !S.sichtbar(tr({ status: 'planned' }), acc), 'unsichtbar bei MT-Herkunft / geplant');
+  const ks = S.kandidaten([tr({ id: 'x', start: t0 }), tr({ id: 'y', start: t0 + 1e8 }), tr({ id: 'z', hidden: true }), tr({ id: 'v', mtId: '3' })], viewer);
+  ok(ks.map(x => x.id).join() === 'y,x', 'Kandidaten: neueste zuerst, ohne ausgeblendete und gesendete');
+  const liste = [{ id: 1, start_ts: t0 / 1000 + 120, dist_m: 10500 }, { id: 2, start_ts: t0 / 1000 + 4000, dist_m: 10000 }, { id: 3, start_ts: t0 / 1000, dist_m: 30000 }];
+  ok(S.passend(tr(), liste).id === 1, 'Start ± 5 min, ähnliche Länge'); ok(S.passend(tr({ start: t0 + 1e7 }), liste) === null, 'anderer Start');
+  ok(S.passend(tr({ dist: 0 }), liste.slice(2)).id === 3, 'ohne eigene Länge zählt der Start'); ok(S.passend(tr(), [liste[2]]) === null, 'Länge passt nicht');
+  ok(S.passend(tr(), []) === null && S.passend(tr({ start: 0 }), liste) === null, 'leer');
+  ok(/Schreibrechten/.test(S.fehlerText(403, '')) && /abgelaufen/.test(S.fehlerText(401)) && /zu groß/.test(S.fehlerText(413)) && /nicht angenommen: kaputt/.test(S.fehlerText(400, 'kaputt')) && /HTTP 502/.test(S.fehlerText(502)), 'Fehlertexte');
+  ok(S.WIEDER(0) && S.WIEDER(null) && S.WIEDER(503) && !S.WIEDER(403) && !S.WIEDER(400) && !S.WIEDER(401), 'WIEDER');
+  let q = S.queueAdd(null, 'a'); q = S.queueAdd(q, 'a'); q = S.queueAdd(q, 'b'); ok(q.length === 2, 'Warteschlange ohne Doppelte');
+  for (let i = 0; i < S.MAX_VERSUCHE - 1; i++) q = S.queueNach(q, 'a', { ok: false, wieder: true });
+  ok(q.some(e => e.id === 'a' && e.n === S.MAX_VERSUCHE - 1), 'noch drin'); q = S.queueNach(q, 'a', { ok: false, wieder: true }); ok(!q.some(e => e.id === 'a'), 'nach dem letzten Versuch raus');
+  q = S.queueNach(q, 'b', { ok: false, wieder: false }); ok(q.length === 0, 'dauerhafter Fehler: raus'); ok(S.queueNach(S.queueAdd([], 'c'), 'c', { ok: true }).length === 0, 'Erfolg: raus');
+  ok(S.zusammen({ gesendet: 2, vorhanden: 1, fehler: [], stopped: false }) === '2 Touren gesendet · 1 war schon vorhanden', 'zusammen'); ok(/abgebrochen/.test(S.zusammen({ gesendet: 0, vorhanden: 0, fehler: [], stopped: true })), 'abgebrochen');
+  ok(S.zusammen({ gesendet: 1, vorhanden: 0, fehler: [{ name: 'x', text: 'nope' }] }) === '1 Tour gesendet · 1 nicht gesendet: nope', 'zusammen mit Fehler');
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';

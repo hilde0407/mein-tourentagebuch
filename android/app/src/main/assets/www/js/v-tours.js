@@ -164,6 +164,7 @@ Views['/tour'] = async (root, [id]) => {
   const t = await DB.get('tours', id);
   if (!t) { root.append(topbar('Tour', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr', actions: [h('a', { class: 'btn', href: '#/' }, 'Zur Tourenliste')] })); return; }
   const pts = await Tours.points(id);
+  const mtAcc = await DB.kvGet('mt', null);      // 2.5.0: „An Meine Touren senden“ nur bei bestehender Verbindung
   let photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts);
   const mapEl = h('div', { class: 'map tmap under' });
   const body = h('div', { class: 'tourp' });
@@ -244,6 +245,7 @@ Views['/tour'] = async (root, [id]) => {
   const helpPlan = planned ? [await TourHelp.passt(t, done, pmeta), TourHelp.notizen(t, pmeta)] : [];
   body.append(...[title,
     h('div', { class: 'sub' }, F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport) + (src ? ' · ' + src : '')),
+    t.mtSent && t.src !== 'mt' ? h('div', { class: 'sub muted small', id: 'mtsent' }, 'An Meine Touren gesendet am ' + F.date(t.mtSent)) : null,
     stageBox,
     Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
@@ -292,7 +294,8 @@ Views['/tour'] = async (root, [id]) => {
         it('link', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
         it('compass', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
         it('file', 'Als PDF', () => PdfUI.tour(t)),
-        it('share', 'Als GPX speichern', exportGpx)]),
+        it('share', 'Als GPX speichern', exportGpx),
+        SendenCalc.sichtbar(t, mtAcc) ? UI.row({ icon: 'server', title: 'An Meine Touren senden', id: 'mt-senden-tour', onclick: () => { s.close(); Senden.dialog(t, () => Nav.render()); } }) : null]),
       grp('Bearbeiten', [
         it('pencil', 'Umbenennen', rename),
         it('bulb', 'Namensvorschläge', suggestNames),

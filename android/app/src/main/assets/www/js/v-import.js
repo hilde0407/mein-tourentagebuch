@@ -78,7 +78,12 @@ Views['/import'] = async root => {
       let host = c.base; try { host = new URL(c.base).host; } catch (e) { /* Adresse wie gemerkt */ }
       const s = sheet('Meine Touren', h('div', null,
         h('p', { id: 'mt-state' }, '✓ Verbunden mit ' + host + (c.name ? ' als ' + c.name : '') + (c.role === 'viewer' ? ' (nur ansehen)' : '')),
-        c.open || c.role === 'viewer' ? null : h('p', { class: 'muted small' }, 'Tipp: Für die App genügt ein Konto „nur ansehen“. Sie liest nur und ändert am Server nichts.'),
+        c.role === 'viewer' ? h('p', { class: 'muted small', id: 'mt-viewer' }, 'Mit diesem Konto kann die App Touren holen, aber keine senden. Zum Senden brauchst du ein Konto mit Schreibrechten.')
+          : c.open ? null : h('p', { class: 'muted small' }, 'Tipp: Zum Holen genügt ein Konto „nur ansehen“. Zum Senden von Touren braucht es ein Konto mit Schreibrechten.'),
+        c.role === 'viewer' ? null : h('div', { id: 'mt-senden-box' },
+          h('button', { class: 'btn', id: 'mt-senden', onclick: () => { s.close(); Senden.auswahl(() => mt()); } }, 'Touren senden …'),
+          UI.toggle('Neue Aufzeichnungen automatisch senden', !!Set_.get('mtAuto'), v => Set_.set('mtAuto', !!v), { id: 'mt-auto' }),
+          h('p', { class: 'muted small' }, 'Nur wenn du das einschaltest: Nach dem Ende einer Aufzeichnung wird die Tour still an Meine Touren gesendet. Klappt das nicht (kein Netz), versucht die App es später noch einmal.')),
         /^http:/.test(c.base) ? h('p', { class: 'muted small' }, 'Die Verbindung ist nicht verschlüsselt (http).') : null,
         zahlen, zHint,
         h('div', { class: 'row end wrap' },
@@ -99,7 +104,7 @@ Views['/import'] = async root => {
     };
     url.addEventListener('input', check); check();
     const s = sheet('Meine Touren', h('div', null,
-      h('p', { class: 'muted' }, 'Holt deine Touren aus „Meine Touren“ auf deinem eigenen Server: neue Touren mit Strecke, für vorhandene den Namen, die Sportart und die Zahlen. Die App liest nur – am Server ändert sie nichts.'),
+      h('p', { class: 'muted' }, 'Holt deine Touren aus „Meine Touren“ auf deinem eigenen Server: neue Touren mit Strecke, für vorhandene den Namen, die Sportart und die Zahlen. Die App liest nur. Am Server ändert sie nur dann etwas, wenn du ausdrücklich eine Tour sendest.'),
       h('label', { class: 'fld' }, 'Serveradresse', url), warn,
       h('label', { class: 'fld' }, 'Name', nm), h('label', { class: 'fld' }, 'Passwort', pw),
       h('p', { class: 'muted small' }, 'Empfohlen: in Meine Touren unter „Konto & Freigaben“ einen Betrachter (nur ansehen) anlegen und hier verwenden. Das Passwort wird nicht gespeichert, nur ein Sitzungsschlüssel auf diesem Handy. Er kommt in keine Sicherung.'),

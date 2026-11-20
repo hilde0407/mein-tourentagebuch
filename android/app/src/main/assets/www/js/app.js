@@ -108,7 +108,8 @@ async function boot() {
   window.addEventListener('mtphoto', handlePhotoQueue);
   await Nav.render();
   setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
-  setTimeout(autoAbgleich, 6000);      // 2.2.0: still im Hintergrund, nach dem Start und nach der Neuberechnung; nur wenn eingeschaltet
+  setTimeout(autoAbgleich, 6000);
+  setTimeout(() => Senden.nachholen().catch(e => console.error('Senden', e)), 9000);      // 2.5.0: vorgemerkte Aufzeichnungen noch einmal versuchen (nur wenn eingeschaltet)      // 2.2.0: still im Hintergrund, nach dem Start und nach der Neuberechnung; nur wenn eingeschaltet
   setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); }, 600);
 }
 /** „Beim Öffnen automatisch abgleichen“ (Vorgabe aus): bremst den Start nicht (6 s Abstand, wartet die Neuberechnung ab), stört keine Aufzeichnung, meldet nur Neues oder Fehler kurz. */
