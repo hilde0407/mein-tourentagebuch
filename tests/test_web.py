@@ -348,7 +348,7 @@ def meine_touren(pg):
         pub: ['http://touren.example.org', 'http://8.8.8.8', 'http://172.32.0.1', 'http://100.128.0.1', 'http://[2001:db8::1]'].map(M.privat),
         sp: ['hike', 'touringbicycle', 'e_touringbicycle', 'e_mtb', 'mtb', 'racebike', 'jogging', 'skialpin', 'skitour', 'snowshoe', 'nordic', 'nordicwalking', 'mountaineering', 'other', 'kitesurfen', ''].map(M.sport) }; }""")
     assert u["b"] == ["https://meine-touren.example.ts.net", "http://192.168.1.5:8080", "https://touren.example.org"] and all(u["bad"]) and all(u["priv"]) and not any(u["pub"]), u
-    assert u["sp"] == ["hike", "bike", "ebike", "ebike", "mtb", "racebike", "run", "ski", "ski", "ski", "ski", "hike", "mountaineering", "other", "other", "other"], u["sp"]
+    assert u["sp"] == ["hike", "bike", "ebike", "ebike", "mtb", "racebike", "run", "skialpin", "skitour", "hike", "nordic", "hike", "mountaineering", "other", "other", "other"], u["sp"]
     pre = pg.evaluate(MT_VORHANDEN, srv)
     # Blatt: unverschlüsselte Adresse außerhalb des eigenen Netzes → deutlicher Hinweis und Rückfrage; im eigenen Netz nur der Hinweis
     go = lambda: (pg.evaluate("location.hash = '#/import'"), pg.wait_for_selector("#imp-mt"), pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_selector(".sheet", state="detached"), pg.click("#imp-mt"))
@@ -387,10 +387,11 @@ def meine_touren(pg):
     assert st["s0"]["id"] != pre["l"] and st["s0"]["srcId"] == "mt:s0" and st["s0"]["src"] == "mt", st["s0"]      # gleiche Startzeit, aber ganz andere Länge: eigene Tour
     g1 = st["g1"]; assert g1["note"] == "Früh los, oben Gämsen gesehen." and g1["stars"] == 5 and sorted(g1["tags"]) == ["Gipfel", "Wetterstein"] and g1["hr"] and g1["timed"] and g1["start"] == by["g1"]["start_ts"] * 1000, g1
     assert {t["sport"]: st[t["id"]]["sport"] for t in srv if st[t["id"]]} == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run",
-        "skialpin": "ski", "skitour": "ski", "snowshoe": "ski", "nordic": "ski", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
+        "skialpin": "skialpin", "skitour": "skitour", "snowshoe": "hike", "nordic": "nordic", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
     # Tourseite: Quelle, maßgebliche Zahlen mit eigener Rechnung daneben, Bewertung
     pg.evaluate("id => { location.hash = '#/tour/' + id }", g1["id"]); pg.wait_for_selector("#mtinfo"); f = pg.inner_text("#mtinfo")
-    assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "stammen aus Meine Touren" in f and "Eigene Rechnung aus der Spur: 4,5 km · ↑ " in f and "5 von 5 Sternen" in f, f
+    assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "stammen aus Meine Touren" in f and "Eigene Rechnung aus der Spur: 4,5 km · ↑ " in f and "Sternen" not in f, f      # die Sterne stehen jetzt in der eigenen Bewertung (2.2.0)
+    assert pg.locator("#rate .star.on").count() == 5 and "5 von 5 · aus Meine Touren" in pg.inner_text("#ratecap"), pg.inner_text("#ratecap")
     # Verbundenes Blatt, Wiederholung: nichts doppelt, keine Strecke wird noch einmal geladen (außer dem Versuch für die Tour ohne Strecke)
     go(); pg.wait_for_selector("#mt-state"); assert pg.inner_text("#mt-state") == "✓ Verbunden mit mt.test als Tagebuch (nur ansehen)", pg.inner_text("#mt-state")
     n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000); (leise(), pg.click("#mt-go")); tx = toast("schon vorhanden"); assert tx == "16 schon vorhanden · 1 ohne Strecke auf dem Server" + nur, tx
@@ -634,7 +635,7 @@ def layout_21(pg):
     pg.evaluate("async id => { const t = await DB.get('tours', id); Object.assign(t, { mtId: 'g1', zMt: 1, upMt: 655, downMt: 650, distMt: Math.round(t.dist) + 40, starsMt: 4, upSrc: 'mt', up: 655, down: 650, dist: Math.round(t.dist) + 40 }); await Tours.save(t); }", d["K"])
     bad += layout_check(pg, ["#/doppelt", "#/import", "#/tour/" + d["K"]])
     pg.evaluate("location.hash = '#/doppelt'"); pg.wait_for_selector("section.dup .dup-a"); assert pg.locator("section.dup").count() == 2
-    pg.evaluate("id => { location.hash = '#/tour/' + id }", d["K"]); pg.wait_for_selector("#mtinfo"); assert "stammen aus Meine Touren" in pg.inner_text("#mtinfo") and "4 von 5 Sternen" in pg.inner_text("#mtinfo")
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", d["K"]); pg.wait_for_selector("#mtinfo"); assert "stammen aus Meine Touren" in pg.inner_text("#mtinfo") and "Sternen" not in pg.inner_text("#mtinfo") and pg.locator("#rate .star.on").count() == 4
     def go(h, sel): pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h); pg.wait_for_selector(sel); pg.wait_for_timeout(250)
     def mt_login(): go("#/import", "#imp-mt"); pg.evaluate("DB.del('kv', 'mt')"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "http://touren.example.org"); pg.wait_for_selector("#mt-http:not([hidden])")
     def mt_on(): go("#/import", "#imp-mt"); pg.evaluate("DB.kvSet('mt', { base: 'http://192.168.178.20:8000', name: 'Volker', role: 'admin', token: 'x' })"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-off")

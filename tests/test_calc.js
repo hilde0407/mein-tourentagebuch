@@ -266,12 +266,15 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
 
 // Zepp-Typen: Gehen (6, 7) und 22 zählen als Wandern, Laufen (1, 8) bleibt getrennt
 (() => {
-  const src = require('fs').readFileSync(W + 'import.js', 'utf8'), m = src.match(/const types = (\{[^}]*\})/);
+  const src = require('fs').readFileSync(W + 'import.js', 'utf8'), m = src.match(/TYPEN: (\{[^}]*\})/);
   ok(!!m, 'Zepp-Typtabelle gefunden');
   const t = eval('(' + m[1] + ')');
   for (const k of [6, 7, 13, 15, 22]) ok(t[k] === 'hike', 'Typ ' + k + ' → Wandern');
   for (const k of [1, 8]) ok(t[k] === 'run', 'Typ ' + k + ' → Laufen');
-  ok(t[9] === 'bike' && t[14] === 'ski', 'Rad und Ski unverändert');
+  ok(t[9] === 'bike' && t[14] === 'ski', 'Rad unverändert, Typ 14 bleibt „Ski (allgemein)“ (Art unbekannt)');
+  // 2.2.0: wie die Zuordnung des Servers (app/gpxtools.py ZEPP_SPORT): 43 und 105 Ski alpin, 178 Schneeschuh (Wandern + Schlagwort), 206 E-Bike
+  ok(t[43] === 'skialpin' && t[105] === 'skialpin' && t[178] === 'hike' && t[206] === 'ebike', 'neue Zepp-Typen');
+  const sc = src.match(/SCHNEESCHUH: (\[[^\]]*\])/); ok(!!sc && eval(sc[1]).join() === '178', 'Schneeschuh-Typ vermerkt');
 })();
 
 /* ---------- Doppelte Touren (2.1.0): Paar-Erkennung, Vorschlag „welche bleibt“, Zusammenlegen der Angaben ---------- */
@@ -343,6 +346,69 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(m.mtId === 'eigen' && m.upMt === 600 && m.up === 600, 'vorhandene Zuordnung bleibt');
   m = D.zusammen(t('k', T0, 10000, 180, { srcId: 'komoot:777' }), t('k2', T0, 10000, 180, { komootId: '888' }), {});
   ok(m.komootId === undefined, 'Komoot-Tour behält ihre eigene Nummer');
+})();
+
+/* ---------- 2.2.0: Wintersportarten, Bewertung, Alles abgleichen ---------- */
+(() => {
+  const AB = require(W + 'calc-abgleich.js'), D = require(W + 'calc-doppelt.js'), H = 3600000;
+  // Skigruppe: die drei neuen Arten plus „Ski (allgemein)“; Schneeschuh gehört zu Wandern (nicht mehr zu Ski)
+  ok(PH.SPORT_GRP.ski.slice().sort().join() === 'nordic,ski,skialpin,skitour', 'Gruppe Ski');
+  ok(PH.gleicheGruppe('skitour', 'skialpin') && PH.gleicheGruppe('nordic', 'ski') && !PH.gleicheGruppe('skitour', 'hike') && PH.gleicheGruppe('hike', 'mountaineering'), 'gleiche Gruppe: Ski unter sich, Wandern unter sich');
+  ok(PH.TEMPO.skitour === 5 && PH.AUFSTIEG.skitour === 400 && PH.TEMPO.ski === 5 && PH.AUFSTIEG.ski === 400, 'Skitour und „Ski (allgemein)“ wie bisher');
+  close(PH.schaetzDauer('nordic', 18, 300), 18 / 9 + 300 / 600, 'Langlauf'); close(PH.schaetzDauer('skialpin', 36, 1500), 36 / 18 + 1500 / 3000, 'Ski alpin mit Liften');
+  close(PH.schaetzDauer('skitour', 10, 800), 10 / 5 + 800 / 400, 'Skitour'); close(PH.schaetzDauer('hike', 9, 500), 9 / 4.5 + 1, 'Wandern unverändert'); close(PH.schaetzDauer('unbekannt', 10, 900), 10 / 5 + 1, 'Rückfall');
+  // Ziele: „grp:ski“ zählt alle Skiarten, ein altes Ziel „ski“ ebenfalls, Schneeschuh (jetzt Wandern) nicht
+  for (const sp of ['skialpin', 'skitour', 'nordic', 'ski']) ok(Z.sportPasst({ sport: 'grp:ski' }, sp) && Z.sportPasst({ sport: 'ski' }, sp), 'Ziel Ski zählt ' + sp);
+  ok(!Z.sportPasst({ sport: 'grp:ski' }, 'hike') && !Z.sportPasst({ sport: 'ski' }, 'hike') && Z.sportPasst({ sport: 'skitour' }, 'skitour') && !Z.sportPasst({ sport: 'skitour' }, 'nordic'), 'Ziel einzelne Art / nicht Wandern');
+  const jetzt = day(2026, 11, 20, 12), zt = [tour('skitour', day(2026, 2, 1), 9000, 14000, 900), tour('nordic', day(2026, 2, 8), 15000, 5000, 100), tour('hike', day(2026, 2, 9), 8000, 9000, 300)];
+  close(Z.stand({ id: 'x', period: 'year', year: 2026, metric: 'km', target: 100, sport: 'grp:ski' }, zt, new Date(jetzt)).ist, 24, 'Jahresziel Ski: 9 + 15 km');
+  close(Z.stand({ id: 'x', period: 'year', year: 2026, metric: 'km', target: 100, sport: 'ski' }, zt, new Date(jetzt)).ist, 24, 'altes Ziel „Ski“ zählt alle Skiarten');
+
+  // Bewertung: eigene Sterne gehen vor, übernommene gelten, solange nicht von Hand geändert
+  ok(AB.sterne({}) === 0 && AB.sterne(null) === 0 && AB.sterne({ starsMt: 4 }) === 4 && AB.sterne({ stars: 3, starsMt: 4 }) === 3 && AB.sterne({ stars: 2, starsMan: 1, starsMt: 5 }) === 2, 'Sterne lesen');
+  ok(AB.sterne({ starsMan: 1, starsMt: 5 }) === 0 && AB.sterne({ stars: 9 }) === 5 && AB.sterne({ stars: 0, starsMt: 0 }) === 0, 'von Hand entfernt = keine; zu groß = 5; 0 = keine');
+  let e = {};
+  ok(AB.sterneUebernehmen(e, 4) === true && e.stars === 4 && e.starsMt === 4 && !e.starsMan, 'Server-Sterne übernehmen');
+  ok(AB.sterneUebernehmen(e, 4) === false, 'unverändert: keine Änderung');
+  ok(AB.sterneUebernehmen(e, 2) === true && e.stars === 2 && e.starsMt === 2, 'Server ändert: zieht nach');
+  ok(AB.sterneUebernehmen(e, null) === true && e.stars === undefined && e.starsMt === undefined, 'Server nimmt die Bewertung weg: weg');
+  AB.sterneUebernehmen(e, 5); ok(AB.sterneSetzen(e, 3) === 3 && e.stars === 3 && e.starsMan === 1 && e.starsMt === 5, 'von Hand: 3 (Merker gesetzt, Wert des Servers bleibt als Angabe)');
+  ok(AB.sterneUebernehmen(e, 1) === true && e.stars === 3 && e.starsMt === 1, 'Abgleich überschreibt die Handbewertung nie');
+  ok(AB.sterneSetzen(e, 3) === 0 && e.stars === undefined && e.starsMan === 1 && AB.sterne(e) === 0, 'derselbe Stern nochmal: Bewertung entfernt (bleibt „von Hand“)');
+  ok(AB.sterneUebernehmen(e, 4) === true && e.stars === undefined && AB.sterne(e) === 0, 'nach dem Entfernen von Hand holt der Abgleich sie nicht zurück');
+  const e2 = {}; ok(AB.sterneSetzen(e2, 7) === 5 && AB.sterneSetzen(e2, -1) === 0 && AB.sterneSetzen(e2, 'x') === 0 && AB.sterneSetzen(e2, 2.6) === 3, 'Eingaben begrenzt');
+  // Zusammenführen: von Hand gesetzte Bewertung gilt; sonst die vorhandene
+  const tz = (id, x) => Object.assign({ id, start: day(2026, 8, 14, 9), end: day(2026, 8, 14, 12), dur: 10800, dist: 10000, status: 'done', timed: true, created: 1000, name: id }, x);
+  ok(D.zusammen(tz('k', {}), tz('d', { stars: 4, starsMan: 1 }), {}).stars === 4 && D.zusammen(tz('k', {}), tz('d', { stars: 4, starsMan: 1 }), {}).starsMan === 1, 'Bewertung von Hand der anderen Tour kommt mit');
+  ok(D.zusammen(tz('k', { stars: 2, starsMan: 1 }), tz('d', { stars: 5, starsMan: 1 }), {}).stars === 2, 'bleibende Tour mit Handbewertung behält sie');
+  ok(D.zusammen(tz('k', { stars: 2 }), tz('d', { stars: 5, starsMan: 1 }), {}).stars === 5, 'Handbewertung der anderen schlägt eine übernommene');
+  ok(D.zusammen(tz('k', {}), tz('d', { starsMt: 3, stars: 3 }), {}).stars === 3 && !D.zusammen(tz('k', {}), tz('d', { starsMt: 3, stars: 3 }), {}).starsMan, 'übernommene Bewertung der anderen, wenn die bleibende keine hat');
+  ok(D.zusammen(tz('k', { stars: 4 }), tz('d', { stars: 1 }), {}).stars === 4 && AB.sterne(D.zusammen(tz('k', {}), tz('d', {}), {})) === 0, 'sonst bleibt es bei der bleibenden / keiner');
+  // Ski zählen (Migration): nur unbestimmte „Ski (allgemein)“-Touren ohne Handwahl, keine geplanten
+  ok(AB.skiOffen([{ sport: 'ski' }, { sport: 'ski', sportMan: 1 }, { sport: 'ski', status: 'planned' }, { sport: 'skitour' }, { sport: 'hike' }, null]) === 1 && AB.skiOffen(null) === 0, 'Ski offen');
+
+  // Alles abgleichen: Reihenfolge, Anzeige, wann automatisch
+  ok(AB.REIHENFOLGE.join() === 'zepp,komoot,mt' && AB.NAMEN.mt === 'Meine Touren', 'Reihenfolge Zepp → Komoot → Meine Touren');
+  const nowT = day(2026, 11, 20, 12);
+  ok(AB.wann(day(2026, 11, 20, 8) + 12 * 60000, nowT) === 'heute 08:12' && AB.wann(day(2026, 11, 19, 12), nowT) === 'gestern 12:00' && AB.wann(day(2026, 11, 3, 7), nowT) === '03.11. 07:00' && AB.wann(day(2025, 12, 24, 18), nowT) === '24.12.2025 18:00' && AB.wann(0, nowT) === '', 'Zeitangabe');
+  ok(AB.wann(new Date(2026, 10, 20, 0, 5).getTime(), new Date(2026, 10, 20, 23, 0).getTime()) === 'heute 00:05' && AB.wann(new Date(2026, 10, 19, 23, 59).getTime(), new Date(2026, 10, 20, 0, 1).getTime()) === 'gestern 23:59', 'um Mitternacht');
+  ok(AB.zeile({ t: day(2026, 11, 20, 8) + 12 * 60000, neu: 2, fehler: 0 }, nowT) === 'Zuletzt abgeglichen: heute 08:12 · 2 neue Touren', 'Zeile 2 neue');
+  ok(AB.zeile({ t: day(2026, 11, 20, 8), neu: 1 }, nowT) === 'Zuletzt abgeglichen: heute 08:00 · 1 neue Tour' && AB.zeile({ t: day(2026, 11, 20, 8), neu: 0 }, nowT) === 'Zuletzt abgeglichen: heute 08:00 · nichts Neues', 'Zeile 1 / 0');
+  ok(AB.zeile({ t: day(2026, 11, 20, 8), neu: 3, fehler: 1 }, nowT).endsWith('· 3 neue Touren · 1 Quelle mit Fehler') && AB.zeile({ t: day(2026, 11, 20, 8), neu: 0, fehler: 2 }, nowT).endsWith('2 Quellen mit Fehler') && AB.zeile(null) === '' && AB.zeile({}) === '', 'Zeile mit Fehlern / leer');
+  ok(AB.neue([{ res: { added: 2 } }, { err: new Error('x') }, { res: { added: 1 } }, { skipped: true }, null]) === 3 && AB.neue(null) === 0, 'neue Touren zählen');
+  const er = x => Object.assign(new Error('x'), x);
+  ok(/Meine Touren neu anmelden/.test(AB.fehlerText('mt', er({ relogin: true }))) && /Mehr → Touren importieren → Meine Touren/.test(AB.fehlerText('mt', er({ relogin: true }))), 'Anmeldung abgelaufen: Meine Touren, mit Ort');
+  ok(/Komoot neu anmelden/.test(AB.fehlerText('komoot', new Error('Tourenliste: HTTP 401'))) && /Zepp neu anmelden/.test(AB.fehlerText('zepp', new Error('Zepp-Anfrage fehlgeschlagen (403). Zugang abgelaufen? Bitte neu anmelden.'))), 'Anmeldung abgelaufen: Komoot, Zepp');
+  ok(AB.fehlerText('mt', new Error('Meine Touren ist unter https://x nicht erreichbar. Bitte Adresse und Verbindung prüfen (WLAN, Tailscale).')).startsWith('Meine Touren ist unter') && AB.fehlerText('komoot', new Error('Tourenliste: HTTP 500')) === 'Tourenliste: HTTP 500' && AB.fehlerText('zepp', null) === 'Unbekannter Fehler', 'andere Fehler im Wortlaut');
+  const desc = r => (r.added ? r.added + ' neu' : 'Nichts gefunden');
+  ok(AB.quellZeile({ id: 'zepp', res: { added: 2 } }, desc) === '2 neu' && AB.quellZeile({ id: 'zepp', res: {} }, desc) === 'Nichts Neues' && AB.quellZeile({ id: 'mt', skipped: true }, desc) === 'Nicht ausgeführt (abgebrochen)' && /Komoot neu anmelden/.test(AB.quellZeile({ id: 'komoot', err: new Error('HTTP 401') }, desc)), 'Zeile je Quelle');
+  const f = o => AB.faellig(Object.assign({ an: true, quellen: 2, live: false, last: nowT - 25 * H, lastTry: nowT - 25 * H, now: nowT }, o));
+  ok(f({}) === true && f({ last: undefined, lastTry: undefined }) === true, 'fällig nach 25 h / noch nie');
+  ok(f({ an: false }) === false && f({ quellen: 0 }) === false && f({ live: true }) === false, 'aus, keine Quelle, Aufzeichnung läuft: nie');
+  ok(f({ last: nowT - 23 * H, lastTry: nowT - 23 * H }) === false && f({ last: nowT - 24 * H, lastTry: nowT - 24 * H }) === true && f({ last: nowT - 24 * H + 1000, lastTry: nowT - 24 * H }) === false, 'höchstens einmal je 24 h (Grenze)');
+  ok(f({ lastTry: nowT - 30 * 60000 }) === false && f({ lastTry: nowT - 61 * 60000 }) === true, 'nach Fehlversuch frühestens nach einer Stunde');
+  ok(f({ last: nowT + 5 * H, lastTry: nowT + 5 * H }) === true, 'Uhr zurückgestellt: nicht für immer gesperrt');
+  ok(AB.faellig(null) === false && AB.faellig({}) === false, 'ohne Angaben nicht fällig');
 })();
 
 console.log('OK (' + n + ' Prüfungen)');
