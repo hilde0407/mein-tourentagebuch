@@ -626,6 +626,319 @@ def neue_layout(pg, ids):
     return sorted(set(bad))
 
 
+LEISE = "() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }"      # alte Meldung abwarten, sonst passt der Text der vorigen (Lehre aus 2.1.0)
+
+def toast_text(pg, rx, t=20000):
+    pg.wait_for_function("rx => { const t = document.querySelector('#toast'); return !!t && t.classList.contains('on') && new RegExp(rx).test(t.textContent); }", arg=rx, timeout=t)
+    return pg.inner_text("#toast")
+
+def zu(pg):
+    pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
+
+def go(pg, h, sel):
+    pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h); pg.wait_for_selector(sel); pg.wait_for_timeout(200)
+
+WINTER_TOUREN = """async (srv) => {
+  /* Touren, die es in der App schon gibt – alle mit der alten Sammel-Sportart „ski“ – und passend zu s4 (Ski alpin), s5 (Skitour), s6 (Schneeschuh), s7 (Langlauf) am Server;
+     dazu die Skitour s5 noch einmal als von Hand gewählte Sportart (Langlauf) und eine Ski-Tour, die es am Server nicht gibt. */
+  const by = Object.fromEntries(srv.map(t => [t.id, t]));
+  const line = (t, n, dt, lat0) => Array.from({ length: n }, (_, i) => ({ lat: (lat0 || t.lat) + i * (t.dist_m / (n - 1)) / 111195, lon: t.lng, ele: 1500 + 200 * Math.sin(Math.PI * i / (n - 1)), t: t.start_ts * 1000 + (dt || 0) + i * 30000 }));
+  const mk = async (id, name, sp, extra) => { const t = (await Tours.add({ name, sport: 'ski', pts: line(by[id], 40), src: 'file' })).tour; if (sp) { t.sportMan = 1; t.sport = sp; } Object.assign(t, extra || {}); await Tours.save(t); return t.id; };
+  const o = { s4: await mk('s4', 'Pistentag'), s6: await mk('s6', 'Schneeschuhrunde'), s7: await mk('s7', 'Loipe am Morgen'), s5: await mk('s5', 'Auf den Gipfel', 'nordic') };
+  o.frei = (await Tours.add({ name: 'Nur in der App', sport: 'ski', pts: line({ lat: 46.5, lng: 10.5, dist_m: 2000, start_ts: 1760000000 }, 30), src: 'file' })).tour.id;
+  return o; }"""
+
+def winter(pg):
+    """2.2.0, Punkt A: Wintersportarten getrennt, Schneeschuh zählt als Wandern. Dateien, Abgleich mit Meine Touren (auch für Touren mit der alten Sportart „ski“,
+    nie bei von Hand gewählter Sportart), Schlagwort „Schneeschuh“ nur einmal, Zählung nach dem Update, Oberfläche (Sportart ändern, Chips, Statistik, Ziele, Planer, Aufzeichnung)."""
+    fx = mt_fixture(); srv = json.loads(fx["antworten"]["tours"]["body"])
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    # 1. Dateien: GPX-Typ → Sportart, „Schneeschuh“ als Schlagwort
+    r = pg.evaluate("""async () => { const out = {};
+      const gx = (ty, k) => '<?xml version="1.0"?><gpx version="1.1"><trk><name>W ' + ty + '</name><type>' + ty + '</type><trkseg>' + Array.from({ length: 30 }, (_, i) => '<trkpt lat="' + (46.1 + k * 0.01 + i * 0.0005) + '" lon="10.1"><ele>' + (1800 + i * 4) + '</ele><time>' + new Date(Date.UTC(2025, 0, 10 + k, 9, 0, i * 30)).toISOString() + '</time></trkpt>').join('') + '</trkseg></trk></gpx>';
+      const types = ['snowshoe', 'skitour', 'skialpin', 'nordic', 'skiing', 'Snowshoe'];
+      for (let k = 0; k < types.length; k++) { const x = await Import.fromData('w' + k + '.gpx', new TextEncoder().encode(gx(types[k], k)), 'file'); out[types[k] + k] = x.added; }
+      const l = await Tours.list(); return { out, t: l.filter(t => /^W /.test(t.name)).map(t => [t.name, t.sport, t.tags || []]) }; }""")
+    got = {n.split()[1]: [sp, tg] for n, sp, tg in r["t"]}
+    assert r["out"] == {"snowshoe0": 1, "skitour1": 1, "skialpin2": 1, "nordic3": 1, "skiing4": 1, "Snowshoe5": 1}, r
+    assert got["snowshoe"] == ["hike", ["Schneeschuh"]] and got["skitour"] == ["skitour", []] and got["skialpin"] == ["skialpin", []] and got["nordic"] == ["nordic", []] and got["skiing"] == ["ski", []] and got["Snowshoe"] == ["hike", ["Schneeschuh"]], got
+    # 2. Abgleich mit Meine Touren: alte „ski“-Touren bekommen ihre Art, Schneeschuh wird Wandern + Schlagwort, Handwahl bleibt
+    pg.evaluate("(fx) => { window.__mtFx = fx; }", fx); pg.evaluate(MT_FAKE, fx)
+    o = pg.evaluate(WINTER_TOUREN, srv)
+    assert pg.evaluate("async o => (await Promise.all(Object.values(o).map(id => DB.get('tours', id)))).filter(t => t.sport === 'ski').length", o) == 4      # s4, s6, s7 und „nur in der App“ (s5 ist von Hand Langlauf)
+    # Zählung nach dem Update: einmalig, mit Hinweis auf der Startseite
+    pg.evaluate("async () => { await DB.kvSet('skiVer', 0); await DB.kvSet('calcNote', null); }")
+    m = pg.evaluate("Tours.migrate().then(r => r && r.ski)"); assert m >= 4, m
+    assert pg.evaluate("DB.kvGet('calcNote').then(n => n.ski)") == m and pg.evaluate("Tours.migrate().then(r => r && r.ski || 0)") == 0 and pg.evaluate("DB.kvGet('skiVer')") == 1, "gezählt wird einmal"
+    go(pg, "#/start", "#calcnote"); tx = pg.inner_text("#calcnote")
+    assert "Ski (allgemein)" in tx and "Meine Touren" in tx and "Schneeschuh" in tx and str(m) in tx, tx
+    pg.click("#calc-ok"); pg.wait_for_selector("#calcnote", state="detached")
+    pg.evaluate("""async () => { await DB.kvSet('mt', { base: 'https://mt.test', name: 'Tagebuch', role: 'viewer', token: 'SITZUNG-BETRACHTER-BEISPIEL' }); window.__mt.sessions.add('SITZUNG-BETRACHTER-BEISPIEL'); }""")
+    pg.evaluate("window.__mt.log = []")
+    res = pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    st = pg.evaluate("""async (o) => { const out = {}; for (const [k, id] of Object.entries(o)) { const t = await DB.get('tours', id); out[k] = { sport: t.sport, alt: t.sportAlt, man: t.sportMan, tags: t.tags || [], mt: t.sportMt, name: t.name }; } return out; }""", o)
+    assert st["s4"] == {"sport": "skialpin", "alt": "ski", "man": None, "tags": [], "mt": "skialpin", "name": st["s4"]["name"]}, st["s4"]
+    assert st["s7"]["sport"] == "nordic" and st["s7"]["mt"] == "nordic", st["s7"]
+    assert st["s6"]["sport"] == "hike" and st["s6"]["tags"] == ["Schneeschuh"] and st["s6"]["mt"] == "snowshoe" and st["s6"]["alt"] == "ski", st["s6"]
+    assert st["s5"]["sport"] == "nordic" and st["s5"]["man"] == 1 and st["s5"]["mt"] == "skitour", "von Hand gewählte Sportart wird nie überschrieben: " + json.dumps(st["s5"])
+    assert st["frei"]["sport"] == "ski" and st["frei"]["mt"] is None, "Tour nur in der App bleibt „Ski (allgemein)“"
+    # neue Touren vom Server: richtige Arten (s0–s10 kommen als neue Touren, soweit nicht oben zugeordnet)
+    neu = pg.evaluate("""async () => { const o = {}; for (const t of await Tours.list()) { const m = /^mt:(s\\d+)$/.exec(t.srcId || ''); if (m) o[m[1]] = [t.sport, t.tags || [], t.sportMt]; } return o; }""")
+    assert neu["s8"][0] == "hike" and neu["s3"][0] == "run" and neu["s9"][0] == "mountaineering" and neu["s10"][0] == "other", neu
+    assert "s4" not in neu and "s6" not in neu and "s7" not in neu, "zugeordnete Touren werden nicht noch einmal angelegt"
+    # Schlagwort nur einmal: in der App entfernt → der nächste Abgleich bringt es nicht zurück; neuer Schneeschuh-Eintrag am Server bekommt es
+    pg.evaluate("async id => { const t = await DB.get('tours', id); t.tags = []; await Tours.save(t); }", o["s6"])
+    pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    assert pg.evaluate("id => DB.get('tours', id).then(t => t.tags)", o["s6"]) == [], "entferntes Schlagwort kommt nicht wieder"
+    pg.evaluate("async () => { for (const t of await Tours.list()) if (t.srcId === 'mt:s8') await Tours.remove(t.id); window.__mt.edit = l => l.map(t => t.id === 's8' ? Object.assign({}, t, { sport: 'snowshoe' }) : t); }")
+    pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    ns = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:s8'))"); assert ns["sport"] == "hike" and ns["tags"] == ["Schneeschuh"] and ns["sportMt"] == "snowshoe", ns      # neue Tour vom Server
+    pg.evaluate("window.__mt.edit = null")
+    # Filter über das Schlagwort (Album) und die Tourseite zeigt Wandern + Schlagwort
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", ns["id"]); pg.wait_for_selector(".tourp")
+    assert "Wandern" in pg.inner_text(".tourp .sub") and pg.locator(".tourp a.chip", has_text="Schneeschuh").count() == 1
+    # 3. Oberfläche: Sportart ändern (alle Arten, Handwahl), Tourenliste mit Chips, Statistik-Filter, Ziele, Planer, Aufzeichnung
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", o["s4"]); pg.wait_for_selector(".tourp"); pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
+    pg.locator("header.top button[aria-label=Aktionen]").click(); pg.get_by_text("Sportart ändern").click(); pg.wait_for_selector(".sheet[aria-label='Sportart'] .li")
+    names = pg.locator(".sheet[aria-label='Sportart'] .li .li-t b").all_inner_texts()
+    for want in ("Ski alpin", "Skitour", "Langlauf", "Ski (allgemein)", "Wandern"): assert want in names, names
+    pg.locator(".sheet .li", has_text="Skitour").click(); pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_function("() => document.querySelector('.tourp .sub') && /Skitour/.test(document.querySelector('.tourp .sub').textContent)")
+    t4 = pg.evaluate("id => DB.get('tours', id)", o["s4"]); assert t4["sport"] == "skitour" and t4["sportMan"] == 1, t4
+    pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)"); assert pg.evaluate("id => DB.get('tours', id).then(t => t.sport)", o["s4"]) == "skitour", "Abgleich überschreibt die Handwahl nicht"
+    pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("a.tour"); pg.evaluate("TourUI.filter.sport = ''; Nav.render()"); pg.wait_for_selector(".chips .chip:has-text('Skitour')")
+    chips = pg.locator(".filters .chips .chip").all_inner_texts()
+    for want in ("Skitour", "Langlauf", "Ski (allgemein)", "Wandern"): assert any(want in c for c in chips), chips
+    pg.click(".filters .chips .chip:has-text('Skitour')"); assert pg.locator("a.tour").count() == pg.evaluate("Tours.list().then(l => l.filter(t => t.sport === 'skitour' && t.status !== 'planned' && !t.hidden).length)")
+    assert "Skitour" in pg.inner_text("a.tour .tb small"); pg.click(".filters .chips .chip:has-text('Alle')")
+    pg.evaluate("location.hash = '#/stats'"); pg.wait_for_selector(".kpis"); pg.select_option("select[aria-label=Zeitraum]", "all"); pg.select_option("select[aria-label=Sportart]", "grp:ski"); pg.wait_for_timeout(300)
+    nski = pg.evaluate("Tours.list().then(l => l.filter(t => Sports.SKI.includes(t.sport) && t.status !== 'planned' && !t.hidden).length)")
+    assert pg.locator(".kpis .kpi").first.inner_text().split("\n")[0].strip() == str(nski) and nski >= 6, (pg.inner_text(".kpis"), nski)
+    pg.evaluate("location.hash = '#/stats/ziele'"); pg.wait_for_selector("#goaladd"); pg.click("#goaladd"); pg.wait_for_selector("#goalsport")
+    opts = pg.locator("#goalsport option").all_inner_texts(); assert "Ski (alle Arten)" in opts and "Skitour" in opts and "Langlauf" in opts and "Ski alpin" in opts and "Ski (allgemein)" not in opts, opts
+    zu(pg)
+    pg.evaluate("location.hash = '#/plan'"); pg.wait_for_selector(".ppanel select"); po = pg.locator(".ppanel select option").all_inner_texts()
+    assert "Skitour" in po and "Langlauf" in po and "Ski (allgemein)" not in po and "Wandern" in po, po
+    assert pg.evaluate("[Router.profileFor('skitour'), Router.profileFor('nordic'), Router.profileFor('skialpin'), Router.profileFor('ski'), Router.profileFor('hike')]") == ["hiking-mountain"] * 4 + ["hiking-mountain"]
+    pg.evaluate("location.hash = '#/rec'"); pg.wait_for_selector(".bigstart"); rc = pg.locator(".chips .chip").all_inner_texts()
+    assert any("Skitour" in c for c in rc) and any("Langlauf" in c for c in rc) and any("Ski alpin" in c for c in rc) and not any("allgemein" in c for c in rc), rc
+    # Symbole und Farben für alle Arten (kein leeres Symbol, jede Skiart eine eigene Kartenfarbe)
+    ic = pg.evaluate("() => Sports.list.map(s => [s[0], Ico.svg(s[2]).length > 50, /^#[0-9a-f]{6}$/i.test(MapKit.sportColor[s[0]] || '')])")
+    assert all(a and b for _, a, b in ic), ic
+    assert len({pg.evaluate("k => MapKit.sportColor[k]", k) for k in ("ski", "skialpin", "skitour", "nordic", "hike", "bike", "ebike", "run", "racebike", "mtb")}) == 10, "Farben unterscheidbar"
+    assert pg.evaluate("Suggest.sportName.skitour") == "Skitour" and pg.evaluate("Suggest.sportName.nordic") == "Langlauftour"
+    # Sicherung: alte Sportart „ski“ und die neuen gehen verlustfrei hin und zurück
+    bk = pg.evaluate("async () => { const b = await Backup.collect(); const z = fflate.gunzipSync(fflate.gzipSync(new TextEncoder().encode(JSON.stringify(b)))); const d = Backup.parse(fflate.gzipSync(z)); return { sp: d.tours.map(t => t.sport), tg: d.tours.filter(t => (t.tags || []).includes('Schneeschuh')).length, sk: d.kv.map(k => k.k) }; }")
+    assert {"ski", "skialpin", "skitour", "nordic", "hike"} <= set(bk["sp"]) and bk["tg"] >= 3 and "skiVer" not in bk["sk"] and "abgleich" not in bk["sk"] and "mt" not in bk["sk"], bk
+    # Aufräumen
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'mt'); window.__mt.edit = null; Native.http = window.__mtReal; TourUI.filter.sport = ''; }", vorher)
+    assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
+
+
+def sterne(pg):
+    """2.2.0, Punkt B: eigene Bewertung. Antippen, nochmal = entfernen, Liste, Filter, Abgleich mit Meine Touren (zieht nach, bis man von Hand ändert), Sicherung."""
+    fx = mt_fixture(); srv = json.loads(fx["antworten"]["tours"]["body"])
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    pg.evaluate(MT_FAKE, fx); pg.evaluate("async () => { await DB.kvSet('mt', { base: 'https://mt.test', name: 'Tagebuch', role: 'viewer', token: 'SITZUNG-BETRACHTER-BEISPIEL' }); window.__mt.sessions.add('SITZUNG-BETRACHTER-BEISPIEL'); }")
+    ids = pg.evaluate("""async (srv) => { const g1 = srv.find(t => t.id === 'g1'), g4 = srv.find(t => t.id === 'g4');
+      const line = (t, n) => Array.from({ length: n }, (_, i) => ({ lat: t.lat + i * (t.dist_m / (n - 1)) / 111195, lon: t.lng, ele: 700 + 50 * Math.sin(i / 5), t: t.start_ts * 1000 + i * 30000 }));
+      const a = (await Tours.add({ name: 'Eigene Wanderung', sport: 'hike', pts: line(g1, 60), src: 'file' })).tour, b = (await Tours.add({ name: 'Radrunde ohne Stern', sport: 'bike', pts: line(g4, 40), src: 'file' })).tour;
+      return { a: a.id, b: b.id }; }""", srv)
+    # Tourseite: keine Bewertung, fünf Sterne, Tippfläche mindestens 44 px, Beschriftung
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", ids["b"]); pg.wait_for_selector("#rate .star")
+    assert pg.locator("#rate .star").count() == 5 and "Noch nicht bewertet" in pg.inner_text("#ratecap") and pg.locator("#rate .star.on").count() == 0
+    assert pg.get_attribute("#rate", "role") == "radiogroup" and pg.get_attribute("#rate", "aria-label") == "Deine Bewertung" and pg.get_attribute("#rate .star >> nth=0", "aria-label") == "1 Stern" and pg.get_attribute("#rate .star >> nth=4", "aria-label") == "5 Sterne"
+    for k in range(5):
+        bb = pg.locator("#rate .star").nth(k).bounding_box(); assert bb["width"] >= 44 and bb["height"] >= 44, bb
+    pg.click("#rate .star >> nth=3"); pg.wait_for_function("document.querySelectorAll('#rate .star.on').length === 4")
+    assert "4 von 5" in pg.inner_text("#ratecap") and "Meine Touren" not in pg.inner_text("#ratecap") and pg.get_attribute("#rate .star >> nth=3", "aria-checked") == "true" and pg.get_attribute("#rate .star >> nth=1", "aria-checked") == "false"
+    t = pg.evaluate("id => DB.get('tours', id)", ids["b"]); assert t["stars"] == 4 and t["starsMan"] == 1, t
+    # Farbe: Tinte, nicht Gelb (Gelb gehört der Hauptaktion)
+    col = pg.evaluate("[getComputedStyle(document.querySelector('#rate .star.on')).color, getComputedStyle(document.querySelector('#rate .star:not(.on)')).color, getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(), getComputedStyle(document.documentElement).getPropertyValue('--yellow').trim()]")
+    assert col[0] != col[1] and "242, 194, 48" not in col[0] + col[1], col
+    pg.click("#rate .star >> nth=1"); pg.wait_for_function("document.querySelectorAll('#rate .star.on').length === 2"); assert "2 von 5" in pg.inner_text("#ratecap")
+    pg.click("#rate .star >> nth=1"); pg.wait_for_function("document.querySelectorAll('#rate .star.on').length === 0")      # derselbe Stern nochmal: weg
+    t = pg.evaluate("id => DB.get('tours', id)", ids["b"]); assert "stars" not in t and t["starsMan"] == 1 and "Noch nicht bewertet" in pg.inner_text("#ratecap"), t
+    pg.click("#rate .star >> nth=4"); pg.wait_for_function("document.querySelectorAll('#rate .star.on').length === 5")
+    pg.keyboard.press("Tab")      # Tastatur: Sterne sind Knöpfe
+    pg.evaluate("id => { location.hash = '#/' }", ids["b"]); pg.wait_for_selector("a.tour")
+    row = pg.locator("a.tour", has_text="Radrunde ohne Stern"); assert "★ 5" in row.locator("small").first.inner_text(), row.inner_text()
+    assert "★" not in pg.locator("a.tour", has_text="Eigene Wanderung").locator("small").first.inner_text()
+    # Abgleich: Sterne vom Server (g1 hat 5) kommen an die zugeordnete Tour; von Hand geänderte nicht
+    r = pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    a = pg.evaluate("id => DB.get('tours', id)", ids["a"]); assert a["mtId"] == "g1" and a["stars"] == 5 and a["starsMt"] == 5 and not a.get("starsMan"), a
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", ids["a"]); pg.wait_for_selector("#rate .star"); assert pg.locator("#rate .star.on").count() == 5 and "5 von 5 · aus Meine Touren" in pg.inner_text("#ratecap")
+    assert "Sternen" not in pg.inner_text(".tourp"), "keine Doppelanzeige"
+    pg.evaluate("() => { window.__mt.edit = l => l.map(t => t.id === 'g1' ? Object.assign({}, t, { stars: 3 }) : t); }")
+    pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    a = pg.evaluate("id => DB.get('tours', id)", ids["a"]); assert a["stars"] == 3 and a["starsMt"] == 3, ("Server ändert: zieht nach", a)
+    pg.evaluate("location.hash = '#/'"); pg.evaluate("id => { location.hash = '#/tour/' + id }", ids["a"]); pg.wait_for_selector("#rate .star"); pg.click("#rate .star >> nth=1")
+    pg.wait_for_function("document.querySelectorAll('#rate .star.on').length === 2")
+    pg.evaluate("() => { window.__mt.edit = l => l.map(t => t.id === 'g1' ? Object.assign({}, t, { stars: 4 }) : t); }")
+    pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    a = pg.evaluate("id => DB.get('tours', id)", ids["a"]); assert a["stars"] == 2 and a["starsMan"] == 1 and a["starsMt"] == 4, ("Handbewertung bleibt", a)
+    pg.evaluate("() => { window.__mt.edit = l => l.map(t => t.id === 'g1' ? Object.assign({}, t, { stars: null }) : t); }")
+    pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
+    a = pg.evaluate("id => DB.get('tours', id)", ids["a"]); assert a["stars"] == 2 and "starsMt" not in a, a
+    pg.evaluate("window.__mt.edit = null")
+    # Bestand aus 2.1.0: nur starsMt gespeichert (ohne stars) → wird angezeigt, Handtipp ersetzt
+    pg.evaluate("async id => { const t = await DB.get('tours', id); delete t.stars; delete t.starsMan; t.starsMt = 4; await Tours.save(t); }", ids["a"])
+    pg.evaluate("Nav.render()"); pg.wait_for_selector("#rate .star"); assert pg.locator("#rate .star.on").count() == 4 and "aus Meine Touren" in pg.inner_text("#ratecap")
+    # Filter „Bewertung“ im Filterblatt (ab 4 Sternen), Zähler am Knopf, Zurücksetzen
+    pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector("#filterstars")
+    assert pg.locator("#filterstars option").all_inner_texts() == ["Alle", "ab 3 Sternen", "ab 4 Sternen", "5 Sterne"]
+    pg.select_option("#filterstars", "4"); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 2")      # Eigene Wanderung (4, nur starsMt) und Radrunde (5)
+    assert "Filter, 1 gesetzt" == pg.get_attribute("#filterbtn", "aria-label")
+    pg.select_option("#filterstars", "5"); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 1"); assert "Radrunde" in pg.inner_text("a.tour")
+    pg.click(".sheet .btn:has-text('Zurücksetzen')"); pg.wait_for_function("() => document.querySelectorAll('a.tour').length > 2"); assert pg.input_value("#filterstars") == ""; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
+    # Sicherung enthält Bewertung und Merker; Einspielen bringt sie zurück
+    bk = pg.evaluate("async id => { const b = await Backup.collect(); const t = b.tours.find(t => t.id === id); return [t.stars, t.starsMan]; }", ids["b"]); assert bk == [5, 1], bk
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'mt'); Native.http = window.__mtReal; }", vorher)
+
+
+ALLES_STUBS = """() => { const S = window.__al = { calls: [], gate: null, mode: {} }, real = { z: Import.Zepp.importAll, k: Import.Komoot.importAll, m: Import.MT.importAll };
+  window.__alReal = real;
+  const wait = async (o, ms) => { for (let i = 0; i < ms / 20 && !(o.stop && o.stop()); i++) await new Promise(r => setTimeout(r, 20)); };
+  const mk = (id, res) => async (...a) => {
+    const opts = id === 'zepp' ? a[2] : a[1], upd = id === 'zepp' ? a[1] : a[2];
+    S.calls.push([id, Object.assign({}, opts, { stop: undefined })]);
+    const m = S.mode[id] || {};
+    if (upd) upd(1, 2, 'Anfang'); 
+    if (m.gate) { await m.gate; }
+    if (m.slow) await wait(opts, 20000);
+    if (m.err) throw Object.assign(new Error(m.err.message), m.err);
+    if (opts.stop && opts.stop()) return Object.assign({}, res, { stopped: true });
+    return Object.assign({ added: 0, dup: 5, fail: 0 }, res);
+  };
+  Import.Zepp.importAll = mk('zepp', { added: 1, hr: 2 }); Import.Komoot.importAll = mk('komoot', { added: 2, names: 1 }); Import.MT.importAll = mk('mt', { added: 0, namesMt: 3, zahlen: 4 }); }"""
+
+def alles(pg):
+    """2.2.0, Punkt C: „Alles abgleichen“ – nur mit verbundenen Quellen, Reihenfolge, gespeicherte Einstellungen, gemeinsames Fortschrittsblatt, Abbruch, Fehler einer Quelle,
+    Zusammenfassung, Zeile auf der Startseite, automatischer Abgleich (24 h, nie während einer Aufzeichnung, Vorgabe aus)."""
+    pg.evaluate("async () => { for (const k of ['mt', 'zepp', 'komoot', 'abgleich']) await DB.del('kv', k); await Set_.set('autoAbgleich', false); await Set_.set('zeppEle', true); await Set_.set('mtZahlen', true); await Set_.set('komootPlanned', false); }")
+    # ohne verbundene Quelle: nirgends ein Knopf; Vorgabe der Einstellung: aus
+    go(pg, "#/start", "#startrec"); pg.wait_for_timeout(300); assert pg.locator("#startsync").count() == 0
+    go(pg, "#/import", "#imp-mt"); pg.wait_for_timeout(300); assert pg.locator("#all-go").count() == 0 and pg.evaluate("document.querySelector('#allbox').hidden")
+    assert pg.evaluate("Set_.get('autoAbgleich')") is False and pg.evaluate("Set_.defaults.autoAbgleich") is False
+    pg.evaluate(ALLES_STUBS)
+    assert pg.evaluate("Import.Alles.quellen().then(q => q.length)") == 0
+    # nur Meine Touren verbunden: Knopf da, auf der Startseite ruhig (kein Gelb), „Noch nicht abgeglichen“
+    pg.evaluate("DB.kvSet('mt', { base: 'https://mt.test', name: 'V', role: 'viewer', token: 'x' })")
+    go(pg, "#/start", "#startsync"); assert "Noch nicht abgeglichen" in pg.inner_text("#lastsync") and "pri" not in (pg.get_attribute("#startsync", "class") or "")
+    assert pg.evaluate("getComputedStyle(document.querySelector('#startsync')).backgroundColor") in ("rgba(0, 0, 0, 0)", "transparent"), "kein gelber Knopf"
+    # alle drei verbunden (Komoot und Zepp mit Zugangsdaten), Einstellungen gespeichert: Zepp ohne Uhr-Höhen, Komoot mit geplanten, Zahlen aus
+    pg.evaluate("async () => { await DB.kvSet('komoot', { user: '1', token: 't', email: 'a@b.de' }); await DB.kvSet('zepp', { token: 'z', viaToken: true }); await Set_.set('zeppEle', false); await Set_.set('komootPlanned', true); await Set_.set('mtZahlen', false); }")
+    assert pg.evaluate("Import.Alles.quellen().then(q => q.map(x => x.id).join())") == "zepp,komoot,mt", "Reihenfolge"
+    go(pg, "#/import", "#all-go"); assert pg.evaluate("document.querySelector('#view .pad').firstElementChild.id") == "allbox", "ganz oben"
+    assert "Zepp → Komoot → Meine Touren" in pg.inner_text("#all-src") and not pg.locator("#auto-sync input").is_checked() and "pri" in pg.get_attribute("#all-go", "class")
+    # Lauf mit gemeinsamem Fortschrittsblatt
+    pg.evaluate("() => { __al.calls = []; let go; __al.mode.komoot = { gate: new Promise(r => { window.__alGo = r; }) }; }")
+    pg.click("#all-go"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("() => /Komoot · 1 von 2 · Anfang/.test(document.querySelector('.sheet p').textContent)")
+    assert pg.evaluate("document.querySelector('.sheet').getAttribute('aria-label')") == "Alles abgleichen" and pg.evaluate("document.querySelector('.prog i').style.width") != "0px"
+    w = pg.evaluate("parseFloat(document.querySelector('.prog i').style.width)"); assert 33 < w < 67, w      # Quelle 2 von 3 läuft: Zepp fertig, Komoot halb
+    pg.evaluate("window.__alGo()"); pg.wait_for_selector("#sum")
+    assert pg.evaluate("__al.calls.map(c => c[0]).join()") == "zepp,komoot,mt", "Reihenfolge der Aufrufe"
+    c = pg.evaluate("Object.fromEntries(__al.calls)"); assert c["zepp"]["ele"] is False and c["komoot"]["planned"] is True and c["mt"]["zahlen"] is False, c      # gespeicherte Einstellungen
+    assert pg.inner_text("#sum-head") == "3 neue Touren im Tagebuch." and pg.evaluate("document.querySelector('#sum').closest('.sheet').getAttribute('aria-label')") == "Abgleich fertig"
+    assert pg.locator("#sum .li").count() == 3 and [x.strip() for x in pg.locator("#sum .li .li-t b").all_inner_texts()] == ["Zepp", "Komoot", "Meine Touren"]
+    z = pg.inner_text("#sum-zepp"); assert "1 Tour importiert" in z and "Puls bei 2 Touren ergänzt" in z and "5 schon vorhanden" in z, z
+    assert "Name bei 1 Tour von Komoot übernommen" in pg.inner_text("#sum-komoot") and "Zahlen bei 4 Touren angeglichen" in pg.inner_text("#sum-mt")
+    st = pg.evaluate("DB.kvGet('abgleich')"); assert st["neu"] == 3 and st["fehler"] == 0 and abs(st["t"] - pg.evaluate("Date.now()")) < 60000, st
+    pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached")
+    go(pg, "#/start", "#lastsync")
+    import re as _re
+    assert _re.fullmatch(r"Zuletzt abgeglichen: heute \d\d:\d\d · 3 neue Touren", pg.inner_text("#lastsync")), pg.inner_text("#lastsync")
+    # Abbrechen: bricht sauber ab, die übrigen Quellen werden nicht ausgeführt, „abgebrochen“ in der Zusammenfassung, Zeitpunkt bleibt
+    vor = pg.evaluate("DB.kvGet('abgleich').then(a => a.t)")
+    pg.evaluate("() => { __al.calls = []; __al.mode = { zepp: { slow: true } }; }")
+    pg.click("#startsync"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("() => __al.calls.length === 1"); pg.click("#prog-stop"); pg.wait_for_selector("#sum")
+    assert pg.evaluate("document.querySelector('#sum').closest('.sheet').getAttribute('aria-label')") == "Abgleich abgebrochen" and "der Rest kommt beim nächsten Mal" in pg.inner_text("#sum-head")
+    assert "abgebrochen – der Rest kommt beim nächsten Mal" in pg.inner_text("#sum-zepp") and "Nicht ausgeführt" in pg.inner_text("#sum-komoot") and "Nicht ausgeführt" in pg.inner_text("#sum-mt")
+    assert pg.evaluate("__al.calls.map(c => c[0]).join()") == "zepp" and pg.evaluate("DB.kvGet('abgleich').then(a => a.t)") == vor, "abgebrochener Lauf zählt nicht als letzter Abgleich"
+    pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached")
+    # Fehler einer Quelle brechen die anderen nicht ab: Komoot nicht erreichbar, Meine Touren abgelaufen
+    pg.evaluate("""() => { __al.calls = []; __al.mode = { komoot: { err: { message: 'Tourenliste: HTTP 401' } }, mt: { err: { message: 'Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.', relogin: true } } }; }""")
+    pg.click("#startsync"); pg.wait_for_selector("#sum")
+    assert pg.evaluate("__al.calls.map(c => c[0]).join()") == "zepp,komoot,mt" and "1 neue Tour im Tagebuch." == pg.inner_text("#sum-head")
+    assert "1 Tour importiert" in pg.inner_text("#sum-zepp") and "Komoot neu anmelden" in pg.inner_text("#sum-komoot") and "Mehr → Touren importieren → Meine Touren neu anmelden" in pg.inner_text("#sum-mt")
+    assert pg.locator("#sum .li-r", has_text="Fehler").count() == 2
+    pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached"); go(pg, "#/start", "#lastsync")
+    assert pg.inner_text("#lastsync").endswith("· 1 neue Tour · 2 Quellen mit Fehler"), pg.inner_text("#lastsync")
+    # eine Quelle nicht erreichbar, alle anderen auch: nichts „abgeglichen“ gemerkt, Versuch schon
+    pg.evaluate("""async () => { __al.mode = { zepp: { err: { message: 'x' } }, komoot: { err: { message: 'y' } }, mt: { err: { message: 'z' } } }; await DB.del('kv', 'abgleich'); }""")
+    pg.click("#startsync"); pg.wait_for_selector("#sum"); assert "1 Quelle" not in pg.inner_text("#sum-head") and pg.locator("#sum .li-r", has_text="Fehler").count() == 3; pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached")
+    st = pg.evaluate("DB.kvGet('abgleich')"); assert "t" not in st and st["versuch"] > 0, st
+    # läuft schon einer: der zweite Start und die Einzelimporte warten
+    pg.evaluate("() => { __al.mode = { zepp: { gate: new Promise(r => { window.__alGo = r; }) } }; __al.calls = []; }")
+    go(pg, "#/start", "#startsync"); pg.click("#startsync"); pg.wait_for_selector("#prog-stop")
+    assert pg.evaluate("Import.Alles.busy") is True and pg.evaluate("Import.Alles.run().then(() => 'lief', e => e.message)") == "Ein Abgleich läuft schon."
+    pg.evaluate("window.__alGo()"); pg.wait_for_selector("#sum"); pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("Import.Alles.busy") is False
+    # Automatischer Abgleich: Vorgabe aus → nichts; Schalter an → fällig nach 24 h; nie während einer Aufzeichnung; höchstens einmal je 24 h; still, nur kurze Meldung
+    pg.evaluate("async () => { __al.mode = {}; __al.calls = []; await DB.kvSet('abgleich', { t: Date.now() - 30 * 3600000, neu: 0, fehler: 0, versuch: Date.now() - 30 * 3600000 }); }")
+    assert pg.evaluate("Import.Alles.auto()") is None and pg.evaluate("__al.calls.length") == 0, "Vorgabe aus: nichts"
+    go(pg, "#/import", "#auto-sync"); pg.click("#auto-sync"); pg.wait_for_function("Set_.get('autoAbgleich') === true"); pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#startrec"); pg.reload(); pg.wait_for_selector("#tabs a"); pg.evaluate(ALLES_STUBS)      # neu laden: die Einstellung gilt nach dem Start
+    pg.evaluate("window.__rec.state = 'recording'"); assert pg.evaluate("Import.Alles.auto()") is None and pg.evaluate("__al.calls.length") == 0, "während einer Aufzeichnung nie"
+    pg.evaluate("window.__rec.state = 'idle'")
+    pg.evaluate("async () => { await DB.kvSet('abgleich', { t: Date.now() - 2 * 3600000, neu: 1, fehler: 0, versuch: Date.now() - 2 * 3600000 }); }"); assert pg.evaluate("Import.Alles.auto()") is None, "vor weniger als 24 h"
+    pg.evaluate("async () => { await DB.kvSet('abgleich', { t: Date.now() - 30 * 3600000, neu: 1, fehler: 0, versuch: Date.now() - 600000 }); }"); assert pg.evaluate("Import.Alles.auto()") is None, "Versuch vor 10 Minuten"
+    pg.evaluate("async () => { await DB.kvSet('abgleich', { t: Date.now() - 30 * 3600000, neu: 1, fehler: 0, versuch: Date.now() - 30 * 3600000 }); }")
+    go(pg, "#/start", "#startsync"); pg.wait_for_function(LEISE, timeout=30000)
+    pg.evaluate("autoAbgleich()"); toast = toast_text(pg, "Abgeglichen", 20000)
+    assert toast == "Abgeglichen: 3 neue Touren", toast
+    assert pg.locator("#sum, #prog-stop, .sheet").count() == 0, "still: kein Blatt"
+    assert pg.evaluate("__al.calls.map(c => c[0]).join()") == "zepp,komoot,mt" and pg.evaluate("Import.Alles.auto()") is None, "danach 24 Stunden Ruhe"
+    pg.wait_for_function("() => /heute \\d\\d:\\d\\d · 3 neue Touren/.test(document.querySelector('#lastsync').textContent)")
+    # Aufzeichnung startet mitten im automatischen Abgleich: er hört an der nächsten Stelle auf
+    pg.evaluate("async () => { __al.calls = []; __al.mode = { zepp: { slow: true } }; await DB.kvSet('abgleich', { t: Date.now() - 30 * 3600000, neu: 0, fehler: 0, versuch: Date.now() - 30 * 3600000 }); }")
+    pg.evaluate("() => { window.__autoP = Import.Alles.auto(); }"); pg.wait_for_function("__al.calls.length === 1"); pg.evaluate("window.__rec.state = 'recording'")
+    r = pg.evaluate("window.__autoP.then(r => [r.stopped, r.items.map(i => i.id + (i.skipped ? ':ausgelassen' : '')).join()])"); assert r == [True, "zepp,komoot:ausgelassen,mt:ausgelassen"], r
+    pg.evaluate("window.__rec.state = 'idle'")
+    # Aufräumen
+    pg.evaluate("""async () => { Import.Zepp.importAll = __alReal.z; Import.Komoot.importAll = __alReal.k; Import.MT.importAll = __alReal.m; for (const k of ['mt', 'zepp', 'komoot', 'abgleich']) await DB.del('kv', k); await Set_.set('autoAbgleich', false); await Set_.set('zeppEle', true); await Set_.set('mtZahlen', true); await Set_.set('komootPlanned', false); }""")
+
+
+def alles_echt(pg):
+    """„Alles abgleichen“ mit dem echten Abgleich von Meine Touren (simulierter Server) und Komoot/Zepp nicht verbunden: die Quelle läuft mit ihren Einstellungen, übersprungen wird, was nicht verbunden ist."""
+    fx = mt_fixture(); vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    pg.evaluate(MT_FAKE, fx)
+    pg.evaluate("async () => { for (const k of ['zepp', 'komoot', 'abgleich']) await DB.del('kv', k); await DB.kvSet('mt', { base: 'https://mt.test', name: 'Tagebuch', role: 'viewer', token: 'SITZUNG-BETRACHTER-BEISPIEL' }); window.__mt.sessions.add('SITZUNG-BETRACHTER-BEISPIEL'); }")
+    seen = []
+    r = pg.evaluate("async () => { const f = []; const r = await Import.Alles.run({ onProgress: (t, a) => f.push([t, Math.round(a * 100)]) }); return { items: r.items.map(i => ({ id: i.id, added: i.res && i.res.added, err: i.err && i.err.message })), neu: r.neu, stopped: r.stopped, fehler: r.fehler, f }; }")
+    assert [i["id"] for i in r["items"]] == ["mt"] and r["items"][0]["added"] == 13 and r["neu"] == 13 and not r["stopped"] and r["fehler"] == 0, r
+    assert r["f"][0][1] == 0 and r["f"][-1] == ["Fertig", 100] and any("Meine Touren" in t for t, _ in r["f"]), r["f"][:3]
+    log = pg.evaluate("window.__mt.log"); assert log[0] == "GET /api/tours" and not [x for x in log if x.split()[0] != "GET"], "nur lesend"
+    # abgelaufene Sitzung: Fehler in der Zusammenfassung mit Hinweis, kein Anmeldeblatt
+    pg.evaluate("window.__mt.sessions.clear()")
+    go(pg, "#/start", "#startsync"); pg.click("#startsync"); pg.wait_for_selector("#sum")
+    tx = pg.inner_text("#sum-mt"); assert "abgelaufen" in tx and "Mehr → Touren importieren → Meine Touren neu anmelden" in tx, tx
+    assert pg.locator("#mt-pw, #mt-url").count() == 0, "keine Anmeldeblätter"; pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Tagebuch"}
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['mt', 'abgleich']) await DB.del('kv', k); Native.http = window.__mtReal; }", vorher)
+
+
+def layout_22(pg):
+    """Gestaltungsprüfung der Neuerungen aus 2.2.0: Tourseite mit Bewertung, Tourenliste mit „★ 4“ und Filterblatt, Startseite und Importseite mit „Alles abgleichen“,
+    das Fortschrittsblatt, die Zusammenfassung (ohne und mit Fehlern), Sportart-Blatt und Ziel-Blatt mit den neuen Arten."""
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    ids = pg.evaluate("""async () => { const mk = async (name, sport, k, o) => { const t = (await Tours.add({ name, sport, pts: Array.from({ length: 40 }, (_, i) => ({ lat: 46.3 + k * 0.01 + i * 0.0005, lon: 10.3, ele: 1600 + i * 5, t: Date.UTC(2025, 1, 1 + k, 9) + i * 30000 })), src: 'file' })).tour; Object.assign(t, o || {}); await Tours.save(t); return t.id; };
+      return { a: await mk('Skitour auf den Piz Lat', 'skitour', 1, { stars: 4, starsMan: 1 }), b: await mk('Langlauf im Engadin mit einem sehr langen Namen, der umbrechen muss', 'nordic', 2, { starsMt: 5 }), c: await mk('Piste', 'skialpin', 3), d: await mk('Schneeschuhrunde', 'hike', 4, { tags: ['Schneeschuh'] }) }; }""")
+    bad = layout_check(pg, ["#/tour/" + ids["a"], "#/tour/" + ids["b"], "#/"])
+    pg.evaluate(ALLES_STUBS)
+    pg.evaluate("async () => { await DB.kvSet('mt', { base: 'https://mt.test', name: 'V', role: 'viewer', token: 'x' }); await DB.kvSet('zepp', { token: 'z', viaToken: true }); await DB.kvSet('komoot', { user: '1', token: 't', email: 'a@b.de' }); await DB.kvSet('abgleich', { t: Date.now() - 3600000, neu: 2, fehler: 0, versuch: Date.now() }); }")
+    bad += ["verbunden: " + m for m in layout_check(pg, ["#/start", "#/import"])]
+    # Sterne auch im Hell und Dunkel gut sichtbar (Kontrast prüft tests/audit_kontrast.py); hier: Tippflächen im Blatt „Filter“ und alle neuen Blätter
+    bad += sheet_check(pg, "Filter mit Bewertung", lambda: (go(pg, "#/", "#filterbtn"), pg.click("#filterbtn")))
+    bad += sheet_check(pg, "Sportart ändern", lambda: (go(pg, "#/tour/" + ids["a"], "header.top button[aria-label=Aktionen]"), pg.click("header.top button[aria-label=Aktionen]"), pg.wait_for_selector(".sheet .li"), pg.get_by_text("Sportart ändern").click()))
+    bad += sheet_check(pg, "Ziel mit Skiarten", lambda: (go(pg, "#/stats/ziele", "#goaladd"), pg.evaluate("document.querySelector('#goaladd').click()")))
+    bad += sheet_check(pg, "Alles abgleichen, Fortschritt", lambda: (go(pg, "#/start", "#startsync"), pg.evaluate("() => { __al.mode = { zepp: { gate: new Promise(r => { window.__alGo = r; }) } }; document.querySelector('#startsync').click(); }"), pg.wait_for_selector("#prog-stop")))
+    pg.evaluate("window.__alGo()"); pg.wait_for_selector("#sum")
+    bad += ["Zusammenfassung: " + m for m in pg.evaluate(LAYOUT_JS)]
+    zu(pg)
+    bad += sheet_check(pg, "Alles abgleichen, Zusammenfassung", lambda: (go(pg, "#/start", "#startsync"), pg.evaluate("() => { __al.mode = {}; document.querySelector('#startsync').click(); }"), pg.wait_for_selector("#sum")))
+    bad += sheet_check(pg, "Alles abgleichen, mit Fehlern", lambda: (go(pg, "#/start", "#startsync"), pg.evaluate("() => { __al.mode = { komoot: { err: { message: 'Tourenliste: HTTP 401' } }, mt: { err: { message: 'Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.', relogin: true } } }; document.querySelector('#startsync').click(); }"), pg.wait_for_selector("#sum")))
+    pg.evaluate("""async (keep) => { Import.Zepp.importAll = __alReal.z; Import.Komoot.importAll = __alReal.k; Import.MT.importAll = __alReal.m; for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['mt', 'zepp', 'komoot', 'abgleich']) await DB.del('kv', k); }""", vorher)
+    return sorted(set(bad))
+
+
 def layout_21(pg):
     """Gestaltungsprüfung der Neuerungen aus 2.1.0: Seite „Doppelte Touren“ (mit Paaren und leer), Importseite mit den neuen Zeilen, Tourseite mit den Zahlen aus
     Meine Touren, und die Blätter (Meine Touren: anmelden / verbunden, zweiter Schritt, Fortschritt mit „Abbrechen“, Zepp mit Schalter, Rückfrage beim Zusammenführen)."""
@@ -1285,6 +1598,10 @@ def main():
         meine_touren(pg)
         uhr_hoehen(pg)
         doppelte(pg)
+        winter(pg)
+        sterne(pg)
+        alles(pg)
+        alles_echt(pg)
         neu = neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
@@ -1293,6 +1610,7 @@ def main():
         bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
         bad += neue_layout(pg, neu)
         bad += layout_21(pg)
+        bad += layout_22(pg)
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
