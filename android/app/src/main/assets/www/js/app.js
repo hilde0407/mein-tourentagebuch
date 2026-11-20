@@ -7,7 +7,7 @@ const Nav = {
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufnehmen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
-    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr' },
+    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr' },
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
   deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
@@ -71,7 +71,8 @@ Views['/mehr'] = async root => {
   root.append(topbar('Mehr'), h('div', { class: 'pad' },
     UI.section('Unterwegs', UI.list([
       UI.row({ icon: 'route', title: 'Tour planen', sub: 'Wegpunkte setzen, Route auf Wegen, Höhenprofil', href: '#/plan', id: 'm-plan' }),
-      UI.row({ icon: 'map', title: 'Karte aller Touren', sub: 'Alle Strecken auf einer Karte, Offline-Karten', href: '#/map', id: 'm-map' })])),
+      UI.row({ icon: 'map', title: 'Karte aller Touren', sub: 'Alle Strecken auf einer Karte, Offline-Karten', href: '#/map', id: 'm-map' }),
+      UI.row({ icon: 'book', title: 'Wanderführer', sub: 'Bücher mit GPX-Dateien: welche Touren du schon gewandert bist', href: '#/fuehrer', id: 'm-fuehrer' })])),
     UI.section('Rückblick', UI.list([
       UI.row({ icon: 'bag', title: 'Reisen & Alben', sub: 'Reisen automatisch erkannt, Alben aus Schlagworten', href: '#/reisen', id: 'm-reisen' }),
       UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Rekorde, Kalender, Ziele', href: '#/stats', id: 'm-stats' }),
@@ -87,7 +88,7 @@ window.mtBack = function () {
   if (sheet.stack.length) { sheet.stack[sheet.stack.length - 1].close(); return true; }
   if (window.__lightbox) { window.__lightbox.close(); return true; }
   if (window.__show) { window.__show.close(); return true; }
-  if (Nav.deep.includes(Nav.cur) || ['/stats', '/jahr', '/reisen', '/map'].includes(Nav.cur)) { Nav.back(); return true; }
+  if (Nav.deep.includes(Nav.cur) || ['/stats', '/jahr', '/reisen', '/map', '/fuehrer'].includes(Nav.cur)) { Nav.back(); return true; }
   if (Nav.cur !== '/start' && Nav.cur !== '') { Nav.go('/start'); return true; }
   return false;
 };

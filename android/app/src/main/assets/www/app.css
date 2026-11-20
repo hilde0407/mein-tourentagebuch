@@ -476,3 +476,30 @@ button.cd{cursor:pointer;font-weight:700}
 .jcol{display:grid;gap:8px;margin:10px 0 0}.jcol img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--r-s);display:block;background:var(--soft)}
 .jahr-share .btn{width:100%;min-height:52px}
 .jahr-hoch .btn{width:100%}
+
+/* ---------- Wanderführer (2.4.0) ---------- */
+.fu .fu-find{margin:8px 0 4px}
+.fu .fu-find input{flex:1;min-width:0}
+.fu-sync{display:flex;flex-direction:column;gap:6px;margin:8px 0;font-size:.9rem;font-weight:500;color:var(--muted)}
+.fu-book{margin:12px 0;border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.fu-head{display:grid;grid-template-columns:52px minmax(0,1fr) 60px 12px;gap:10px;align-items:center;width:100%;min-height:92px;padding:10px 12px;background:none;border:0;text-align:left;cursor:pointer;color:inherit}
+.fu-head:active{background:var(--soft)}
+.fu-cov{display:grid;place-items:center;width:52px;height:72px;border-radius:6px;background:var(--soft);color:var(--muted);overflow:hidden}
+.fu-cov img{display:block;width:100%;height:100%;object-fit:cover}
+.fu-tx{display:block;min-width:0}
+.fu-name{display:block;font:600 1.08rem/1.22 var(--d);overflow-wrap:anywhere}
+.fu-sub{display:block;margin-top:3px;color:var(--muted);font-size:.9rem;font-weight:500}
+.fu-r{display:block;width:60px;height:60px}
+.fu-ring{display:block}
+.fu-track{stroke:var(--soft)}
+.fu-arc{stroke:var(--acc)}
+.fu-pct{font:700 15px var(--d);fill:var(--ink)}
+.fu-chev{display:block;width:9px;height:9px;border-right:2px solid var(--edge);border-bottom:2px solid var(--edge);transform:rotate(45deg);margin-top:-4px}
+.fu-book.open .fu-chev{transform:rotate(-135deg);margin-top:4px}
+.fu-body{padding:0 12px 10px;border-top:1px solid var(--line)}
+.fu-acts{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.fu-body .list .li{padding-left:0;padding-right:0}
+.fu-ok{background:var(--accbg);color:var(--acc)}
+.fu-circ{display:block;width:20px;height:20px;border:2px solid var(--edge);border-radius:50%}
+.fu-map{height:260px;margin:10px 0;border-radius:var(--r);overflow:hidden}
+.fu-kb .kpis{margin:8px 0}

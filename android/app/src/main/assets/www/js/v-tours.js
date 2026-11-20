@@ -238,6 +238,7 @@ Views['/tour'] = async (root, [id]) => {
   // Hilfen aus „Meine Touren“: gelaufene Tour → Rückblick bzw. Plan und Ergebnis; geplante Tour → Passt die Tour zu mir?, Notizen & Quellen
   const done = (await Tours.list()).filter(x => x.status !== 'planned' && !x.hidden), planned = t.status === 'planned';
   const ranBy = planned ? done.filter(x => x.plan === t.id).sort((a, b) => b.start - a.start)[0] : null;
+  const imBuch = planned ? null : await Buecher.zeile(t, pts).catch(() => null);      // 2.4.0: „Aus dem Buch: Titel (Buch)“
   const helpDone = planned ? null : ((t.plan && await TourHelp.ergebnis(t)) || TourHelp.rueckblick(Object.assign({}, t, { plan: null }), done));
   const pmeta = planned ? await PlanMeta.get(t.id) : null;
   const helpPlan = planned ? [await TourHelp.passt(t, done, pmeta), TourHelp.notizen(t, pmeta)] : [];
@@ -247,7 +248,7 @@ Views['/tour'] = async (root, [id]) => {
     Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
-    t.status === 'planned' ? null : rateBox(), main, more, mtInfo(),
+    t.status === 'planned' ? null : rateBox(), main, more, mtInfo(), imBuch,
     ranBy ? h('a', { class: 'banner', id: 'ranby', href: '#/tour/' + ranBy.id }, 'Gelaufen am ' + F.date(ranBy.start) + ': ' + ranBy.name) : null,
     ...helpPlan,
     UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,
@@ -307,14 +308,19 @@ Views['/tour'] = async (root, [id]) => {
       h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', onclick: async () => { s.close(); if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Tour löschen')) { await Tours.remove(id); await DB.del('kv', 'pn:' + id).catch(() => {}); Nav.go('/'); } } }, '🗑️ Tour löschen'))));
   }
   async function suggestNames() {
-    const box = h('div', { class: 'list menu' }, h('p', { class: 'muted' }, 'Orte werden gesucht …'));
+    const box = h('div', { class: 'list menu' });
     const s = sheet('Namensvorschläge', box);
+    const pick = n => async () => { t.name = n; await Tours.save(t); s.close(); Nav.render(); toast('Umbenannt'); };
+    try {      // 2.4.0: folgt die Tour einer Buchstrecke, steht der Buchtitel oben
+      (await Buecher.fuerTour(t, pts)).forEach(m => box.append(h('button', { class: 'li sugg', 'data-buch': '1', onclick: pick(m.title) }, h('span', { class: 'li-t' }, h('b', null, m.title), h('small', null, 'Aus dem Buch: ' + m.buch)))));
+    } catch (e) { /* ohne Buchvorschlag weiter */ }
+    const wait = h('p', { class: 'muted' }, 'Orte werden gesucht …'); box.append(wait);
     try {
       const l = await Suggest.names(t, pts);
-      box.innerHTML = '';
-      if (!l.length) box.append(h('p', { class: 'muted' }, 'Keine Vorschläge gefunden.'));
-      l.forEach(n => box.append(h('button', { class: 'li sugg', onclick: async () => { t.name = n; await Tours.save(t); s.close(); Nav.render(); toast('Umbenannt'); } }, h('span', { class: 'li-t' }, h('b', null, n)))));
-    } catch (e) { box.innerHTML = ''; box.append(h('p', { class: 'muted' }, 'Nicht möglich: ' + e.message + ' (Internet nötig).')); }
+      wait.remove();
+      if (!l.length && !box.querySelector('[data-buch]')) box.append(h('p', { class: 'muted' }, 'Keine Vorschläge gefunden.'));
+      l.forEach(n => box.append(h('button', { class: 'li sugg', onclick: pick(n) }, h('span', { class: 'li-t' }, h('b', null, n)))));
+    } catch (e) { wait.remove(); if (!box.querySelector('[data-buch]')) box.append(h('p', { class: 'muted' }, 'Nicht möglich: ' + e.message + ' (Internet nötig).')); else box.append(h('p', { class: 'muted small' }, 'Ortsvorschläge brauchen Internet.')); }
   }
   async function fixEle() {
     toast('Höhen werden aus dem Gelände berechnet …');

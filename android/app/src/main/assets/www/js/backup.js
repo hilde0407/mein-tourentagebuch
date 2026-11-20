@@ -2,10 +2,11 @@
 /* Datensicherung (.mtl): speichern, einspielen, und merken, wann zuletzt gesichert wurde (für den ruhigen Hinweis auf der Startseite).
    Eine Sicherung enthält Touren, Spuren, Foto-Einträge und die Merkliste (kv) ohne Zugangsdaten und ohne Zwischenspeicher.
    Beim Einspielen kommen auch die eigenen Angaben zurück: Ziele, Notizen und Links der Planung, Einstellungen (Geburtsjahr, Startseite …), Namen von Reisen.
+   2.4.0: auch die Wanderführer (Bücher, Buchstrecken, Titelbilder; kv „guides“, „guidepts:…“, „guidecover:…“) – ohne den Zwischenspeicher des Abgleichs („guideMatch“).
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten (auch die Sitzung bei „Meine Touren“, kv „mt“) und Zwischenspeicher. */
-  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich'],
+  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich', 'guideMatch'],
   /** Diese Einträge werden beim Einspielen zurückgeholt, wenn es sie auf dem Gerät noch nicht gibt (Planung und Notizen einer Tour: die Sicherung gilt). */
   RESTORE_KEYS: ['goals', 'goals2', 'comments', 'places', 'tripHidden', 'tripNames', 'tripPeriod', 'tripRegion', 'tripSet', 'dupIgnore'],
   RESTORE_PREFIX: ['plan:', 'pn:'],
@@ -48,7 +49,9 @@ const Backup = {
           if (ch) { await DB.kvSet('settings', Set_.v); n++; }
         } else if (e.k === 'goals' || e.k === 'goals2') {
           if (await Goals.mergeFrom(e.k, e.v)) n++;
-        } else if (Backup.RESTORE_PREFIX.some(p => e.k.startsWith(p))) { await DB.kvSet(e.k, e.v); n++; }
+        } else if (e.k === 'guides') { if (await Buecher.mergeFrom(e.v)) n++; }      // 2.4.0: Wanderführer: neue Bücher kommen dazu, vorhandene bleiben
+        else if (e.k.startsWith('guidepts:') || e.k.startsWith('guidecover:')) { if ((await DB.get('kv', e.k)) === undefined) { await DB.kvSet(e.k, e.v); n++; } }
+        else if (Backup.RESTORE_PREFIX.some(p => e.k.startsWith(p))) { await DB.kvSet(e.k, e.v); n++; }
         else if (Backup.RESTORE_KEYS.includes(e.k) && (await DB.get('kv', e.k)) === undefined) { await DB.kvSet(e.k, e.v); n++; }
       } catch (err) { console.error('Sicherung, Eintrag ' + e.k, err); }
     }
@@ -59,7 +62,8 @@ const Backup = {
     try {
       const f = await Native.json('pickFiles'); if (!f.length) return;
       const data = Backup.parse(await Import.fetchBuf(f[0].url));
-      if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto-Dateien selbst sind nicht Teil der Sicherung.)`, 'Einspielen')) return;
+      const nb = ((data.kv || []).find(k => k && k.k === 'guides') || { v: [] }).v.length;
+      if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge${nb ? ' sowie ' + nb + (nb === 1 ? ' Wanderführer (Buch)' : ' Wanderführer (Bücher)') : ''} werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto-Dateien selbst sind nicht Teil der Sicherung.)`, 'Einspielen')) return;
       await Backup.apply(data);
       toast('Sicherung eingespielt'); Nav.render();
     } catch (e) { toast(e.message, 7000); }

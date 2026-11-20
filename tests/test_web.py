@@ -27,6 +27,7 @@ window.MTApp={
    else if(m==='storage') r={photos:0,bytes:0}; else if(m==='galleryRange') r=window.__gallery||[];
    else if(m==='importUris') r=(a.uris||[]).map((u,i)=>({id:'g'+i+u.length,name:'g.jpg',ts:window.__gts||0,w:10,h:10,src:'galerie'}));
    else if(m==='pickPhotos') r=[{id:'p1aaaaaa',name:'a.jpg',ts:1700000300000,w:10,h:10,src:'galerie',lat:47.4,lon:11.1}];
+   else if(m==='pickFiles') r=window.__pick||[];
    else r=[];
    }catch(e){ r={status:599,headers:{},body:''}; }
    window.__mtcb(+id,true,JSON.stringify(r)); },5); }
@@ -1073,6 +1074,324 @@ def layout_21(pg):
     return sorted(set(bad))
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------
+# 2.4.0 Wanderführer: Bücher anlegen (mehrere GPX-Dateien, ZIP), Abgleich „folgt der Tour der Buchstrecke“, Karten und Listen, Titelbild, Startseite, Sicherung
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------
+FU_TITEL = ["Tour 1 · Roque Fantasia", "Tour 2 · Barranco del Sol", "Tour 3 · Pico Nublado", "Tour 4 · Presa de las Rosas", "Tour 5 · Cumbre Azul", "Tour 6 · Playa Escondida", "Tour 7 · Mirador Imaginario", "Tour 10 · Valle Ficticio"]
+
+def fu_kurve(la0, lo0, n, laenge, amp=0.1, ph=0.0, noise=0.0, seed=1):
+    import math, random
+    rnd = random.Random(seed); k = math.cos(math.radians(la0)); out = []
+    for i in range(n):
+        t = i / (n - 1); x = laenge * t; y = laenge * amp * math.sin(4 * math.pi * t + ph) + laenge * 0.05 * t
+        out.append((la0 + (y + (rnd.random() - .5) * 2 * noise) / 111195, lo0 + (x + (rnd.random() - .5) * 2 * noise) / (111195 * k), 800 + 300 * t))
+    return out
+
+def fu_gpx(titel, pts, meta=True):
+    inner = "".join(f'<trkpt lat="{la:.6f}" lon="{lo:.6f}"><ele>{e:.1f}</ele></trkpt>' for la, lo, e in pts)
+    m = f"<metadata><name>{titel}</name></metadata>" if meta else ""
+    return f'<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Beispiel" xmlns="http://www.topografix.com/GPX/1/1">{m}<trk><name>{titel}</name><trkseg>{inner}</trkseg></trk></gpx>'
+
+def fu_buch_a():
+    """Sechs (später acht) Buchtouren eines erfundenen Wanderführers; Ort und Form sind Fantasie."""
+    return [fu_kurve(28.0 + 0.05 * k, -15.6, 160, 6000 + k * 1100, amp=0.09 + 0.01 * (k % 3), ph=k * 0.9, seed=10 + k) for k in range(8)]
+
+def fu_cover_png(pfad, titel, farbe, w=900, h=1300):
+    """Erfundenes Titelbild (keine Verlagscover): Farbverlauf, Berge, Titel."""
+    from PIL import Image, ImageDraw
+    im = Image.new("RGB", (w, h)); d = ImageDraw.Draw(im)
+    for y in range(h):
+        t = y / h; d.line([(0, y), (w, y)], fill=tuple(int(c0 + (c1 - c0) * t) for c0, c1 in zip(farbe[0], farbe[1])))
+    d.polygon([(0, h * .72), (w * .25, h * .45), (w * .42, h * .62), (w * .68, h * .36), (w, h * .66), (w, h), (0, h)], fill=farbe[2])
+    d.polygon([(0, h * .86), (w * .3, h * .68), (w * .6, h * .82), (w, h * .7), (w, h), (0, h)], fill=farbe[3])
+    d.ellipse([w * .66, h * .1, w * .86, h * .1 + w * .2], fill=(250, 235, 170))
+    import random; rnd = random.Random(titel)
+    for _ in range(30000): x, y = rnd.randrange(w), rnd.randrange(h); d.point((x, y), fill=tuple(min(255, c + rnd.randrange(40)) for c in im.getpixel((x, y))))      # Körnung, damit das Bild nicht winzig ist
+    d.rectangle([w * .08, h * .06, w * .92, h * .06 + 8], fill=(255, 255, 255)); d.text((w * .1, h * .08), titel, fill=(255, 255, 255))
+    im.save(pfad)
+    return open(pfad, "rb").read()
+
+FU_PICK = """fs => { window.__pick = fs.map(([n, b64]) => ({ name: n, url: URL.createObjectURL(new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))])) })); }"""
+
+def fu_pick(pg, dateien):
+    import base64
+    pg.evaluate(FU_PICK, [[n, base64.b64encode(d if isinstance(d, bytes) else d.encode("utf-8")).decode()] for n, d in dateien])
+
+def fuehrer(pg):
+    """2.4.0: Wanderführer. Leerzustand, Buch anlegen (mehrere GPX-Dateien, kaputte Datei, natürliche Reihenfolge, ZIP, Doppelte), Abgleich (Hin- und Rückrichtung,
+    mehrere Touren je Buchtour, versteckte und geplante Touren), Karte der Buchtour und „Als Planung übernehmen“, Filter, Suche, Reihenfolge, Titelbild (verkleinert, entfernen),
+    Tourseite und Namensvorschlag, Startseite (ruhige Zeile, abschaltbar), Sicherung (hin und zurück, alte Sicherung), Bedienbarkeit bei vielen Touren, Gestaltung."""
+    import base64, io, os, zipfile, json as _json
+    bad = []
+    shots = os.environ.get("FUEHRER_SHOTS")
+    if shots: os.makedirs(shots, exist_ok=True)
+    def shot(name):
+        if not shots: return
+        for sch in ("light", "dark"):
+            pg.emulate_media(color_scheme=sch); pg.wait_for_timeout(250)
+            pg.screenshot(path=os.path.join(shots, f"{name}-{'hell' if sch == 'light' else 'dunkel'}.png"))
+        pg.emulate_media(color_scheme="light"); pg.wait_for_timeout(150)
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    pg.evaluate("async () => { for (const k of ['guides', 'guideMatch']) await DB.del('kv', k); }")
+    sync_fertig = lambda: pg.wait_for_function("() => !Buecher._run && document.querySelector('#fu-sync') && document.querySelector('#fu-sync').hidden", timeout=60000)
+
+    # --- 1. Leerzustand; Zugang über Mehr ---
+    go(pg, "#/mehr", "#m-fuehrer"); assert "Wanderführer" in pg.inner_text("#m-fuehrer") and pg.locator("#m-fuehrer").get_attribute("href") == "#/fuehrer"
+    pg.click("#m-fuehrer"); pg.wait_for_selector("#fu-add2")
+    assert pg.evaluate("Nav.cur") == "/fuehrer" and pg.locator("#tabs a[aria-current=page]").get_attribute("data-p") == "/mehr", "Wanderführer gehört unter Mehr"
+    tx = pg.inner_text("#fuehrer"); assert "Noch kein Wanderführer" in tx and "GPX-Dateien" in tx, tx
+    assert pg.locator("#fu-q").count() == 0 and pg.locator(".fu-book").count() == 0, "ohne Buch keine Suche und keine Filter"
+    go(pg, "#/start", "#hero"); pg.wait_for_timeout(300); assert pg.locator("#fuehrer-home").count() == 0, "ohne Buch keine Zeile auf der Startseite"
+    go(pg, "#/fuehrer", "#fu-add2"); shot("4-leer")
+    bad += ["Leerzustand: " + m for m in layout_check(pg, ["#/fuehrer"], widths=((360, 100), (360, 130)))]
+
+    # --- 2. Touren im Tagebuch, die Buchstrecken folgen ---
+    A = fu_buch_a(); T = lambda pts, t0, name, rev=False: [name, [list(p) for p in (pts[::-1] if rev else pts)], t0]
+    t1 = 1747000000000; day = 86400000
+    ids = pg.evaluate("""async (ts) => { const o = {}; for (const [k, name, pts, t0] of ts) { o[k] = (await Tours.add({ name, sport: 'hike', src: 'file', pts: pts.map((p, i) => ({ lat: p[0], lon: p[1], ele: p[2], t: t0 + i * 20000 })) })).tour.id; } return o; }""", [
+        ["a1", "Roque-Runde (alt)", fu_kurve(28.0, -15.6, 700, 6000, amp=0.09, ph=0, noise=7, seed=1)[::1], t1],
+        ["a2", "Roque-Runde (neu)", fu_kurve(28.0, -15.6, 500, 6000, amp=0.09, ph=0, noise=9, seed=2), t1 + 200 * day],
+        ["b", "Rückweg Nublado", fu_kurve(28.1, -15.6, 600, 8200, amp=0.11, ph=1.8, noise=6, seed=3)[::-1], t1 + 90 * day],
+        ["fern", "Ganz woanders", fu_kurve(40.0, -3.7, 300, 7000, seed=4), t1 + 5 * day]])
+    assert ids["a1"] and ids["b"]
+
+    # --- 3. Buch anlegen: Name nötig; sechs Dateien in wirrer Reihenfolge, eine kaputte ---
+    dateien = [("T3.gpx", fu_gpx(FU_TITEL[2], A[2])), ("T1.gpx", fu_gpx(FU_TITEL[0], A[0])), ("kaputt.gpx", "das ist keine GPX-Datei"), ("T6.gpx", fu_gpx(FU_TITEL[5], A[5], meta=False)),
+               ("T2.gpx", fu_gpx(FU_TITEL[1], A[1])), ("T5.gpx", fu_gpx(FU_TITEL[4], A[4])), ("T4.gpx", fu_gpx(FU_TITEL[3], A[3]))]
+    pg.click("#fu-add2" if pg.locator("#fu-add2").count() else "#fu-add"); pg.wait_for_selector("#fu-go")
+    bad += sheet_check_open(pg, "Buch anlegen")
+    pg.click("#fu-go"); pg.wait_for_selector("#fu-err:not(:empty)"); assert "Name" in pg.inner_text("#fu-err"), "ohne Namen wird nichts angelegt"
+    assert pg.evaluate("DB.kvGet('guides', null)") is None
+    fu_pick(pg, dateien)
+    pg.fill("#fu-name", "Rother Wanderführer Fantasia Süd"); leise(); pg.click("#fu-go")
+    tx = toast_text(pg, "angelegt"); assert tx.startswith("6 Buchtouren angelegt") and "1 nicht lesbar (kaputt.gpx)" in tx, tx
+    pg.wait_for_selector(".fu-book"); sync_fertig()
+    b = pg.evaluate("Buecher.liste()"); assert len(b) == 1 and b[0]["name"] == "Rother Wanderführer Fantasia Süd" and len(b[0]["touren"]) == 6, b
+    assert [t["title"] for t in b[0]["touren"]] == FU_TITEL[:6], "Reihenfolge wie im Buch (T1 … T6), nicht wie ausgewählt"
+    t0m = b[0]["touren"][0]; assert t0m["f"] == "T1.gpx" and 7 < t0m["km"] < 8 and t0m["up"] and t0m["la"] and t0m["n"] == 160 and len(t0m["bb"]) == 4, t0m
+    bid = b[0]["id"]
+    assert pg.evaluate("id => DB.kvGet('guidepts:' + id, null).then(o => Object.keys(o).length)", bid) == 6
+    # --- 4. Abgleich: zwei Touren auf Buchtour 1 (die jüngste zählt), Rückweg auf Tour 3, fern: nichts ---
+    assert "1 Buch · 2 von 6 Buchtouren gewandert" in pg.inner_text("#fu-sum"), pg.inner_text("#fu-sum")
+    card = pg.locator(f".fu-book[data-id='{bid}']"); assert card.locator(".fu-name").inner_text() == "Rother Wanderführer Fantasia Süd" and "2 von 6 gewandert" in card.locator(".fu-sub").inner_text()
+    ring = card.locator("svg.fu-ring"); assert ring.get_attribute("role") == "img" and ring.get_attribute("aria-label") == "2 von 6 gewandert, 33 Prozent" and "33 %" in ring.text_content(), ring.get_attribute("aria-label")
+    assert card.locator(".fu-head").get_attribute("aria-expanded") == "true", "das neue Buch ist aufgeklappt"
+    rows = card.locator(".fu-t"); assert rows.count() == 6
+    assert [x.strip() for x in card.locator(".fu-t .li-t b").all_inner_texts()] == FU_TITEL[:6]
+    done = card.locator("a.fu-t.done"); assert done.count() == 2 and card.locator("button.fu-t.open").count() == 4, (done.count(), card.locator("button.fu-t.open").count(), card.inner_text())
+    d2 = pg.evaluate("ms => Buecher.datum(ms)", t1 + 200 * day)
+    r0 = card.locator(".fu-t").nth(0); assert "done" in r0.get_attribute("class") and r0.get_attribute("href") == "#/tour/" + ids["a2"], "die jüngste Tour zählt"
+    assert f"gewandert am {d2}" in r0.inner_text() and "+1 weitere" in r0.inner_text() and "km" in r0.inner_text() and "↑" in r0.inner_text(), r0.inner_text()
+    r2 = card.locator(".fu-t").nth(2); assert r2.get_attribute("href") == "#/tour/" + ids["b"] and "weitere" not in r2.inner_text(), "Gegenrichtung zählt"
+    r1 = card.locator(".fu-t").nth(1); assert "open" in r1.get_attribute("class") and "offen · " in r1.inner_text() and "km" in r1.inner_text() and "↑" in r1.inner_text(), r1.inner_text()
+    assert pg.evaluate("Buecher.stand().then(s => s.fehlendePaare)") == 0, "alles gerechnet und im Zwischenspeicher"
+    # Zwischenspeicher: keine Wiederholung beim erneuten Öffnen (es werden keine Spuren geladen)
+    pg.evaluate("() => { window.__geladen = 0; const o = DB.get; DB.get = function (s, k) { if (s === 'tracks') window.__geladen++; return o.apply(DB, arguments); }; window.__dbget = o; }")
+    go(pg, "#/mehr", "#m-fuehrer"); go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); pg.wait_for_timeout(300)
+    assert pg.evaluate("window.__geladen") == 0, "nur geändertes oder Neues wird neu gerechnet"
+    pg.evaluate("() => { DB.get = window.__dbget; }")
+    # --- 5. Ein- und Ausklappen ---
+    card.locator(".fu-head").click(); pg.wait_for_selector(f".fu-book[data-id='{bid}'] .fu-t", state="detached"); assert pg.locator(f".fu-book[data-id='{bid}'] .fu-head").get_attribute("aria-expanded") == "false"
+    assert "2 von 6 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}']"), "Zahl und Ring bleiben eingeklappt sichtbar"
+    pg.locator(f".fu-book[data-id='{bid}'] .fu-head").click(); pg.wait_for_selector(f".fu-book[data-id='{bid}'] .fu-t"); assert pg.locator(f".fu-book[data-id='{bid}'] .fu-t").count() == 6
+
+    # --- 6. Zwei weitere Bücher (Programmschnittstelle), eines mit einer folgenden Tour ---
+    B = [fu_kurve(28.4 + 0.03 * k, -15.9, 120, 4000 + 900 * k, ph=k, seed=30 + k) for k in range(4)]
+    C = [fu_kurve(47.6 + 0.02 * k, 10.3, 120, 7000 - 800 * k, ph=k * 1.3, seed=50 + k) for k in range(3)]      # absteigend lang: Buchreihenfolge und Länge sind verschieden
+    pg.evaluate("""async ([b, c]) => { const mk = ts => ({ ok: ts.map(([n, text]) => ({ name: n, text })), bad: [] });
+      await Buecher.speichere(null, 'Wanderführer Fantasia Nord', mk(b)); await Buecher.speichere(null, 'Allgäu Fantasie', mk(c)); }""", [
+        [[f"N{k + 1}.gpx", fu_gpx(f"Nord {k + 1} · Fantasiegipfel {k + 1}", B[k])] for k in range(4)], [[f"C{k + 1}.gpx", fu_gpx(f"Allgäu {k + 1} · Wiesenpfad {k + 1}", C[k])] for k in range(3)]])
+    idE = pg.evaluate("""async (pts) => (await Tours.add({ name: 'Allgäu-Runde', sport: 'hike', src: 'file', pts: pts.map((p, i) => ({ lat: p[0], lon: p[1], ele: p[2], t: 1750000000000 + i * 20000 })) })).tour.id""", [list(p) for p in fu_kurve(47.62, 10.3, 400, 6200, ph=1.3, noise=8, seed=61)])
+    go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); pg.wait_for_function("document.querySelectorAll('.fu-book').length === 3")
+    assert "3 Bücher · 3 von 13 Buchtouren gewandert" in pg.inner_text("#fu-sum"), pg.inner_text("#fu-sum")
+    names = pg.locator(".fu-name").all_inner_texts(); assert names == ["Rother Wanderführer Fantasia Süd", "Wanderführer Fantasia Nord", "Allgäu Fantasie"], names
+    # --- 7. Filter, Suche, Reihenfolge ---
+    pg.evaluate("Buecher.ui.offen.clear()"); go(pg, "#/fuehrer", ".fu-book"); sync_fertig()
+    assert pg.locator(".fu-t").count() == 0, "alle eingeklappt: keine Zeilen"
+    pg.click("#fu-f-offen"); assert pg.locator("#fu-f-offen").get_attribute("aria-pressed") == "true" and pg.locator(".fu-book").count() == 3
+    pg.locator(".fu-book[data-id='%s'] .fu-head" % bid).click(); assert pg.locator("a.fu-t.done").count() == 0 and pg.locator("button.fu-t.open").count() == 4, "Filter „Offen“ zeigt nur offene Buchtouren"
+    assert "2 von 6 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub"), "die Zahlen gelten weiter für das ganze Buch"
+    shot("3-filter-offen"); bad += ["Filter Offen: " + m for m in layout_check(pg, ["#/fuehrer"], widths=((360, 100), (360, 130)))]
+    pg.click("#fu-f-gewandert"); assert pg.locator("button.fu-t.open").count() == 0 and pg.locator("a.fu-t.done").count() == 2 and pg.locator(".fu-book").count() == 2, "Bücher ohne gewanderte Tour entfallen"
+    pg.click("#fu-f-alle"); assert pg.locator(".fu-book").count() == 3 and pg.locator(".fu-t").count() == 6
+    pg.fill("#fu-q", "nublado"); assert pg.locator(".fu-book").count() == 1 and pg.locator(".fu-t").count() == 1 and "Pico Nublado" in pg.inner_text(".fu-t"), "Suche über alle Bücher, Treffer klappen auf"
+    pg.fill("#fu-q", "FANTASIA NORD"); assert pg.locator(".fu-book").count() == 1 and pg.locator(".fu-t").count() == 4 and pg.locator(".fu-name").inner_text() == "Wanderführer Fantasia Nord", "Buchname trifft: alle Touren des Buchs"
+    pg.fill("#fu-q", "gibtesnicht"); pg.wait_for_selector("#fu-leer"); assert "Nichts gefunden" in pg.inner_text("#fu-leer")
+    pg.fill("#fu-q", "wiese"); assert pg.locator(".fu-t").count() == 3
+    pg.fill("#fu-q", "Allgäu"); assert [x.split(" · ")[0] for x in pg.locator(".fu-t .li-t b").all_inner_texts()] == ["Allgäu 1", "Allgäu 2", "Allgäu 3"], "Buchreihenfolge"
+    pg.locator("#fu-ctl .seg button", has_text="Nach Länge").click(); assert pg.locator("#fu-ctl .seg button.on").inner_text() == "Nach Länge"
+    assert [x.split(" · ")[0] for x in pg.locator(".fu-t .li-t b").all_inner_texts()] == ["Allgäu 3", "Allgäu 2", "Allgäu 1"], "nach Länge: kürzeste zuerst"
+    pg.locator("#fu-ctl .seg button", has_text="Buchreihenfolge").click(); assert [x.split(" · ")[0] for x in pg.locator(".fu-t .li-t b").all_inner_texts()][0] == "Allgäu 1"
+    pg.fill("#fu-q", "")
+    pg.evaluate("id => { Buecher.ui.offen.clear(); Buecher.ui.offen.add(id); }", bid); go(pg, "#/fuehrer", ".fu-t"); sync_fertig()
+
+    # --- 8. Mehr Dateien dazu: ZIP, natürliche Reihenfolge (7 vor 10), Doppelte ---
+    zb = io.BytesIO()
+    with zipfile.ZipFile(zb, "w") as z:
+        z.writestr("Buch/T10.gpx", fu_gpx(FU_TITEL[7], A[7])); z.writestr("Buch/T7.gpx", fu_gpx(FU_TITEL[6], A[6])); z.writestr("Buch/doppelt.gpx", fu_gpx(FU_TITEL[0], A[0])); z.writestr("__MACOSX/._T7.gpx", "x"); z.writestr("Buch/liesmich.txt", "x")
+    fu_pick(pg, [("Nachtrag.zip", zb.getvalue())])
+    pg.locator(f".fu-book[data-id='{bid}'] [data-a=manage]").click(); pg.wait_for_selector("#fu-m-add"); pg.click("#fu-m-add"); pg.wait_for_selector("#fu-go"); assert pg.locator("#fu-name").count() == 0, "beim Ergänzen kein Namensfeld"
+    leise(); pg.click("#fu-go"); tx = toast_text(pg, "hinzugefügt"); assert tx.startswith("2 Buchtouren hinzugefügt") and "1 schon vorhanden" in tx, tx
+    pg.wait_for_function("(id) => Buecher.liste().then(l => l.find(b => b.id === id).touren.length === 8)", arg=bid); sync_fertig()
+    assert [t["title"] for t in pg.evaluate("id => Buecher.liste().then(l => l.find(b => b.id === id).touren)", bid)] == FU_TITEL, "Tour 7 steht vor Tour 10"
+    assert "2 von 8 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub")
+    pg.evaluate("Buecher.ui.sort = 'buch'"); go(pg, "#/fuehrer", ".fu-book"); sync_fertig()
+
+    # --- 9. Karte der Buchtour, „Als Planung übernehmen“ ---
+    pg.locator(f".fu-book[data-id='{bid}'] button.fu-t.open").first.click(); pg.wait_for_selector("#fu-plan"); pg.wait_for_selector("#fu-map .leaflet-container, #fu-map.leaflet-container")
+    pg.wait_for_function("""() => { const c = document.querySelector('#fu-map canvas'); if (!c || !c.width) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true; return false; }""", timeout=8000)      # die Strecke ist auf die Karte gezeichnet
+    tx = pg.inner_text(".sheet"); assert "Aus dem Buch: Rother Wanderführer Fantasia Süd" in tx and "Länge" in tx and "Aufstieg" in tx, tx
+    shot("7-karte"); zu(pg)
+    bad += sheet_check(pg, "Buchtour, Karte", lambda: pg.locator(f".fu-book[data-id='{bid}'] button.fu-t.open").first.click())
+    pg.locator(f".fu-book[data-id='{bid}'] button.fu-t.open").first.click(); pg.wait_for_selector("#fu-plan")
+    npl = pg.evaluate("Tours.list().then(l => l.length)"); leise(); pg.click("#fu-plan"); pg.wait_for_function("location.hash.startsWith('#/tour/')"); pg.wait_for_selector(".banner:has-text('Geplante Tour')")
+    pid = pg.evaluate("location.hash.split('/')[2]"); pl = pg.evaluate("id => DB.get('tours', id)", pid)
+    assert pl["status"] == "planned" and pl["name"] == FU_TITEL[1] and pl["dist"] > 6000 and pl["up"] > 100, pl
+    assert pg.evaluate("id => PlanMeta.get(id)", pid)["quelle"] == {"art": "fuehrer", "text": "Rother Wanderführer Fantasia Süd – " + FU_TITEL[1]}
+    assert pg.evaluate("Tours.list().then(l => l.length)") == npl + 1
+    pg.evaluate("id => Tours.remove(id)", pid)
+    go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); assert "2 von 8 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub"), "eine Planung zählt nicht als gewandert"
+
+    # --- 10. Tourseite und Namensvorschlag ---
+    go(pg, "#/tour/" + ids["a2"], "#imbuch"); assert pg.inner_text("#imbuch") == "Aus dem Buch: " + FU_TITEL[0] + " (Rother Wanderführer Fantasia Süd)", pg.inner_text("#imbuch")
+    go(pg, "#/tour/" + ids["fern"], ".tourp"); pg.wait_for_timeout(300); assert pg.locator("#imbuch").count() == 0, "Tour ohne Buch: keine Zeile"
+    go(pg, "#/tour/" + ids["a2"], "#imbuch"); pg.click("header.top button[aria-label=Aktionen]"); pg.get_by_text("Namensvorschläge").click(); pg.wait_for_selector("[data-buch]")
+    assert "Aus dem Buch: Rother Wanderführer Fantasia Süd" in pg.inner_text("[data-buch]") and FU_TITEL[0] in pg.inner_text("[data-buch]")
+    pg.click("[data-buch]"); pg.wait_for_function("(id) => DB.get('tours', id).then(t => t.name === 'Tour 1 · Roque Fantasia')", arg=ids["a2"])
+
+    # --- 11. Änderungen: neue Tour folgt Tour 7; verstecken, geplant, löschen ---
+    pg.evaluate("""async (pts) => { await Tours.add({ name: 'Mirador-Tag', sport: 'hike', src: 'file', pts: pts.map((p, i) => ({ lat: p[0], lon: p[1], ele: p[2], t: 1755000000000 + i * 20000 })) }); }""", [list(p) for p in fu_kurve(28.0 + 0.05 * 6, -15.6, 500, 6000 + 6 * 1100, amp=0.09, ph=6 * 0.9, noise=7, seed=71)])
+    go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); assert "3 von 8 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub"), pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub")
+    pg.evaluate("async ([a, b]) => { for (const id of [a, b]) { const t = await DB.get('tours', id); t.hidden = true; await Tours.save(t); } }", [ids["a1"], ids["a2"]])
+    go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); assert "2 von 8 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub"), "versteckte Touren zählen nicht"
+    pg.evaluate("async ([a, b]) => { const t = await DB.get('tours', a); t.hidden = false; await Tours.save(t); const u = await DB.get('tours', b); u.status = 'planned'; await Tours.save(u); }", [ids["a1"], ids["a2"]])
+    go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); r0 = pg.locator(f".fu-book[data-id='{bid}'] .fu-t").nth(0)
+    assert "done" in r0.get_attribute("class") and r0.get_attribute("href") == "#/tour/" + ids["a1"] and "weitere" not in r0.inner_text(), "geplante Touren zählen nicht, die ältere Tour zählt wieder"
+    pg.evaluate("async (a) => { const t = await DB.get('tours', a); t.status = 'done'; await Tours.save(t); }", ids["a2"])
+
+    # --- 12. Titelbild ---
+    sd = shots or "/tmp"
+    cov = fu_cover_png(os.path.join(sd, "titelbild-test-1.png"), "FANTASIA SUED", [(30, 90, 120), (240, 170, 90), (30, 60, 50), (15, 35, 30)])
+    cov2 = fu_cover_png(os.path.join(sd, "titelbild-test-2.png"), "FANTASIA NORD", [(70, 40, 100), (230, 120, 110), (50, 30, 60), (25, 15, 35)])
+    assert len(cov) > 20000
+    pg.evaluate("id => { Buecher.ui.offen.add(id); }", bid); go(pg, "#/fuehrer", ".fu-t"); sync_fertig()
+    assert pg.locator(f".fu-book[data-id='{bid}'] .fu-cov img").count() == 0, "noch kein Titelbild"
+    assert pg.locator(f".fu-book[data-id='{bid}'] .fu-cov svg").count() == 1, "ohne Titelbild: Buch-Symbol als Platzhalter"
+    fu_pick(pg, [("titel.png", cov)]); pg.locator(f".fu-book[data-id='{bid}'] [data-a=cover]").click(); toast_text(pg, "Titelbild gespeichert")
+    pg.wait_for_selector(f".fu-book[data-id='{bid}'] .fu-cov img")
+    ci = pg.evaluate("""id => DB.kvGet('guidecover:' + id, null).then(d => new Promise(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth, h: im.naturalHeight, len: d.length, jpg: d.startsWith('data:image/jpeg') }); im.src = d; }))""", bid)
+    assert ci["jpg"] and max(ci["w"], ci["h"]) == 400 and ci["w"] < ci["h"] and ci["len"] < 90000, f"auf 400 px Kante verkleinert, kleines JPEG: {ci}"
+    assert pg.evaluate("id => Buecher.liste().then(l => l.find(b => b.id === id).cover)", bid) == 1
+    assert "Titelbild ändern" in pg.inner_text(f".fu-book[data-id='{bid}'] [data-a=cover]")
+    # Nord: zweites Titelbild; Allgäu bleibt beim Platzhalter
+    nid = pg.evaluate("Buecher.liste().then(l => l.find(b => b.name.includes('Nord')).id)"); pg.evaluate("id => Buecher.ui.offen.add(id)", nid); go(pg, "#/fuehrer", ".fu-book"); sync_fertig()
+    fu_pick(pg, [("nord.png", cov2)]); leise(); pg.locator(f".fu-book[data-id='{nid}'] [data-a=cover]").click(); toast_text(pg, "Titelbild gespeichert"); pg.wait_for_selector(f".fu-book[data-id='{nid}'] .fu-cov img")
+    # kein Bild gewählt (Abbruch) und ein Nicht-Bild
+    fu_pick(pg, []); pg.locator(f".fu-book[data-id='{nid}'] [data-a=cover]").click(); pg.wait_for_timeout(300); assert pg.locator(f".fu-book[data-id='{nid}'] .fu-cov img").count() == 1, "Abbruch ändert nichts"
+    fu_pick(pg, [("kaputt.png", "kein Bild")]); leise(); pg.locator(f".fu-book[data-id='{nid}'] [data-a=cover]").click(); assert "lässt sich nicht lesen" in toast_text(pg, "nicht lesen")
+    assert pg.locator(f".fu-book[data-id='{nid}'] .fu-cov img").count() == 1, "ein unlesbares Bild lässt das alte stehen"
+    shot("1-titelbilder")
+    # Verwalten, Titelbild entfernen (Nord), Menü prüfen
+    pg.locator(f".fu-book[data-id='{nid}'] [data-a=manage]").click(); pg.wait_for_selector("#fu-m-covdel"); assert pg.locator("#fu-m-ren").count() == 1 and pg.locator("#fu-m-add").count() == 1 and pg.locator("#fu-m-del").count() == 1
+    shot("5-verwalten"); pg.click("#fu-m-covdel"); pg.wait_for_selector(f".fu-book[data-id='{nid}'] .fu-cov svg"); assert pg.evaluate("id => DB.kvGet('guidecover:' + id, null)", nid) is None
+    bad += sheet_check(pg, "Buch verwalten", lambda: (go(pg, "#/fuehrer", ".fu-book"), pg.locator(f".fu-book[data-id='{bid}'] [data-a=manage]").click()))
+    # Umbenennen
+    pg.locator(f".fu-book[data-id='{nid}'] [data-a=manage]").click(); pg.click("#fu-m-ren"); pg.wait_for_selector(".sheet input"); pg.fill(".sheet input", "Fantasia Nord (2. Auflage)"); pg.get_by_role("button", name="Speichern", exact=True).click()
+    pg.wait_for_function("() => [...document.querySelectorAll('.fu-name')].some(e => e.textContent === 'Fantasia Nord (2. Auflage)')")
+
+    # --- 13. Startseite: ruhige Zeile, abschaltbar ---
+    go(pg, "#/start", "#fuehrer-home-row"); tx = pg.inner_text("#fuehrer-home-row"); assert "Wanderführer: 4 von 15 gewandert" in tx and "3 Bücher" in tx, tx
+    assert pg.evaluate("document.querySelector('#fuehrer-home-row').getAttribute('href')") == "#/fuehrer"
+    shot("6-start")
+    go(pg, "#/settings", "#homeset"); assert "Wanderführer" in pg.inner_text("#homeset")
+    pg.locator("#homeset .sw", has_text="Wanderführer").click(); pg.wait_for_function("(Set_.get('homeShow') || {}).fuehrer === false")
+    go(pg, "#/start", "#hero"); pg.wait_for_timeout(300); assert pg.locator("#fuehrer-home").count() == 0, "abgeschaltet: keine Zeile"
+    pg.evaluate("Set_.set('homeShow', {})"); go(pg, "#/start", "#fuehrer-home-row")
+    bad += ["Startseite mit Wanderführer: " + m for m in layout_check(pg, ["#/start"], widths=((360, 100), (360, 130)))]
+
+    # --- 14. Sicherung: Bücher samt Titelbild hin und zurück; alte Sicherung ohne Bücher ---
+    r = pg.evaluate("""async () => {
+      const data = await Backup.collect(), keys = data.kv.map(k => k.k), json = JSON.stringify(data), gz = fflate.gzipSync(new TextEncoder().encode(json));
+      const before = await Buecher.liste(), covBefore = await Buecher.cover(before[0].id), nPts = Object.keys(await Buecher.punkte(before[0].id)).length;
+      for (const b of before) await Buecher.entferne(b.id);
+      const gone = (await Buecher.liste()).length + (await DB.all('kv')).filter(k => k.k.startsWith('guidepts:') || k.k.startsWith('guidecover:')).length;
+      await Backup.apply(Backup.parse(gz));
+      Buecher.coverMem = {};
+      const after = await Buecher.liste(), covAfter = await Buecher.cover(before[0].id), nPts2 = Object.keys(await Buecher.punkte(before[0].id)).length;
+      await Backup.apply(Backup.parse(gz));      // zweimal einspielen: keine Doppelten
+      const again = (await Buecher.liste()).length;
+      const alt = { app: 'tourentagebuch', v: 1, date: Date.now(), tours: data.tours, tracks: data.tracks, photos: [] };      // alte Sicherung ohne kv und ohne Bücher
+      await Backup.apply(Backup.parse(fflate.gzipSync(new TextEncoder().encode(JSON.stringify(alt)))));
+      const nachAlt = (await Buecher.liste()).length;
+      const alt2 = Object.assign({}, data, { kv: data.kv.filter(k => !/^guide/.test(k.k)) });
+      for (const b of await Buecher.liste()) await Buecher.entferne(b.id);
+      await Backup.apply(Backup.parse(fflate.gzipSync(new TextEncoder().encode(JSON.stringify(alt2)))));
+      const ohneBuecher = (await Buecher.liste()).length;
+      await Backup.apply(Backup.parse(gz));
+      return { keys, raw: json.length, gz: gz.length, n: before.length, names: before.map(b => b.name), gone, after: after.map(b => b.name), covSame: !!covBefore && covBefore === covAfter, nPts, nPts2, again, nachAlt, ohneBuecher, finalN: (await Buecher.liste()).length };
+    }""")
+    assert "guides" in r["keys"] and any(k.startswith("guidepts:") for k in r["keys"]) and any(k.startswith("guidecover:") for k in r["keys"]) and "guideMatch" not in r["keys"], r["keys"]
+    assert r["n"] == 3 and r["gone"] == 0 and r["after"] == r["names"] and r["covSame"] and r["nPts"] == r["nPts2"] == 8 and r["again"] == 3, r
+    assert r["nachAlt"] == 3 and r["ohneBuecher"] == 0 and r["finalN"] == 3, ("alte Sicherungen ohne Bücher laden und lassen vorhandene Bücher in Ruhe", r)
+    ncov = sum(1 for k in r["keys"] if k.startswith("guidecover:"))
+    print(f"  Sicherung mit 3 Büchern (15 Buchtouren, {ncov} Titelbild): {r['raw'] // 1024} KB unkomprimiert, {r['gz'] // 1024} KB gepackt (alle Touren des Tests eingeschlossen)")
+    pg.evaluate("Buecher.coverMem = {}"); go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); assert pg.locator(".fu-book .fu-cov img").count() >= 1 and "4 von 15" in pg.inner_text("#fu-sum"), "nach dem Einspielen ist alles wieder da (Abgleich neu gerechnet)"
+
+    # --- 15. Bedienbarkeit bei vielen Touren: 300 Touren × 100 Buchtouren im selben Gebiet; die Seite darf nie lange stehen ---
+    m = pg.evaluate("""async () => {
+      const la0 = 20.0, lo0 = 100.0, M = 111195, k = Math.cos(la0 * Math.PI / 180), cur = (L, np, ph, dy, dx) => Array.from({ length: np }, (_, i) => { const t = i / (np - 1); return { lat: la0 + (L * 0.12 * Math.sin(4 * Math.PI * t + ph) + L * 0.05 * t + dy) / M, lon: lo0 + (L * t + dx) / (M * k), ele: 500 + 200 * t }; });
+      const touren = [], tracks = [], ids = [];
+      for (let i = 0; i < 300; i++) { const p = cur(5000 + (i % 40) * 150, 1200, (i % 17) * 0.4, (i % 7) * 500, (i % 5) * 700), id = 'last' + i; ids.push(id);
+        touren.push({ id, name: 'Last ' + i, sport: 'hike', status: 'done', hidden: false, start: 1600000000000 + i * 86400000, dist: 6000, bbox: Fuehrer.umrandung(p) });
+        tracks.push({ id, lat: p.map(q => q.lat), lon: p.map(q => q.lon), ele: p.map(q => q.ele), t: p.map(() => null), seg: p.map(() => 0) }); }
+      await DB.putMany('tours', touren); await DB.putMany('tracks', tracks); Tours.invalidate();
+      const bts = []; for (let i = 0; i < 100; i++) bts.push(Fuehrer.buchtour({ titel: 'Last ' + i, km: 6, up: 100, pts: cur(5000 + (i % 40) * 150, 300, (i % 17) * 0.4, (i % 7) * 500, (i % 5) * 700) }, i, 'l' + i + '.gpx'));
+      const bk = { id: 'lastbuch', name: 'Lastbuch', created: 1, next: 100, cover: 0, touren: bts.map(b => b.meta) };
+      await DB.kvSet('guidepts:lastbuch', Object.fromEntries(bts.map(b => [b.meta.id, Fuehrer.packe(b.pts)])));
+      await Buecher.aendere(l => { l.push(bk); return l; });
+      let max = 0, last = performance.now(); const iv = setInterval(() => { const n = performance.now(); max = Math.max(max, n - last); last = n; }, 10);
+      const t0 = performance.now(), st = await Buecher.sync(); const ms = performance.now() - t0; clearInterval(iv);
+      const s2 = performance.now(), st2 = await Buecher.sync(); const ms2 = performance.now() - s2;
+      const done = st.buecher.lastbuch.fertig;
+      await Buecher.entferne('lastbuch'); for (const id of ids) { await DB.del('tours', id); await DB.del('tracks', id); } Tours.invalidate();
+      return { ms: Math.round(ms), max: Math.round(max), ms2: Math.round(ms2), done, fehlt: st.fehlendePaare, fehlt2: st2.fehlendePaare }; }""")
+    print(f"  Last (300 Touren × 100 Buchtouren, alle im selben Gebiet): {m['ms']} ms gesamt, längste Sperre der Seite {m['max']} ms, zweiter Lauf {m['ms2']} ms, {m['done']} von 100 gewandert")
+    assert m["fehlt"] == 0 and m["fehlt2"] == 0 and m["done"] == 100 and m["max"] < 400 and m["ms2"] < 1500, m
+
+    # --- 16. Gestaltung: Seite mit Büchern (zu, offen, mit Titelbild), Blätter ---
+    pg.evaluate("Buecher.ui.offen.clear(); Buecher.ui.filter = 'alle'; Buecher.ui.suche = ''; Buecher.ui.sort = 'buch'"); go(pg, "#/fuehrer", ".fu-book"); sync_fertig()
+    shot("2-eingeklappt")
+    bad += ["Bücher zugeklappt: " + m_ for m_ in layout_check(pg, ["#/fuehrer"])]
+    pg.evaluate("id => Buecher.ui.offen.add(id)", bid); go(pg, "#/fuehrer", ".fu-t"); sync_fertig(); shot("2-aufgeklappt")
+    bad += ["Buch aufgeklappt: " + m_ for m_ in layout_check(pg, ["#/fuehrer"])]
+    pg.evaluate("Buecher.ui.suche = 'Allgäu'"); go(pg, "#/fuehrer", ".fu-t"); bad += ["Suche: " + m_ for m_ in layout_check(pg, ["#/fuehrer"], widths=((360, 100), (360, 130)))]
+    pg.evaluate("Buecher.ui.suche = ''; Buecher.ui.filter = 'offen'"); go(pg, "#/fuehrer", ".fu-t"); bad += ["Filter offen: " + m_ for m_ in layout_check(pg, ["#/fuehrer"], widths=((360, 100), (360, 130)))]
+    pg.evaluate("Buecher.ui.filter = 'alle'"); go(pg, "#/tour/" + ids["a1"], "#imbuch"); bad += ["Tourseite mit Buchzeile: " + m_ for m_ in layout_check(pg, ["#/tour/" + ids["a1"]], widths=((360, 100), (360, 130)))]
+    go(pg, "#/fuehrer", ".fu-t")
+    # --- 17. Buch entfernen (mit Rückfrage), Aufräumen ---
+    pg.locator(f".fu-book[data-id='{nid}'] .fu-head").click(); pg.locator(f".fu-book[data-id='{nid}'] [data-a=manage]").click(); pg.click("#fu-m-del"); pg.wait_for_selector(".sheet[aria-label='Buch entfernen?']")
+    assert "Deine Touren bleiben unverändert" in pg.inner_text(".sheet[aria-label='Buch entfernen?']"); pg.get_by_role("button", name="Abbrechen").click(); pg.wait_for_selector(".sheet", state="detached"); assert len(pg.evaluate("Buecher.liste()")) == 3
+    pg.locator(f".fu-book[data-id='{nid}'] [data-a=manage]").click(); pg.click("#fu-m-del"); pg.wait_for_selector(".sheet[aria-label='Buch entfernen?']"); pg.get_by_role("button", name="Entfernen", exact=True).click(); pg.wait_for_function("document.querySelectorAll('.fu-book').length === 2")
+    assert pg.evaluate("id => DB.kvGet('guidepts:' + id, null)", nid) is None and pg.evaluate("id => DB.kvGet('guidecover:' + id, null)", nid) is None
+    for k in [bid] + [b["id"] for b in pg.evaluate("Buecher.liste()") if b["id"] != bid]:
+        pg.evaluate("id => Buecher.entferne(id)", k)
+    go(pg, "#/fuehrer", "#fu-add2"); assert pg.evaluate("DB.all('kv').then(l => l.filter(k => /^guide(pts|cover):/.test(k.k)).length)") == 0
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['guides', 'guideMatch']) await DB.del('kv', k); Buecher.coverMem = {}; }", vorher)
+    return sorted(set(bad))
+
+def sheet_check_open(pg, label):
+    """Das gerade offene Blatt bei 360 px mit 100 % und 130 % Schrift prüfen (es bleibt offen)."""
+    bad = []
+    for fs in (100, 130):
+        pg.set_viewport_size({"width": 360, "height": 800})
+        pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs); pg.wait_for_timeout(300)
+        if pg.evaluate("(() => { const s = document.querySelector('.sheet'); return s.scrollWidth > s.clientWidth + 1 })()"): bad.append(f"{label}, {fs} %: Blatt rollt quer")
+        bad += [f"{label}, {fs} %: " + m for m in pg.evaluate(LAYOUT_JS)]
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    return bad
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -1712,6 +2031,7 @@ def main():
         alles_echt(pg)
         jahr_bad = jahr(pg)
         neu = neue_funktionen(pg)
+        fu_bad = fuehrer(pg)
 
         # Kachelfoto: auch bei lauter Personenfotos und bei einer früher gemerkten Zeichnung kommt ein Foto (2.3.1)
         k = pg.evaluate("""async () => {
@@ -1735,6 +2055,7 @@ def main():
         bad += layout_21(pg)
         bad += layout_22(pg)
         bad += jahr_bad
+        bad += fu_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
