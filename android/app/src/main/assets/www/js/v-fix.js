@@ -209,7 +209,7 @@ Views['/fix'] = async (root, [id]) => {
 
 /* Namensvorschläge: Orte (Start, Ziel, weitester Punkt) und Gipfel in der Nähe des höchsten Punkts. */
 const Suggest = {
-  sportName: { hike: 'Wanderung', walk: 'Spaziergang', mtb: 'MTB-Tour', bike: 'Radtour', racebike: 'Rennradtour', ebike: 'E-Bike-Tour', run: 'Lauf', ski: 'Skitour', mountaineering: 'Bergtour' },
+  sportName: { hike: 'Wanderung', walk: 'Spaziergang', mtb: 'MTB-Tour', bike: 'Radtour', racebike: 'Rennradtour', ebike: 'E-Bike-Tour', run: 'Lauf', ski: 'Skitour', skitour: 'Skitour', skialpin: 'Skitag', nordic: 'Langlauftour', mountaineering: 'Bergtour' },
   async peak(lat, lon) {
     const q = `[out:json][timeout:10];(node(around:350,${lat},${lon})["natural"~"peak|saddle"]["name"];node(around:350,${lat},${lon})["tourism"="alpine_hut"]["name"];);out;`;
     const r = await Native.http({ url: 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q), headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
@@ -229,7 +229,7 @@ const Suggest = {
     const a = await safe(() => Places.name(s.lat, s.lon));
     const b = loop ? null : await safe(() => Places.name(e.lat, e.lon));
     const f = loop && Geo.dist(s.lat, s.lon, far.lat, far.lon) > 2500 ? await safe(() => Places.name(far.lat, far.lon)) : null;
-    const wantPeak = hi && s.ele != null && hi.ele - s.ele >= 150 && ['hike', 'mountaineering', 'ski'].includes(t.sport);
+    const wantPeak = hi && s.ele != null && hi.ele - s.ele >= 150 && ['hike', 'mountaineering', 'ski', 'skitour'].includes(t.sport);
     const pk = wantPeak ? await safe(() => Suggest.peak(hi.lat, hi.lon)) : null;
     const out = [];
     if (!loop && a && b && a !== b) out.push(`${sp} von ${a} nach ${b}`);

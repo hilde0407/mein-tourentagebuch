@@ -17,7 +17,7 @@
   function median(a) { const s = a.slice().sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; }
 
   /* ---- Sportgruppen (wie SPORT_GRP in hinweise.py, auf die Sportarten dieser App übertragen) ---- */
-  const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike'], ski: ['ski'], foot: ['hike', 'mountaineering'], run: ['run'] };
+  const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike'], ski: ['ski', 'skialpin', 'skitour', 'nordic'], foot: ['hike', 'mountaineering'], run: ['run'] };
   function gruppe(sport) { for (const k in SPORT_GRP) if (SPORT_GRP[k].includes(sport)) return k; return null; }
   function gleicheGruppe(a, b) { const g = gruppe(a); return g ? gruppe(b) === g : a === b; }
 
@@ -106,10 +106,13 @@
     out.deutlich_ueber = ['km', 'up', 'dauer'].filter(k => out[k] && out[k].max_stufe === 'deutlich_ueber');
     return out;
   }
+  /* Annahmen: Tempo (km/h) und Aufstieg (m/h) je Sportart. Wie im Planer (v-plan.js). Skitour und „Ski (allgemein)“ wie bisher 5 km/h und 400 m/h; Langlauf zügiger,
+     Ski alpin mit Liften: hohes Tempo, Aufstieg fast ohne Zeit (der Lift trägt). */
+  const TEMPO = { hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5, skitour: 5, nordic: 9, skialpin: 18 };
+  const AUFSTIEG = { hike: 500, walk: 500, run: 700, ski: 400, skitour: 400, nordic: 600, skialpin: 3000 };
   /** Grobe Dauer eines Plans in Stunden (Tempo je Sportart plus Aufstieg) – dieselbe Schätzung wie im Planer. */
   function schaetzDauer(sport, km, up) {
-    const v = { hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5 }[sport] || 5;
-    const r = { hike: 500, walk: 500, run: 700, ski: 400 }[sport] || 900;
+    const v = TEMPO[sport] || 5, r = AUFSTIEG[sport] || 900;
     return km / v + (up || 0) / r;
   }
 
@@ -157,7 +160,7 @@
     return out;
   }
 
-  const api = { MIN_N, MONATE, LINK_ARTEN, QUELLEN, MAX_LINKS, MAX_URL, MAX_TITEL, MAX_QTEXT, MAX_NOTIZ, START_STANDARD, PUFFER_STANDARD, SPORT_GRP,
+  const api = { MIN_N, MONATE, LINK_ARTEN, QUELLEN, MAX_LINKS, MAX_URL, MAX_TITEL, MAX_QTEXT, MAX_NOTIZ, START_STANDARD, PUFFER_STANDARD, SPORT_GRP, TEMPO, AUFSTIEG,
     pyRound, median, gruppe, gleicheGruppe, pruefeUrl, pruefeLinks, ladeLinks, pruefeQuelle, pruefeNotiz, pruefeDatum, pruefeStart, pruefePuffer,
     metrik, form, schaetzDauer, eqtDec, sonne, polarArt, tageslicht };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Planhilfe = api;

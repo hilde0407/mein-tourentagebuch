@@ -8,7 +8,7 @@ const Import = {
     if (!acts.length) { res.fail = 1; return res; }
     for (const a of acts) {
       try {
-        const r = await Tours.add(Object.assign({ name: a.name, sport: a.sport, pts: a.pts, src }, extra || {}));
+        const r = await Tours.add(Object.assign({ name: a.name, sport: a.sport, tags: a.tags, pts: a.pts, src }, extra || {}));
         if (r.dup) res.dup++; else res.added++;
       } catch (e) { res.fail++; }
     }
@@ -101,7 +101,7 @@ const Import = {
       if (!e.name || !e.name.trim()) return true;
       if (e.name === Tours.autoName(e.sport, e.start) || (e.sportAlt && e.name === Tours.autoName(e.sportAlt, e.start))) return true;
       const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp('^(' + Sports.list.map(x => esc(x[1])).join('|') + ')( (am Morgen|am Mittag|am Nachmittag|am Abend) · .*)?$').test(e.name.trim());
+      return new RegExp('^(' + Sports.list.map(x => esc(x[1])).concat(['Ski & Schnee']).join('|') + ')( (am Morgen|am Mittag|am Nachmittag|am Abend) · .*)?$').test(e.name.trim());
     },
     /** Namen von Komoot übernehmen (2.0.4): nur wenn der bisherige Name selbst erzeugt ist oder noch der zuletzt von Komoot übernommene –
         ein in der App von Hand vergebener Name bleibt. Gibt true zurück, wenn sich der Name geändert hat. */
@@ -158,13 +158,14 @@ const Import = {
         if (ch) await Tours.save(e);
       }
       for (let i = 0; i < todo.length; i++) {
+        if (opts.stop && opts.stop()) { res.stopped = true; break; }      // 2.2.0: abbrechbar (Alles abgleichen); der Rest kommt beim nächsten Mal
         const [t, ty] = todo[i];
         if (onProgress) onProgress(i + 1, todo.length, t.name);
         try {
           const items = await Import.Komoot.coords(acc, t.id);
           const start = t.date ? Date.parse(t.date) : null;
           const pts = items.map(c => ({ lat: c.lat, lon: c.lng, ele: c.alt, t: start && c.t != null && ty === 'tour_recorded' ? start + c.t : null }));
-          const r = await Tours.add({ name: t.name, sport: Sports.norm(t.sport), pts, src: 'komoot', srcId: 'komoot:' + t.id, up: t.elevation_up, down: t.elevation_down, status: ty === 'tour_planned' ? 'planned' : 'done', start });
+          const r = await Tours.add({ name: t.name, sport: Sports.norm(t.sport), tags: Sports.tags(t.sport), pts, src: 'komoot', srcId: 'komoot:' + t.id, up: t.elevation_up, down: t.elevation_down, status: ty === 'tour_planned' ? 'planned' : 'done', start });
           if (r.dup) {
             res.dup++;      // die Spur gab es schon (erst an der Spur erkannt): Name und Komoot-Kennung nachtragen, damit sie beim nächsten Mal nicht wieder geladen wird
             const e = r.tour; let ch = false;
@@ -187,7 +188,7 @@ const Import = {
     COOKIE: 'kh_session',
     /** Sportarten von Meine Touren → Sportarten der App. Unbekanntes läuft über Sports.norm und landet sonst bei „Sonstiges“. */
     SPORT: { hike: 'hike', mountaineering: 'mountaineering', jogging: 'run', touringbicycle: 'bike', e_touringbicycle: 'ebike', e_mtb: 'ebike', racebike: 'racebike', mtb: 'mtb',
-      skialpin: 'ski', skitour: 'ski', snowshoe: 'ski', nordic: 'ski', nordicwalking: 'hike', other: 'other' },
+      skialpin: 'skialpin', skitour: 'skitour', snowshoe: 'hike', nordic: 'nordic', nordicwalking: 'hike', other: 'other' },      // 2.2.0: Wintersportarten getrennt; Schneeschuhwandern zählt als Wandern (Schlagwort „Schneeschuh“)
     sport: s => Import.MT.SPORT[s] || Sports.norm(s),
     /** Serveradresse aufräumen: ohne „http(s)://“ wird https angenommen; übrig bleiben Schema, Rechner und Port. Wirft bei Unsinn. */
     base(raw) {
@@ -315,13 +316,16 @@ const Import = {
       const vor = JSON.stringify(e), r = { ch: false, name: false, zahlen: false, eigen: false };
       const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
       const put = (k, v) => { if (v == null) delete e[k]; else e[k] = v; };
+      const vorSp = e.sportMt;
       r.name = Import.MT.takeName(e, t.name);
-      const sp = Import.MT.sport(t.sport);
+      const sp = Import.MT.sport(t.sport), rawSp = String(t.sport || '');
       if (!e.sportMan && sp && e.sport !== sp && e.status !== 'planned') { e.sportAlt = e.sportAlt || e.sport; e.sport = sp; }
+      if (rawSp) e.sportMt = rawSp; else delete e.sportMt;      // die Sportart, wie Meine Touren sie nennt (2.2.0)
+      if (Sports.isSnowshoe(rawSp) && !(e.tags || []).includes(Sports.SCHNEESCHUH) && !(vorSp && Sports.isSnowshoe(vorSp))) e.tags = (e.tags || []).concat(Sports.SCHNEESCHUH);      // einmal ergänzen; in der App entfernt, kommt es nicht wieder
       const note = String(t.note || '').trim();
       if (note && (!String(e.note || '').trim() || (e.noteMt != null && e.note === e.noteMt))) e.note = note;      // eine in der App geschriebene Notiz bleibt
       if (note && e.note === note) e.noteMt = note;
-      put('starsMt', num(t.stars) >= 1 ? Math.min(5, Math.round(t.stars)) : null);
+      Abgleich.sterneUebernehmen(e, num(t.stars));      // 2.2.0: Sterne aus Meine Touren, solange die Bewertung in der App nicht von Hand geändert wurde
       const tags = String(t.tags || '').split('|').map(x => x.trim()).filter(Boolean);
       const neu = tags.filter(g => !(e.tagsMt || []).includes(g) && !(e.tags || []).includes(g));      // nur neue Schlagworte ergänzen; in der App entfernte kommen nicht wieder
       if (neu.length) e.tags = (e.tags || []).concat(neu);
@@ -464,7 +468,7 @@ const Import = {
           const ll = (s.latlng || {}).data || [], tm = (s.time || {}).data || [], al = (s.altitude || {}).data || [];
           const st = Date.parse(a.start_date);
           const pts = ll.map((c, k) => ({ lat: c[0], lon: c[1], ele: al[k] != null ? al[k] : null, t: st + (tm[k] || 0) * 1000 }));
-          const r = await Tours.add({ name: a.name, sport: Sports.norm(a.sport_type || a.type), pts, src: 'strava', srcId: 'strava:' + a.id });
+          const r = await Tours.add({ name: a.name, sport: Sports.norm(a.sport_type || a.type), tags: Sports.tags(a.sport_type || a.type), pts, src: 'strava', srcId: 'strava:' + a.id });
           if (r.dup) res.dup++; else res.added++;
         } catch (e) { if (/Limit/.test(e.message)) { res.limit = e.message; break; } res.fail++; }
       }
@@ -476,6 +480,10 @@ const Import = {
   /* ---------------- Zepp / Amazfit ---------------- */
   Zepp: {
     KEY: 'xeNtBVqzDc6tuNTh', IV: 'MAAAYAAAAAAAAABg',
+    /** Zepp-Sporttyp → Sportart der App (2.2.0 wie die Zuordnung des Servers „Meine Touren“, app/gpxtools.py): 43 und 105 Ski alpin, 178 Schneeschuh (zählt als Wandern,
+        Schlagwort „Schneeschuh“), 206 E-Bike. „Gehen“ zählt als Wandern; Laufen (1, 8) bleibt – anders als im Server – getrennt. 14 ist ein Wintersport ohne genauere Art („Ski (allgemein)“). */
+    TYPEN: { 1: 'run', 6: 'hike', 7: 'hike', 8: 'run', 9: 'bike', 13: 'hike', 14: 'ski', 15: 'hike', 22: 'hike', 43: 'skialpin', 105: 'skialpin', 178: 'hike', 206: 'ebike' },
+    SCHNEESCHUH: [178],
     HOSTS: ['https://api-mifit-de2.zepp.com', 'https://api-mifit-us2.zepp.com', 'https://api-mifit.huami.com', 'https://api-mifit.zepp.com'],
     async enc(text) {
       const te = new TextEncoder();
@@ -587,7 +595,7 @@ const Import = {
       }
       const mine = await Tours.list();
       const res = { added: 0, dup: 0, fail: 0, hr: 0, eleUhr: 0 };
-      const types = { 1: 'run', 6: 'hike', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'hike', 22: 'hike' }      // „Gehen“ zählt wie in Meine Touren als Wandern; Laufen bleibt getrennt;
+      const types = Import.Zepp.TYPEN;
       // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur Puls und Uhr-Höhen nachtragen – sonst neu laden
       const vonZepp = t => t.src === 'zepp' || /^zepp:/.test(t.srcId || '');      // trägt die Uhr-Höhen von Anfang an
       const todo = [], seen = new Set();
@@ -622,7 +630,7 @@ const Import = {
             continue;
           }
           if (pts.length < 2) { res.dup++; continue; }
-          const r = await Tours.add({ sport: types[s.type] || 'other', pts, src: 'zepp', srcId: 'zepp:' + s.trackid });
+          const r = await Tours.add({ sport: types[s.type] || 'other', tags: Import.Zepp.SCHNEESCHUH.includes(+s.type) ? [Sports.SCHNEESCHUH] : [], pts, src: 'zepp', srcId: 'zepp:' + s.trackid });
           if (r.dup) res.dup++; else res.added++;
         } catch (e) { res.fail++; }
       }

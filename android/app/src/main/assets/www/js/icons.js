@@ -80,6 +80,9 @@ const ICONS = {
   walk: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 4 2 3 1 5M13 8l3 3 2 1M10 12l-3 7"/>',
   run: '<circle cx="15" cy="4.5" r="1.8"/><path d="M15 8l-4 3 1 4 2 5M11 11L7 13l-1 4M12 15l5 1"/>',
   ski: '<circle cx="14" cy="4.5" r="1.8"/><path d="M14 8l-2 4 3 3 1 4M3 19l18-4M9 12l-3 4"/>',
+  skialpin: '<circle cx="15" cy="4.5" r="1.8"/><path d="M15 8l-3.5 3 2.5 3.5 2 1.5M3 20l18-6M11.5 11L7 12.5M13 8l4 3"/>',
+  skitour: '<circle cx="9" cy="5" r="1.8"/><path d="M9 8.5l-1 4 3 2.5.5 4M3 18l15-5M8 12.5L5 10.5M14 21l3.5-7 3.5 7z"/>',
+  nordic: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-1 4-4.5 4M11.5 12l4.5 3.5 4-1M3 20h8M13 18.5h8M12 8l5 3M8 10l4-2"/>',
   climb: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 3 1 5-2 5M13 8l4 2 2 5M10 11L6 13"/>',
   dot: '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>',
 };
@@ -93,7 +96,7 @@ const ICON_CHARS = {
   '💻': 'laptop', '🖧': 'server', '☁': 'cloud', '👁': 'eye', '🙈': 'eyeoff', '📅': 'calendar', '🔊': 'speaker', '📡': 'signal', '🔋': 'battery', '🗺': 'map',
   '◎': 'locate', '⟲': 'loop', '⇄': 'swap', '🏁': 'flag', '🎯': 'target', '💬': 'chat', '🔥': 'flame', '🟢': 'dot', '🟠': 'dot',
   // Sportarten
-  '🥾': 'peak', '🚶': 'walk', '🚵': 'bike', '🚴': 'bike', '🚲': 'bike', '⚡': 'bolt', '🏃': 'run', '⛷': 'ski', '🧗': 'climb',
+  '🥾': 'peak', '🚶': 'walk', '🚵': 'bike', '🚴': 'bike', '🚲': 'bike', '⚡': 'bolt', '🏃': 'run', '⛷': 'ski', '🏂': 'skialpin', '🎿': 'skitour', '❄': 'nordic', '🧗': 'climb',
 };
 const Ico = {
   /** Symbol als SVG-Text. `key` ist ein Name aus ICONS oder eines der Zeichen aus ICON_CHARS. */

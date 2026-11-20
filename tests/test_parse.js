@@ -8,7 +8,17 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  const z=fflate.zipSync({'activities/1.gpx.gz':fflate.gzipSync(new TextEncoder().encode(gpx))});
  const r2=await Parse.any('x.zip',z); A.strictEqual(r2.length,1);
  for (const [s,e] of [['Run','run'],['MountainBikeRide','mtb'],['e_touringbicycle','ebike'],['hike','hike'],['touringbicycle','bike'],['racebike','racebike'],['Walk','walk'],['EBikeRide','ebike'],['Hiking','hike'],['jogging','run'],
-   ['nordicwalking','hike'],['Nordic Walking','hike'],['nordic','ski'],['skitour','ski'],['skialpin','ski'],['snowshoe','ski'],['e_mtb','ebike'],['mtb','mtb'],['mountaineering','mountaineering'],['other','other'],['kitesurfen','other']]) A.strictEqual(Sports.norm(s),e,s);      // letzte Zeile: Sportarten aus „Meine Touren“ (2.1.0)
+   ['nordicwalking','hike'],['Nordic Walking','hike'],['nordic','nordic'],['skitour','skitour'],['skialpin','skialpin'],['snowshoe','hike'],['e_mtb','ebike'],['mtb','mtb'],['mountaineering','mountaineering'],['other','other'],['kitesurfen','other']]) A.strictEqual(Sports.norm(s),e,s);      // letzte Zeile: Sportarten aus „Meine Touren“ (2.1.0)
+ // 2.2.0: Wintersportarten getrennt, Schneeschuh zählt als Wandern (mit Schlagwort)
+ for (const [s,e] of [['Skifahren','ski'],['ski','ski'],['Snow','ski'],['AlpineSki','skialpin'],['BackcountrySki','skitour'],['NordicSki','nordic'],['Snowshoe','hike'],['Snowboard','skialpin'],['downhill_skiing','skialpin'],
+   ['resort_skiing','skialpin'],['backcountry_skiing','skitour'],['cross_country_skiing','nordic'],['Skitouren','skitour'],['ski_mountaineering','skitour'],['Langlauf','nordic'],['Schneeschuhwandern','hike'],
+   ['snow_shoe','hike'],['skate skiing','nordic'],['Nordic Walking','hike'],['nordicwalking','hike'],['Mountaineering','mountaineering'],['Kitesurf','other']]) A.strictEqual(Sports.norm(s),e,s);
+ A.deepStrictEqual(Sports.tags('snowshoe'),['Schneeschuh']);A.deepStrictEqual(Sports.tags('Snowshoe'),['Schneeschuh']);A.deepStrictEqual(Sports.tags('Schneeschuhwandern'),['Schneeschuh']);A.deepStrictEqual(Sports.tags('hike'),[]);A.deepStrictEqual(Sports.tags('skitour'),[]);A.deepStrictEqual(Sports.tags(''),[]);
+ A.strictEqual(Sports.label('skitour'),'Skitour');A.strictEqual(Sports.label('skialpin'),'Ski alpin');A.strictEqual(Sports.label('nordic'),'Langlauf');A.strictEqual(Sports.label('ski'),'Ski (allgemein)');A.strictEqual(Sports.label('gibtsnicht'),'Sonstiges');A.strictEqual(Sports.icon('gibtsnicht'),'📍');
+ A.ok(Sports.passt('', 'hike') && Sports.passt('grp:ski', 'nordic') && Sports.passt('grp:ski', 'ski') && !Sports.passt('grp:ski', 'hike') && Sports.passt('hike', 'hike') && !Sports.passt('hike', 'skitour'));
+ A.deepStrictEqual(Sports.list.map(x=>x[0]).filter(x=>Sports.SKI.includes(x)).sort(),Sports.SKI.slice().sort(),'alle Skiarten stehen in der Liste');
+ {const gx=t=>Geo.gpx('T',t,[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:11,ele:520,t:1e12+60000}]).replace('<type>'+t+'</type>','<type>'+t+'</type>');
+  for(const [t,sp,tg] of [['snowshoe','hike',['Schneeschuh']],['skitour','skitour',[]],['skialpin','skialpin',[]],['nordic','nordic',[]],['hike','hike',[]]]){const q=await Parse.any('a.gpx',new TextEncoder().encode(gx(t)));A.strictEqual(q[0].sport,sp,t);A.deepStrictEqual(q[0].tags,tg,t);}}
  // Zepp-Token aus der Zwischenablage
  const T='a1B2c3D4e5F6g7H8i9J0kLmN',Z=Parse.zeppToken;
  A.strictEqual(Z(T),T);A.strictEqual(Z('  "'+T+'"\n'),T);A.strictEqual(Z('apptoken='+T+'; Path=/'),T);A.strictEqual(Z('Bearer '+T),T);
@@ -21,6 +31,12 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  const hdr=[14,0x10,0,0,b.length&255,b.length>>8,0,0,0x2e,0x46,0x49,0x54,0,0];
  const fit=new Uint8Array([...hdr,...b,0,0]);
  const r3=Parse.fit(fit);A.strictEqual(r3[0].pts.length,2);A.strictEqual(r3[0].pts[0].ele,800);A.ok(Math.abs(r3[0].pts[0].lat-47.5)<1e-6);
+ // 2.2.0: FIT-Sportnummern (wie in Meine Touren): 12 Langlauf, 13 Ski alpin (Untersportart 37: Skitour), 14 Snowboard, 35 Schneeschuh (Wandern mit Schlagwort)
+ for (const [sp,sub,e,tg] of [[12,0,'nordic',[]],[13,0,'skialpin',[]],[13,37,'skitour',[]],[14,0,'skialpin',[]],[35,0,'hike',['Schneeschuh']],[17,0,'hike',[]],[1,0,'run',[]],[19,0,'other',[]]]) {
+   const bs=[...b,0x41,0,0,18,0,2,5,1,0,6,1,0,0x01,sp,sub];
+   const fs=new Uint8Array([14,0x10,0,0,bs.length&255,bs.length>>8,0,0,0x2e,0x46,0x49,0x54,0,0,...bs,0,0]);
+   const q=Parse.fit(fs);A.strictEqual(q[0].sport,e,'FIT '+sp+'/'+sub);A.deepStrictEqual(q[0].tags,tg,'FIT-Schlagwort '+sp);
+ }
  // 2.0.2: westliche Länge / südliche Breite (sint32 mit Vorzeichen) und „kein Wert“ (0x7FFFFFFF) – Punkte ohne Position entfallen
  {const bw=[...def,...rcd(1000000000,28.1038,-15.5657,520),...rcd(1000000001,180,180,521),...rcd(1000000002,-33.9,-70.6,522)];
   const dvx=new DataView(new Uint8Array(bw).buffer);dvx.setInt32(def.length+15+5,0x7FFFFFFF,true);dvx.setInt32(def.length+15+9,0x7FFFFFFF,true);

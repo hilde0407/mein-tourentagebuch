@@ -18,7 +18,7 @@ const Goals = {
     if (merged.length === cur.length) return false;
     await Goals.save(merged); return true;
   },
-  sportName(s) { return !s ? '' : s === 'grp:bike' ? 'Rad (alle Arten)' : s === 'grp:foot' ? 'Wandern und Bergsteigen' : s === 'grp:ski' ? 'Ski' : s === 'grp:run' ? 'Laufen' : Sports.label(s); },
+  sportName(s) { return !s ? '' : s === 'grp:bike' ? 'Rad (alle Arten)' : s === 'grp:foot' ? 'Wandern und Bergsteigen' : s === 'grp:ski' || s === 'ski' ? 'Ski (alle Arten)' : s === 'grp:run' ? 'Laufen' : Sports.label(s); },
   name(g) { const m = Ziele.METRIKEN.find(x => x[0] === g.metric); return m[1] + (g.period === 'week' ? ' pro Woche' : '') + (g.sport ? ' · ' + Goals.sportName(g.sport) : ''); },
   /** Zahl mit Einheit: „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
   dec: g => (g.metric === 'hours' || (g.metric === 'km' && g.target < 50) ? 1 : 0),
@@ -45,6 +45,7 @@ const Goals = {
   /** Blatt zum Anlegen oder Ändern. goal = null: neues Ziel mit den Vorgaben `pre` ({period, year}). done() nach dem Speichern oder Löschen. */
   edit(goal, pre, done) {
     const nowY = new Date().getFullYear(), g = Object.assign({ period: 'year', year: nowY, metric: 'km', target: '', sport: '' }, pre || {}, goal || {});
+    if (g.sport === 'ski') g.sport = 'grp:ski';      // altes Ziel „Ski“ (vor 2.2.0): Gruppe aller Skiarten
     const err = h('p', { class: 'err small', role: 'alert' }), val = h('input', { type: 'text', inputmode: 'decimal', id: 'goalval', 'aria-label': 'Zielwert', value: g.target === '' ? '' : String(g.target).replace('.', ','), placeholder: 'z. B. 800' });
     const unit = h('span', { class: 'muted' }), yearSel = h('select', { id: 'goalyear', 'aria-label': 'Jahr', onchange: e => { g.year = +e.target.value; } }, [nowY - 1, nowY, nowY + 1].map(y => h('option', { value: y, selected: y === g.year }, y)));
     const segBox = h('div'), metBox = h('div'), yearBox = h('label', { class: 'fld' }, 'Jahr', yearSel);
@@ -56,7 +57,7 @@ const Goals = {
       unit.textContent = ({ km: 'km', up: 'Meter Aufstieg', count: 'Touren', hours: 'Stunden' }[g.metric]) + (g.period === 'week' ? ' pro Woche' : ' im Jahr');
     };
     const sportSel = h('select', { id: 'goalsport', 'aria-label': 'Sportart', onchange: e => { g.sport = e.target.value; } },
-      [['', 'Alle Sportarten'], ['grp:bike', 'Rad (alle Arten)'], ['grp:foot', 'Wandern und Bergsteigen']].concat(Sports.list.map(s => [s[0], s[1]])).map(([v, l]) => h('option', { value: v, selected: v === g.sport }, l)));
+      [['', 'Alle Sportarten'], ['grp:bike', 'Rad (alle Arten)'], ['grp:foot', 'Wandern und Bergsteigen'], ['grp:ski', 'Ski (alle Arten)']].concat(Sports.list.filter(s => s[0] !== 'ski').map(s => [s[0], s[1]])).map(([v, l]) => h('option', { value: v, selected: v === g.sport }, l)));
     draw();
     const s = sheet(goal ? 'Ziel ändern' : 'Neues Ziel', h('div', null, segBox, yearBox, h('div', { class: 'fld' }, 'Messgröße', metBox), h('label', { class: 'fld' }, 'Sportart', sportSel),
       h('label', { class: 'fld' }, 'Zielwert', val), h('p', { class: 'muted small', style: { marginTop: '-8px' } }, unit), err,

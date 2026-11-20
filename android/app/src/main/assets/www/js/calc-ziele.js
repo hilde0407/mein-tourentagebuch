@@ -18,6 +18,7 @@
     const s = goal.sport || '';
     if (!s) return true;
     if (s.startsWith('grp:')) return (PH.SPORT_GRP[s.slice(4)] || []).includes(sport);
+    if (s === 'ski') return (PH.SPORT_GRP.ski || []).includes(sport);      // ein Ziel „Ski“ aus der Zeit vor 2.2.0 zählt alle Skiarten
     return s === sport;
   }
   /** Ältere Jahresziele (kv „goals“: {Jahr: {km, up, n}}) als Liste neuer Ziele lesen. Die Kennungen sind fest, damit ein erneutes Einlesen nichts verdoppelt. */

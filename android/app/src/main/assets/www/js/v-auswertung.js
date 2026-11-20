@@ -38,7 +38,7 @@ const Ausw = {
 
   /* ---------- Rekorde ---------- */
   rekorde(body, ts, ctx) {
-    body.append(Ausw.bestwerte(ts), Ausw.serie(((ctx && ctx.all) || ts).filter(t => !(ctx && ctx.sport) || t.sport === ctx.sport)));
+    body.append(Ausw.bestwerte(ts), Ausw.serie(((ctx && ctx.all) || ts).filter(t => !(ctx && ctx.sport) || Sports.passt(ctx.sport, t.sport))));
     const real = ts.filter(t => t.dist > 0);
     if (!real.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Noch keine Touren.'))); return; }
     const group = keyFn => { const m = new Map(); real.forEach(t => { const k = keyFn(t.start); const g = m.get(k) || { k, dist: 0, up: 0, n: 0, first: t.start }; g.dist += t.dist; g.up += t.up || 0; g.n++; g.first = Math.min(g.first, t.start); m.set(k, g); }); return [...m.values()]; };
@@ -75,7 +75,7 @@ const Ausw = {
     const wrap = h('div'); body.append(wrap);
     const draw = () => {
       wrap.innerHTML = '';
-      const by = new Map(); all.filter(t => new Date(t.start).getFullYear() === y && (!ctx.sport || t.sport === ctx.sport)).forEach(t => { const k = Ausw.dkey(t.start); const a = by.get(k) || []; a.push(t); by.set(k, a); });
+      const by = new Map(); all.filter(t => new Date(t.start).getFullYear() === y && Sports.passt(ctx.sport, t.sport)).forEach(t => { const k = Ausw.dkey(t.start); const a = by.get(k) || []; a.push(t); by.set(k, a); });
       const mx = Math.max(1, ...[...by.values()].map(a => a.reduce((s, t) => s + t.dist, 0)));
       const nav = h('div', { class: 'row' }, h('button', { class: 'btn sm', 'aria-label': 'Vorjahr', onclick: () => { y--; draw(); } }, '‹'), h('b', { class: 'calyear' }, String(y)), h('button', { class: 'btn sm', 'aria-label': 'Folgejahr', onclick: () => { y++; draw(); } }, '›'));
       wrap.append(nav, h('p', { class: 'muted small' }, by.size + ' Tage mit Tour. Je dunkler, desto weiter. Tag antippen für die Touren.'));
@@ -109,7 +109,7 @@ const Ausw = {
       h('thead', null, h('tr', null, ['Aktivität', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
       h('tbody', null, rows.map(([k, a]) => h('tr', null, h('td', null, Sports.icon(k) + ' ' + Sports.label(k)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
     // Leistung über die Jahre
-    const all = ctx.all.filter(t => !ctx.sport || t.sport === ctx.sport);
+    const all = ctx.all.filter(t => Sports.passt(ctx.sport, t.sport));
     const perf = [];
     [...new Set(all.map(t => t.sport))].forEach(s => {
       const byY = {}; all.filter(t => t.sport === s && t.moving > 300 && t.dist > 500).forEach(t => { (byY[new Date(t.start).getFullYear()] = byY[new Date(t.start).getFullYear()] || []).push(t); });

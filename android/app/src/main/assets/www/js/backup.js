@@ -5,7 +5,7 @@
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten (auch die Sitzung bei „Meine Touren“, kv „mt“) und Zwischenspeicher. */
-  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer'],
+  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich'],
   /** Diese Einträge werden beim Einspielen zurückgeholt, wenn es sie auf dem Gerät noch nicht gibt (Planung und Notizen einer Tour: die Sicherung gilt). */
   RESTORE_KEYS: ['goals', 'goals2', 'comments', 'places', 'tripHidden', 'tripNames', 'tripPeriod', 'tripRegion', 'tripSet', 'dupIgnore'],
   RESTORE_PREFIX: ['plan:', 'pn:'],
@@ -68,7 +68,7 @@ const Backup = {
     await DB.putMany('tours', data.tours); await DB.putMany('tracks', data.tracks || []); await DB.putMany('photos', data.photos || []);
     await Backup.restoreKv(data.kv);
     Tours.invalidate();
-    await DB.kvSet('calcVer', 0); await DB.kvSet('posVer', 0);      // alte Sicherungen: Aufstieg nach dem Einspielen neu rechnen (Touren mit calcV 2 werden übersprungen)
-    Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos)) Nav.render(); }).catch(() => {});
+    await DB.kvSet('calcVer', 0); await DB.kvSet('posVer', 0); await DB.kvSet('skiVer', 0);      // alte Sicherungen: Aufstieg nach dem Einspielen neu rechnen (Touren mit calcV 2 werden übersprungen)
+    Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski)) Nav.render(); }).catch(() => {});
   },
 };

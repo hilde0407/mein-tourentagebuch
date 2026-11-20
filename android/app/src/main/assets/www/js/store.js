@@ -36,6 +36,7 @@ const Tours = {
       maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: bb, src: o.src || 'file', srcId: o.srcId || '',
       note: o.note || '', fav: false, hidden: false, timed: !!st.start, created: Date.now(),
     };
+    if (Array.isArray(o.tags) && o.tags.length) t.tags = [...new Set(o.tags.map(String).filter(Boolean))];      // z. B. „Schneeschuh“ (2.2.0)
     if (isFinite(o.up) && o.up != null) { t.upKomoot = o.up; t.downKomoot = isFinite(o.down) && o.down != null ? o.down : null; }      // Komoots Wert: nur Zusatzangabe
     Tours.applyHoehe(t, st);
     Object.assign(t, Tours.hrSummary(pts));
@@ -69,7 +70,8 @@ const Tours = {
   async migrate(opts) {
     opts = opts || {};
     const pos = await Tours.repairPos().catch(e => { console.error('Spur-Reparatur', e); return 0; });
-    if ((await DB.kvGet('calcVer', 0)) >= Tours.CALC) return pos ? { up: 0, sport: 0, n: 0, fail: 0, pos } : null;
+    const ski = await Tours.skiZaehlen().catch(e => { console.error('Ski-Zählung', e); return 0; });
+    if ((await DB.kvGet('calcVer', 0)) >= Tours.CALC) return pos || ski ? { up: 0, sport: 0, n: 0, fail: 0, pos, ski } : null;
     const ids = (await DB.all('tours')).filter(t => (t.calcV || 0) < Tours.CALC).map(t => t.id);
     const res = { up: 0, sport: 0, n: ids.length, fail: 0 };
     for (let i = 0; i < ids.length; i += (opts.batch || 8)) {
@@ -101,8 +103,19 @@ const Tours = {
     await DB.kvSet('calcVer', Tours.CALC);
     if (res.up || res.sport) await DB.kvSet('calcNote', Object.assign({}, await DB.kvGet('calcNote', null), { up: res.up, sport: res.sport }));
     Tours.invalidate();
-    res.pos = pos;
+    res.pos = pos; res.ski = ski;
     return res;
+  },
+  SKI: 1,       // Version der Ski-Zählung (kv „skiVer“)
+  /** 2.2.0: „Ski & Schnee“ ist in Ski alpin, Skitour und Langlauf getrennt (Schneeschuh zählt als Wandern). Touren mit der alten Sammel-Sportart `ski` bleiben unverändert –
+      die App speichert nicht, welche Art es war. Die genaue Art liefert der nächste Abgleich mit Meine Touren (außer bei von Hand gewählter Sportart). Hier wird nur einmal
+      gezählt, damit die Startseite es sagen kann. Gibt die Zahl der noch unbestimmten Touren zurück. */
+  async skiZaehlen() {
+    if ((await DB.kvGet('skiVer', 0)) >= Tours.SKI) return 0;
+    const n = Abgleich.skiOffen(await DB.all('tours'));
+    if (n) await DB.kvSet('calcNote', Object.assign({}, await DB.kvGet('calcNote', null), { ski: n }));
+    await DB.kvSet('skiVer', Tours.SKI);
+    return n;
   },
   POS: 1,       // Version der Spur-Reparatur (kv „posVer“)
   /** 2.0.2: Spuren aus FIT-Dateien berichtigen. Bis 2.0.1 las der FIT-Leser Breite/Länge ohne Vorzeichen: westliche Längen (z. B. Kanaren −15,6°)

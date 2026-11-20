@@ -1,7 +1,7 @@
 'use strict';
 /* Planen: Wegpunkte auf der Karte setzen, Routing über BRouter (konfigurierbar), Profil, Speichern/Export/Ansagen. */
 const Router = {
-  profileFor: s => ({ hike: 'hiking-mountain', walk: 'hiking-mountain', mountaineering: 'hiking-mountain', run: 'hiking-mountain', mtb: 'mtb', bike: 'trekking', ebike: 'trekking', racebike: 'fastbike', ski: 'hiking-mountain' }[s] || 'trekking'),
+  profileFor: s => ({ hike: 'hiking-mountain', walk: 'hiking-mountain', mountaineering: 'hiking-mountain', run: 'hiking-mountain', mtb: 'mtb', bike: 'trekking', ebike: 'trekking', racebike: 'fastbike', ski: 'hiking-mountain', skitour: 'hiking-mountain', skialpin: 'hiking-mountain', nordic: 'hiking-mountain' }[s] || 'trekking'),
   /** Strecke zwischen zwei Punkten; bei Fehler gerade Linie (geradeaus = true). */
   async leg(a, b, profile) {
     const base = (Set_.get('routeUrl') || 'https://brouter.de/brouter').replace(/\/$/, '');
@@ -67,7 +67,7 @@ Views['/plan'] = async (root, [editId]) => {
       m.on('contextmenu', async () => { wps.splice(i, 1); await rebuild(); });
     });
     const st = Geo.stats(pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })));
-    const hrs = st.dist / 1000 / ({ hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5 }[sport] || 5) + st.up / ({ hike: 500, walk: 500, run: 700, ski: 400 }[sport] || 900);
+    const hrs = Planhilfe.schaetzDauer(sport, st.dist / 1000, st.up);
     info.innerHTML = '';
     info.append(UI.figs([[F.km(st.dist), 'Strecke'], ['↑ ' + F.m(st.up), 'Aufstieg'], ['↓ ' + F.m(st.down), 'Abstieg'], [F.dur(hrs * 3600), 'Dauer, geschätzt']], { cols: 4 }));
     if (pts.length > 1) MapKit.profile(prof, pts, null); else prof.getContext('2d').clearRect(0, 0, prof.width, prof.height);
@@ -77,7 +77,7 @@ Views['/plan'] = async (root, [editId]) => {
   map.on('click', e => addWp(e.latlng));
 
   const hint = h('p', { class: 'muted' }, 'Tippe auf die Karte, um Start, Zwischenpunkte und Ziel zu setzen. Punkte lassen sich verschieben; langes Drücken löscht einen Punkt.');
-  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, Sports.list.filter(s => ['hike', 'walk', 'run', 'mtb', 'bike', 'ebike', 'racebike', 'ski'].includes(s[0])).map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
+  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, Sports.list.filter(s => ['hike', 'walk', 'run', 'mtb', 'bike', 'ebike', 'racebike', 'skitour', 'nordic'].includes(s[0]) || s[0] === sport).map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
   const snapCb = h('input', { type: 'checkbox', checked: true, onchange: async e => { snap = e.target.checked; if (wps.length > 1) await rebuild(); } });
   panel.append(h('div', { class: 'row' }, sel, h('label', { class: 'sw' }, snapCb, h('span', null, 'Wegen folgen'))), info, prof, hint,
     h('div', { class: 'row wrap' },
