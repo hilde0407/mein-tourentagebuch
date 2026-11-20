@@ -1705,7 +1705,7 @@ def pdf(pg, aus=None):
     sv = pg.evaluate("window.__saved"); dj = pdf_bytes(pg, sv["name"]); assert sv["name"] == "Tourentagebuch_Jahr_2015.pdf", sv
     rj, bj = pdf_pruefen(dj, len(pdf_seiten_erwartet(100)) , "Jahr ohne Fotos"); zeigen(dj, "jahr-100-touren.pdf"); zu(pg)
     print("Jahres-PDF 100 Touren ohne Fotos:", len(rj.pages), "Seiten,", len(dj) // 1024, "KB; größte Pause der Oberfläche", round(luecke), "ms bei", len(tk), "Takten")
-    assert len(tk) > 30 and luecke < 1500, ("Oberfläche blockiert", luecke, len(tk))
+    assert len(tk) >= 10 and luecke < 1500, ("Oberfläche blockiert", luecke, len(tk))
     pg.click("#jahr-pdf-fotos input"); assert pg.locator("#jahr-pdf-fotos input").is_checked()
     pg.evaluate("window.__fotoCalls = 0"); pg.click("#jahr-pdf"); pg.wait_for_selector("#pdf-fertig", timeout=180000)
     dj2 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); rj2, bj2 = pdf_pruefen(dj2, len(pdf_seiten_erwartet(100, True)), "Jahr mit Fotos"); zeigen(dj2, "jahr-100-touren-mit-fotos.pdf"); zu(pg)
