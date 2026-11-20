@@ -431,3 +431,9 @@ button.cd{cursor:pointer;font-weight:700}
 .how p{margin:10px 0;font-size:.94rem}
 #fit-note{margin-top:14px}
 .hs-row{margin:6px 0}.hs-row .muted{margin:0 0 0 52px}
+/* Doppelte Touren (2.1.0): je Paar zwei Tourzeilen, darunter in Worten, welche bleibt und was sie mitbringt */
+.dup-l{border-top:1px solid var(--line)}
+.dup-e{border-bottom:1px solid var(--line)}
+.dup-e a.tour{border-bottom:0;padding-bottom:4px}
+.dup-m{margin:0 0 12px 84px;color:var(--muted)}.dup-m b{color:var(--ink)}
+.dup-a{margin-top:12px}.dup-a .btn{flex:1 1 auto}

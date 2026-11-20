@@ -579,7 +579,7 @@ const Import = {
       const res = { added: 0, dup: 0, fail: 0, hr: 0, eleUhr: 0 };
       const types = { 1: 'run', 6: 'hike', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'hike', 22: 'hike' }      // „Gehen“ zählt wie in Meine Touren als Wandern; Laufen bleibt getrennt;
       // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur Puls und Uhr-Höhen nachtragen – sonst neu laden
-      const vonZepp = t => t.src === 'zepp' || /^zepp:/.test(t.srcId || '') || (t.alias || []).some(a => /^zepp:/.test(a));      // trägt die Uhr-Höhen von Anfang an
+      const vonZepp = t => t.src === 'zepp' || /^zepp:/.test(t.srcId || '');      // trägt die Uhr-Höhen von Anfang an
       const todo = [], seen = new Set();
       for (const s of sums) {
         const t = Z.match(s, mine);

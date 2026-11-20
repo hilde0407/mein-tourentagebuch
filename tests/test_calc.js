@@ -274,4 +274,75 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(t[9] === 'bike' && t[14] === 'ski', 'Rad und Ski unverändert');
 })();
 
+/* ---------- Doppelte Touren (2.1.0): Paar-Erkennung, Vorschlag „welche bleibt“, Zusammenlegen der Angaben ---------- */
+(() => {
+  const D = require(W + 'calc-doppelt.js'), MIN = 60000, T0 = day(2026, 8, 14, 9);
+  const t = (id, start, dist, durMin, x) => Object.assign({ id, start, end: start + durMin * MIN, dur: durMin * 60, dist, status: 'done', timed: true, created: 1000, name: id }, x);
+  // gleiche Startzeit: ± 5 Minuten und Länge ± 10 %
+  ok(D.grund(t('a', T0, 10000, 180), t('b', T0 + 5 * MIN, 10900, 30)) === 'start', '5 min, +9 %');
+  ok(D.grund(t('a', T0, 10000, 180), t('b', T0 + 5 * MIN + 1000, 10000, 30)) !== 'start', 'über 5 min ist nicht mehr „start“');
+  ok(D.grund(t('a', T0, 10000, 180), t('b', T0, 11200, 180)) === null, 'Länge 12 % daneben');
+  ok(D.grund(t('a', T0, 1000, 20), t('b', T0, 1290, 20)) === 'start', 'kurze Touren: 300 m Spielraum');
+  ok(D.grund(t('a', T0, 1000, 20), t('b', T0, 1310, 20)) === null, 'kurze Touren: über 300 m');
+  ok(D.grund(t('a', T0, 0, 180), t('b', T0, 0, 180)) === null, 'ohne Strecke kein Urteil');
+  // stark überlappende Zeitspanne: mindestens 80 % der kürzeren Tour
+  ok(D.grund(t('a', T0, 12000, 240), t('b', T0 + 20 * MIN, 11500, 215)) === 'zeit', 'Uhr 20 min später gestartet');
+  ok(D.grund(t('a', T0, 12000, 240), t('b', T0 + 20 * MIN, 11500, 300)) === 'zeit', 'läuft länger, überlappt 220 von 240 min');
+  ok(D.grund(t('a', T0, 12000, 240), t('b', T0 + 60 * MIN, 11500, 215)) === 'zeit', '180 von 215 min sind 84 %');
+  ok(D.grund(t('a', T0, 12000, 240), t('b', T0 + 100 * MIN, 11500, 215)) === null, '140 von 215 min sind 65 %');
+  ok(D.grund(t('a', T0, 12000, 240), t('b', T0 + 240 * MIN, 12000, 240)) === null, 'nacheinander: Hin- und Rückweg am selben Tag');
+  ok(D.grund(t('a', T0, 12000, 240), t('b', T0 + 30 * MIN, 3000, 60)) === null, 'Teilstück: Länge passt nicht');
+  // Zeitzonen-Versatz einer Quelle: Länge (1 %) und Dauer (60 s) gleich, Start bis 3 h daneben
+  ok(D.grund(t('a', T0, 12000, 100), t('b', T0 + 120 * MIN, 12050, 100.5)) === 'versatz', '2 h versetzt');
+  ok(D.grund(t('a', T0, 12000, 100), t('b', T0 + 120 * MIN, 12200, 100)) === null, 'Länge 1,7 % daneben');
+  ok(D.grund(t('a', T0, 12000, 100), t('b', T0 + 120 * MIN, 12000, 103)) === null, 'Dauer 3 min daneben');
+  ok(D.grund(t('a', T0, 12000, 100), t('b', T0 + 181 * MIN, 12000, 100)) === null, 'über 3 h');
+  // was nicht zählt: geplant, ausgeblendet, ohne Zeit, dieselbe Tour
+  const a = t('a', T0, 10000, 180);
+  for (const x of [{ status: 'planned' }, { hidden: true }, { timed: false }, { start: null }]) ok(D.grund(a, t('b', T0, 10000, 180, x)) === null, 'zählt nicht: ' + JSON.stringify(x));
+  ok(D.grund(a, a) === null, 'dieselbe Tour');
+  ok(D.grund(a, t('b', T0, 10000, 0, { end: null, dur: 0 })) === 'start', 'ohne Ende/Dauer: Startzeit genügt');
+  // Paare: sortiert (neueste zuerst), jedes Paar einmal, gemerkte Paare fehlen, kein Paar über die Tage hinweg
+  const liste = [t('k1', T0, 10000, 180, { src: 'komoot' }), t('z1', T0 + 2 * MIN, 10300, 178, { src: 'zepp', hrAvg: 120 }),
+    t('k2', T0 + 86400000, 8000, 120), t('z2', T0 + 86400000 + 30 * MIN, 8100, 95), t('x', T0 + 3 * 86400000, 8000, 120), t('y', T0 + 9 * 86400000, 8000, 120),
+    t('p', T0, 10000, 180, { status: 'planned' })];
+  let p = D.paare(liste);
+  ok(p.length === 2 && p[0].key === 'k2|z2' && p[0].grund === 'zeit' && p[1].key === 'k1|z1' && p[1].grund === 'start', 'zwei Paare: ' + JSON.stringify(p.map(x => [x.key, x.grund])));
+  ok(D.paare(liste.slice().reverse()).map(x => x.key).join() === p.map(x => x.key).join(), 'Reihenfolge der Eingabe egal');
+  ok(D.paare(liste, { ignore: ['k1|z1'] }).length === 1 && D.paare(liste, { ignore: new Set(['k1|z1', 'k2|z2']) }).length === 0, '„Keine Doppelten“ gemerkt');
+  ok(D.key('z1', 'k1') === 'k1|z1', 'Schlüssel unabhängig von der Reihenfolge');
+  ok(D.paare([]).length === 0 && D.paare(null).length === 0 && D.paare([a]).length === 0, 'leer');
+  // drei Einträge derselben Tour: drei Paare (nach dem ersten Zusammenführen bleibt eines)
+  ok(D.paare([t('a', T0, 10000, 180), t('b', T0 + MIN, 10000, 180), t('c', T0 + 2 * MIN, 10000, 180)]).length === 3, 'Dreifache');
+  // Vorschlag, welche bleibt: mehr Daten gewinnen; bei Gleichstand die früher angelegte
+  ok(p[1].keep.id === 'z1' && p[1].drop.id === 'k1' && p[1].wk === 3 && p[1].wd === 0, 'Puls gewinnt');
+  p = D.paare(liste, { fotos: { k1: 4 }, hand: x => x.id === 'k1' });
+  ok(p[1].keep.id === 'k1' && p[1].wk === 5, 'Fotos und Name von Hand (5) schlagen Puls (3)');
+  ok(D.paare([t('n', T0, 10000, 180, { created: 2000 }), t('m', T0, 10000, 180, { created: 1000 })])[0].keep.id === 'm', 'Gleichstand: die ältere bleibt');
+  ok(D.paare([t('n', T0, 10000, 180, { note: ' ' }), t('m', T0, 10000, 180, { note: 'Schön', created: 5000 })])[0].keep.id === 'm', 'Notiz zählt, Leerzeichen nicht');
+  ok(D.wert(t('w', T0, 1, 1, { hrAvg: 100, note: 'x', pins: [{}], tags: ['a'], fav: true, plan: 'p', elevSrc: 'zepp' }), { fotos: 2, hand: true }) === 15, 'alle Punkte');
+  ok(D.hat(t('w', T0, 1, 1, { hrAvg: 100, note: 'x', pins: [{}, {}], fav: true }), { fotos: 1, hand: true }).join() === 'Puls,1 Foto,Notiz,von Hand benannt,2 Pins,Favorit', 'in Worten');
+  // Zusammenlegen: Spur und Zahlen von keep; Notiz, Pins, Schlagworte, Favorit, Name und Zuordnungen von drop
+  const keep = t('z', T0, 10300, 178, { src: 'zepp', srcId: 'zepp:111', name: 'Wandern am Morgen · 14.08.26', note: 'Von der Uhr', hrAvg: 120, up: 600, pins: [{ id: 'p1', ts: 5, text: 'A' }], tags: ['Alpen'] });
+  const drop = t('k', T0, 10000, 180, { src: 'komoot', srcId: 'komoot:777', name: 'Kramerspitz', nameKomoot: 'Kramerspitz', note: 'Schöne Runde', upKomoot: 640, downKomoot: 630, fav: true, plan: 'plan1',
+    pins: [{ id: 'p1', ts: 5, text: 'A' }, { id: 'p2', ts: 3, text: 'B' }], tags: ['Alpen', 'Gipfel'], alias: ['strava:9'] });
+  let m = D.zusammen(keep, drop, { handKeep: false, handDrop: true });
+  ok(m.id === 'z' && m.srcId === 'zepp:111' && m.dist === 10300 && m.up === 600 && m.hrAvg === 120, 'Spur und Zahlen der bleibenden Tour');
+  ok(m.name === 'Kramerspitz' && m.nameKomoot === 'Kramerspitz' && m.komootId === '777' && m.upKomoot === 640 && m.downKomoot === 630, 'Name und Komoot-Zuordnung');
+  ok(m.note === 'Von der Uhr\n\nSchöne Runde' && m.fav === true && m.plan === 'plan1' && m.tags.join() === 'Alpen,Gipfel', 'Notiz, Favorit, Plan, Schlagworte');
+  ok(m.pins.length === 2 && m.pins[0].id === 'p2' && m.pins[1].id === 'p1', 'Pins ohne Doppelte, nach Zeit');
+  ok(m.alias.join() === 'komoot:777,strava:9', 'Kennungen der gelöschten Tour bleiben als alias');
+  ok(keep.name === 'Wandern am Morgen · 14.08.26' && !keep.alias && keep.pins.length === 1, 'Eingaben bleiben unverändert');
+  ok(D.zusammen(keep, drop, { handKeep: true, handDrop: true }).name === keep.name, 'eigener Name der bleibenden Tour hat Vorrang');
+  ok(D.zusammen(Object.assign({}, keep, { note: 'Schöne Runde, wirklich' }), drop, {}).note === 'Schöne Runde, wirklich', 'gleiche Notiz nicht doppelt');
+  ok(D.zusammen(Object.assign({}, keep, { note: '' }), drop, {}).note === 'Schöne Runde', 'leere Notiz wird ersetzt');
+  // Meine Touren: Kennung und maßgebliche Zahlen wandern mit; eine eigene Zuordnung der bleibenden Tour bleibt
+  m = D.zusammen(keep, t('m', T0, 10100, 180, { src: 'mt', srcId: 'mt:g1', upMt: 655, downMt: 650, distMt: 10100, zMt: 1, nameMt: 'Kramerspitz', starsMt: 4 }), {});
+  ok(m.mtId === 'g1' && m.zMt === 1 && m.up === 655 && m.down === 650 && m.dist === 10100 && m.upSrc === 'mt' && m.starsMt === 4 && m.alias.join() === 'mt:g1', 'Meine-Touren-Werte an der bleibenden Tour');
+  m = D.zusammen(Object.assign({}, keep, { mtId: 'eigen', upMt: 600, zMt: 1 }), t('m', T0, 10100, 180, { mtId: 'g1', upMt: 655, zMt: 1 }), {});
+  ok(m.mtId === 'eigen' && m.upMt === 600 && m.up === 600, 'vorhandene Zuordnung bleibt');
+  m = D.zusammen(t('k', T0, 10000, 180, { srcId: 'komoot:777' }), t('k2', T0, 10000, 180, { komootId: '888' }), {});
+  ok(m.komootId === undefined, 'Komoot-Tour behält ihre eigene Nummer');
+})();
+
 console.log('OK (' + n + ' Prüfungen)');

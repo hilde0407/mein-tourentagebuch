@@ -22,7 +22,8 @@ Views['/import'] = async root => {
       card('watch', 'Zepp / Amazfit', 'Aktivitäten mit GPS direkt aus der Zepp-Cloud', zepp),
       card('bike', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
       card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
-      card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)));
+      card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)),
+    UI.section('Aufräumen', UI.list([UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus zwei Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' })])));
 
   /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
   async function mt() {

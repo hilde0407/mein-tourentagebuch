@@ -508,6 +508,60 @@ def uhr_hoehen(pg):
     assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
 
 
+DUP_DATEN = """async () => {
+  /* Zwei Paare: dieselbe Tour aus Komoot (Name von Hand, Notiz, Pin) und von der Uhr (Puls, Fotos), Start 2 Minuten versetzt –
+     und zwei Aufzeichnungen mit überlappender Zeitspanne, die der Mensch als „keine Doppelten“ markiert. */
+  const base = Date.UTC(2026, 5, 20, 7), MIN = 60000;
+  const line = (t0, n, lat, f, hr) => Array.from({ length: n }, (_, i) => Object.assign({ lat: lat + i * 0.0006 * f, lon: 11.4, ele: 900 + i * 6, t: t0 + i * MIN }, hr ? { hr: 110 + (i % 20) } : {}));
+  const K = (await Tours.add({ name: 'Kramerspitz', sport: 'hike', pts: line(base, 90, 47.5, 1), src: 'komoot', srcId: 'komoot:d1', up: 640, down: 630, note: 'Schöne Runde' })).tour;
+  K.pins = [{ id: 'pin1', ts: base + 30 * MIN, lat: 47.51, lon: 11.4, text: 'Gipfelkreuz' }]; K.nameKomoot = 'Kramerspitz'; await Tours.save(K);
+  const Z = (await Tours.add({ sport: 'hike', pts: line(base + 2 * MIN, 88, 47.5, 1.03, true), src: 'zepp', srcId: 'zepp:d1' })).tour;
+  await DB.putMany('photos', [1, 2].map(i => ({ id: 'dupfoto' + i, name: 'd' + i + '.jpg', ts: base + i * 10 * MIN, lat: null, lon: null, w: 10, h: 10, src: 'galerie', tour: Z.id, pos: 'none', note: '' })));
+  const X = (await Tours.add({ name: 'Vormittag mit dem Rad', sport: 'bike', pts: line(base + 5 * 86400000, 60, 47.7, 2), src: 'rec' })).tour;
+  const Y = (await Tours.add({ name: 'Begleitung zu Fuß', sport: 'hike', pts: line(base + 5 * 86400000 + 8 * MIN, 50, 47.7, 2.3), src: 'file' })).tour;
+  return { K: K.id, Z: Z.id, X: X.id, Y: Y.id, zname: Z.name, kup: K.up }; }"""
+
+def doppelte(pg):
+    """2.1.0, Punkt 3: „Doppelte Touren prüfen“ – Paare finden, Vorschlag in Worten, „Andere behalten“, Zusammenführen mit Rückfrage (Fotos, Puls, Notiz, Pins,
+    Zuordnungen wandern mit; ein späterer Import legt die gelöschte Tour nicht wieder an), „Keine Doppelten“ merken und wieder zeigen. Nie von selbst."""
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    pg.evaluate("location.hash = '#/doppelt'"); pg.wait_for_selector("text=Keine doppelten Touren gefunden"); assert "Jede Tour steht nur einmal" in pg.inner_text("#view")
+    d = pg.evaluate(DUP_DATEN); n0 = pg.evaluate("Tours.list().then(l => l.length)"); assert n0 == len(vorher) + 4
+    key = lambda a, b: "|".join(sorted([d[a], d[b]]))
+    box = lambda a, b: f"section.dup[data-key='{key(a, b)}']"
+    pg.evaluate("location.hash = '#/import'"); pg.wait_for_selector("#imp-dup"); pg.click("#imp-dup"); pg.wait_for_selector("#dup-n")
+    assert pg.inner_text("#dup-n") == "2 mögliche Paare" and pg.locator("section.dup").count() == 2, pg.inner_text("#view")
+    assert pg.evaluate("Tours.list().then(l => l.length)") == n0, "Ansehen ändert nichts"
+    kz = pg.inner_text(box("K", "Z")); m = pg.locator(box("K", "Z") + " .dup-m").all_inner_texts()
+    assert "Grund: gleiche Startzeit" in kz and "Grund: gleiche Zeitspanne" in pg.inner_text(box("X", "Y")), kz
+    assert m[0] == "Bleibt · Quelle Zepp · Puls, 2 Fotos" and m[1] == "Wird gelöscht · Quelle Komoot · Notiz, von Hand benannt, 1 Pin", m      # Puls und Fotos (6) vor Notiz, Name, Pin (5)
+    assert pg.locator(box("K", "Z") + " a.tour").count() == 2 and "Kramerspitz" in kz and d["zname"] in kz
+    # „Andere behalten“ dreht den Vorschlag um; die Rückfrage nennt beide; Abbrechen ändert nichts
+    pg.click(box("K", "Z") + " button[data-a=swap]"); m = pg.locator(box("K", "Z") + " .dup-m").all_inner_texts(); assert m[0].startswith("Bleibt · Quelle Komoot") and m[1].startswith("Wird gelöscht · Quelle Zepp"), m
+    pg.click(box("K", "Z") + " button[data-a=merge]"); pg.wait_for_selector(".sheet[aria-label='Touren zusammenführen?']"); q = pg.inner_text(".sheet")
+    assert "„Kramerspitz“ bleibt" in q and f"„{d['zname']}“ gelöscht" in q and "nicht rückgängig" in q, q
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("Tours.list().then(l => l.length)") == n0
+    # Zusammenführen: Fotos und Puls wandern zur bleibenden Tour, Kennung der gelöschten bleibt als alias
+    pg.click(box("K", "Z") + " button[data-a=merge]"); pg.wait_for_selector(".sheet .btn.pri:has-text('Zusammenführen')"); pg.click(".sheet .btn.pri:has-text('Zusammenführen')")
+    pg.wait_for_function("document.querySelector('#toast') && /Zusammengeführt/.test(document.querySelector('#toast').textContent)"); assert pg.inner_text("#toast") == "Zusammengeführt · 2 Fotos übernommen"
+    pg.wait_for_function("document.querySelectorAll('section.dup').length === 1"); assert pg.inner_text("#dup-n") == "1 mögliches Paar"
+    r = pg.evaluate("""async (d) => { const k = await DB.get('tours', d.K), z = await DB.get('tours', d.Z), ph = await DB.byIndex('photos', 'tour', d.K), trk = await DB.get('tracks', d.K);
+      const again = await Tours.add({ sport: 'hike', src: 'zepp', srcId: 'zepp:d1', pts: [{ lat: 1, lon: 1, t: 1e12 }, { lat: 1.01, lon: 1, t: 1e12 + 60000 }] });
+      return { k, z: z || null, ztrk: (await DB.get('tracks', d.Z)) || null, ph: ph.length, hr: (trk.hr || []).filter(Boolean).length, again: [again.dup, again.tour.id],
+        match: (Import.Zepp.match({ trackid: 'd1' }, await Tours.list()) || {}).id, n: (await Tours.list()).length }; }""", d)
+    k = r["k"]; assert r["z"] is None and r["ztrk"] is None and r["n"] == n0 - 1 and r["ph"] == 2 and r["hr"] > 50 and k["hrAvg"], r
+    assert k["name"] == "Kramerspitz" and k["note"] == "Schöne Runde" and len(k["pins"]) == 1 and k["alias"] == ["zepp:d1"] and k["srcId"] == "komoot:d1" and k["upKomoot"] == 640 and abs(k["up"] - d["kup"]) < 1e-6, k
+    assert r["again"] == [True, d["K"]] and r["match"] == d["K"], "ein späterer Zepp-Import erkennt die zusammengeführte Tour wieder"
+    # „Keine Doppelten“: wird gemerkt und nicht wieder gezeigt; die Markierung lässt sich zurücknehmen; sie reist mit der Sicherung
+    pg.click(box("X", "Y") + " button[data-a=keep]"); pg.wait_for_selector("text=Keine doppelten Touren gefunden"); assert "Ein Paar hast du als „keine Doppelten“ gemerkt." in pg.inner_text("#view")
+    assert pg.evaluate("DB.kvGet('dupIgnore', [])") == [key("X", "Y")] and pg.evaluate("Tours.list().then(l => l.length)") == n0 - 1
+    bk = pg.evaluate("Backup.collect().then(b => b.kv.find(k => k.k === 'dupIgnore'))"); assert bk and bk["v"] == [key("X", "Y")], bk
+    assert pg.evaluate("async (bk) => { await DB.del('kv', 'dupIgnore'); await Backup.restoreKv([bk]); return DB.kvGet('dupIgnore', []); }", bk) == [key("X", "Y")]
+    pg.click("#dup-reset"); pg.wait_for_selector(box("X", "Y")); assert pg.evaluate("DB.kvGet('dupIgnore', [])") == []
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); }", vorher)
+    assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
+
+
 def sheet_check(pg, label, opener):
     """Ein Blatt bei 360 px mit 100 % und 130 % Schrift prüfen. opener() öffnet es."""
     bad = []
@@ -1183,6 +1237,7 @@ def main():
 
         meine_touren(pg)
         uhr_hoehen(pg)
+        doppelte(pg)
         neu = neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px

@@ -7,9 +7,9 @@ const Nav = {
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufnehmen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
-    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/import': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr' },
+    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr' },
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
-  deep: ['/tour', '/story', '/settings', '/import', '/sources', '/reise', '/album', '/fix', '/flug', '/plan'],
+  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go(Nav.home[Nav.cur] || '/start'); },
   depth: 0,
@@ -76,7 +76,7 @@ Views['/mehr'] = async root => {
       UI.row({ icon: 'bag', title: 'Reisen & Alben', sub: 'Reisen automatisch erkannt, Alben aus Schlagworten', href: '#/reisen', id: 'm-reisen' }),
       UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Rekorde, Kalender, Ziele', href: '#/stats', id: 'm-stats' })])),
     UI.section('Daten', UI.list([
-      UI.row({ icon: 'download', title: 'Touren importieren', sub: 'Dateien, Komoot, Strava, Zepp, Bosch Flow, Garmin', href: '#/import', id: 'm-import' }),
+      UI.row({ icon: 'download', title: 'Touren importieren', sub: 'Dateien, Meine Touren, Komoot, Strava, Zepp, Garmin', href: '#/import', id: 'm-import' }),
       UI.row({ icon: 'photo', title: 'Foto-Quellen', sub: 'Galerie, Ordner, Netzwerkfreigabe, Nextcloud', href: '#/sources', id: 'm-sources' }),
       UI.row({ icon: 'gear', title: 'Einstellungen & Sicherung', sub: 'Karte, Routing, Heimatort, Puls, Datensicherung', href: '#/settings', id: 'm-settings' })])),
     h('p', { class: 'muted small', style: { marginTop: '20px' } }, `${nT} ${nT === 1 ? 'Tour' : 'Touren'} · ${nP} ${nP === 1 ? 'Foto' : 'Fotos'} · alles nur auf diesem Handy`)));
