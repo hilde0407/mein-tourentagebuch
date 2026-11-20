@@ -46,7 +46,7 @@ jobs:
           python-version: "3.12"
       - name: Oberfläche im Browser prüfen
         run: |
-          pip install playwright
+          pip install playwright pillow
           python -m playwright install --with-deps chromium || python -m playwright install chromium
           python tests/test_web.py
           python tests/audit_kontrast.py --fail
