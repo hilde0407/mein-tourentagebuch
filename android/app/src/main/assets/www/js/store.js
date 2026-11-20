@@ -22,7 +22,7 @@ const Tours = {
     if (pts.length < 2) throw new Error('Zu wenige Punkte');
     const st = Geo.stats(pts);
     const all = await Tours.list();
-    if (o.srcId) { const e = all.find(t => t.srcId === o.srcId); if (e) return { tour: e, dup: true }; }
+    if (o.srcId) { const e = all.find(t => t.srcId === o.srcId || (t.alias && t.alias.includes(o.srcId))); if (e) return { tour: e, dup: true }; }      // alias: Kennungen zusammengeführter Doppelter (2.1.0)
     if (st.start && !o.force) {
       const e = all.find(t => t.status !== 'planned' && t.start && Math.abs(t.start - st.start) < 90000 && Math.abs(t.dist - st.dist) < Math.max(100, st.dist * 0.03));
       if (e) return { tour: e, dup: true };
@@ -48,13 +48,20 @@ const Tours = {
     Tours.invalidate();
     return { tour: t, dup: false };
   },
+  /** Woher eine Tour stammt (Tour.src) – Beschriftung für Tourseite und Listen. */
+  QUELLE: { komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link', mt: 'Meine Touren', file: 'Datei' },
   CALC: 2,      // Version der Aufstiegsrechnung (Tour.calcV und kv „calcVer“)
-  /** Aufstieg/Abstieg der Tour setzen: immer die eigene Rechnung (wie „Meine Touren“), sofern die Spur mehr als 5 Höhenpunkte hat;
-      sonst, falls vorhanden, der aufbewahrte Komoot-Wert (upSrc 'komoot'), sonst die (leere) eigene Rechnung. st = Geo.stats(Punkte). */
+  /** Aufstieg/Abstieg (und Strecke) der Tour setzen. Rangfolge ab 2.1.0:
+      1. Wert aus „Meine Touren“ (upMt/downMt/distMt), solange die Tour angeglichen ist (zMt = 1; setzt der Abgleich, löscht eine Korrektur der Spur von Hand),
+      2. die eigene Rechnung (wie „Meine Touren“), sofern die Spur mehr als 5 Höhenpunkte hat,
+      3. ersatzweise der aufbewahrte Komoot-Wert (upSrc 'komoot'), sonst die (leere) eigene Rechnung.
+      st = Geo.stats(Punkte). Die Strecke setzt der Aufrufer aus st.dist; hier wird sie nur durch den Wert aus Meine Touren ersetzt. */
   applyHoehe(t, st) {
-    if (Hoehe.brauchbar(st.nEle)) { t.up = st.up; t.down = st.down; delete t.upSrc; }
+    if (t.zMt && t.upMt != null) { t.up = t.upMt; t.down = t.downMt != null ? t.downMt : st.down; t.upSrc = 'mt'; }
+    else if (Hoehe.brauchbar(st.nEle)) { t.up = st.up; t.down = st.down; delete t.upSrc; }
     else if (t.upKomoot != null) { t.up = t.upKomoot; t.down = t.downKomoot != null ? t.downKomoot : st.down; t.upSrc = 'komoot'; }
     else { t.up = st.up; t.down = st.down; delete t.upSrc; }
+    if (t.zMt && t.distMt) t.dist = t.distMt;
     return t;
   },
   /** Einmalige Neuberechnung bestehender Touren (Aufstieg wie in Meine Touren; Zepp „Spazieren“ → Wandern). In kleinen Portionen, wiederaufnehmbar
@@ -186,11 +193,14 @@ const Tours = {
     for (const p of ph) { p.tour = ''; await DB.put('photos', p); }
     await DB.del('tours', id); await DB.del('tracks', id); Tours.invalidate();
   },
-  async recalc(id) {
+  /** Kennzahlen aus der Spur neu rechnen. opts.eigen = true: Die Spur wurde von Hand korrigiert (Geländemodell, Uhr-Höhen, Abschnitt ausgeschlossen,
+      Original wiederhergestellt, „Kennzahlen neu berechnen“) – dann gilt wieder die eigene Rechnung, bis der nächste Abgleich mit Meine Touren die Zahlen neu setzt. */
+  async recalc(id, opts) {
     const t = await DB.get('tours', id), pts = await Tours.points(id);
     const st = Geo.stats(pts);
+    if (opts && opts.eigen) delete t.zMt;
     Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, maxAlt: st.maxAlt, minAlt: st.minAlt }, Tours.hrSummary(pts));
-    Tours.applyHoehe(t, st);      // nach einer Änderung der Spur wieder aus den Höhenwerten gerechnet (Komoot-Wert nur als Ersatz ohne Höhen)
+    Tours.applyHoehe(t, st);      // Rangfolge: Meine Touren (solange angeglichen) > eigene Rechnung > Komoot-Wert als Ersatz ohne Höhen
     await Tours.save(t); return t;
   },
 };

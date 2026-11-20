@@ -187,12 +187,22 @@ Views['/tour'] = async (root, [id]) => {
   (t.pins || []).filter(p => p.lat != null).forEach(p => MapKit.pin(p).addTo(pm));
   setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
+  /** Zahlen aus „Meine Touren“ (2.1.0): sind sie maßgeblich, steht daneben die eigene Rechnung aus der Spur – sonst nur, was Meine Touren nennt. */
+  function mtFacts() {
+    if (t.upMt == null && t.distMt == null && !t.starsMt) return [];
+    const z = (up, dist) => [up != null ? '↑ ' + F.m(up) : null, dist ? F.km(dist) : null].filter(Boolean).join(' · ');
+    const st = t.zMt ? Geo.stats(pts) : null;
+    return [t.zMt ? ['Zahlen aus', 'Meine Touren'] : null,
+      t.zMt ? ['Eigene Rechnung', z(Hoehe.brauchbar(st.nEle) ? st.up : null, st.dist) || '–'] : (t.upMt != null || t.distMt ? ['Meine Touren nennt', z(t.upMt, t.distMt)] : null),
+      t.starsMt ? ['Bewertung in Meine Touren', t.starsMt + ' von 5 Sternen'] : null];
+  }
   // Die drei wichtigsten Zahlen groß, alles Weitere leise darunter
   const main = UI.figs([[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']], { big: true, cls: 'tmain' });
   const more = UI.facts([['Abstieg', F.m(t.down)], ['In Bewegung', t.moving ? F.dur(t.moving) : '–'], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : '–'],
     ['Höchster Punkt', t.maxAlt != null ? F.m(t.maxAlt) : '–'], ['Tiefster Punkt', t.minAlt != null ? F.m(t.minAlt) : '–'],
     t.hrAvg ? ['Ø Puls', t.hrAvg + ' bpm'] : null, t.hrAvg ? ['Höchster Puls', t.hrMax + ' bpm'] : null,
-    t.upKomoot != null && t.upSrc !== 'komoot' ? ['Komoot nennt', F.m(t.upKomoot)] : null]);
+    t.upKomoot != null && t.upSrc !== 'komoot' ? ['Komoot nennt', F.m(t.upKomoot)] : null,
+    ...mtFacts()]);
   const prof = h('canvas', { class: 'prof', 'aria-label': 'Höhenprofil' });
   const profInfo = h('small', { class: 'muted' }, 'Profil berühren, um die Stelle auf der Karte zu sehen.');
   const strip = h('div', { class: 'strip' }), noPhotos = h('p', { class: 'muted' }, 'Noch keine Fotos zu dieser Tour.');
@@ -209,7 +219,7 @@ Views['/tour'] = async (root, [id]) => {
     if (r) stageBox.append(h('a', { class: 'banner stagechip', id: 'stage', href: '#/reise/' + r.id }, Reisen.stage(r, t) + ' · Mehrtagestour ' + Reisen.range(r.first, r.last)));
   }).catch(() => {});
   const note = h('textarea', { rows: 3, 'aria-label': 'Notiz', placeholder: 'Was war besonders an dieser Tour?', onchange: async e => { t.note = e.target.value; await Tours.save(t); toast('Notiz gespeichert'); } }, t.note || '');
-  const src = t.src && t.src !== 'file' ? ({ komoot: 'Komoot', strava: 'Strava', zepp: 'Zepp', rec: 'Aufzeichnung', plan: 'Planer', link: 'Link' }[t.src] || t.src) : '';
+  const src = t.src && t.src !== 'file' ? (Tours.QUELLE[t.src] || t.src) : '';
   // Hilfen aus „Meine Touren“: gelaufene Tour → Rückblick bzw. Plan und Ergebnis; geplante Tour → Passt die Tour zu mir?, Notizen & Quellen
   const done = (await Tours.list()).filter(x => x.status !== 'planned' && !x.hidden), planned = t.status === 'planned';
   const ranBy = planned ? done.filter(x => x.plan === t.id).sort((a, b) => b.start - a.start)[0] : null;
@@ -278,7 +288,7 @@ Views['/tour'] = async (root, [id]) => {
         it('watch', t.elevSrc ? 'Höhe aus Uhr (bereits abgeglichen) – erneut abgleichen' : 'Höhe aus Uhr abgleichen (Zepp)', zeppEle),
         it('wrench', 'GPS-Track korrigieren', () => Nav.go('/fix/' + id)),
         t.elevFix || t.elevSrc ? it('undo', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
-        it('refresh', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id)); toast('Kennzahlen neu berechnet'); Nav.render(); })]),
+        it('refresh', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id, { eigen: true })); toast('Kennzahlen neu berechnet'); Nav.render(); })]),
       h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', onclick: async () => { s.close(); if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Tour löschen')) { await Tours.remove(id); await DB.del('kv', 'pn:' + id).catch(() => {}); Nav.go('/'); } } }, '🗑️ Tour löschen'))));
   }
   async function suggestNames() {

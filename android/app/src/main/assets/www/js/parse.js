@@ -18,6 +18,7 @@ const Sports = {
     if (s.includes('bic') || s.includes('bik') || s.includes('ride') || s.includes('cycl')) return 'bike';
     if (s.includes('run') || s.includes('jog') || s.includes('trail')) return 'run';
     if (s.includes('mountaineer') || s.includes('climb')) return 'mountaineering';
+    if (s.includes('nordicwalk')) return 'hike';      // Nordic Walking (Meine Touren, Garmin): zu Fuß, kein Wintersport
     if (s.includes('ski') || s.includes('snow') || s.includes('nordic')) return 'ski';
     if (s.includes('hik') || s.includes('wander') || s.includes('trek')) return 'hike';
     if (s.includes('walk') || s.includes('spazier')) return 'walk';

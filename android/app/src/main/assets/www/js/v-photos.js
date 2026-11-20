@@ -53,10 +53,13 @@ async function pickTour() {
 }
 
 const PhotoSources = {
-  /** Fortschrittsdialog. Läuft als Vordergrunddienst weiter, wenn die App in den Hintergrund geht. */
-  async progress(title, fn) {
+  /** Fortschrittsdialog. Läuft als Vordergrunddienst weiter, wenn die App in den Hintergrund geht.
+      opts.cancel (Funktion): zeigt „Abbrechen“; der Vorgang hört dann an der nächsten passenden Stelle auf. */
+  async progress(title, fn, opts) {
     const bar = h('div', { class: 'prog' }, h('i')), txt = h('p', null, 'Bitte warten …');
-    const s = sheet(title, h('div', null, txt, bar, h('p', { class: 'muted small' }, 'Du kannst die App währenddessen verlassen – der Vorgang läuft im Hintergrund weiter (siehe Benachrichtigung).')));
+    const stopBtn = opts && opts.cancel ? h('button', { class: 'btn', id: 'prog-stop', onclick: e => { e.currentTarget.disabled = true; e.currentTarget.textContent = 'Wird abgebrochen …'; opts.cancel(); } }, 'Abbrechen') : null;
+    const s = sheet(title, h('div', null, txt, bar, h('p', { class: 'muted small' }, 'Du kannst die App währenddessen verlassen – der Vorgang läuft im Hintergrund weiter (siehe Benachrichtigung).'),
+      stopBtn ? h('div', { class: 'row end' }, stopBtn) : null));
     let last = 0, lastText = '';
     appSync('bgStart', title, 'Wird gestartet …', 0, 0);
     const upd = (i, n, t) => {

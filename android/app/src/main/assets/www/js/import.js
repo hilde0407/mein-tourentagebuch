@@ -21,7 +21,11 @@ const Import = {
     if (r.dup) p.push(r.dup + ' schon vorhanden');
     if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
     if (r.names) p.push('Name bei ' + r.names + (r.names === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
+    if (r.namesMt) p.push('Name bei ' + r.namesMt + (r.namesMt === 1 ? ' Tour' : ' Touren') + ' übernommen');
+    if (r.zahlen) p.push('Zahlen bei ' + r.zahlen + (r.zahlen === 1 ? ' Tour' : ' Touren') + ' angeglichen');
+    if (r.ohne) p.push(r.ohne + ' ohne Strecke auf dem Server');
     if (r.fail) p.push(r.fail + ' nicht lesbar');
+    if (r.stopped) p.push('abgebrochen – der Rest kommt beim nächsten Mal');
     return p.join(' · ') || 'Nichts gefunden';
   },
   async fetchBuf(url) { const r = await fetch(url); if (!r.ok) throw new Error('Datei nicht lesbar'); return new Uint8Array(await r.arrayBuffer()); },
@@ -102,7 +106,8 @@ const Import = {
     takeName(e, kname) {
       kname = (kname || '').trim();
       if (!kname) return false;
-      const frei = Import.Komoot.autoNamed(e) || (e.nameKomoot != null && e.name === e.nameKomoot);
+      const vonMt = e.nameMt != null && e.name === e.nameMt;      // 2.1.0: ein Name aus „Meine Touren“ hat Vorrang vor Komoot (er zieht über den Abgleich mit Meine Touren nach)
+      const frei = !vonMt && (Import.Komoot.autoNamed(e) || (e.nameKomoot != null && e.name === e.nameKomoot));
       const alt = e.name;
       if (frei) e.name = kname;
       if (frei || e.name === kname) e.nameKomoot = kname;
@@ -172,6 +177,240 @@ const Import = {
     },
   },
 
+  /* ---------------- Meine Touren (eigener Server, 2.1.0) ----------------
+     Nur lesend: Anmeldung (POST /api/login, bei Zwei-Faktor danach POST /api/login/2fa), Tourenliste (GET /api/tours), Strecke je neuer Tour
+     (GET /api/tours/<id>/gpx), Abmeldung (POST /api/logout). Die Sitzung ist das Cookie „kh_session“ des Servers; gemerkt wird nur dieser
+     Sitzungsschlüssel (kv „mt“, nie in der Sicherung), nicht das Passwort. Ein Konto „nur ansehen“ (Betrachter) genügt. */
+  MT: {
+    COOKIE: 'kh_session',
+    /** Sportarten von Meine Touren → Sportarten der App. Unbekanntes läuft über Sports.norm und landet sonst bei „Sonstiges“. */
+    SPORT: { hike: 'hike', mountaineering: 'mountaineering', jogging: 'run', touringbicycle: 'bike', e_touringbicycle: 'ebike', e_mtb: 'ebike', racebike: 'racebike', mtb: 'mtb',
+      skialpin: 'ski', skitour: 'ski', snowshoe: 'ski', nordic: 'ski', nordicwalking: 'hike', other: 'other' },
+    sport: s => Import.MT.SPORT[s] || Sports.norm(s),
+    /** Serveradresse aufräumen: ohne „http(s)://“ wird https angenommen; übrig bleiben Schema, Rechner und Port. Wirft bei Unsinn. */
+    base(raw) {
+      let s = String(raw || '').trim();
+      if (!s) throw new Error('Bitte die Adresse von Meine Touren eintragen, z. B. https://meine-touren.example.ts.net');
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = 'https://' + s;
+      let u; try { u = new URL(s); } catch (e) { u = null; }
+      if (!u || !/^https?:$/.test(u.protocol) || !u.hostname) throw new Error('Das ist keine gültige Adresse. Beispiel: https://meine-touren.example.ts.net');
+      return u.protocol + '//' + u.host;
+    },
+    /** Adresse im eigenen Netz (Heimnetz, Tailscale, Rechnername ohne Punkt)? Dort ist http üblich. */
+    privat(base) {
+      let hst = ''; try { hst = new URL(base).hostname.toLowerCase(); } catch (e) { return false; }
+      if (hst.includes(':')) return /^\[?(f[cd][0-9a-f]{2}:|fe80:|::1\]?$)/.test(hst);      // IPv6: nur lokale Bereiche
+      if (hst === 'localhost' || !hst.includes('.') || /\.(local|lan|home|internal|fritz\.box|ts\.net)$/.test(hst)) return true;
+      const m = hst.match(/^(\d+)\.(\d+)\.\d+\.\d+$/); if (!m) return false;
+      const a = +m[1], b = +m[2];
+      return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+    },
+    /** Ein Aufruf am Server. Fehler der Verbindung werden zu einer verständlichen Meldung (ohne Zugangsdaten). */
+    async http(base, path, o) {
+      o = o || {};
+      const headers = { Accept: 'application/json' };
+      if (o.token) headers.Cookie = Import.MT.COOKIE + '=' + o.token;
+      const q = { url: base + path, method: o.method || 'GET', headers };
+      if (o.json) { q.body = JSON.stringify(o.json); q.contentType = 'application/json'; }
+      try { return await Native.http(q); }
+      catch (e) { throw new Error('Meine Touren ist unter ' + base + ' nicht erreichbar. Bitte Adresse und Verbindung prüfen (WLAN, Tailscale).'); }
+    },
+    detail(r, sonst) { try { const d = JSON.parse(r.body).detail; if (typeof d === 'string' && d) return d; } catch (e) { /* keine JSON-Antwort */ } return sonst; },
+    /** Antwortet unter der Adresse ein „Meine Touren“? Gibt die Antwort von /api/me zurück. */
+    async probe(base) {
+      const r = await Import.MT.http(base, '/api/me');
+      let j = null; try { j = JSON.parse(r.body); } catch (e) { /* kein JSON */ }
+      if (r.status === 401) throw new Error('Dieser Server ist nur mit einem gemeinsamen Passwort geschützt. Bitte in Meine Touren Benutzer einrichten (Einstellungen → Benutzer), dann klappt die Anmeldung.');
+      if (r.status !== 200 || !j || typeof j.users_enabled !== 'boolean') throw new Error('Unter ' + base + ' antwortet kein „Meine Touren“ (HTTP ' + r.status + '). Bitte die Adresse prüfen.');
+      return j;
+    },
+    /** Sitzung aus der Antwort einer geglückten Anmeldung übernehmen und merken. Das Passwort wird nirgends gespeichert. */
+    async finish(base, r) {
+      const m = String((r.headers || {})['set-cookie'] || '').match(new RegExp('(?:^|[;,\\s])' + Import.MT.COOKIE + '=([^;,\\s]+)'));
+      if (!m) throw new Error('Die Anmeldung hat geklappt, aber der Server hat keine Sitzung geliefert. Steht ein Proxy davor, der Cookies verändert?');
+      const u = (JSON.parse(r.body).user) || {};
+      const acc = { base, name: u.name || '', uid: u.uid || '', role: u.role || '', token: m[1], since: Date.now() };
+      await DB.kvSet('mt', acc);
+      return acc;
+    },
+    /** Anmelden. Gibt das Konto zurück – oder { need2fa, ticket, base }, wenn der Server einen Code aus der Authenticator-App verlangt. */
+    async login(base, name, pw) {
+      const me = await Import.MT.probe(base);
+      if (!me.users_enabled) { const acc = { base, name: '', uid: '', role: 'offen', token: '', open: true, since: Date.now() }; await DB.kvSet('mt', acc); return acc; }      // Server ohne Benutzer: keine Anmeldung nötig
+      if (!String(name || '').trim() || !pw) throw new Error('Bitte Name und Passwort eintragen.');
+      const r = await Import.MT.http(base, '/api/login', { method: 'POST', json: { name: String(name).trim(), password: pw } });
+      if (r.status === 401 || r.status === 429) throw new Error(Import.MT.detail(r, 'Name oder Passwort stimmt nicht'));
+      if (r.status !== 200) throw new Error(Import.MT.detail(r, 'Anmeldung fehlgeschlagen (HTTP ' + r.status + ')'));
+      const j = JSON.parse(r.body);
+      if (j.need_2fa) return { need2fa: true, ticket: j.ticket, base };
+      return Import.MT.finish(base, r);
+    },
+    /** Zweiter Schritt: Code aus der Authenticator-App (oder ein Wiederherstellungscode). */
+    async login2fa(base, ticket, code) {
+      const r = await Import.MT.http(base, '/api/login/2fa', { method: 'POST', json: { ticket, code: String(code || '').trim() } });
+      if (r.status !== 200) throw new Error(Import.MT.detail(r, 'Der Code stimmt nicht (HTTP ' + r.status + ')'));
+      return Import.MT.finish(base, r);
+    },
+    /** Sitzung abgelaufen oder abgemeldet: Schlüssel vergessen (Adresse und Name bleiben fürs Formular) und freundlich melden. */
+    async expired(acc) {
+      await DB.kvSet('mt', { base: acc.base, name: acc.name });
+      const e = new Error('Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.'); e.relogin = true; return e;
+    },
+    /** Lesender Aufruf mit Sitzung. 401 → Sitzung abgelaufen. */
+    async get(acc, path) {
+      const r = await Import.MT.http(acc.base, path, { token: acc.token });
+      if (r.status === 401) throw await Import.MT.expired(acc);
+      return r;
+    },
+    async tours(acc) {
+      const r = await Import.MT.get(acc, '/api/tours');
+      if (r.status !== 200) throw new Error(Import.MT.detail(r, 'Tourenliste: HTTP ' + r.status));
+      const l = JSON.parse(r.body);
+      if (!Array.isArray(l)) throw new Error('Tourenliste: unerwartete Antwort des Servers');
+      return l.filter(t => t && t.id != null && t.start_ts);
+    },
+    /** Strecke einer Tour als GPX-Text; null, wenn der Server keine Strecke dazu hat. */
+    async gpx(acc, id) {
+      const r = await Import.MT.get(acc, '/api/tours/' + encodeURIComponent(id) + '/gpx');
+      if (r.status === 404) return null;
+      if (r.status !== 200) throw new Error('Strecke: HTTP ' + r.status);
+      return r.body;
+    },
+    /** Verbindung trennen: am Server abmelden (soweit erreichbar) und den Sitzungsschlüssel löschen. */
+    async logout(acc) {
+      if (acc && acc.token) { try { await Import.MT.http(acc.base, '/api/logout', { method: 'POST', token: acc.token }); } catch (e) { /* nicht erreichbar: der Schlüssel wird trotzdem gelöscht */ } }
+      await DB.kvSet('mt', acc && acc.base ? { base: acc.base, name: acc.name || '' } : null);
+    },
+    /** Namen aus Meine Touren übernehmen: nur wenn der bisherige Name selbst erzeugt ist oder zuletzt von Meine Touren oder Komoot kam –
+        ein in der App von Hand vergebener Name bleibt. Gibt true zurück, wenn sich der Name geändert hat. */
+    takeName(e, name) {
+      name = (name || '').trim();
+      if (!name) return false;
+      const frei = Import.Komoot.autoNamed(e) || (e.nameMt != null && e.name === e.nameMt) || (e.nameKomoot != null && e.name === e.nameKomoot);
+      const alt = e.name;
+      if (frei) e.name = name;
+      if (frei || e.name === name) e.nameMt = name;
+      return e.name !== alt;
+    },
+    /** Gehört ein Eintrag der Tourenliste zu einer vorhandenen Tour (aus Zepp, Komoot, Datei, Aufzeichnung)? Gleicher Start (± 5 Minuten) und,
+        wo beide eine Strecke haben, ähnliche Länge (± 10 %, mindestens 300 m). used: Touren, die schon einem anderen Eintrag zugeordnet sind. */
+    match(t, tours, used) {
+      const st = t.start_ts * 1000, dist = +t.dist_m || 0;
+      if (!isFinite(st)) return null;
+      let best = null, bd = Infinity;
+      for (const e of tours) {
+        if (e.status === 'planned' || !e.start || e.timed === false || e.mtId || /^mt:/.test(e.srcId || '') || (used && used.has(e.id))) continue;
+        const d = Math.abs(e.start - st);
+        if (d > 300000) continue;
+        if (dist && e.dist && Math.abs(e.dist - dist) > Math.max(300, 0.1 * dist)) continue;
+        if (d < bd) { best = e; bd = d; }
+      }
+      return best;
+    },
+    /** Angaben eines Listeneintrags auf eine Tour der App legen. opts.zahlen: Aufstieg, Abstieg und Strecke aus Meine Touren als maßgebliche Werte.
+        Gibt { ch, name, zahlen, eigen } zurück; eigen = die Tour war angeglichen und soll wieder aus der eigenen Spur gerechnet werden. */
+    take(e, t, opts) {
+      const vor = JSON.stringify(e), r = { ch: false, name: false, zahlen: false, eigen: false };
+      const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
+      const put = (k, v) => { if (v == null) delete e[k]; else e[k] = v; };
+      r.name = Import.MT.takeName(e, t.name);
+      const sp = Import.MT.sport(t.sport);
+      if (!e.sportMan && sp && e.sport !== sp && e.status !== 'planned') { e.sportAlt = e.sportAlt || e.sport; e.sport = sp; }
+      const note = String(t.note || '').trim();
+      if (note && (!String(e.note || '').trim() || (e.noteMt != null && e.note === e.noteMt))) e.note = note;      // eine in der App geschriebene Notiz bleibt
+      if (note && e.note === note) e.noteMt = note;
+      put('starsMt', num(t.stars) >= 1 ? Math.min(5, Math.round(t.stars)) : null);
+      const tags = String(t.tags || '').split('|').map(x => x.trim()).filter(Boolean);
+      const neu = tags.filter(g => !(e.tagsMt || []).includes(g) && !(e.tags || []).includes(g));      // nur neue Schlagworte ergänzen; in der App entfernte kommen nicht wieder
+      if (neu.length) e.tags = (e.tags || []).concat(neu);
+      put('tagsMt', tags.length ? tags : null);
+      const up = num(t.up_m), down = num(t.down_m), dist = num(t.dist_m) > 0 ? t.dist_m : null;
+      put('upMt', up); put('downMt', up != null ? down : null); put('distMt', dist);
+      if (opts && opts.zahlen && (up != null || dist != null)) {
+        const o = [e.up || 0, e.down || 0, e.dist || 0];
+        e.zMt = 1;
+        if (up != null) { e.up = up; if (down != null) e.down = down; e.upSrc = 'mt'; }
+        if (dist != null) e.dist = dist;
+        r.zahlen = Math.abs((e.up || 0) - o[0]) >= 1 || Math.abs((e.down || 0) - o[1]) >= 1 || Math.abs((e.dist || 0) - o[2]) >= 10;
+      } else if (e.zMt) { delete e.zMt; r.eigen = true; }
+      r.ch = JSON.stringify(e) !== vor;
+      return r;
+    },
+    /** Abgleich. opts: zahlen (Vorgabe an), stop() (Abbruch). onProgress(i, n, text).
+        Vorhandene Touren werden zugeordnet (Kennung, sonst Start und Länge) und bekommen Name, Sportart, Notiz und Zahlen – ohne dass eine Strecke geladen wird.
+        Nur für Touren, die es in der App noch nicht gibt, wird die Strecke vom Server geholt. Beliebig oft wiederholbar. */
+    async importAll(acc, opts, onProgress) {
+      opts = Object.assign({ zahlen: true }, opts || {});
+      const M = Import.MT, stop = () => !!(opts.stop && opts.stop());
+      const list = (await M.tours(acc)).sort((a, b) => a.start_ts - b.start_ts);
+      const mine = await Tours.list();
+      const bySrc = new Map(), byMt = new Map(), byK = new Map();
+      for (const e of mine) {
+        [e.srcId].concat(e.alias || []).filter(Boolean).forEach(k => { bySrc.set(k, e); const m = /^komoot:(.+)$/.exec(k); if (m) byK.set(m[1], e); });
+        if (e.mtId) byMt.set(String(e.mtId), e);
+        if (e.komootId) byK.set(String(e.komootId), e);
+      }
+      const res = { added: 0, dup: 0, fail: 0, namesMt: 0, zahlen: 0, ohne: 0 };
+      const used = new Set(), pairs = [], rest = [], todo = [];
+      for (const t of list) {      // 1. sichere Zuordnung über Kennungen (auch die Komoot-Nummer, wenn die Tour am Server von Komoot stammt)
+        const id = String(t.id), e = bySrc.get('mt:' + id) || byMt.get(id) || (t.source === 'komoot' && byK.get(id) && !byK.get(id).mtId ? byK.get(id) : null);
+        if (e && !used.has(e.id)) { used.add(e.id); pairs.push([t, e]); } else rest.push(t);
+      }
+      for (const t of rest) {      // 2. Zuordnung über Startzeit und Länge
+        const e = M.match(t, mine, used);
+        if (e) { used.add(e.id); pairs.push([t, e]); } else todo.push(t);
+      }
+      let batch = [], eigen = [];
+      const flush = async () => {
+        if (batch.length) { await DB.putMany('tours', batch); batch = []; }
+        for (const id of eigen) await Tours.recalc(id, { eigen: true });      // Schalter aus: wieder die eigene Rechnung
+        eigen = []; Tours.invalidate();
+      };
+      for (let i = 0; i < pairs.length; i++) {
+        if (stop()) { res.stopped = true; break; }
+        const [t, e] = pairs[i], id = String(t.id);
+        res.dup++;
+        const link = e.srcId !== 'mt:' + id && e.mtId !== id;
+        if (link) e.mtId = id;
+        const r = M.take(e, t, opts);
+        if (r.name) res.namesMt++;
+        if (r.zahlen) res.zahlen++;
+        if (r.eigen) eigen.push(e.id);
+        if (r.ch || link) batch.push(e);
+        if (batch.length >= 40 || (i % 100 === 99)) { await flush(); if (onProgress) onProgress(i + 1, pairs.length, 'Vorhandene Touren abgleichen'); await sleep(0); }
+      }
+      await flush();
+      for (let i = 0; i < todo.length && !res.stopped; i++) {      // 3. neue Touren: Strecke laden und anlegen
+        if (stop()) { res.stopped = true; break; }
+        const t = todo[i], id = String(t.id);
+        if (onProgress) onProgress(i + 1, todo.length, t.name || '');
+        let text;
+        try { text = await M.gpx(acc, id); } catch (e) { if (e.relogin) throw e; res.fail++; continue; }
+        if (text == null) { res.ohne++; continue; }
+        try {
+          const acts = await Parse.any('mt-' + id + '.gpx', new TextEncoder().encode(text));
+          if (!acts.length || acts[0].pts.length < 2) { res.ohne++; continue; }
+          const start = t.start_ts * 1000;
+          const r = await Tours.add({ name: t.name, sport: M.sport(t.sport), pts: acts[0].pts, src: 'mt', srcId: 'mt:' + id, start, note: String(t.note || '').trim() });
+          const e = r.tour;
+          if (r.dup) { res.dup++; if (e.srcId !== 'mt:' + id) e.mtId = id; }      // die Spur gab es schon (erst an der Spur erkannt): Zuordnung merken
+          else {
+            res.added++;
+            if (!e.timed) { e.start = start; if (t.end_ts) e.end = t.end_ts * 1000; if (t.dur_s) e.dur = t.dur_s; }      // Strecke ohne Zeitstempel: Datum und Dauer vom Server
+          }
+          const k = M.take(e, t, opts);
+          if (r.dup && k.name) res.namesMt++;
+          if (r.dup && k.zahlen) res.zahlen++;
+          await Tours.save(e);
+          if (k.eigen) await Tours.recalc(e.id, { eigen: true });
+        } catch (e) { res.fail++; }
+      }
+      if (res.added) await Photos.assignAll();
+      Tours.invalidate();
+      return res;
+    },
+  },
+
   /* ---------------- Strava ---------------- */
   Strava: {
     authUrl: id => `https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(id)}&response_type=code&redirect_uri=${encodeURIComponent('http://localhost/exchange')}&approval_prompt=force&scope=read,activity:read_all`,
@@ -203,7 +442,7 @@ const Import = {
     async importAll(acc, onProgress) {
       let list = [];
       for (let p = 1; ; p++) { const a = await Import.Strava.get(acc, `/athlete/activities?per_page=100&page=${p}`); list = list.concat(a); if (a.length < 100) break; }
-      const have = new Set((await Tours.list()).map(t => t.srcId));
+      const have = new Set(); (await Tours.list()).forEach(t => { have.add(t.srcId); (t.alias || []).forEach(a => have.add(a)); });
       const todo = list.filter(a => !have.has('strava:' + a.id) && !a.manual && a.start_latlng !== null);
       const res = { added: 0, dup: list.length - todo.length, fail: 0 };
       for (let i = 0; i < todo.length; i++) {
@@ -316,7 +555,7 @@ const Import = {
       const st = parseInt(s.trackid, 10) * 1000, dist = parseFloat(s.dis) || 0, dur = parseFloat(s.run_time) || 0;
       for (const t of tours) {
         if (t.status === 'planned' || !t.start) continue;
-        if (t.srcId === 'zepp:' + s.trackid) return t;
+        if (t.srcId === 'zepp:' + s.trackid || (t.alias && t.alias.includes('zepp:' + s.trackid))) return t;
         const d = Math.abs(t.start - st);
         if (d <= 300000) return t;
         if (dist && t.dist && Math.abs(t.dist - dist) <= 0.01 * dist && dur && t.dur && Math.abs(t.dur - dur) <= 60

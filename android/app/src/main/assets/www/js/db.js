@@ -46,6 +46,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     tiles: 'osm', tileUrl: '', tileKey: '', routeUrl: 'https://brouter.de/brouter', routeProfile: '',
     photoMargin: 20, camOffset: '', guide: true, units: 'km', komootEmail: '', stravaId: '', homeLat: '', homeLon: '', homeName: '', hrMax: '',
     backupDays: 14, birthYear: '', homeShow: {}, bestN: 1,
+    mtZahlen: true,      // 2.1.0: Zahlen aus Meine Touren übernehmen
   },
   async load() { this.v = Object.assign({}, this.defaults, await DB.kvGet('settings', {})); },
   get(k) { return this.v[k]; },

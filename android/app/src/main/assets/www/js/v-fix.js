@@ -60,12 +60,12 @@ const Fix = {
     trk.ele = ele;
     await DB.put('tracks', trk);
     t.elevFix = 1;
-    return Tours.recalc(t.id).then(r => { r.elevFix = 1; delete r.elevSrc; r.origUp = t.origUp; r.origDown = t.origDown; return Tours.save(r).then(() => r); });
+    return Tours.recalc(t.id, { eigen: true }).then(r => { r.elevFix = 1; delete r.elevSrc; r.origUp = t.origUp; r.origDown = t.origDown; return Tours.save(r).then(() => r); });
   },
   async restoreEle(t) {
     const trk = await DB.get('tracks', t.id);
     if (trk && trk.origEle) { trk.ele = trk.origEle; delete trk.origEle; await DB.put('tracks', trk); }
-    const r = await Tours.recalc(t.id);
+    const r = await Tours.recalc(t.id, { eigen: true });
     delete r.elevFix; delete r.elevSrc; delete r.origUp; delete r.origDown;
     await Tours.save(r); return r;
   },
@@ -83,10 +83,13 @@ const Fix = {
       nxt = j.data.next; if (sum || nxt == null || nxt === -1) break;
     }
     if (!sum) throw new Error('Kein passendes Zepp-Training zu dieser Tour gefunden');
-    return Fix.zeppEleWith(t, trk, acc, sum);
+    return Fix.zeppEleWith(t, trk, acc, sum, { eigen: true });
   },
-  /** Kern des Abgleichs für ein bereits gefundenes Zepp-Training (wird auch vom Sammel-Abgleich genutzt). */
-  async zeppEleWith(t, trk, acc, sum) {
+  /** Kern des Abgleichs für ein bereits gefundenes Zepp-Training (wird auch vom Sammel-Abgleich und vom Zepp-Import genutzt).
+      opts.det: schon geladene Einzelheiten des Trainings (spart den Abruf); opts.eigen: von Hand an einer Tour ausgelöst – dann gilt die eigene Rechnung
+      (siehe Tours.recalc); opts.auto: vom Zepp-Import ausgelöst – der Versuch wird an der Tour vermerkt (zele), damit er sich nicht wiederholt. */
+  async zeppEleWith(t, trk, acc, sum, opts) {
+    opts = opts || {};
     const Z = Import.Zepp;
     const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: sum.trackid, source: sum.source || '' });
     const t0 = trk.t.find(x => x != null);
@@ -98,7 +101,7 @@ const Fix = {
     if (!trk.origEle) { trk.origEle = trk.ele.slice(); t.origUp = t.up; t.origDown = t.down; }
     trk.ele = ele;
     await DB.put('tracks', trk);
-    const r = await Tours.recalc(t.id);
+    const r = await Tours.recalc(t.id, { eigen: !!opts.eigen });
     r.elevSrc = 'zepp'; delete r.elevFix; r.origUp = t.origUp; r.origDown = t.origDown;
     await Tours.save(r); return r;
   },
@@ -193,7 +196,7 @@ Views['/fix'] = async (root, [id]) => {
   pts.forEach((p, i) => { if (p.skip && i && !pts[i - 1].newSeg) L.polyline([[pts[i - 1].lat, pts[i - 1].lon], [p.lat, p.lon]], { color: '#757575', weight: 6, dashArray: '2 8', opacity: 0.9 }).addTo(map); });
   setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
 
-  const done = async msg => { await Tours.recalc(id); toast(msg); Nav.render(); };
+  const done = async msg => { await Tours.recalc(id, { eigen: true }); toast(msg); Nav.render(); };
   info.append(
     h('p', { class: 'muted' }, 'Rote Punkte sind Ausreißer, orange Abschnitte sind für diese Sportart zu schnell (zum Beispiel Auto, Seilbahn oder GPS-Sprung). Grau gestrichelt ist bereits ausgeschlossen.'),
     h('p', { class: 'fxsum' }, h('b', { id: 'fx-sum' }, `${found.spike.length} Ausreißer · ${found.fast.length} schnelle Abschnitte` + (skipped ? ` · ${skipped} ausgeschlossene Punkte` : ''))),

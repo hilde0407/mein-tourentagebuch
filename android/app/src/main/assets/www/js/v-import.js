@@ -2,17 +2,21 @@
 Views['/import'] = async root => {
   const body = h('div', { class: 'pad' });
   root.append(topbar('Touren importieren', { back: true }), body);
-  const run = async (title, fn) => {
+  /** Import mit Fortschrittsblatt. opts.cancel: abbrechbar; opts.after(fehler): nach dem Lauf (z. B. Anmeldeblatt erneut zeigen). */
+  const run = async (title, fn, opts) => {
+    let err = null;
     try {
-      const r = await PhotoSources.progress(title, (upd, txt) => fn(upd, txt));
+      const r = await PhotoSources.progress(title, (upd, txt) => fn(upd, txt), opts);
       const msg = r && r.added != null ? Import.describe(r) + (r.limit ? ' – ' + r.limit : '') : String(r);
       Tours.invalidate(); toast(msg, 7000);
-    } catch (e) { toast(e.message, 8000); }
+    } catch (e) { err = e; toast(e.message, 8000); }
+    if (opts && opts.after) opts.after(err);
   };
-  const card = (ico, t, sub, fn) => UI.row({ icon: ico, title: t, sub, onclick: fn });
+  const card = (ico, t, sub, fn, id) => UI.row({ icon: ico, title: t, sub, onclick: fn, id });
   body.append(h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
     h('div', { class: 'list' },
       card('file', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
+      card('server', 'Meine Touren', 'Touren, Namen und Zahlen vom eigenen Server holen', mt, 'imp-mt'),
       card('route', 'Komoot', 'Alle aufgezeichneten (und geplanten) Touren', komoot),
       card('run', 'Strava', 'Aktivitäten über die Strava-Schnittstelle', strava),
       card('watch', 'Zepp / Amazfit', 'Aktivitäten mit GPS direkt aus der Zepp-Cloud', zepp),
@@ -20,6 +24,66 @@ Views['/import'] = async root => {
       card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
       card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)));
 
+  /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
+  async function mt() {
+    const M = Import.MT, c = await DB.kvGet('mt', null), on = !!(c && (c.token || c.open));
+    const zahlen = UI.toggle('Zahlen aus Meine Touren übernehmen (Aufstieg, Strecke)', Set_.get('mtZahlen') !== false, v => Set_.set('mtZahlen', !!v), { id: 'mt-zahlen' });
+    const zHint = h('p', { class: 'muted small' }, 'Dann zeigen beide Apps für dieselbe Tour dieselben Zahlen. Korrigierst du eine Strecke in der App, gilt dort die eigene Rechnung – bis zum nächsten Abgleich.');
+    const sync = acc0 => {
+      let halt = false;
+      run('Meine Touren', async (upd, txt) => {
+        let acc = acc0;
+        if (typeof acc0 === 'function') { txt.textContent = 'Anmelden …'; acc = await acc0(); }
+        txt.textContent = 'Tourenliste laden …';
+        return M.importAll(acc, { zahlen: Set_.get('mtZahlen') !== false, stop: () => halt }, upd);
+      }, { cancel: () => { halt = true; }, after: e => { if (e && e.relogin) mt(); } });
+    };
+    if (on) {
+      let host = c.base; try { host = new URL(c.base).host; } catch (e) { /* Adresse wie gemerkt */ }
+      const s = sheet('Meine Touren', h('div', null,
+        h('p', { id: 'mt-state' }, '✓ Verbunden mit ' + host + (c.name ? ' als ' + c.name : '') + (c.role === 'viewer' ? ' (nur ansehen)' : '')),
+        c.open || c.role === 'viewer' ? null : h('p', { class: 'muted small' }, 'Tipp: Für die App genügt ein Konto „nur ansehen“. Sie liest nur und ändert am Server nichts.'),
+        /^http:/.test(c.base) ? h('p', { class: 'muted small' }, 'Die Verbindung ist nicht verschlüsselt (http).') : null,
+        zahlen, zHint,
+        h('div', { class: 'row end wrap' },
+          h('button', { class: 'btn', id: 'mt-off', onclick: async () => { await M.logout(c); s.close(); toast('Verbindung getrennt'); mt(); } }, 'Verbindung trennen'),
+          h('button', { class: 'btn pri', id: 'mt-go', onclick: () => { s.close(); sync(c); } }, 'Abgleichen'))));
+      return;
+    }
+    const url = h('input', { type: 'url', id: 'mt-url', value: c && c.base ? c.base : '', placeholder: 'https://meine-touren.example.ts.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+    const nm = h('input', { type: 'text', id: 'mt-name', value: c && c.name ? c.name : '', placeholder: 'Name', autocomplete: 'off', autocapitalize: 'off' });
+    const pw = h('input', { type: 'password', id: 'mt-pw', placeholder: 'Passwort', autocomplete: 'off' });
+    const warn = h('p', { class: 'muted small', id: 'mt-http', hidden: true });
+    const check = () => {
+      const v = url.value.trim(), http = /^http:\/\//i.test(v);
+      let priv = false; try { priv = http && M.privat(M.base(v)); } catch (e) { /* noch unvollständig */ }
+      warn.hidden = !http;
+      warn.textContent = !http ? '' : priv ? 'Hinweis: http ist nicht verschlüsselt. Im eigenen Netz (WLAN zu Hause, Tailscale) ist das üblich.'
+        : 'Achtung: Mit http gehen Name und Passwort unverschlüsselt durch das Netz. Besser eine Adresse mit https verwenden.';
+    };
+    url.addEventListener('input', check); check();
+    const s = sheet('Meine Touren', h('div', null,
+      h('p', { class: 'muted' }, 'Holt deine Touren aus „Meine Touren“ auf deinem eigenen Server: neue Touren mit Strecke, für vorhandene den Namen, die Sportart und die Zahlen. Die App liest nur – am Server ändert sie nichts.'),
+      h('label', { class: 'fld' }, 'Serveradresse', url), warn,
+      h('label', { class: 'fld' }, 'Name', nm), h('label', { class: 'fld' }, 'Passwort', pw),
+      h('p', { class: 'muted small' }, 'Empfohlen: in Meine Touren ein eigenes Konto „nur ansehen“ anlegen (Einstellungen → Benutzer) und hier verwenden. Das Passwort wird nicht gespeichert, nur ein Sitzungsschlüssel auf diesem Handy. Er kommt in keine Sicherung.'),
+      zahlen, zHint,
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'mt-go', onclick: async () => {
+        let base; try { base = M.base(url.value); } catch (e) { toast(e.message, 6000); return; }
+        if (/^http:/.test(base) && !M.privat(base) && !await confirmBox('Unverschlüsselt verbinden?', 'Die Adresse beginnt mit http. Name und Passwort gehen dann unverschlüsselt durch das Netz und können mitgelesen werden. Sicherer ist eine Adresse mit https.', 'Trotzdem verbinden')) return;
+        const name = nm.value, pass = pw.value;
+        s.close();
+        sync(async () => {
+          let acc = await M.login(base, name, pass);
+          if (acc.need2fa) {
+            const code = await askText('Zweiter Schritt', 'Code aus der Authenticator-App', '', 'Anmelden');
+            if (code == null || !code.trim()) throw new Error('Anmeldung abgebrochen');
+            acc = await M.login2fa(base, acc.ticket, code);
+          }
+          return acc;
+        });
+      } }, 'Verbinden & abgleichen'))));
+  }
   async function komoot() {
     const c = await DB.kvGet('komoot', null);
     const em = h('input', { type: 'email', value: c ? c.email : '', autocomplete: 'off', placeholder: 'E-Mail' }), pw = h('input', { type: 'password', placeholder: 'Passwort', autocomplete: 'off' });

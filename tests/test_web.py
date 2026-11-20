@@ -291,6 +291,158 @@ def neue_funktionen(pg):
     return {"big": big, "plan": plan, "linked": lid}
 
 
+MT_FAKE = """(fx) => {
+  /* „Meine Touren“ hinter einer nachgestellten Native.http: spielt die echten Antworten eines Testservers ab (tests/data/meine-touren-beispiel.json,
+     erzeugt mit tests/check_meine_touren.py --fixtures). Sitzungen, Abmelden und Zwei-Faktor verhalten sich wie am Server. */
+  const S = { sessions: new Set(), log: [], edit: null, delay: 0 }, A = fx.antworten, real = window.__mtReal || Native.http;
+  window.__mtReal = real;
+  const R = x => ({ status: x.status, headers: Object.assign({}, x.headers || {}), body: x.body });
+  Native.http = async o => {
+    const u = new URL(o.url); if (u.hostname !== 'mt.test') return real(o);
+    const path = u.pathname, m = (o.method || 'GET').toUpperCase(), tok = String((o.headers || {}).Cookie || '').replace('kh_session=', '');
+    S.log.push(m + ' ' + path);
+    if (S.delay) await new Promise(r => setTimeout(r, S.delay));
+    if (path === '/api/me') return R(A.me);
+    if (path === '/api/login' && m === 'POST') { const b = JSON.parse(o.body), n = String(b.name).toLowerCase();
+      if (n === 'tagebuch' && b.password === 'nur-lesen-1234') { S.sessions.add('SITZUNG-BETRACHTER-BEISPIEL'); return R(A.login_betrachter); }
+      if (n === 'zweifach' && b.password === 'zwei-faktor-1234') return R(A.login_2fa_noetig);
+      return R(A.login_falsch); }
+    if (path === '/api/login/2fa' && m === 'POST') { const b = JSON.parse(o.body);
+      if (b.ticket === 'TICKET-BEISPIEL' && b.code === '123456') { S.sessions.add('SITZUNG-ZWEIFACH-BEISPIEL'); return R(A.login_2fa_ok); } return R(A.login_2fa_falsch); }
+    if (path === '/api/logout' && m === 'POST') { S.sessions.delete(tok); return R(A.logout); }
+    if (m !== 'GET') return { status: 405, headers: {}, body: '{"detail":"Method Not Allowed"}' };      // die App ruft sonst nur lesend auf
+    if (!S.sessions.has(tok)) return R(A.ohne_sitzung);
+    if (path === '/api/tours') { let l = JSON.parse(A.tours.body); if (S.edit) l = S.edit(l); return { status: 200, headers: {}, body: JSON.stringify(l) }; }
+    const g = path.match(/^\\/api\\/tours\\/([^/]+)\\/gpx$/);
+    if (g) return fx.gpx[g[1]] ? { status: 200, headers: {}, body: fx.gpx[g[1]] } : R(A.gpx_fehlt);
+    return { status: 404, headers: {}, body: '{"detail":"Not Found"}' };
+  };
+  window.__mt = S; }"""
+
+def mt_fixture():
+    with open(os.path.join(os.path.dirname(__file__), "data", "meine-touren-beispiel.json"), encoding="utf-8") as f: return json.load(f)
+
+MT_VORHANDEN = """async (srv) => {
+  /* Touren, die es in der App schon gibt: g2 als Datei mit selbst erzeugtem Namen, g4 als Datei mit eigenem Namen (Start 2 Minuten daneben),
+     die Komoot-Tour (andere Startzeit, gleiche Komoot-Nummer) und eine Tour mit gleicher Startzeit wie s0, aber dreifacher Länge (keine Zuordnung). */
+  const by = Object.fromEntries(srv.map(t => [t.id, t]));
+  const line = (t, f, n, dt) => Array.from({ length: n }, (_, i) => ({ lat: t.lat + i * (t.dist_m * f / (n - 1)) / 111195, lon: t.lng, ele: 600 + 300 * Math.sin(Math.PI * i / (n - 1)), t: t.start_ts * 1000 + (dt || 0) + i * 30000 }));
+  const a = (await Tours.add({ sport: 'hike', pts: line(by.g2, 1.04, 200), src: 'file' })).tour;
+  const b = (await Tours.add({ name: 'Mein eigener Name', sport: 'bike', pts: line(by.g4, 0.97, 80, 120000), src: 'file' })).tour;
+  const k = (await Tours.add({ name: 'Komoot-Name alt', sport: 'hike', pts: line(by['987654321'], 0.5, 60, 3 * 3600000), src: 'komoot', srcId: 'komoot:987654321' })).tour;
+  k.nameKomoot = k.name; await Tours.save(k);
+  const l = (await Tours.add({ name: 'Andere Tour zur selben Zeit', sport: 'hike', pts: line(by.s0, 3, 40), src: 'file' })).tour;
+  return { a: { id: a.id, up: a.up, dist: a.dist, name: a.name }, b: b.id, k: k.id, l: l.id }; }"""
+
+def meine_touren(pg):
+    """2.1.0, Punkt 1: „Aus Meine Touren holen“ – Anmeldung (auch Zwei-Faktor, falsches Passwort, abgelaufene Sitzung), Abgleich (neu, vorhanden, Namen, Zahlen,
+    Sportarten), Wiederholung, Abbruch, Rangfolge der Zahlen nach einer Korrektur, Schalter, Trennen, Sicherung ohne Sitzungsschlüssel. Die Antworten des Servers
+    sind echte, bereinigte Beispieldaten (siehe MT_FAKE); gegen einen laufenden Server prüft tests/check_meine_touren.py."""
+    fx = mt_fixture(); srv = json.loads(fx["antworten"]["tours"]["body"]); by = {t["id"]: t for t in srv}
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    pg.evaluate(MT_FAKE, fx)
+    # Adresse und Hinweise (rein gerechnet)
+    u = pg.evaluate("""() => { const M = Import.MT, bad = x => { try { M.base(x); return false; } catch (e) { return true; } };
+      return { b: [M.base('meine-touren.example.ts.net/'), M.base(' http://192.168.1.5:8080/#/tour/1 '), M.base('HTTPS://Touren.Example.org/x?y')], bad: [bad(''), bad('ftp://x.y'), bad('http://')],
+        priv: ['http://192.168.1.5:8080', 'http://10.0.0.2', 'http://172.20.1.1', 'http://100.101.102.103', 'http://nas', 'http://nas.fritz.box', 'http://touren.tail1234.ts.net', 'http://localhost:8000', 'http://[fd7a:115c:a1e0::1]'].map(M.privat),
+        pub: ['http://touren.example.org', 'http://8.8.8.8', 'http://172.32.0.1', 'http://100.128.0.1', 'http://[2001:db8::1]'].map(M.privat),
+        sp: ['hike', 'touringbicycle', 'e_touringbicycle', 'e_mtb', 'mtb', 'racebike', 'jogging', 'skialpin', 'skitour', 'snowshoe', 'nordic', 'nordicwalking', 'mountaineering', 'other', 'kitesurfen', ''].map(M.sport) }; }""")
+    assert u["b"] == ["https://meine-touren.example.ts.net", "http://192.168.1.5:8080", "https://touren.example.org"] and all(u["bad"]) and all(u["priv"]) and not any(u["pub"]), u
+    assert u["sp"] == ["hike", "bike", "ebike", "ebike", "mtb", "racebike", "run", "ski", "ski", "ski", "ski", "hike", "mountaineering", "other", "other", "other"], u["sp"]
+    pre = pg.evaluate(MT_VORHANDEN, srv)
+    # Blatt: unverschlüsselte Adresse außerhalb des eigenen Netzes → deutlicher Hinweis und Rückfrage; im eigenen Netz nur der Hinweis
+    go = lambda: (pg.evaluate("location.hash = '#/import'"), pg.wait_for_selector("#imp-mt"), pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_selector(".sheet", state="detached"), pg.click("#imp-mt"))
+    toast = lambda rx, t=20000: (pg.wait_for_function("rx => { const t = document.querySelector('#toast'); return !!t && t.classList.contains('on') && new RegExp(rx).test(t.textContent); }", arg=rx, timeout=t), pg.inner_text("#toast"))[1]
+    go(); pg.wait_for_selector("#mt-url"); assert pg.locator("#mt-http").is_hidden() and pg.locator("#mt-zahlen input").is_checked()
+    pg.fill("#mt-url", "http://192.168.1.20:8080"); assert "Im eigenen Netz" in pg.inner_text("#mt-http")
+    pg.fill("#mt-url", "http://touren.example.org"); assert "Achtung" in pg.inner_text("#mt-http") and "unverschlüsselt" in pg.inner_text("#mt-http")
+    pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234"); pg.click("#mt-go"); pg.wait_for_selector(".sheet[aria-label='Unverschlüsselt verbinden?']")
+    pg.click(".sheet[aria-label='Unverschlüsselt verbinden?'] .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet[aria-label='Unverschlüsselt verbinden?']", state="detached")
+    assert pg.evaluate("window.__mt.log.length") == 0 and pg.locator("#mt-url").count() == 1, "ohne Zustimmung geht nichts ins Netz"
+    # Falsches Passwort: verständliche Meldung, nichts gemerkt, das Blatt bleibt benutzbar
+    pg.fill("#mt-url", "mt.test"); pg.fill("#mt-pw", "falsch"); pg.click("#mt-go"); assert "Name oder Passwort stimmt nicht" in toast("Passwort")
+    assert pg.evaluate("DB.kvGet('mt', null)") is None and pg.evaluate("window.__mt.log") == ["GET /api/me", "POST /api/login"]
+    # Anmeldung als Betrachter und erster Abgleich
+    pg.wait_for_selector(".sheet", state="detached"); go(); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "mt.test"); pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234")
+    pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); msg = toast("importiert", 60000)
+    assert msg == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server", msg
+    log = pg.evaluate("window.__mt.log"); assert log[:3] == ["GET /api/me", "POST /api/login", "GET /api/tours"] and len([x for x in log if x.endswith("/gpx")]) == 14 and not [x for x in log if x.split()[0] != "GET" and "login" not in x], log
+    assert not [x for x in log if "/g2/" in x or "/g4/" in x or "/987654321/" in x], "für vorhandene Touren wird keine Strecke geladen"
+    kv = pg.evaluate("DB.all('kv')"); acc = [k for k in kv if k["k"] == "mt"][0]["v"]
+    assert acc["base"] == "https://mt.test" and acc["role"] == "viewer" and acc["name"] == "Tagebuch" and acc["token"] == "SITZUNG-BETRACHTER-BEISPIEL" and "nur-lesen-1234" not in json.dumps(kv), acc
+    bk = pg.evaluate("Backup.collect()"); assert "SITZUNG" not in json.dumps(bk) and not [k for k in bk["kv"] if k["k"] == "mt"], "Sitzungsschlüssel nie in der Sicherung"
+    assert pg.evaluate("async () => { await Backup.restoreKv([{ k: 'mt', v: { base: 'https://boese.example', token: 'x' } }]); return (await DB.kvGet('mt')).base; }") == "https://mt.test"
+    st = pg.evaluate("""async (ids) => { const l = await Tours.list(), g = id => l.find(t => t.srcId === 'mt:' + id || t.mtId === id), o = {};
+      for (const id of ids) { const t = g(id); o[id] = t ? { id: t.id, name: t.name, sport: t.sport, up: t.up, down: t.down, dist: t.dist, zMt: t.zMt, upSrc: t.upSrc, src: t.src, srcId: t.srcId, mtId: t.mtId, note: t.note, stars: t.starsMt, tags: t.tags, hr: t.hrAvg, nameMt: t.nameMt, start: t.start, timed: t.timed } : null; }
+      return o; }""", list(by))
+    assert st["987654322"] is None
+    for t in srv:      # dieselben Zahlen wie am Server, Tour für Tour
+        if t["id"] == "987654322": continue
+        a = st[t["id"]]; assert a and a["zMt"] == 1 and a["upSrc"] == "mt" and abs(a["up"] - t["up_m"]) < 1e-6 and abs(a["down"] - t["down_m"]) < 1e-6 and abs(a["dist"] - t["dist_m"]) < 1e-6, (t["id"], a)
+    assert st["g2"]["id"] == pre["a"]["id"] and st["g2"]["name"] == "Große Runde mit vielen Punkten" and st["g2"]["src"] == "file" and st["g2"]["mtId"] == "g2" and st["g2"]["up"] == 655 and abs(pre["a"]["up"] - 655) > 5, (st["g2"], pre)
+    assert st["g4"]["id"] == pre["b"] and st["g4"]["name"] == "Mein eigener Name" and st["g4"]["nameMt"] is None and st["g4"]["sport"] == "ebike", st["g4"]      # Name von Hand bleibt, Sportart kommt
+    assert st["987654321"]["id"] == pre["k"] and st["987654321"]["name"] == "Zugspitze durchs Reintal" and st["987654321"]["up"] == 2210 and st["987654321"]["srcId"] == "komoot:987654321", st["987654321"]
+    assert st["s0"]["id"] != pre["l"] and st["s0"]["srcId"] == "mt:s0" and st["s0"]["src"] == "mt", st["s0"]      # gleiche Startzeit, aber ganz andere Länge: eigene Tour
+    g1 = st["g1"]; assert g1["note"] == "Früh los, oben Gämsen gesehen." and g1["stars"] == 5 and sorted(g1["tags"]) == ["Gipfel", "Wetterstein"] and g1["hr"] and g1["timed"] and g1["start"] == by["g1"]["start_ts"] * 1000, g1
+    assert {t["sport"]: st[t["id"]]["sport"] for t in srv if st[t["id"]]} == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run",
+        "skialpin": "ski", "skitour": "ski", "snowshoe": "ski", "nordic": "ski", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
+    # Tourseite: Quelle, maßgebliche Zahlen mit eigener Rechnung daneben, Bewertung
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", g1["id"]); pg.wait_for_selector(".tourp .facts"); f = pg.inner_text(".tourp")
+    assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "Zahlen aus" in f and "Eigene Rechnung" in f and "5 von 5 Sternen" in f, f
+    # Verbundenes Blatt, Wiederholung: nichts doppelt, keine Strecke wird noch einmal geladen (außer dem Versuch für die Tour ohne Strecke)
+    go(); pg.wait_for_selector("#mt-state"); assert pg.inner_text("#mt-state") == "✓ Verbunden mit mt.test als Tagebuch (nur ansehen)", pg.inner_text("#mt-state")
+    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); assert toast("schon vorhanden") == "16 schon vorhanden · 1 ohne Strecke auf dem Server"
+    assert pg.evaluate("window.__mt.log") == ["GET /api/tours", "GET /api/tours/987654322/gpx"] and pg.evaluate("Tours.list().then(l => l.length)") == n1
+    sync = "async (z) => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: z }, null)"
+    # Rangfolge der Zahlen: nach einer Korrektur der Spur von Hand gilt die eigene Rechnung – bis zum nächsten Abgleich
+    own = pg.evaluate("id => Tours.recalc(id, { eigen: true }).then(t => [t.up, t.dist, t.zMt === undefined, t.upSrc === undefined, t.upMt])", pre["a"]["id"])
+    assert abs(own[0] - pre["a"]["up"]) < 1e-6 and abs(own[1] - pre["a"]["dist"]) < 1e-6 and own[2] and own[3] and own[4] == 655, own
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", pre["a"]["id"]); pg.wait_for_selector(".tourp .facts"); f = pg.inner_text(".tourp .facts"); assert "Meine Touren nennt" in f and "655 m" in f and "Zahlen aus" not in f, f
+    r = pg.evaluate(sync, True); assert r["zahlen"] == 1 and r["added"] == 0 and r["dup"] == 16 and r["namesMt"] == 0, r
+    assert pg.evaluate("id => DB.get('tours', id).then(t => [t.up, t.zMt, t.dist])", pre["a"]["id"]) == [655, 1, by["g2"]["dist_m"]]
+    # … eine Neuberechnung ohne Korrektur (z. B. Uhr-Höhen beim Zepp-Import, Reparatur) lässt die Zahlen aus Meine Touren stehen
+    assert pg.evaluate("id => Tours.recalc(id).then(t => [t.up, t.zMt, t.dist])", pre["a"]["id"]) == [655, 1, by["g2"]["dist_m"]]
+    assert pg.evaluate("async id => { const t = await DB.get('tours', id); const r = await Fix.restoreEle(t); return [r.zMt === undefined, Math.abs(r.up - 655) > 5]; }", pre["a"]["id"]) == [True, True], "Originalhöhen wiederherstellen = von Hand"
+    pg.evaluate(sync, True)
+    # Schalter aus (im Blatt): überall wieder die eigene Rechnung, die Werte von Meine Touren bleiben als Angabe; Schalter an: wieder angeglichen
+    go(); pg.wait_for_selector("#mt-zahlen"); pg.click("#mt-zahlen"); pg.wait_for_function("Set_.get('mtZahlen') === false"); pg.click("#mt-go"); toast("schon vorhanden"); pg.wait_for_selector(".sheet", state="detached")
+    z = pg.evaluate("Tours.list().then(l => [l.filter(t => t.zMt).length, l.filter(t => t.upSrc === 'mt').length, l.filter(t => t.upMt != null).length])"); assert z == [0, 0, 16], z
+    assert abs(pg.evaluate("id => DB.get('tours', id).then(t => t.up)", pre["a"]["id"]) - pre["a"]["up"]) < 1e-6
+    go(); pg.wait_for_selector("#mt-zahlen"); assert not pg.locator("#mt-zahlen input").is_checked(); pg.click("#mt-zahlen"); pg.wait_for_function("Set_.get('mtZahlen') === true"); pg.click("#mt-go")
+    assert "Zahlen bei" in toast("angeglichen") and pg.evaluate("Tours.list().then(l => l.filter(t => t.zMt).length)") == 16
+    pg.wait_for_selector(".sheet", state="detached")
+    # Namen: am Server umbenannt → zieht nach; in der App von Hand benannt → bleibt; ein Name aus Meine Touren hat Vorrang vor Komoot
+    pg.evaluate("() => { window.__mt.edit = l => l.map(t => t.id === 'g1' ? Object.assign({}, t, { name: 'Kramerspitz (neu benannt)' }) : t); }")
+    r = pg.evaluate(sync, True); assert r["namesMt"] == 1 and pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:g1').name)") == "Kramerspitz (neu benannt)", r
+    pg.evaluate("async () => { const t = (await Tours.list()).find(t => t.srcId === 'mt:g1'); t.name = 'Von Hand in der App'; await Tours.save(t); window.__mt.edit = l => l.map(t => t.id === 'g1' ? Object.assign({}, t, { name: 'Dritter Name am Server', note: 'Neue Notiz am Server' }) : t); }")
+    r = pg.evaluate(sync, True); g = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:g1'))"); assert r["namesMt"] == 0 and g["name"] == "Von Hand in der App" and g["note"] == "Neue Notiz am Server", (r, g)
+    assert pg.evaluate("id => DB.get('tours', id).then(t => [Import.Komoot.takeName(t, 'Name aus Komoot'), t.name])", pre["k"]) == [False, "Zugspitze durchs Reintal"]
+    pg.evaluate("window.__mt.edit = null")
+    # Abbruch: langsamer Server, „Abbrechen“ im Fortschrittsblatt – der Rest kommt beim nächsten Mal, nichts doppelt
+    pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^mt:s\\d+$/.test(t.srcId))) await Tours.remove(t.id); window.__mt.delay = 250; }")
+    go(); pg.wait_for_selector("#mt-go"); pg.click("#mt-go"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/\\d+ von 12/.test(document.querySelector('.sheet p').textContent)"); pg.click("#prog-stop")
+    m = toast("abgebrochen", 30000); assert "abgebrochen – der Rest kommt beim nächsten Mal" in m, m
+    k = pg.evaluate("Tours.list().then(l => l.filter(t => /^mt:s\\d+$/.test(t.srcId)).length)"); assert 0 < k < 11, k
+    pg.evaluate("window.__mt.delay = 0"); r = pg.evaluate(sync, True); assert r["added"] == 11 - k and pg.evaluate("Tours.list().then(l => l.filter(t => /^mt:s\\d+$/.test(t.srcId)).length)") == 11, r
+    # Abgelaufene Sitzung: freundliche Meldung ohne Schlüssel, Schlüssel vergessen, das Anmeldeblatt kommt mit Adresse und Name wieder
+    pg.wait_for_selector(".sheet", state="detached"); pg.evaluate("window.__mt.sessions.clear()"); go(); pg.wait_for_selector("#mt-go"); pg.click("#mt-go")
+    m = toast("abgelaufen"); assert m == "Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden." and "SITZUNG" not in m, m
+    pg.wait_for_selector("#mt-pw"); assert pg.input_value("#mt-url") == "https://mt.test" and pg.input_value("#mt-name") == "Tagebuch" and pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Tagebuch"}
+    # Zwei-Faktor: falscher Code → Meldung; richtiger Code → verbunden
+    for code, want in (("000000", "Der Code stimmt nicht"), ("123456", "schon vorhanden")):
+        pg.wait_for_selector("#prog-stop", state="detached"); go(); pg.wait_for_selector("#mt-pw"); pg.fill("#mt-name", "Zweifach"); pg.fill("#mt-pw", "zwei-faktor-1234"); pg.click("#mt-go")
+        pg.wait_for_selector(".sheet[aria-label='Zweiter Schritt'] input"); pg.fill(".sheet[aria-label='Zweiter Schritt'] input", code); pg.click(".sheet[aria-label='Zweiter Schritt'] .btn.pri"); assert want in toast(want)
+    acc = pg.evaluate("DB.kvGet('mt')"); assert acc["name"] == "Zweifach" and acc["role"] == "user" and acc["token"] == "SITZUNG-ZWEIFACH-BEISPIEL", acc
+    # Verbindung trennen: am Server abgemeldet, Schlüssel gelöscht; ohne Hinweis „nur ansehen“ stand der Tipp zum Nur-Lese-Konto da
+    pg.wait_for_selector("#prog-stop", state="detached"); go(); pg.wait_for_selector("#mt-off"); assert "genügt ein Konto „nur ansehen“" in pg.inner_text(".sheet")
+    pg.evaluate("window.__mt.log = []"); pg.click("#mt-off"); pg.wait_for_selector("#mt-pw")
+    assert pg.evaluate("window.__mt.log") == ["POST /api/logout"] and pg.evaluate("window.__mt.sessions.size") == 0 and pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Zweifach"}
+    pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
+    # Aufräumen: alles, was dieser Abschnitt angelegt hat
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'mt'); await Set_.set('mtZahlen', true); Native.http = window.__mtReal; }", vorher)
+    assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
+
+
 def sheet_check(pg, label, opener):
     """Ein Blatt bei 360 px mit 100 % und 130 % Schrift prüfen. opener() öffnet es."""
     bad = []
@@ -964,6 +1116,7 @@ def main():
         assert tz[0]["pos"] == "track" and abs(tz[0]["lat"] - 47.0) < 0.05, tz[0]      # Position aus der Spur zur korrigierten Zeit
         assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
 
+        meine_touren(pg)
         neu = neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
