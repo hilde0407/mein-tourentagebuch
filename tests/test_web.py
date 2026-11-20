@@ -915,6 +915,110 @@ def alles_echt(pg):
     pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['mt', 'abgleich']) await DB.del('kv', k); Native.http = window.__mtReal; }", vorher)
 
 
+JAHR_SEED = """async () => {
+  const L = (y, m, d, hh, mi) => new Date(y, m - 1, d, hh, mi || 0).getTime();
+  const mk = (id, name, sport, start, dist, up, dur, extra) => DB.put('tours', Object.assign({ id, name, sport, status: 'done', start, end: start + dur * 1000, dur, moving: Math.round(dur * .8), dist, up, down: up, maxAlt: 1000 + up, lat: 47.5, lon: 11.2, timed: true, hidden: false, fav: false, created: 1 }, extra || {}));
+  await mk('jy1', 'Schneeschuh am Joch', 'hike', L(2019, 1, 5, 9), 10000, 500, 7200, { tags: ['Schneeschuh'] });
+  await mk('jy2', 'Laufrunde', 'run', L(2019, 1, 5, 18), 5000, 50, 1800);
+  await mk('jy3', 'Rad zum See', 'mtb', L(2019, 7, 20, 10), 40000, 800, 9000, { stars: 5, starsMan: 1 });
+  await mk('jy4', 'Silvesterrunde', 'hike', L(2019, 12, 31, 23, 30), 8000, 100, 3600);
+  await mk('jy5', 'Ausgeblendet', 'hike', L(2019, 8, 1, 9), 99000, 9000, 9000, { hidden: true });
+  await mk('jy6', 'Geplant', 'hike', L(2019, 9, 1, 9), 99000, 9000, 9000, { status: 'planned' });
+  await mk('jy7', 'Neujahr', 'hike', L(2020, 1, 1, 0, 30), 7000, 70, 3000);
+  await mk('jy8', 'Vorjahrestour', 'hike', L(2018, 7, 1, 9), 20000, 300, 7200);
+  Tours.invalidate();
+}"""
+
+def kpis(pg):
+    return pg.evaluate("() => Object.fromEntries([...document.querySelectorAll('.kpi')].map(k => [k.querySelector('small').innerText.replace(/^Tour$/, 'Touren').replace(/^Tag mit Tour$/, 'Tage mit Tour'), k.querySelector('b').innerText.replace(/\\s+/g, ' ')]))")
+
+def jahr(pg):
+    """2.3.0: Jahresrückblick. Zahlen wie in der Statistik, Leerzustand, Jahr wählen, Vorjahr, Sportarten, Höhepunkte, Monatsdiagramm, Regionen, Fotos,
+    Teilen (App-Weg und Browser-Download), Bildkarte, Startseite (ruhig / hervorgehoben), Mehr, Gestaltung."""
+    png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
+    pg.evaluate(JAHR_SEED)
+    go(pg, "#/jahr/2019", "#jahr-teilen")
+    # 1. Zahlen: dieselben wie die Jahresstatistik (versteckte, geplante und Touren des Nachbarjahres zählen nicht; Silvester 23:30 gehört zu 2019)
+    j = kpis(pg)
+    assert j["Touren"] == "4", j
+    go(pg, "#/stats", "select[aria-label=Zeitraum]"); pg.select_option("select[aria-label=Zeitraum]", "2019"); pg.wait_for_selector(".kpis .kpi")
+    st = kpis(pg)
+    assert st["Touren"] == j["Touren"] and st["Strecke"] == j["Kilometer"] and st["Aufstieg"] == j["Höhenmeter im Aufstieg"] and st["Zeit unterwegs"] == j["Stunden unterwegs"] and st["Aktive Tage"] == j["Tage mit Tour"], (st, j)
+    assert j["Kilometer"].replace(" ", "") == "63,0km" and j["Tage mit Tour"] == "3" and j["Höhenmeter im Aufstieg"].replace(" ", "") == "1.450m", j
+    # Alle Jahre mit Touren stimmen überein (die Jahre der anderen Testteile eingeschlossen)
+    ys = pg.evaluate("Tours.list().then(l => Jahr.jahre(l))")
+    for y in ys[:6]:
+        go(pg, "#/jahr/%d" % y, "#jahr-teilen"); a = kpis(pg)
+        go(pg, "#/stats", "select[aria-label=Zeitraum]"); pg.select_option("select[aria-label=Zeitraum]", str(y)); pg.wait_for_selector(".kpis .kpi"); b = kpis(pg)
+        assert (b["Strecke"], b["Aufstieg"], b["Zeit unterwegs"], b["Aktive Tage"]) == (a["Kilometer"], a["Höhenmeter im Aufstieg"], a["Stunden unterwegs"], a["Tage mit Tour"]) and b["Touren"].split()[0] == a["Touren"].split()[0], (y, a, b)
+    # 2. Seite: Vorjahr, Sportarten (Schneeschuh bei Wandern), Höhepunkte, Monate
+    go(pg, "#/jahr/2019", "#jahr-teilen")
+    vj = pg.inner_text("#jahr-vorjahr"); assert "Gegenüber 2018" in vj and "+3" in vj and "+43,0 km" in vj, vj
+    sp = pg.evaluate("[...document.querySelectorAll('.jsp')].map(e => [e.dataset.sport, e.innerText.replace(/\\s+/g, ' ')])")
+    assert [x[0] for x in sp] == ["rad", "wandern", "laufen"] and "2 Touren" in sp[1][1] and "18,0 km" in sp[1][1], sp
+    hp = pg.inner_text("#jahr-hoehe"); assert "Längste Tour" in hp and "Rad zum See" in hp and "Schönste Tour" in hp and "5 Sterne" in hp and "Aktivster Monat" in hp and "Juli 2019" in hp and "Längste Serie" not in hp, hp
+    assert pg.locator("#jahr-hoehe a.li").count() == 4, "Verweise auf Touren"
+    assert pg.evaluate("document.querySelectorAll('#jahr-chart svg rect').length") == 12 and "Juli 40,0 km" in pg.get_attribute("#jahr-chart svg", "aria-label") and "Januar 15,0 km" in pg.get_attribute("#jahr-chart svg", "aria-label")
+    pg.click("#jahr-monate .seg button:has-text('Touren')"); assert "Januar 2 Touren" in pg.get_attribute("#jahr-chart svg", "aria-label")
+    pg.click("#jahr-zahlenliste summary"); assert pg.locator(".jmon tbody tr").count() == 12 and "Juli" in pg.inner_text(".jmon")
+    assert pg.locator("#jahr-orte").count() == 0 and pg.locator("#jahr-fotos").count() == 0, "ohne Orte und Fotos kein Abschnitt"
+    # Jahr wählen
+    pg.click("#jahr-2018"); pg.wait_for_function("location.hash === '#/jahr/2018' && (document.querySelector('#jahr-titel') || {}).innerText === '2018'")
+    assert pg.locator("#jahr-vorjahr").count() == 0, "2017 hat keine Touren: kein Vergleich"
+    # 3. Leerzustand
+    go(pg, "#/jahr/2031", ".jahr-leer"); t = pg.inner_text(".jahr-leer"); assert "Im Jahr 2031 steht noch keine Tour" in t and pg.locator("#jahr-teilen").count() == 0 and pg.locator("#jahr-frueher").count() == 1, t
+    pg.click("#jahr-frueher"); pg.wait_for_selector("#jahr-teilen")
+    # 4. Regionen und Fotos erscheinen nur, wenn es sie gibt
+    pg.route("**/thumb/**", lambda r: r.fulfill(status=200, body=png, content_type="image/jpeg"))
+    pg.evaluate("""async () => { await DB.kvSet('regionCells', { [Reisen.cell({ lat: 47.5, lon: 11.2 })]: 'Tirol' });
+      for (let i = 0; i < 3; i++) await DB.put('photos', { id: 'jf' + i + 'aaaaaa', name: 'j.jpg', ts: new Date(2019, 0, 5, 10 + i).getTime(), tour: 'jy1', w: 10, h: 10, src: 'galerie', faces: 0 }); }""")
+    go(pg, "#/jahr/2019", "#jahr-orte"); o = pg.inner_text("#jahr-orte"); assert "Tirol" in o and "4 Touren" in o, o
+    pg.wait_for_selector("#jahr-fotozahl"); assert pg.inner_text("#jahr-fotozahl").startswith("3 Fotos zu 1 Tour"), pg.inner_text("#jahr-fotozahl")
+    pg.wait_for_selector("#jahr-collage:not([hidden]) img"); assert pg.locator("#jahr-collage img").count() >= 1
+    pg.unroute("**/thumb/**")
+    # 5. Teilen über den Weg der App (Zwischenspeicher + Teilen-Menü), Bild 1080 × 1350
+    pg.evaluate("""() => { window.__sh = []; if (!window.__call0) window.__call0 = Native.call; Native.call = (m, a) => { window.__sh.push([m, a]); return window.__call0.call(Native, m, a); }; }""")
+    pg.click("#jahr-teilen"); pg.wait_for_function("window.__sh.some(x => x[0] === 'shareCache')", timeout=30000)
+    pg.wait_for_function("() => !document.querySelector('#jahr-teilen').disabled")
+    sh = pg.evaluate("window.__sh"); ap = [a for m, a in sh if m == "appendCache"]; sc = [a for m, a in sh if m == "shareCache"][0]
+    assert ap and ap[0]["reset"] is True and all(a["name"] == "Tourentagebuch-Jahr-2019.jpg" for a in ap) and sc["name"] == "Tourentagebuch-Jahr-2019.jpg" and sc["mime"] == "image/jpeg", (sc, len(ap))
+    import base64
+    raw = b"".join(base64.b64decode(a["b64"]) for a in ap); assert raw[:3] == b"\xff\xd8\xff" and len(raw) > 20000, len(raw)
+    dims = pg.evaluate("""async (b64) => { const im = new Image(); im.src = 'data:image/jpeg;base64,' + b64; await im.decode(); return [im.naturalWidth, im.naturalHeight]; }""", base64.b64encode(raw).decode())
+    assert dims == [1080, 1350], dims
+    # Im Browser (ohne Hülle) wird das Bild heruntergeladen
+    pg.evaluate("() => { window.__mt0 = window.MTApp; window.MTApp = undefined; }")
+    pg.wait_for_function(LEISE)
+    with pg.expect_download(timeout=30000) as dl: pg.click("#jahr-teilen")
+    assert dl.value.suggested_filename == "Tourentagebuch-Jahr-2019.jpg"
+    toast_text(pg, "Bild gespeichert")
+    pg.evaluate("() => { window.MTApp = window.__mt0; Native.call = window.__call0; }")
+    # 6. Bildkarte: eigenes Canvas, Inhalt vorhanden (Kopf petrol, Papier, Tinte)
+    px = pg.evaluate("""async () => { const d = Jahr.berechne(await Tours.list(), 2019, new Date(2026, 10, 20)); const cv = await JahrKarte.render(d, { now: new Date(2026, 10, 20) }); const c = cv.getContext('2d');
+      const at = (x, y) => [...c.getImageData(x, y, 1, 1).data].slice(0, 3); let ink = 0, d2 = c.getImageData(0, 150, 1080, 1200).data; for (let i = 0; i < d2.length; i += 4) if (d2[i] < 60) ink++;
+      return { w: cv.width, h: cv.height, head: at(900, 20), paper: at(1000, 700), ink }; }""")
+    assert px["w"] == 1080 and px["h"] == 1350 and px["head"] == [12, 37, 38] and px["paper"] == [242, 244, 238] and px["ink"] > 15000, px
+    err = pg.evaluate("JahrKarte.render({ leer: true }).then(() => 'ok', e => e.message)"); assert "Keine Touren" in err, err
+    # 7. Startseite: ruhiger Eintrag, im Dezember und Januar hervorgehoben; Mehr
+    def block(now_args):
+        return pg.evaluate("""async (a) => { const all = (await Tours.list()).filter(Jahr.zaehlt), now = new Date(...a); const out = []; for (const b of Home.blocks.filter(b => b.id === 'jahr' || b.id === 'jahrhoch')) { const el = await b.fn({ all, now, year: now.getFullYear() }); if (el) out.push([b.id, el.innerText.replace(/\\s+/g, ' '), el.querySelector('a').getAttribute('href')]); } return out; }""", now_args)
+    nov = block([2019, 10, 20]); assert len(nov) == 1 and nov[0][0] == "jahr" and "Dein Jahr 2019 im Rückblick" in nov[0][1] and nov[0][2] == "#/jahr/2019", nov
+    dez = block([2019, 11, 10]); assert len(dez) == 1 and dez[0][0] == "jahrhoch" and dez[0][1].startswith("Dein Jahr 2019") and "63,0km" in dez[0][1] and "Jahresrückblick ansehen" in dez[0][1] and dez[0][2] == "#/jahr/2019", dez
+    jan = block([2020, 0, 15]); assert len(jan) == 1 and jan[0][0] == "jahrhoch" and jan[0][1].startswith("Dein Jahr 2019") and jan[0][2] == "#/jahr/2019", jan
+    leerj = block([2031, 11, 10]); assert len(leerj) == 1 and leerj[0][0] == "jahr" and leerj[0][2] == "#/jahr", leerj
+    go(pg, "#/start", "#jahr-ruhig, #jahr-gross, #hero"); pg.wait_for_selector("#hero")
+    assert pg.locator("#jahr-eintrag").count() == 1 or pg.locator("#jahr-gross").count() == 1, "Startseite hat den Eintrag"
+    pg.evaluate("Set_.set('homeShow', { jahr: false })"); go(pg, "#/start", "#hero"); assert pg.locator("#jahr-eintrag, #jahr-gross").count() == 0, "in den Einstellungen ausschaltbar"
+    pg.evaluate("Set_.set('homeShow', {})")
+    go(pg, "#/mehr", "#m-jahr"); pg.click("#m-jahr"); pg.wait_for_selector("#jahr"); assert pg.evaluate("document.querySelector(\"#tabs a[data-p='/mehr']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')")
+    # 8. Gestaltung: kein Querrollen, Tippflächen, 360–430 px, 130 % Schrift (Seite, Leerzustand, Jahr mit allen Abschnitten)
+    go(pg, "#/jahr/2019", "#jahr-orte"); pg.click("#jahr-zahlenliste summary") if pg.evaluate("!document.querySelector('#jahr-zahlenliste').open") else None
+    bad = layout_check(pg, ["#/jahr/2019", "#/jahr/2018", "#/jahr/2031", "#/jahr"])
+    # Aufräumen
+    pg.evaluate("""async () => { for (const id of ['jy1','jy2','jy3','jy4','jy5','jy6','jy7','jy8']) await DB.del('tours', id); for (let i = 0; i < 3; i++) await DB.del('photos', 'jf' + i + 'aaaaaa'); await DB.del('kv', 'regionCells'); Tours.invalidate(); }""")
+    return bad
+
+
 def layout_22(pg):
     """Gestaltungsprüfung der Neuerungen aus 2.2.0: Tourseite mit Bewertung, Tourenliste mit „★ 4“ und Filterblatt, Startseite und Importseite mit „Alles abgleichen“,
     das Fortschrittsblatt, die Zusammenfassung (ohne und mit Fehlern), Sportart-Blatt und Ziel-Blatt mit den neuen Arten."""
@@ -1531,7 +1635,7 @@ def main():
         # Jede bisherige Funktion bleibt erreichbar: „Mehr“ führt zu Planen, Karte, Reisen, Statistik, Import, Foto-Quellen, Einstellungen
         pg.click("#tabs a[data-p='/mehr']"); pg.wait_for_selector("#m-settings")
         hrefs = pg.evaluate("[...document.querySelectorAll('#view a.li')].map(a => a.getAttribute('href'))")
-        assert hrefs == ["#/plan", "#/map", "#/reisen", "#/stats", "#/import", "#/sources", "#/settings"], hrefs
+        assert hrefs == ["#/plan", "#/map", "#/reisen", "#/stats", "#/jahr", "#/import", "#/sources", "#/settings"], hrefs
         # Reisen liegt unter „Mehr“; die Leiste bleibt dort sichtbar und „Mehr“ markiert, auf Arbeitsseiten verschwindet sie
         pg.click("#m-reisen"); pg.wait_for_selector("text=Mehrtagestouren"); pg.wait_for_function("document.querySelector(\"#tabs a[data-p='/mehr']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')", timeout=10000)
         anyid = pg.evaluate("Tours.list().then(l => l[0].id)")
@@ -1606,6 +1710,7 @@ def main():
         sterne(pg)
         alles(pg)
         alles_echt(pg)
+        jahr_bad = jahr(pg)
         neu = neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
@@ -1615,6 +1720,7 @@ def main():
         bad += neue_layout(pg, neu)
         bad += layout_21(pg)
         bad += layout_22(pg)
+        bad += jahr_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
