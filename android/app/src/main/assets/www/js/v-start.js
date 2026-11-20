@@ -63,11 +63,17 @@ Home.add('hero', 0, async ({ all }) => {
 });
 
 /* ---- Die drei Hauptaktionen ---- */
-Home.add('actions', 10, async () => h('div', { class: 'home-acts' },
-  Home.live() ? UI.sign('Aufzeichnung läuft – öffnen', { href: '#/rec', id: 'startrec', cls: 'live' }) : UI.sign('Aufzeichnung starten', { href: '#/rec', id: 'startrec' }),
-  h('div', { class: 'acts' },
-    h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
-    h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' }))));
+Home.add('actions', 10, async () => {
+  const qs = await Import.Alles.quellen().catch(() => []);      // „Alles abgleichen“ nur, wenn mindestens eine Quelle verbunden ist – als ruhige Zweitaktion, ohne Gelb
+  const last = qs.length ? await DB.kvGet('abgleich', null) : null;
+  return h('div', { class: 'home-acts' },
+    Home.live() ? UI.sign('Aufzeichnung läuft – öffnen', { href: '#/rec', id: 'startrec', cls: 'live' }) : UI.sign('Aufzeichnung starten', { href: '#/rec', id: 'startrec' }),
+    h('div', { class: 'acts' },
+      h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
+      h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' })),
+    qs.length ? h('div', { class: 'sync' }, h('button', { class: 'btn sm', id: 'startsync', html: Ico.svg('refresh', 18) + '<span>Alles abgleichen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
+      h('small', { class: 'muted', id: 'lastsync' }, Abgleich.zeile(last) || 'Noch nicht abgeglichen')) : null);
+});
 
 /* ---- Einmaliger Hinweis nach der Neuberechnung (Version 2.0.1) ---- */
 Home.add('calcnote', 11, async () => {

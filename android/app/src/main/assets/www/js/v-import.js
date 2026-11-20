@@ -1,9 +1,32 @@
 'use strict';
+/* „Alles abgleichen“ (2.2.0): gemeinsames Fortschrittsblatt, am Ende eine Zusammenfassung mit einer Zeile je Quelle.
+   Genutzt von der Importseite (ganz oben) und der Startseite (ruhige Zweitaktion). after(): danach, z. B. Seite neu zeichnen. */
+const AllesUI = {
+  async start(after) {
+    if (Import.Alles.busy) { toast('Ein Abgleich läuft schon.'); return; }
+    const qs = await Import.Alles.quellen();
+    if (!qs.length) { toast('Es ist noch keine Quelle verbunden. Unter „Touren importieren“ lässt sich Meine Touren, Komoot oder Zepp verbinden.', 6000); return; }
+    let halt = false, r = null, err = null;
+    try {
+      r = await PhotoSources.progress('Alles abgleichen', upd => Import.Alles.run({ stop: () => halt, onProgress: (text, frac) => upd(frac, 1, null, text) }), { cancel: () => { halt = true; } });
+    } catch (e) { err = e; }
+    Tours.invalidate();
+    const done = () => { if (after) after(); };
+    if (err || !r) { toast((err && err.message) || 'Der Abgleich ist fehlgeschlagen.', 7000); done(); return; }
+    const kopf = r.stopped ? 'Abgebrochen – der Rest kommt beim nächsten Mal.' : r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') + ' im Tagebuch.' : 'Das Tagebuch ist auf dem neuesten Stand.';
+    const s = sheet(r.stopped ? 'Abgleich abgebrochen' : 'Abgleich fertig', h('div', { id: 'sum' },
+      h('p', { id: 'sum-head' }, kopf),
+      UI.list(r.items.map(i => UI.row({ id: 'sum-' + i.id, title: i.name, sub: Abgleich.quellZeile(i, Import.describe), trail: i.err ? 'Fehler' : null }))),
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'sum-ok', onclick: () => s.close() }, 'Fertig'))), { onclose: done });
+  },
+};
+
 Views['/import'] = async root => {
   const body = h('div', { class: 'pad' });
   root.append(topbar('Touren importieren', { back: true }), body);
   /** Import mit Fortschrittsblatt. opts.cancel: abbrechbar; opts.after(fehler): nach dem Lauf (z. B. Anmeldeblatt erneut zeigen). */
   const run = async (title, fn, opts) => {
+    if (Import.Alles.busy) { toast('Gerade läuft ein Abgleich – bitte kurz warten.'); return; }
     let err = null;
     try {
       const r = await PhotoSources.progress(title, (upd, txt) => fn(upd, txt), opts);
@@ -13,7 +36,19 @@ Views['/import'] = async root => {
     if (opts && opts.after) opts.after(err);
   };
   const card = (ico, t, sub, fn, id) => UI.row({ icon: ico, title: t, sub, onclick: fn, id });
-  body.append(h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
+  /* Alles abgleichen: ganz oben, nur wenn mindestens eine Quelle verbunden ist */
+  const allBox = h('div', { class: 'allbox', id: 'allbox', hidden: true });
+  (async () => {
+    const qs = await Import.Alles.quellen();
+    if (!qs.length) return;
+    const last = await DB.kvGet('abgleich', null);
+    allBox.append(h('button', { class: 'btn pri', id: 'all-go', html: Ico.svg('refresh') + '<span>Alles abgleichen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
+      h('p', { class: 'muted small', id: 'all-src' }, qs.map(q => q.name).join(' → ') + ' – verbundene Quellen nacheinander, mit den gespeicherten Einstellungen.' + (last && last.t ? ' ' + Abgleich.zeile(last) + '.' : '')),
+      UI.toggle('Beim Öffnen automatisch abgleichen', !!Set_.get('autoAbgleich'), v => Set_.set('autoAbgleich', !!v), { id: 'auto-sync' }),
+      h('p', { class: 'muted small' }, 'Still im Hintergrund, höchstens einmal am Tag und nur, wenn gerade nichts aufgezeichnet wird. Neue Touren meldet die App kurz.'));
+    allBox.hidden = false;
+  })().catch(() => {});
+  body.append(allBox, h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
     h('div', { class: 'list' },
       card('file', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
       card('server', 'Meine Touren', 'Touren, Namen und Zahlen vom eigenen Server holen', mt, 'imp-mt'),
@@ -88,7 +123,7 @@ Views['/import'] = async root => {
   async function komoot() {
     const c = await DB.kvGet('komoot', null);
     const em = h('input', { type: 'email', value: c ? c.email : '', autocomplete: 'off', placeholder: 'E-Mail' }), pw = h('input', { type: 'password', placeholder: 'Passwort', autocomplete: 'off' });
-    const pl = h('input', { type: 'checkbox' });
+    const pl = h('input', { type: 'checkbox', checked: !!Set_.get('komootPlanned') });
     const s = sheet('Komoot', h('div', null,
       h('p', { class: 'muted' }, 'Es wird dein Komoot-Zugang genutzt, um deine eigenen Touren zu laden. Das Passwort wird nicht gespeichert, nur ein Zugriffsschlüssel auf diesem Handy.'),
       c ? h('p', null, '✓ Angemeldet als ' + c.email) : null,
@@ -96,7 +131,7 @@ Views['/import'] = async root => {
       h('label', { class: 'sw' }, pl, h('span', null, 'Auch geplante Touren laden')),
       h('div', { class: 'row end' }, c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'komoot'); s.close(); komoot(); } }, 'Abmelden') : null,
         h('button', { class: 'btn pri', onclick: async () => {
-          s.close();
+          s.close(); await Set_.set('komootPlanned', !!pl.checked);      // „Alles abgleichen“ nutzt dieselbe Wahl
           await run('Komoot', async (upd, txt) => {
             let acc = c; if (!acc) { txt.textContent = 'Anmelden …'; acc = await Import.Komoot.login(em.value.trim(), pw.value); }
             txt.textContent = 'Tourenliste laden …';

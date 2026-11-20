@@ -109,7 +109,7 @@ const UI = {
     return h('a', { class: 'tour', href: '#/tour/' + t.id },
       pv, h('span', { class: 'tb' },
         h('b', null, t.name, t.fav ? h('span', { class: 'favm', title: 'Favorit', html: Ico.svg('star', 15) }) : null),
-        h('small', null, (opts.year ? F.date(t.start) : UI.day(t.start)) + ' · ' + Sports.label(t.sport) + (t.status === 'planned' ? ' · geplant' : '')),
+        h('small', null, (opts.year ? F.date(t.start) : UI.day(t.start)) + ' · ' + Sports.label(t.sport) + (t.status === 'planned' ? ' · geplant' : '') + (Abgleich.sterne(t) ? ' · ★ ' + Abgleich.sterne(t) : '')),
         opts.stage ? h('small', { class: 'stage' }, opts.stage) : null, k));
   },
 };

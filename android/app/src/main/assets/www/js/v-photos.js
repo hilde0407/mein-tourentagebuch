@@ -62,8 +62,8 @@ const PhotoSources = {
       stopBtn ? h('div', { class: 'row end' }, stopBtn) : null));
     let last = 0, lastText = '';
     appSync('bgStart', title, 'Wird gestartet …', 0, 0);
-    const upd = (i, n, t) => {
-      bar.firstChild.style.width = (i / n * 100) + '%'; lastText = `${i} von ${n}` + (t ? ' · ' + t : ''); txt.textContent = lastText;
+    const upd = (i, n, t, full) => {      // full: fertiger Text (z. B. „Komoot · 3 von 40“ bei Alles abgleichen); i/n dann ein Anteil
+      bar.firstChild.style.width = (i / n * 100) + '%'; lastText = full || `${i} von ${n}` + (t ? ' · ' + t : ''); txt.textContent = lastText;
       if (Date.now() - last > 1500) { last = Date.now(); appSync('bgStart', title, lastText, i, n); }
     };
     let ok = false;

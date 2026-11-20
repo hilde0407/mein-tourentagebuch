@@ -105,8 +105,23 @@ async function boot() {
   window.addEventListener('mtshared', handleShared);
   window.addEventListener('mtphoto', handlePhotoQueue);
   await Nav.render();
-  setTimeout(() => { Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
+  setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
+  setTimeout(autoAbgleich, 6000);      // 2.2.0: still im Hintergrund, nach dem Start und nach der Neuberechnung; nur wenn eingeschaltet
   setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); }, 600);
+}
+/** „Beim Öffnen automatisch abgleichen“ (Vorgabe aus): bremst den Start nicht (6 s Abstand, wartet die Neuberechnung ab), stört keine Aufzeichnung, meldet nur Neues oder Fehler kurz. */
+async function autoAbgleich() {
+  try {
+    if (!Set_.get('autoAbgleich')) return;
+    if (Tours.migP) await Tours.migP.catch(() => {});
+    const r = await Import.Alles.auto();
+    if (!r) return;
+    const last = await DB.kvGet('abgleich', null);
+    const el = $('#lastsync'); if (el && last) el.textContent = Abgleich.zeile(last);
+    const bad = r.items.filter(i => i.err);
+    if (r.neu || bad.length) toast('Abgeglichen: ' + (r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') : 'nichts Neues') + (bad.length ? ' · ' + bad.map(i => i.name).join(', ') + ': Fehler (Details unter „Alles abgleichen“)' : ''), 6000);
+    if (r.neu && Nav.cur === '/start' && $('#view').scrollTop < 40) Nav.render();      // nicht mitten im Blättern
+  } catch (e) { console.error('Automatischer Abgleich', e); }
 }
 async function handleShared() {
   if (!window.MTApp) return;

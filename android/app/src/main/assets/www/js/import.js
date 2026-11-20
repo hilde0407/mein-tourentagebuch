@@ -639,6 +639,64 @@ const Import = {
     },
   },
 
+  /* ---------------- Alles abgleichen (2.2.0) ----------------
+     Führt nacheinander alle verbundenen Quellen mit ihren gespeicherten Einstellungen aus – dieselben Abgleiche wie die einzelnen Blätter, nur gebündelt.
+     Reihenfolge und Begründung: calc-abgleich.js. Nicht verbundene Quellen werden übersprungen (kein Anmeldeblatt). Ein Fehler einer Quelle bricht die
+     anderen nicht ab; er steht in der Zusammenfassung. Zustand (kv „abgleich“, nicht in der Sicherung): { t: letzter geglückter Lauf, neu, fehler, versuch: letzter Start }. */
+  Alles: {
+    busy: false,
+    /** Verbundene Quellen in der Reihenfolge des Abgleichs: [{ id, name, acc }]. */
+    async quellen() {
+      const ok = { zepp: a => !!(a && a.token), komoot: a => !!(a && a.token), mt: a => !!(a && (a.token || a.open)) }, out = [];
+      for (const id of Abgleich.REIHENFOLGE) { const acc = await DB.kvGet(id, null); if (ok[id](acc)) out.push({ id, name: Abgleich.NAMEN[id], acc }); }
+      return out;
+    },
+    /** Eine Quelle mit ihren gespeicherten Einstellungen ausführen. upd(i, n, text). */
+    eine(q, o, upd) {
+      if (q.id === 'zepp') return Import.Zepp.importAll(q.acc, upd, { ele: Set_.get('zeppEle') !== false, stop: o.stop });
+      if (q.id === 'komoot') return Import.Komoot.importAll(q.acc, { planned: !!Set_.get('komootPlanned'), stop: o.stop }, upd);
+      return Import.MT.importAll(q.acc, { zahlen: Set_.get('mtZahlen') !== false, stop: o.stop }, upd);
+    },
+    /** Alle verbundenen Quellen abgleichen. o: stop() (Abbruch), onProgress(text, anteil 0…1). Gibt { items, stopped, neu, fehler } zurück;
+        items: [{ id, name, res | err | skipped }]. Merkt Zeitpunkt und Ergebnis (kv „abgleich“). */
+    async run(o) {
+      o = o || {};
+      if (Import.Alles.busy) throw new Error('Ein Abgleich läuft schon.');
+      Import.Alles.busy = true;
+      const t0 = Date.now(), items = [];
+      try {
+        const qs = await Import.Alles.quellen(), stop = () => !!(o.stop && o.stop());
+        await DB.kvSet('abgleich', Object.assign({}, await DB.kvGet('abgleich', null), { versuch: t0 }));
+        for (let k = 0; k < qs.length; k++) {
+          const q = qs[k];
+          if (stop()) { items.push({ id: q.id, name: q.name, skipped: true }); continue; }
+          const say = (frac, text) => { if (o.onProgress) o.onProgress(text, (k + Math.max(0, Math.min(1, frac))) / qs.length); };
+          say(0, q.name + ' …');
+          const upd = (i, n, text) => say(n ? i / n : 0, q.name + ' · ' + i + ' von ' + n + (text ? ' · ' + text : ''));
+          try { items.push({ id: q.id, name: q.name, res: await Import.Alles.eine(q, { stop }, upd) }); }
+          catch (e) { items.push({ id: q.id, name: q.name, err: e }); }
+        }
+        const stopped = items.some(i => i.skipped || (i.res && i.res.stopped)), fehler = items.filter(i => i.err).length;
+        const neu = Abgleich.neue(items), geglueckt = items.some(i => i.res);
+        Tours.invalidate();
+        if (geglueckt && !stopped) await DB.kvSet('abgleich', { t: Date.now(), neu, fehler, versuch: t0 });
+        if (o.onProgress) o.onProgress('Fertig', 1);
+        return { items, stopped, neu, fehler };
+      } finally { Import.Alles.busy = false; }
+    },
+    /** Still im Hintergrund (Einstellung „Beim Öffnen automatisch abgleichen“, Vorgabe aus): höchstens einmal je 24 Stunden, nur mit Verbindung,
+        nie während einer Aufzeichnung (läuft eine an, hört der Abgleich an der nächsten Stelle auf). Gibt das Ergebnis zurück oder null, wenn nichts zu tun war. */
+    async auto() {
+      if (!Set_.get('autoAbgleich') || Import.Alles.busy) return null;
+      const qs = await Import.Alles.quellen(), st = (await DB.kvGet('abgleich', null)) || {};
+      if (!Abgleich.faellig({ an: true, quellen: qs.length, live: Home.live(), last: st.t, lastTry: st.versuch, now: Date.now() })) return null;
+      let lv = false, at = 0;
+      const stop = () => { const n = Date.now(); if (n - at > 5000) { at = n; lv = Home.live(); } return lv; };      // die Brücke nicht bei jeder Tour fragen
+      const r = await Import.Alles.run({ stop });
+      return r;
+    },
+  },
+
   /* ---------------- überwachter Ordner (Garmin-Sync, Syncthing, Cloud-Ordner …) ---------------- */
   async scanFolders(onProgress) {
     const folders = await DB.kvGet('trackFolders', []);

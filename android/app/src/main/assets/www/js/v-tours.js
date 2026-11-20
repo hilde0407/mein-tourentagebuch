@@ -1,5 +1,5 @@
 'use strict';
-const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '', region: '' } };
+const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '', region: '', stars: '' } };
 
 /** Umriss der Strecke als kleines Bild. `box` setzt die Größe (Vorgabe: Kachel in der Liste). */
 function previewSvg(pts, color, box) {
@@ -95,6 +95,7 @@ Views['/'] = async root => {
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
   const regSel = h('select', { 'aria-label': 'Region', onchange: e => { F_.region = e.target.value; draw(); } });
   const regFld = h('label', { class: 'fld' }, 'Region', regSel);
+  const starSel = h('select', { 'aria-label': 'Bewertung', id: 'filterstars', onchange: e => { F_.stars = e.target.value; draw(); } }, [['', 'Alle'], ['3', 'ab 3 Sternen'], ['4', 'ab 4 Sternen'], ['5', '5 Sterne']].map(([v, l]) => h('option', { value: v, selected: String(F_.stars) === v }, l)));
   const fbtn = h('button', { class: 'btn sm fbtn', id: 'filterbtn', onclick: filterSheet });
   const fillRegions = () => {
     const n = {}; all.forEach(t => { const r = Reisen.regionOf(t, cells); if (r) n[r] = (n[r] || 0) + 1; });
@@ -102,10 +103,10 @@ Views['/'] = async root => {
     regSel.hidden = regFld.hidden = Object.keys(n).length < 2;
   };
   function filterSheet() {
-    const s = sheet('Filter', h('div', null, h('label', { class: 'fld' }, 'Jahr', yearSel), regFld,
+    const s = sheet('Filter', h('div', null, h('label', { class: 'fld' }, 'Jahr', yearSel), regFld, h('label', { class: 'fld' }, 'Bewertung', starSel),
       regSel.hidden ? h('p', { class: 'muted small' }, 'Regionen erscheinen hier, sobald Touren in mindestens zwei Gebieten liegen.') : null,
       h('div', { class: 'row end' },
-        h('button', { class: 'btn', onclick: () => { F_.year = ''; F_.region = ''; yearSel.value = ''; regSel.value = ''; draw(); } }, 'Zurücksetzen'),
+        h('button', { class: 'btn', onclick: () => { F_.year = ''; F_.region = ''; F_.stars = ''; yearSel.value = ''; regSel.value = ''; starSel.value = ''; draw(); } }, 'Zurücksetzen'),
         h('button', { class: 'btn pri', id: 'filterok', onclick: () => s.close() }, 'Fertig'))));
   }
   function addMenu() {
@@ -122,12 +123,12 @@ Views['/'] = async root => {
     chip('Geplant', F_.planned, () => { F_.planned = !F_.planned; draw(); });
     const used = [...new Set(all.map(t => t.sport))];
     Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[1], F_.sport === s[0], () => { F_.sport = F_.sport === s[0] ? '' : s[0]; draw(); }));
-    const nf = (F_.year ? 1 : 0) + (F_.region ? 1 : 0);
+    const nf = (F_.year ? 1 : 0) + (F_.region ? 1 : 0) + (F_.stars ? 1 : 0);
     fbtn.innerHTML = Ico.svg('filter') + '<span>Filter</span>' + (nf ? '<i>' + nf + '</i>' : '');
     fbtn.setAttribute('aria-label', nf ? 'Filter, ' + nf + ' gesetzt' : 'Filter');
     const ql = F_.q.trim().toLowerCase();
     const ts = all.filter(t => (F_.planned ? t.status === 'planned' : t.status !== 'planned') && (!F_.sport || t.sport === F_.sport) && (!F_.fav || t.fav)
-      && (!F_.year || String(new Date(t.start).getFullYear()) === String(F_.year)) && (!F_.region || Reisen.regionOf(t, cells) === F_.region) && (!ql || (t.name + ' ' + (t.note || '') + ' ' + Sports.label(t.sport)).toLowerCase().includes(ql)));
+      && (!F_.year || String(new Date(t.start).getFullYear()) === String(F_.year)) && (!F_.region || Reisen.regionOf(t, cells) === F_.region) && (!F_.stars || Abgleich.sterne(t) >= +F_.stars) && (!ql || (t.name + ' ' + (t.note || '') + ' ' + Sports.label(t.sport)).toLowerCase().includes(ql)));
     list.innerHTML = '';
     const d = ts.reduce((a, t) => a + t.dist, 0), u = ts.reduce((a, t) => a + (t.up || 0), 0);
     sum.textContent = ts.length ? `${ts.length} ${ts.length === 1 ? 'Tour' : 'Touren'} · ${F.km(d)} · ↑ ${F.m(u)}` : '';
@@ -135,7 +136,7 @@ Views['/'] = async root => {
       if (!all.length) list.append(welcomeHero());
       else if (F_.planned && !ql && !F_.sport && !F_.fav && !nf) list.append(UI.empty({ icon: 'route', title: 'Noch keine geplante Tour', text: 'Zeichne eine Route auf der Karte. Sie lässt sich später mit Ansagen nachgehen.', actions: [h('a', { class: 'btn pri', href: '#/plan' }, 'Tour planen')] }));
       else list.append(UI.empty({ icon: 'search', title: 'Keine Tour gefunden', text: 'Zu dieser Suche und diesen Filtern passt keine Tour.',
-        actions: [h('button', { class: 'btn', onclick: () => { Object.assign(F_, { q: '', sport: '', fav: false, planned: false, year: '', region: '' }); q.value = ''; yearSel.value = ''; regSel.value = ''; draw(); } }, 'Suche und Filter zurücksetzen')] }));
+        actions: [h('button', { class: 'btn', onclick: () => { Object.assign(F_, { q: '', sport: '', fav: false, planned: false, year: '', region: '', stars: '' }); q.value = ''; yearSel.value = ''; regSel.value = ''; starSel.value = ''; draw(); } }, 'Suche und Filter zurücksetzen')] }));
       return;
     }
     const groups = []; let g = null;
@@ -189,13 +190,27 @@ Views['/tour'] = async (root, [id]) => {
 
   /** Zahlen aus „Meine Touren“ (2.1.0), als leiser Satz unter den Angaben: Sind sie maßgeblich, steht die eigene Rechnung aus der Spur daneben – sonst nur, was Meine Touren nennt. */
   function mtInfo() {
-    if (t.upMt == null && t.distMt == null && !t.starsMt) return null;
+    if (t.upMt == null && t.distMt == null) return null;
     const z = (up, dist) => [dist ? F.km(dist) : null, up != null ? '↑ ' + F.m(up) : null].filter(Boolean).join(' · ');
     const st = t.zMt ? Geo.stats(pts) : null, o = [];
     if (t.zMt) o.push('Strecke und Aufstieg stammen aus Meine Touren. Eigene Rechnung aus der Spur: ' + (z(Hoehe.brauchbar(st.nEle) ? st.up : null, st.dist) || '–') + '.');
     else if (t.upMt != null || t.distMt) o.push('Meine Touren nennt ' + z(t.upMt, t.distMt) + '.');
-    if (t.starsMt) o.push('Bewertung in Meine Touren: ' + t.starsMt + ' von 5 Sternen.');
     return h('p', { class: 'muted small', id: 'mtinfo' }, o.join(' '));
+  }
+  /** Eigene Bewertung (2.2.0): fünf Sterne zum Antippen; derselbe Stern noch einmal nimmt sie zurück. Aus Meine Touren übernommene Sterne stehen hier ebenfalls
+      (kein zweiter Satz mehr) – bis man sie in der App von Hand ändert. Tinte statt Gelb: Gelb gehört der Hauptaktion der Seite. */
+  function rateBox() {
+    const wrap = h('div', { class: 'rate', id: 'rate', role: 'radiogroup', 'aria-label': 'Deine Bewertung' }), cap = h('small', { class: 'muted', id: 'ratecap', 'aria-live': 'polite' });
+    const draw = () => {
+      const n = Abgleich.sterne(t);
+      wrap.innerHTML = '';
+      for (let i = 1; i <= 5; i++) wrap.append(h('button', { class: 'star' + (i <= n ? ' on' : ''), role: 'radio', 'aria-checked': i === n ? 'true' : 'false', 'aria-label': i + (i === 1 ? ' Stern' : ' Sterne'), 'data-n': i,
+        html: Ico.svg(i <= n ? 'star' : 'staro', 26), onclick: async () => { Abgleich.sterneSetzen(t, i); await Tours.save(t); draw(); } }));
+      cap.textContent = n ? n + ' von 5' + (!t.starsMan && t.starsMt ? ' · aus Meine Touren' : '') : 'Noch nicht bewertet';
+      wrap.append(cap);
+    };
+    draw();
+    return wrap;
   }
   // Die drei wichtigsten Zahlen groß, alles Weitere leise darunter
   const main = UI.figs([[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']], { big: true, cls: 'tmain' });
@@ -232,7 +247,7 @@ Views['/tour'] = async (root, [id]) => {
     Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
-    main, more, mtInfo(),
+    t.status === 'planned' ? null : rateBox(), main, more, mtInfo(),
     ranBy ? h('a', { class: 'banner', id: 'ranby', href: '#/tour/' + ranBy.id }, 'Gelaufen am ' + F.date(ranBy.start) + ': ' + ranBy.name) : null,
     ...helpPlan,
     UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,

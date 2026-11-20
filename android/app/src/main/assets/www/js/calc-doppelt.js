@@ -69,6 +69,7 @@
       Von drop kommen dazu: Notiz, Pins, Schlagworte, Favorit, Plan-Verknüpfung, der von Hand vergebene Name (wenn keep nur einen erzeugten hat)
       und die Zuordnungen (Kennungen der Quellen als alias, Komoot-Nummer, Meine-Touren-Kennung mit ihren Werten) – damit ein späterer Import die gelöschte
       Tour nicht wieder anlegt. opts: handKeep / handDrop (Name von Hand vergeben?). Fotos und Puls bewegt der Aufrufer. */
+  const AB = () => (typeof module !== 'undefined' && module.exports ? require('./calc-abgleich.js') : root.Abgleich);
   function zusammen(keep, drop, opts) {
     opts = opts || {};
     const t = Object.assign({}, keep);
@@ -99,7 +100,8 @@
       }
     }
     if (t.starsMt == null && drop.starsMt != null) t.starsMt = drop.starsMt;
-    return t;
+    if (t.sportMt == null && drop.sportMt != null && t.mtId) t.sportMt = drop.sportMt;
+    return AB().sterneZusammen(keep, drop, t);      // eigene Bewertung (2.2.0): von Hand gesetzte gilt, sonst die vorhandene
   }
 
   const api = { grund, wert, hat, paare, zusammen, key, ende };
