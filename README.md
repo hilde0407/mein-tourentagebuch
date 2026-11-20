@@ -5,7 +5,7 @@ Eigenständige Android-App: Touren, Fotos, Aufzeichnung, Planung und Routing –
 ![Startseite, Tourenliste, Tour und Aufzeichnung](docs/bilder/2.0/ueberblick.png)
 
 ## Bedienung
-Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das laufende Jahr), **Touren** (Liste und Karte), **Aufnehmen**, **Fotos**, **Mehr** (Tour planen, Reisen & Alben, Statistik, Import, Foto-Quellen, Einstellungen & Sicherung). Was sich mit 2.0 geändert hat: [docs/versionen/2.0.0.md](docs/versionen/2.0.0.md).
+Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das laufende Jahr), **Touren** (Liste und Karte), **Aufnehmen**, **Fotos**, **Mehr** (Tour planen, Reisen & Alben, Statistik, Import, Foto-Quellen, Einstellungen & Sicherung). Was sich mit 2.0 geändert hat: [docs/versionen/2.0.0.md](docs/versionen/2.0.0.md). Aufstieg wie in „Meine Touren“ (2.0.1): [docs/versionen/2.0.1.md](docs/versionen/2.0.1.md).
 
 ## Funktionen
 - **Start**: die letzte Tour groß, die drei Hauptaktionen, „Dieses Jahr“ mit Zielen, letzte Touren, „An diesem Tag“; Hinweis, wenn die Sicherung fällig ist. Welche Bausteine erscheinen, steht unter Einstellungen → Startseite (Wochen-Serie und Fitness lassen sich einschalten).

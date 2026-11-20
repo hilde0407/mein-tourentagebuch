@@ -435,7 +435,6 @@ def main():
         pg.locator("#rstop").scroll_into_view_if_needed(); bb = pg.locator("#rstop").bounding_box()
         pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down(); pg.wait_for_timeout(300); pg.mouse.up(); pg.wait_for_timeout(300)
         assert pg.evaluate("__rec.state") == "recording", "kurzer Druck darf nicht beenden"
-        pg.evaluate("window.__gpx = arguments[0]", None) if False else None
         pg.evaluate("g => { window.__gpx = g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
         pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down()
         pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); pg.mouse.up()
@@ -547,20 +546,111 @@ def main():
         pg.get_by_text("Südtirol 2025").first.click(); pg.wait_for_selector("text=Reisetour 3"); assert "Tage" in pg.inner_text("#view") and pg.locator(".map path").count() >= 1
         pg.evaluate("location.hash='#/reisen'"); pg.wait_for_selector(".seg"); pg.locator("a.li", has_text="Reise 10.").first.click(); pg.wait_for_selector("text=Als Album speichern")
 
-        # Komoot: Auf-/Abstieg wie bei Komoot übernehmen (neue Touren und schon vorhandene)
+        # Komoot: der Wert von Komoot wird nicht mehr übernommen, sondern nur aufbewahrt (neue und schon vorhandene Touren); der Aufstieg kommt aus der eigenen Rechnung
         ko = pg.evaluate("""async () => {
           const base = 1730000000000;
-          const mk = (i) => Array.from({ length: 20 }, (_, k) => ({ lat: 48 + i * 0.1 + k * 0.0004, lon: 12 + k * 0.0003, alt: 500 + (k % 2) * 10, t: k * 20000 }));
+          const mk = (i) => Array.from({ length: 20 }, (_, k) => ({ lat: 48 + i * 0.1 + k * 0.0004, lon: 12 + k * 0.0003, alt: 500 + k * 3, t: k * 20000 }));
           await Tours.add({ name: 'K alt', sport: 'hike', pts: mk(1).map(c => ({ lat: c.lat, lon: c.lon, ele: c.alt, t: base + c.t })), src: 'komoot', srcId: 'komoot:555', start: base });
           Import.Komoot.tours = async () => [{ id: 555, name: 'K alt', sport: 'hike', date: new Date(base).toISOString(), elevation_up: 4321, elevation_down: 4000 },
-                                               { id: 556, name: 'K neu', sport: 'hike', date: new Date(base + 86400000 * 3).toISOString(), elevation_up: 777, elevation_down: 700 }];
-          Import.Komoot.coords = async (acc, id) => mk(2).map(c => ({ lat: c.lat + (id === 556 ? 0.5 : 0), lng: c.lon, alt: c.alt, t: c.t }));
+                                               { id: 556, name: 'K neu', sport: 'hike', date: new Date(base + 86400000 * 3).toISOString(), elevation_up: 777, elevation_down: 700 },
+                                               { id: 557, name: 'K ohne Höhe', sport: 'hike', date: new Date(base + 86400000 * 6).toISOString(), elevation_up: 612, elevation_down: 600 }];
+          Import.Komoot.coords = async (acc, id) => mk(2).map(c => ({ lat: c.lat + (id === 556 ? 0.5 : id === 557 ? 1 : 0), lng: c.lon, alt: id === 557 ? null : c.alt, t: c.t }));
           const r = await Import.Komoot.importAll({ user: 'u', token: 't' }, { planned: false }, null);
           const l = await Tours.list();
-          const a = l.find(t => t.srcId === 'komoot:555'), b = l.find(t => t.srcId === 'komoot:556');
-          return { r, a: [a.up, a.down, a.upSrc], b: b ? [b.up, b.down, b.upSrc] : null };
+          const g = s => l.find(t => t.srcId === s), a = g('komoot:555'), b = g('komoot:556'), c = g('komoot:557');
+          const own = Geo.stats(mk(2).map(q => ({ lat: q.lat, lon: q.lon, ele: q.alt, t: q.t }))).up;
+          return { r, own, a: [a.up, a.down, a.upSrc, a.upKomoot, a.downKomoot], b: [b.up, b.upSrc, b.upKomoot, b.downKomoot], c: [c.up, c.down, c.upSrc, c.upKomoot], txt: Import.describe(r), calcV: a.calcV };
         }""")
-        assert ko["a"] == [4321, 4000, "komoot"] and ko["b"] == [777, 700, "komoot"] and ko["r"]["up"] == 1, ko
+        assert ko["own"] > 40 and ko["a"][0] == ko["own"] and ko["a"][2] is None and ko["a"][3] == 4321 and ko["a"][4] == 4000 and ko["calcV"] == 2, ko      # vorhandene Tour: eigene Rechnung, Komoot-Wert nur aufbewahrt
+        assert ko["b"] == [ko["own"], None, 777, 700], ko      # neue Tour genauso
+        assert ko["c"] == [612, 600, "komoot", 612], ko      # ohne Höhen in der Spur: Komoot-Wert als Ersatz
+        assert "Komoot übernommen" not in ko["txt"] and "up" not in ko["r"], ko
+        kid = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'komoot:555').id)")
+        pg.evaluate("id => { location.hash = '#/tour/' + id }", kid); pg.wait_for_selector(".tourp .facts"); assert "Komoot nennt" in pg.inner_text(".tourp .facts") and "4.321 m" in pg.inner_text(".tourp .facts"), pg.inner_text(".tourp .facts")
+        pg.evaluate("location.hash = '#/start'")
+        pg.evaluate("async () => { for (const t of await Tours.list()) if (/^K (alt|neu|ohne)/.test(t.name)) await Tours.remove(t.id); }")
+
+        # Einmalige Neuberechnung (Version 2.0.1): alte Werte bleiben als upAlt, Touren ohne Höhen bleiben, Zepp „Spazieren“ → Wandern, zweiter Lauf tut nichts
+        mg = pg.evaluate("""async () => {
+          const N = 40, base = Date.UTC(2026, 4, 3, 8), noisy = (o, up) => Array.from({ length: N }, (_, k) => ({ lat: 47 + o + k * 0.0004, lon: 11 + k * 0.0003, ele: k === 7 ? -20000 : 600 + k * 2 + (k % 3) * 2.5 + (up || 0), t: base + k * 20000 }));
+          const put = async (id, o, pts) => {
+            const t = Object.assign({ id, name: id, sport: 'hike', status: 'done', start: base, end: base + N * 20000, dur: 780, moving: 700, dist: 500, up: 31, down: 5, maxAlt: 700, minAlt: 600, lat: 47, lon: 11, src: 'file', srcId: '', note: '', fav: false, hidden: false, timed: true, created: 1 }, o);
+            await DB.put('tours', t);
+            await DB.put('tracks', { id, lat: pts.map(p => p.lat), lon: pts.map(p => p.lon), ele: pts.map(p => p.ele), t: pts.map(p => p.t), seg: pts.map(() => 0) });
+          };
+          const mkpts = noisy(0.3);
+          await put('mgA', { up: 9999, down: 8888, src: 'komoot', srcId: 'komoot:1', upSrc: 'komoot' }, mkpts);
+          await put('mgB', { up: 123, down: 45 }, mkpts.map(p => Object.assign({}, p, { ele: null })));
+          await put('mgC', { up: 888, down: 7, status: 'planned' }, noisy(0.35));
+          await put('mgD', { sport: 'walk', src: 'zepp', srcId: 'zepp:1' }, noisy(0.4));
+          await put('mgE', { sport: 'walk', src: 'zepp', srcId: 'zepp:2', sportMan: 1 }, noisy(0.45));
+          await put('mgF', { sport: 'walk', src: 'file' }, noisy(0.5));
+          await put('mgG', { sport: 'run', src: 'zepp', srcId: 'zepp:3' }, noisy(0.55));
+          await put('mgH', { up: 500, down: 400, upKomoot: 500, downKomoot: 400, upSrc: 'komoot', src: 'komoot', srcId: 'komoot:2' }, mkpts.slice(0, 4));      // zu wenige Höhenpunkte: Komoot-Wert bleibt Ersatz
+          const own = Geo.stats(mkpts), ids = ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH'];
+          await DB.kvSet('calcVer', 0); await DB.kvSet('calcNote', null);
+          let ui = 0; const iv = setInterval(() => ui++, 5);      // Oberfläche bleibt zwischen den Portionen ansprechbar
+          const t0 = performance.now(); const r1 = await Tours.migrate({ batch: 2 }); const ms = performance.now() - t0; clearInterval(iv);
+          const get = async id => DB.get('tours', id);
+          const T = {}; for (const id of ids) T[id] = await get(id);
+          const r2 = await Tours.migrate({ batch: 2 });
+          const T2 = {}; for (const id of ids) T2[id] = await get(id);
+          const note = await DB.kvGet('calcNote', null), ver = await DB.kvGet('calcVer', 0);
+          // wiederaufnehmbar: Merker zurück, eine Tour von Hand verändert (calcV 2): wird übersprungen, die anderen sind unverändert
+          await DB.kvSet('calcVer', 0); const x = await get('mgF'); x.up = 4242; await DB.put('tours', x); const r3 = await Tours.migrate();
+          const keep = (await get('mgF')).up;
+          return { own: [own.up, own.down], r1, r2, r3, T, same: ids.every(id => JSON.stringify(T[id]) === JSON.stringify(T2[id])), note, ver, ms, ui, keep };
+        }""")
+        T = mg["T"]; ou, od = mg["own"]
+        assert 20 < ou < 80 and mg["r1"]["fail"] == 0 and mg["r1"]["n"] >= 8 and mg["r1"]["sport"] == 1, mg
+        assert abs(T["mgA"]["up"] - ou) < 0.01 and abs(T["mgA"]["down"] - od) < 0.01 and T["mgA"]["upAlt"] == 9999 and T["mgA"]["downAlt"] == 8888 and T["mgA"]["upKomoot"] == 9999 and "upSrc" not in T["mgA"], T["mgA"]      # alter Komoot-Wert bleibt als Zusatz
+        assert T["mgB"]["up"] == 123 and T["mgB"]["down"] == 45 and "upAlt" not in T["mgB"] and T["mgB"]["calcV"] == 2, T["mgB"]      # ohne Höhen: unverändert
+        assert T["mgC"]["status"] == "planned" and T["mgC"]["upAlt"] == 888 and T["mgC"]["up"] != 888, T["mgC"]      # geplante Tour nach derselben Regel
+        assert T["mgD"]["sport"] == "hike" and T["mgD"]["sportAlt"] == "walk", T["mgD"]
+        assert T["mgE"]["sport"] == "walk" and T["mgF"]["sport"] == "walk" and T["mgG"]["sport"] == "run", [T["mgE"]["sport"], T["mgF"]["sport"], T["mgG"]["sport"]]      # von Hand gewählt, andere Quelle, Laufen: nicht angefasst
+        assert T["mgH"]["up"] == 500 and T["mgH"]["upSrc"] == "komoot", T["mgH"]
+        assert mg["r2"] is None and mg["same"] and mg["ver"] == 2, mg      # zweiter Lauf tut nichts
+        assert mg["note"] == {"up": mg["r1"]["up"], "sport": 1} and mg["r1"]["up"] >= 4, mg
+        assert mg["r3"]["n"] == 0 and mg["keep"] == 4242, mg      # Touren mit calcV 2 werden übersprungen
+        print("Migration:", round(mg["ms"]), "ms für 8 Touren, Oberfläche-Ticks:", mg["ui"])
+        # Der Hinweis auf der Startseite erscheint einmal und lässt sich schließen
+        pg.evaluate("location.hash = '#/'"); pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#calcnote")
+        nt = pg.inner_text("#calcnote"); assert "Aufstieg neu berechnet – gleiche Rechnung wie in Meine Touren" in nt and "Zepp-Tour" in nt and "Spazieren" in nt, nt
+        pg.click("#calc-ok"); pg.wait_for_selector("#calcnote", state="detached"); assert pg.evaluate("DB.kvGet('calcNote', 'x')") is None
+        # Sicherung hin und zurück: neue Felder gehen mit, calcVer/calcNote nicht; alte Sicherung (ohne calcV) wird nach dem Einspielen neu gerechnet
+        bk = pg.evaluate("""async () => {
+          const data = await Backup.collect(); const a = data.tours.find(t => t.id === 'mgA');
+          const kvk = data.kv.map(k => k.k);
+          const old = JSON.parse(JSON.stringify(data)); old.tours.forEach(t => { if (t.id.startsWith('mg')) { delete t.calcV; delete t.upAlt; delete t.downAlt; } });
+          const oa = old.tours.find(t => t.id === 'mgA'); oa.up = 7777; oa.down = 6666; oa.upKomoot = undefined; delete oa.upKomoot; delete oa.downKomoot; oa.upSrc = 'komoot';
+          for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) { await Tours.remove(id); }
+          await Backup.apply(Backup.parse(fflate.gzipSync(new TextEncoder().encode(JSON.stringify(old)))));
+          for (let i = 0; i < 100 && (await DB.kvGet('calcVer', 0)) < 2; i++) await new Promise(r => setTimeout(r, 50));
+          const b = await DB.get('tours', 'mgA');
+          return { fields: [a.upAlt, a.upKomoot, a.calcV], kvk, up: b.up, upAlt: b.upAlt, upKomoot: b.upKomoot, sport: (await DB.get('tours', 'mgD')).sport, ver: await DB.kvGet('calcVer', 0) };
+        }""")
+        assert bk["fields"] == [9999, 9999, 2] and "calcVer" not in bk["kvk"] and "calcNote" not in bk["kvk"], bk
+        assert bk["ver"] == 2 and bk["upAlt"] == 7777 and bk["upKomoot"] == 7777 and abs(bk["up"] - ou) < 0.01 and bk["sport"] == "hike", bk
+        pg.evaluate("async () => { for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) await Tours.remove(id); await DB.kvSet('calcNote', null); }")
+
+        # Laufzeit: 800 Touren mit je 3000 Punkten neu rechnen (Messung im Browser; auf dem Handy etwa 3–10 mal langsamer)
+        lz = pg.evaluate("""async () => {
+          const ids = [];
+          for (let i = 0; i < 800; i++) {
+            const id = 'lz' + i, n = 3000;
+            await DB.put('tours', { id, name: id, sport: 'hike', status: 'done', start: 1, up: 1, down: 1, src: 'file', srcId: '', hidden: false });
+            await DB.put('tracks', { id, lat: Array.from({ length: n }, (_, k) => 47 + k * 1e-5), lon: Array.from({ length: n }, (_, k) => 11 + k * 1e-5), ele: Array.from({ length: n }, (_, k) => 800 + 300 * Math.sin(k / 150) + (k * 7 % 5)), t: Array.from({ length: n }, (_, k) => 1e12 + k * 5000), seg: Array.from({ length: n }, () => 0) });
+            ids.push(id);
+          }
+          await DB.kvSet('calcVer', 0);
+          const t0 = performance.now(); const r = await Tours.migrate(); const ms = performance.now() - t0;
+          const one = await DB.get('tours', 'lz5');
+          for (const id of ids) await Tours.remove(id);
+          await DB.kvSet('calcNote', null);
+          return { ms, up: r.up, n: r.n, one: one.up };
+        }""")
+        assert lz["n"] >= 800 and lz["up"] == 800 and lz["one"] > 1000, lz
+        print("Laufzeit Neuberechnung 800 Touren x 3000 Punkte:", round(lz["ms"] / 1000, 1), "s")
 
         # Zepp per Token: schlechte Eingabe abgelehnt, gutes Token geprüft (Server vorgetäuscht) und gemerkt, Sheet zeigt Abmelden
         pg.evaluate("location.hash='#/import'"); pg.wait_for_selector(".list")

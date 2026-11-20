@@ -264,4 +264,14 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(Geo.stats(pts.map(p => ({ lat: p.lat, lon: p.lon, ele: null, t: p.t }))).nEle === 0, 'ohne Höhen');
 })();
 
+// Zepp-Typen: Gehen (6, 7) und 22 zählen als Wandern, Laufen (1, 8) bleibt getrennt
+(() => {
+  const src = require('fs').readFileSync(W + 'import.js', 'utf8'), m = src.match(/const types = (\{[^}]*\})/);
+  ok(!!m, 'Zepp-Typtabelle gefunden');
+  const t = eval('(' + m[1] + ')');
+  for (const k of [6, 7, 13, 15, 22]) ok(t[k] === 'hike', 'Typ ' + k + ' → Wandern');
+  for (const k of [1, 8]) ok(t[k] === 'run', 'Typ ' + k + ' → Laufen');
+  ok(t[9] === 'bike' && t[14] === 'ski', 'Rad und Ski unverändert');
+})();
+
 console.log('OK (' + n + ' Prüfungen)');
