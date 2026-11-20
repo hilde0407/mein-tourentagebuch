@@ -120,7 +120,13 @@ Views['/jahr'] = async (root, [param]) => {
     catch (e) { console.error('Jahr: Teilen', e); toast('Das Bild konnte nicht erstellt werden: ' + (e && e.message || e), 6000); }
     finally { btn.disabled = false; label.textContent = 'Als Bild teilen'; }
   };
-  body.append(UI.section('Teilen', [h('p', { class: 'muted' }, 'Eine Karte mit den wichtigsten Zahlen deines Jahres als Bild – ohne Tournamen und Orte.'), btn], { id: 'jahr-teilen-sec', cls: 'jahr-share' }));
+  // 2.5.0: das ganze Jahr als PDF (Deckblatt, eine Zeile je Tour); die Fotos je Tour sind abschaltbar, weil sie die Datei groß machen
+  let pdfFotos = false;
+  const pdfBtn = h('button', { class: 'btn', id: 'jahr-pdf', html: Ico.svg('file') + '<span>Als PDF</span>' });
+  pdfBtn.onclick = async () => { pdfBtn.disabled = true; try { await PdfUI.jahr(d, all, { mitFotos: pdfFotos }); } finally { pdfBtn.disabled = false; } };
+  body.append(UI.section('Teilen', [h('p', { class: 'muted' }, 'Eine Karte mit den wichtigsten Zahlen deines Jahres als Bild – ohne Tournamen und Orte.'), btn,
+    h('p', { class: 'muted jahr-pdf-t' }, 'Oder das ganze Jahr als PDF zum Aufheben: ein Deckblatt mit den Zahlen, dann eine Zeile je Tour mit Datum, Name, Strecke und Aufstieg.'), pdfBtn,
+    UI.toggle('Mit Foto je Tour (größere Datei)', false, v => { pdfFotos = !!v; }, { id: 'jahr-pdf-fotos' })], { id: 'jahr-teilen-sec', cls: 'jahr-share' }));
 };
 
 /* ---- Bildkarte zum Teilen: 1080 × 1350, hell, ruhig (Papier, Tinte, Petrol). Zeichnet auf ein Canvas, keine Bibliothek. ---- */

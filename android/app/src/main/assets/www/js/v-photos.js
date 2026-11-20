@@ -58,7 +58,7 @@ const PhotoSources = {
   async progress(title, fn, opts) {
     const bar = h('div', { class: 'prog' }, h('i')), txt = h('p', null, 'Bitte warten …');
     const stopBtn = opts && opts.cancel ? h('button', { class: 'btn', id: 'prog-stop', onclick: e => { e.currentTarget.disabled = true; e.currentTarget.textContent = 'Wird abgebrochen …'; opts.cancel(); } }, 'Abbrechen') : null;
-    const s = sheet(title, h('div', null, txt, bar, h('p', { class: 'muted small' }, 'Du kannst die App währenddessen verlassen – der Vorgang läuft im Hintergrund weiter (siehe Benachrichtigung).'),
+    const s = sheet(title, h('div', null, txt, bar, h('p', { class: 'muted small' }, opts && opts.note != null ? opts.note : 'Du kannst die App währenddessen verlassen – der Vorgang läuft im Hintergrund weiter (siehe Benachrichtigung).'),
       stopBtn ? h('div', { class: 'row end' }, stopBtn) : null));
     let last = 0, lastText = '';
     appSync('bgStart', title, 'Wird gestartet …', 0, 0);

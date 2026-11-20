@@ -475,6 +475,8 @@ button.cd{cursor:pointer;font-weight:700}
 .jmon thead th{color:var(--muted);font-size:.84rem}
 .jcol{display:grid;gap:8px;margin:10px 0 0}.jcol img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--r-s);display:block;background:var(--soft)}
 .jahr-share .btn{width:100%;min-height:52px}
+.jahr-pdf-t{margin-top:24px}
+.jahr-share .jahr-pdf-t+.btn{margin-top:4px}
 .jahr-hoch .btn{width:100%}
 
 /* ---------- Wanderführer (2.4.0) ---------- */
