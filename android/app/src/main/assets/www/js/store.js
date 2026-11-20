@@ -61,7 +61,8 @@ const Tours = {
       (Tour.calcV = 2 nach der Bearbeitung), idempotent; ein Fehler bei einer Tour bricht den Rest nicht ab. Gibt {up, sport, n} zurück oder null, wenn nichts zu tun war. */
   async migrate(opts) {
     opts = opts || {};
-    if ((await DB.kvGet('calcVer', 0)) >= Tours.CALC) return null;
+    const pos = await Tours.repairPos().catch(e => { console.error('Spur-Reparatur', e); return 0; });
+    if ((await DB.kvGet('calcVer', 0)) >= Tours.CALC) return pos ? { up: 0, sport: 0, n: 0, fail: 0, pos } : null;
     const ids = (await DB.all('tours')).filter(t => (t.calcV || 0) < Tours.CALC).map(t => t.id);
     const res = { up: 0, sport: 0, n: ids.length, fail: 0 };
     for (let i = 0; i < ids.length; i += (opts.batch || 8)) {
@@ -91,9 +92,41 @@ const Tours = {
       await new Promise(r => setTimeout(r, 0));
     }
     await DB.kvSet('calcVer', Tours.CALC);
-    if (res.up || res.sport) await DB.kvSet('calcNote', { up: res.up, sport: res.sport });
+    if (res.up || res.sport) await DB.kvSet('calcNote', Object.assign({}, await DB.kvGet('calcNote', null), { up: res.up, sport: res.sport }));
     Tours.invalidate();
+    res.pos = pos;
     return res;
+  },
+  POS: 1,       // Version der Spur-Reparatur (kv „posVer“)
+  /** 2.0.2: Spuren aus FIT-Dateien berichtigen. Bis 2.0.1 las der FIT-Leser Breite/Länge ohne Vorzeichen: westliche Längen (z. B. Kanaren −15,6°)
+      standen als 344,4° in der Spur, Punkte ohne Position als 180°/180° (das ergab Sprünge von tausenden Kilometern). Betroffene Touren erkennt man
+      an der gespeicherten Lage (lon > 180 oder lat > 90); nur deren Spuren werden gelesen. Gibt die Zahl berichtigter Touren zurück. */
+  async repairPos() {
+    if ((await DB.kvGet('posVer', 0)) >= Tours.POS) return 0;
+    const bad = (await DB.all('tours')).filter(t => t.lon > 180 || t.lat > 90 || (t.bbox && (t.bbox[3] > 180 || t.bbox[2] > 90)));
+    let n = 0;
+    for (const t0 of bad) {
+      try {
+        const trk = await DB.get('tracks', t0.id);
+        if (!trk || !trk.lat || !trk.lat.length) continue;
+        const len = trk.lat.length, keep = [];
+        for (let k = 0; k < len; k++) if (Math.abs(trk.lat[k]) <= 90 && trk.lon[k] <= 360 && !(trk.lat[k] === 180 || trk.lon[k] === 180)) keep.push(k);
+        if (keep.length < 2) continue;
+        const cut = o => { for (const key of Object.keys(o)) { const a = o[key]; if (Array.isArray(a) && a.length === len) o[key] = keep.map(k => a[k]); else if (a && typeof a === 'object' && !Array.isArray(a)) cut(a); } };
+        if (keep.length < len) cut(trk);
+        const west = o => { for (const key of Object.keys(o)) { const a = o[key]; if (key === 'lon' && Array.isArray(a)) o[key] = a.map(x => (x > 180 ? x - 360 : x)); else if (a && typeof a === 'object' && !Array.isArray(a)) west(a); } };
+        west(trk);
+        await DB.put('tracks', trk);
+        const t = await DB.get('tours', t0.id), pts = await Tours.points(t0.id), st = Geo.stats(pts);
+        if (!t) continue;
+        Object.assign(t, { dist: st.dist, dur: st.dur, moving: st.moving, maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: Geo.bbox(pts) }, Tours.hrSummary(pts));
+        Tours.applyHoehe(t, st);
+        await DB.put('tours', t); n++;
+      } catch (e) { console.error('Spur-Reparatur', t0.id, e); }
+    }
+    await DB.kvSet('posVer', Tours.POS);
+    if (n) { await DB.kvSet('calcNote', Object.assign({}, await DB.kvGet('calcNote', null), { pos: n })); Tours.invalidate(); }
+    return n;
   },
   async points(id) {
     const r = await DB.get('tracks', id);

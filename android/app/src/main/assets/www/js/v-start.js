@@ -76,6 +76,8 @@ Home.add('calcnote', 11, async () => {
   const parts = [];
   if (n.up) parts.push('Aufstieg neu berechnet – gleiche Rechnung wie in Meine Touren. ' + n.up + (n.up === 1 ? ' Tour' : ' Touren') + ' geändert.');
   if (n.sport) parts.push(n.sport + (n.sport === 1 ? ' Zepp-Tour' : ' Zepp-Touren') + ' „Spazieren“ zählt jetzt als Wandern.');
+  if (n.pos) parts.push(n.pos + (n.pos === 1 ? ' Tour' : ' Touren') + ' aus FIT-Dateien: Lage der Spur berichtigt (westliche Länge), Strecke neu berechnet.');
+  if (!parts.length) return null;
   const box = UI.banner(parts.map(x => h('div', null, x)), [h('button', { class: 'btn sm', id: 'calc-ok', onclick: async () => { await DB.kvSet('calcNote', null); box.remove(); } }, 'Verstanden')], { id: 'calcnote' });
   return box;
 });

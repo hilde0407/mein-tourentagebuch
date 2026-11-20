@@ -633,6 +633,28 @@ def main():
         assert bk["ver"] == 2 and bk["upAlt"] == 7777 and bk["upKomoot"] == 7777 and abs(bk["up"] - ou) < 0.01 and bk["sport"] == "hike", bk
         pg.evaluate("async () => { for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) await Tours.remove(id); await DB.kvSet('calcNote', null); }")
 
+        # 2.0.2: Spur aus einer FIT-Datei mit vorzeichenlos gelesener Länge (344,4° statt −15,6°) und Punkten ohne Position (180°/180°) wird berichtigt
+        fx = pg.evaluate("""async () => {
+          const n = 200, id = 'fxA';
+          const lat = Array.from({ length: n }, (_, k) => 28.10 + k * 1e-4), lon = Array.from({ length: n }, (_, k) => 344.43 + k * 1e-5);
+          lat[50] = lon[50] = 179.99999991618097; lat[120] = lon[120] = 179.99999991618097;
+          const ele = Array.from({ length: n }, (_, k) => 500 + k), t = Array.from({ length: n }, (_, k) => 1.7e12 + k * 1000);
+          const pts0 = lat.map((la, k) => ({ lat: la, lon: lon[k], ele: ele[k], t: t[k] })), st0 = Geo.stats(pts0);
+          await DB.put('tours', { id, name: 'FIT West', sport: 'hike', status: 'done', start: t[0], dist: st0.dist, up: st0.up, down: st0.down, lat: lat[0], lon: lon[0], bbox: Geo.bbox(pts0), src: 'file', srcId: '', hidden: false, calcV: 2 });
+          await DB.put('tracks', { id, lat, lon, ele, t, seg: lat.map(() => 0), hr: lat.map(() => 100) });
+          await DB.put('tours', { id: 'fxB', name: 'Ost', sport: 'hike', status: 'done', start: 2, dist: 5, up: 1, down: 1, lat: 47, lon: 11, bbox: [47, 11, 47.1, 11.1], src: 'file', srcId: '', hidden: false, calcV: 2 });
+          await DB.kvSet('posVer', 0); await DB.kvSet('calcNote', null);
+          const r = await Tours.migrate(), r2 = await Tours.migrate();
+          const a = await DB.get('tours', id), trk = await DB.get('tracks', id), b = await DB.get('tours', 'fxB'), note = await DB.kvGet('calcNote', null);
+          const out = { vorher: st0.dist, r, r2, dist: a.dist, lon: a.lon, bbox: a.bbox, n: trk.lat.length, hr: trk.hr.length, seg: trk.seg.length, maxLon: Math.max(...trk.lon), maxLat: Math.max(...trk.lat), b: b.dist, note, ver: await DB.kvGet('posVer', 0) };
+          await Tours.remove(id); await Tours.remove('fxB'); await DB.kvSet('calcNote', null);
+          return out;
+        }""")
+        assert fx["vorher"] > 1e7 and 2000 < fx["dist"] < 3000, fx                      # vorher zehntausende Kilometer, danach die echten gut 2 km
+        assert fx["r"]["pos"] == 1 and fx["r2"] is None and fx["ver"] == 1, fx           # genau die betroffene Tour, kein zweiter Lauf
+        assert fx["n"] == 198 and fx["hr"] == 198 and fx["seg"] == 198 and fx["maxLon"] < -15 and fx["maxLat"] < 29 and abs(fx["lon"] + 15.57) < 0.01 and fx["bbox"][3] < 0, fx
+        assert fx["b"] == 5 and fx["note"] == {"pos": 1}, fx                             # unauffällige Tour unberührt; Hinweis für die Startseite
+
         # Laufzeit: 800 Touren mit je 3000 Punkten neu rechnen (Messung im Browser; auf dem Handy etwa 3–10 mal langsamer)
         lz = pg.evaluate("""async () => {
           const ids = [];

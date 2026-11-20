@@ -20,6 +20,14 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  const hdr=[14,0x10,0,0,b.length&255,b.length>>8,0,0,0x2e,0x46,0x49,0x54,0,0];
  const fit=new Uint8Array([...hdr,...b,0,0]);
  const r3=Parse.fit(fit);A.strictEqual(r3[0].pts.length,2);A.strictEqual(r3[0].pts[0].ele,800);A.ok(Math.abs(r3[0].pts[0].lat-47.5)<1e-6);
+ // 2.0.2: westliche Länge / südliche Breite (sint32 mit Vorzeichen) und „kein Wert“ (0x7FFFFFFF) – Punkte ohne Position entfallen
+ {const bw=[...def,...rcd(1000000000,28.1038,-15.5657,520),...rcd(1000000001,180,180,521),...rcd(1000000002,-33.9,-70.6,522)];
+  const dvx=new DataView(new Uint8Array(bw).buffer);dvx.setInt32(def.length+15+5,0x7FFFFFFF,true);dvx.setInt32(def.length+15+9,0x7FFFFFFF,true);
+  const fw=new Uint8Array([14,0x10,0,0,bw.length&255,bw.length>>8,0,0,0x2e,0x46,0x49,0x54,0,0,...new Uint8Array(dvx.buffer),0,0]);
+  const rw=Parse.fit(fw);A.strictEqual(rw[0].pts.length,2,'Punkt ohne Position entfällt');
+  A.ok(Math.abs(rw[0].pts[0].lon+15.5657)<1e-5,'westliche Länge negativ: '+rw[0].pts[0].lon);A.ok(Math.abs(rw[0].pts[0].lat-28.1038)<1e-5);
+  A.ok(Math.abs(rw[0].pts[1].lat+33.9)<1e-5&&Math.abs(rw[0].pts[1].lon+70.6)<1e-5,'Südhalbkugel');
+  A.ok(Geo.stats(rw[0].pts).dist<2e7);}
 
  // Puls aus GPX (Garmin-Erweiterung), TCX und FIT – und wieder hinaus ins GPX
  const ghr='<gpx><trk><trkseg><trkpt lat="47" lon="11"><ele>500</ele><time>2026-01-01T10:00:00Z</time><extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>131</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions></trkpt>'

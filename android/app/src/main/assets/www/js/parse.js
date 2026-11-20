@@ -113,8 +113,10 @@ const Parse = {
           const o = pos; pos += f.s;
           if (d.gm === 20 || d.gm === 18 || d.gm === 12 || d.gm === 34) {
             const bt = f.t & 0x1f;
-            if (f.s === 4 && (bt === 0x85 - 0x80 || bt === 5 || bt === 6 || bt === 12)) {
-              if (bt === 5 || bt === 6) { const x = dv.getUint32(o, d.le); if (x !== 0xFFFFFFFF) v[f.n] = x; }
+            // Grundtypen: 5 = sint32 (Breite/Länge!), 6 = uint32, 12 = uint32z. Bis 2.0.1 wurde sint32 vorzeichenlos gelesen:
+            // westliche Längen (z. B. Kanaren −15,6°) landeten bei 344°, „kein Wert“ (0x7FFFFFFF) bei 180°/180°.
+            if (f.s === 4 && (bt === 5 || bt === 6 || bt === 12)) {
+              if (bt === 6 || bt === 12) { const x = dv.getUint32(o, d.le); if (x !== 0xFFFFFFFF && !(bt === 12 && x === 0)) v[f.n] = x; }
               else { const x = dv.getInt32(o, d.le); if (x !== 0x7FFFFFFF) v[f.n] = x; }
             } else if (f.s === 4) { const x = dv.getUint32(o, d.le); if (x !== 0xFFFFFFFF) v[f.n] = (f.t === 0x85 || f.t === 0x8B) ? dv.getInt32(o, d.le) : x; }
             else if (f.s === 2) { const x = dv.getUint16(o, d.le); if (x !== 0xFFFF) v[f.n] = x; }
@@ -125,9 +127,10 @@ const Parse = {
         if (comp) { /* komprimierter Zeitstempel: nur für Folgepunkte */ }
         if (d.gm === 20) {
           if (v[253] != null) lastTs = v[253];
-          if (v[0] != null && v[1] != null) {
+          const la = v[0] != null ? v[0] * 180 / 2147483648 : null, lo = v[1] != null ? v[1] * 180 / 2147483648 : null;
+          if (la != null && lo != null && Math.abs(la) <= 90 && Math.abs(lo) <= 180 && !(la === 0 && lo === 0)) {
             const alt = v[78] != null ? v[78] / 5 - 500 : (v[2] != null ? v[2] / 5 - 500 : null);
-            pts.push({ lat: v[0] * 180 / 2147483648, lon: v[1] * 180 / 2147483648, ele: alt, t: lastTs ? FIT_EPOCH + lastTs * 1000 : null, hr: Parse.hr(v[3]) });
+            pts.push({ lat: la, lon: lo, ele: alt, t: lastTs ? FIT_EPOCH + lastTs * 1000 : null, hr: Parse.hr(v[3]) });
           }
         } else if (d.gm === 12 || d.gm === 18) {
           if (d.gm === 12 && v[0] != null) sport = sport || String(v[0]);
