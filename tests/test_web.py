@@ -1713,6 +1713,20 @@ def main():
         jahr_bad = jahr(pg)
         neu = neue_funktionen(pg)
 
+        # Kachelfoto: auch bei lauter Personenfotos und bei einer früher gemerkten Zeichnung kommt ein Foto (2.3.1)
+        k = pg.evaluate("""async () => {
+          const t = (await Tours.list()).find(x => x.name === 'Hüttenrunde');
+          for (let i = 0; i < 6; i++) await DB.put('photos', { id: 'kachel0' + i, name: 'k' + i + '.jpg', ts: 1700000300000 + i * 1000, w: 10, h: 10, src: 'galerie', tour: t.id, faces: 2 });
+          const memo = { [t.id]: { kind: 'svg' } }, pv = document.createElement('span');
+          await UI.thumb(pv, t, memo, null);
+          const a = { img: !!pv.querySelector('img'), kind: memo[t.id].kind };
+          const pv2 = document.createElement('span'), m2 = { [t.id]: { kind: 'svg', n: (await DB.byIndex('photos', 'tour', t.id)).filter(x => !x.video).length } };      // gleiche Fotozahl: Zeichnung bleibt
+          await UI.thumb(pv2, t, m2, null); a.keep = !pv2.querySelector('img') && m2[t.id].kind === 'svg';
+          for (let i = 0; i < 6; i++) await DB.del('photos', 'kachel0' + i);
+          return a;
+        }""")
+        assert k["img"] and k["kind"] == "photo" and k["keep"], k
+
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
         pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
         lt = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0].id)")

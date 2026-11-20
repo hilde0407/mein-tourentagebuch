@@ -17,10 +17,10 @@ function previewSvg(pts, color, box) {
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>${ends}</svg>`;
 }
 
-/** Erstes Foto der Tour ohne erkanntes Gesicht (höchstens 4 prüfen; -1 = unbekannt zählt als brauchbar). Null, wenn keins taugt. */
+/** Erstes Foto der Tour ohne erkanntes Gesicht (höchstens 12 prüfen; -1 = unbekannt zählt als brauchbar). Sind es nur Personenfotos, das erste; null nur ohne Fotos. */
 async function pickPhoto(tid) {
   const ps = (await DB.byIndex('photos', 'tour', tid)).filter(p => !p.video).sort((a, b) => a.ts - b.ts);
-  for (const p of ps.slice(0, 4)) {
+  for (const p of ps.slice(0, 12)) {
     let n = p.faces;
     if (n == null) {
       try {
@@ -32,7 +32,7 @@ async function pickPhoto(tid) {
     }
     if (!(n >= 1)) return p;
   }
-  return null;
+  return ps[0] || null;      // lauter Personenfotos: lieber eins zeigen als nur die Strecke (die Tour hat ja Fotos)
 }
 
 /** Kartenausschnitt mit Track als JPEG-dataURL; wirft bei jedem Problem (offline, fehlende Kachel), dann bleibt es bei der Zeichnung.

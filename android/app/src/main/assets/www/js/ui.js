@@ -88,14 +88,17 @@ const UI = {
     const pts = await Tours.points(t.id);
     const svg = () => { pv.innerHTML = pts.length > 1 ? previewSvg(pts, MapKit.routeColor(t.sport, '#2e7d32'), { w: 72, h: 72, pad: 11, sw: 2.8 }) : ''; };
     let en = memo && memo[t.id];
-    if (!en || en.kind === 'map') {      // „map“ stammt aus älteren Versionen (Kartenbild als Kachelhintergrund) und wird neu bestimmt
-      const ph = await pickPhoto(t.id);
-      en = ph ? { kind: 'photo', ph: ph.id } : { kind: 'svg' };
+    // „map“ stammt aus älteren Versionen (Kartenbild als Kachelhintergrund); „svg“ gilt nur, solange sich die Zahl der Fotos nicht geändert hat
+    // (Fotos kommen oft erst nach dem Import dazu, und eine einmal gemerkte Zeichnung blieb sonst für immer stehen)
+    const nPh = (!en || en.kind !== 'photo') ? (await DB.byIndex('photos', 'tour', t.id)).filter(p => !p.video).length : 0;
+    if (!en || en.kind === 'map' || (en.kind === 'svg' && en.n !== nPh)) {
+      const ph = nPh ? await pickPhoto(t.id) : null;
+      en = ph ? { kind: 'photo', ph: ph.id } : { kind: 'svg', n: nPh };
       if (memo) { memo[t.id] = en; if (save) save(); }
     }
     if (en.kind !== 'photo') return svg();
     const img = h('img', { alt: '', loading: 'lazy', src: Photos.thumb(en.ph) });
-    img.onerror = () => { if (memo) { memo[t.id] = { kind: 'svg' }; if (save) save(); } svg(); };
+    img.onerror = () => { if (memo) { delete memo[t.id]; if (save) save(); } svg(); };      // Bild nicht ladbar: Zeichnung zeigen, beim nächsten Mal neu wählen
     pv.innerHTML = ''; pv.append(img);
   },
   /** Zeile einer Tour: Miniatur, Titel, „Datum · Sportart“, Kennzahlen. opts: photos (Anzahl), stage (Etappentext), year (Jahr im Datum zeigen), io (IntersectionObserver für die Miniatur). */
