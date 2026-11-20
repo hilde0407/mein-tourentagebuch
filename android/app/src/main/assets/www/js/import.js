@@ -23,6 +23,7 @@ const Import = {
     if (r.names) p.push('Name bei ' + r.names + (r.names === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
     if (r.namesMt) p.push('Name bei ' + r.namesMt + (r.namesMt === 1 ? ' Tour' : ' Touren') + ' übernommen');
     if (r.zahlen) p.push('Zahlen bei ' + r.zahlen + (r.zahlen === 1 ? ' Tour' : ' Touren') + ' angeglichen');
+    if (r.eleUhr) p.push('Höhen bei ' + r.eleUhr + (r.eleUhr === 1 ? ' Tour' : ' Touren') + ' von der Uhr übernommen');
     if (r.ohne) p.push(r.ohne + ' ohne Strecke auf dem Server');
     if (r.fail) p.push(r.fail + ' nicht lesbar');
     if (r.stopped) p.push('abgebrochen – der Rest kommt beim nächsten Mal');
@@ -563,7 +564,11 @@ const Import = {
       }
       return null;
     },
-    async importAll(acc, onProgress) {
+    /** opts.ele (Vorgabe an, 2.1.0): Passt eine Aktivität zu einer vorhandenen Tour aus anderer Quelle (Komoot, Datei, Aufzeichnung), bekommt deren Spur
+        die Barometerhöhen der Uhr (wie „Höhe aus Uhr abgleichen“, rückholbar über „Originalhöhen wiederherstellen“) – aber nur, wenn die Tour noch keine
+        Uhr-Höhen hat, nicht mit dem Geländemodell korrigiert wurde und es nicht schon einmal versucht wurde (Tour.zele). */
+    async importAll(acc, onProgress, opts) {
+      opts = opts || {};
       const Z = Import.Zepp; let sums = [], nxt = null;
       for (;;) {
         const j = await Z.req(acc, '/v1/sport/run/history.json', nxt != null ? { trackid: nxt } : {});
@@ -571,24 +576,39 @@ const Import = {
         nxt = j.data.next; if (nxt == null || nxt === -1) break;
       }
       const mine = await Tours.list();
-      const res = { added: 0, dup: 0, fail: 0, hr: 0 };
+      const res = { added: 0, dup: 0, fail: 0, hr: 0, eleUhr: 0 };
       const types = { 1: 'run', 6: 'hike', 9: 'bike', 8: 'run', 13: 'hike', 15: 'hike', 14: 'ski', 7: 'hike', 22: 'hike' }      // „Gehen“ zählt wie in Meine Touren als Wandern; Laufen bleibt getrennt;
-      // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur den Puls nachtragen – sonst neu laden
-      const todo = [];
+      // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur Puls und Uhr-Höhen nachtragen – sonst neu laden
+      const vonZepp = t => t.src === 'zepp' || /^zepp:/.test(t.srcId || '') || (t.alias || []).some(a => /^zepp:/.test(a));      // trägt die Uhr-Höhen von Anfang an
+      const todo = [], seen = new Set();
       for (const s of sums) {
         const t = Z.match(s, mine);
-        if (!t) todo.push({ s, t: null });
-        else if (!t.hrAvg && !t.zhr) todo.push({ s, t });
+        if (!t) { todo.push({ s, t: null }); continue; }
+        const hr = !t.hrAvg && !t.zhr, ele = opts.ele !== false && !t.elevSrc && !t.elevFix && !t.zele && !vonZepp(t) && !seen.has(t.id);
+        if (hr || ele) { todo.push({ s, t, hr, ele }); seen.add(t.id); }
         else res.dup++;
       }
       for (let i = 0; i < todo.length; i++) {
-        const { s, t } = todo[i];
-        if (onProgress) onProgress(i + 1, todo.length, (t ? 'Puls ' : '') + F.dshort(s.trackid * 1000));
+        const { s, t, hr, ele } = todo[i];
+        if (opts.stop && opts.stop()) { res.stopped = true; break; }
+        if (onProgress) onProgress(i + 1, todo.length, (t ? (ele ? 'Uhr-Daten ' : 'Puls ') : '') + F.dshort(s.trackid * 1000));
         try {
           const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: s.trackid, source: s.source || '' });
           const pts = Z.decode(s, dj.data);
           if (t) {
-            if (await Tours.fillHr(t.id, pts, parseInt(s.trackid, 10) * 1000)) res.hr++; else res.dup++;
+            let did = false;
+            if (hr && await Tours.fillHr(t.id, pts, parseInt(s.trackid, 10) * 1000)) { res.hr++; did = true; }
+            if (ele) {
+              const trk = await DB.get('tracks', t.id);
+              let ok = false;
+              if (trk && trk.lat.length >= 5) {
+                try { await Fix.zeppEleWith(t, trk, acc, s, { det: dj, auto: true }); ok = true; }
+                catch (e) { if (!/brauchbaren/.test(e.message)) throw e; }
+              }
+              if (ok) { res.eleUhr++; did = true; }
+              else { const t2 = await DB.get('tours', t.id); if (t2) { t2.zele = 1; await Tours.save(t2); } }      // Versuch vermerken: keine brauchbaren Höhen von der Uhr
+            }
+            if (!did) res.dup++;
             continue;
           }
           if (pts.length < 2) { res.dup++; continue; }

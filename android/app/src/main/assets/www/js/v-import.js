@@ -124,7 +124,10 @@ Views['/import'] = async root => {
     const hs = h('input', { placeholder: 'leer = automatisch', autocomplete: 'off', autocapitalize: 'off' });
     // Hilfsprogramm für Lesezeichen/Adresszeile: liest den apptoken im Browser, wo man bei Zepp angemeldet ist, und zeigt ihn zum Kopieren an
     const bm = "javascript:(function(){var m=document.cookie.match(/(?:^|; )apptoken=([^;]+)/);if(!m){alert('Kein apptoken gefunden - bitte zuerst bei Zepp anmelden.');return;}var t=decodeURIComponent(m[1]);try{navigator.clipboard.writeText(t);}catch(e){}prompt('Token (wurde kopiert):',t);})()";
-    const run0 = (acc0) => { s.close(); run('Zepp', async (upd, txt) => { let acc = acc0; txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd); }); };
+    const zo = () => ({ ele: Set_.get('zeppEle') !== false });
+    const eleSw = h('div', null, UI.toggle('Höhen der Uhr übernehmen', Set_.get('zeppEle') !== false, v => Set_.set('zeppEle', !!v), { id: 'zp-ele' }),
+      h('p', { class: 'muted small' }, 'Touren aus Komoot, Dateien oder eigener Aufzeichnung bekommen beim Laden die Barometerhöhen der Uhr. Rückholbar an der Tour: „Originalhöhen wiederherstellen“. Mit dem Geländemodell korrigierte Touren bleiben, wie sie sind.'));
+    const run0 = (acc0) => { s.close(); run('Zepp', async (upd, txt) => { let acc = acc0; txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd, zo()); }); };
     const loggedIn = h('div', null, h('p', null, '✓ Angemeldet' + (c && c.viaToken ? ' (mit Token)' : '')),
       h('div', { class: 'row end wrap' },
         h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Abmelden'),
@@ -133,7 +136,7 @@ Views['/import'] = async root => {
         h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Aktivitäten laden')));
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
       h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd); }); } }, 'Anmelden & laden')));
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd, zo()); }); } }, 'Anmelden & laden')));
     const inApp = Native.available() ? h('div', null,
       h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort): Die App öffnet die Zepp-Anmeldeseite, du meldest dich wie gewohnt an, die App übernimmt das Zugangs-Token selbst.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
@@ -157,7 +160,8 @@ Views['/import'] = async root => {
         run0(acc); } }, 'Prüfen & laden')));
     const sel = h('div', { class: 'row' }, ['Mit Token', 'E-Mail / Passwort'].map((n, i) => h('button', { class: 'btn' + (i ? '' : ' pri'), onclick: e => { tok.hidden = !!i; pass.hidden = !i; [...sel.children].forEach((b, j) => b.classList.toggle('pri', j === i)); } }, n)));
     pass.hidden = true;
-    const s = sheet('Zepp / Amazfit', c ? loggedIn : h('div', null, sel, tok, pass));
+    if (c) loggedIn.insertBefore(eleSw, loggedIn.lastChild);      // angemeldet: Schalter über den Knöpfen
+    const s = sheet('Zepp / Amazfit', c ? loggedIn : h('div', null, sel, tok, pass, eleSw));
   }
   function bosch() {
     const s = sheet('Bosch eBike Flow', h('div', null,

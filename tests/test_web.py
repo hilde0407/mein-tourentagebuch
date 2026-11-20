@@ -443,6 +443,71 @@ def meine_touren(pg):
     assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
 
 
+def uhr_hoehen(pg):
+    """2.1.0, Punkt 2: Der Zepp-Import legt die Barometerhöhen der Uhr auf vorhandene Touren aus anderen Quellen – rückholbar, nie über eine Geländemodell-Korrektur,
+    nie zweimal; die Zahlen aus Meine Touren behalten ihren Rang; Schalter „Höhen der Uhr übernehmen“."""
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    r = pg.evaluate("""async () => {
+      const Z = Import.Zepp, DAY = 86400, base = 1750000000, N = 40;
+      /* Training i: 40 Punkte im 30-s-Takt, die Uhr misst einen Berg (0 → +240 m → 0); Training 4 hat keine Höhen (Platzhalter) */
+      const det = i => ({ time: '0' + ';30'.repeat(N - 1), longitude_latitude: (4700000000 + i * 1000000) + ',1100000000' + ';30000,20000'.repeat(N - 1),
+        altitude: Array.from({ length: N }, (_, k) => i === 4 ? -2000000 : Math.round((900 + 240 * Math.sin(Math.PI * k / (N - 1))) * 100)).join(';'), heart_rate: ',95' + ';30,1'.repeat(N - 1), gait: '0' });
+      const sums = [1, 2, 3, 4, 5, 6, 7].map(i => ({ trackid: String(base + i * DAY), type: 6, source: 'x' }));
+      const calls = { hist: 0, det: [] };
+      const req0 = Z.req;
+      Z.req = async (acc, ep, q) => { if (/history/.test(ep)) { calls.hist++; return { data: { summary: window.__zsums || sums.slice(0, calls.n || 6), next: -1 } }; } calls.det.push(+q.trackid); return { data: det((+q.trackid - base) / DAY) }; };
+      window.__zreq0 = req0; window.__zcalls = calls;
+      /* vorhandene Touren: dieselbe Strecke und Zeit wie das Training, aber flache (Handy-/Komoot-)Höhen, kein Puls */
+      const flat = i => Z.decode(sums[i - 1], det(i === 4 ? 1 : i)).map((p, k) => ({ lat: p.lat + (i === 4 ? 0.03 : 0), lon: p.lon, ele: 880 + (k % 2), t: p.t }));
+      const A = (await Tours.add({ name: 'A Komoot', sport: 'hike', pts: flat(1), src: 'komoot', srcId: 'komoot:u1' })).tour;
+      const B = (await Tours.add({ name: 'B Gelände', sport: 'hike', pts: flat(2), src: 'file' })).tour; B.elevFix = 1; await Tours.save(B);
+      const C = (await Tours.add({ name: 'C Zepp', sport: 'hike', pts: flat(3), src: 'zepp', srcId: 'zepp:' + sums[2].trackid })).tour;
+      const D = (await Tours.add({ name: 'D ohne Uhr-Höhen', sport: 'hike', pts: flat(4), src: 'rec' })).tour;
+      const E = (await Tours.add({ name: 'E Meine Touren', sport: 'hike', pts: flat(5), src: 'file' })).tour; Object.assign(E, { mtId: 'e5', zMt: 1, upMt: 777, downMt: 700, distMt: 4321 }); Tours.applyHoehe(E, Geo.stats(flat(5))); await Tours.save(E);
+      const up0 = A.up;
+      const get = async t => { const x = await DB.get('tours', t.id), trk = await DB.get('tracks', t.id); return { up: x.up, dist: x.dist, src: x.elevSrc || null, fix: x.elevFix || null, zele: x.zele || null, zMt: x.zMt || null, hr: x.hrAvg || null, orig: !!trk.origEle, max: Math.max(...trk.ele), origUp: x.origUp }; };
+      const acc = { token: 'x' };
+      const r1 = await Z.importAll(acc, null, { ele: true }), d1 = calls.det.slice(); calls.det = [];
+      const s1 = { A: await get(A), B: await get(B), C: await get(C), D: await get(D), E: await get(E) };
+      const r2 = await Z.importAll(acc, null, { ele: true }), d2 = calls.det.slice(); calls.det = [];
+      /* von Hand zurückgeholt: bleibt so, auch beim nächsten Import */
+      const back = await Fix.restoreEle(await DB.get('tours', A.id));
+      const r3 = await Z.importAll(acc, null, { ele: true }), d3 = calls.det.slice(); calls.det = [];
+      const s3 = await get(A);
+      /* Schalter aus: neue passende Tour bekommt nur den Puls */
+      const F = (await Tours.add({ name: 'F Schalter aus', sport: 'hike', pts: flat(7), src: 'komoot', srcId: 'komoot:u7' })).tour; calls.n = 7;      // Training 7 taucht erst jetzt im Verlauf auf
+      const r4 = await Z.importAll(acc, null, { ele: false }); const s4 = await get(F);
+      const r5 = await Z.importAll(acc, null, {}); const s5 = await get(F);      // Vorgabe: an
+      return { up0, r1, d1: d1.map(x => (x - base) / DAY), s1, r2, d2, back: [back.up, back.elevSrc || null, back.zele], r3, d3, s3, r4, s4, r5, s5, txt: Import.describe(r1), ids: { A: A.id } };
+    }""")
+    s1 = r["s1"]
+    assert r["r1"]["added"] == 1 and r["r1"]["eleUhr"] == 2 and r["r1"]["hr"] == 5 and r["r1"]["fail"] == 0, r["r1"]      # Training 6 ist neu; A und E bekommen Höhen; alle fünf vorhandenen den Puls
+    assert "Höhen bei 2 Touren von der Uhr übernommen" in r["txt"] and "Puls bei 5 Touren ergänzt" in r["txt"], r["txt"]
+    assert sorted(r["d1"]) == [1, 2, 3, 4, 5, 6], r["d1"]
+    A = s1["A"]; assert A["src"] == "zepp" and A["zele"] == 1 and A["orig"] and 200 < A["up"] < 250 and r["up0"] < 5 and A["hr"] and abs(A["origUp"] - r["up0"]) < 1e-6, (A, r["up0"])
+    assert s1["B"]["src"] is None and s1["B"]["fix"] == 1 and not s1["B"]["orig"] and s1["B"]["up"] < 5 and s1["B"]["hr"], s1["B"]      # Geländemodell-Korrektur bleibt
+    assert s1["C"]["src"] is None and not s1["C"]["orig"], s1["C"]
+    assert s1["D"]["src"] is None and s1["D"]["zele"] == 1 and not s1["D"]["orig"] and s1["D"]["hr"], s1["D"]      # Uhr ohne brauchbare Höhen: vermerkt, nichts geändert
+    E = s1["E"]; assert E["src"] == "zepp" and E["orig"] and E["max"] > 940 and E["up"] == 777 and E["dist"] == 4321 and E["zMt"] == 1, E      # Rangfolge: die Zahlen aus Meine Touren bleiben maßgeblich
+    assert r["r2"]["eleUhr"] == 0 and r["r2"]["added"] == 0 and r["r2"]["hr"] == 0 and r["d2"] == [], (r["r2"], r["d2"])      # zweiter Lauf: nichts zu tun, nichts geladen
+    assert abs(r["back"][0] - r["up0"]) < 1e-6 and r["back"][1] is None and r["back"][2] == 1 and r["r3"]["eleUhr"] == 0 and r["d3"] == [] and r["s3"]["src"] is None and not r["s3"]["orig"], (r["back"], r["r3"], r["s3"])
+    assert r["r4"]["eleUhr"] == 0 and r["s4"]["src"] is None and r["s4"]["hr"] and r["s4"]["zele"] is None, (r["r4"], r["s4"])
+    assert r["r5"]["eleUhr"] == 1 and r["s5"]["src"] == "zepp" and "Höhen bei 1 Tour von der Uhr übernommen" in pg.evaluate("r => Import.describe(r)", r["r5"]), (r["r5"], r["s5"])
+    # Tourseite: Uhr-Höhen sind zurückholbar; Schalter im Zepp-Blatt (Vorgabe an) wird gemerkt und an den Import gegeben
+    pg.evaluate("async id => { const t = await DB.get('tours', id), trk = await DB.get('tracks', id); await Fix.zeppEleWith(t, trk, { token: 'x' }, { trackid: String(1750000000 + 86400) }, { auto: true }); location.hash = '#/tour/' + id; }", r["ids"]["A"])
+    pg.wait_for_selector("header.top button[aria-label=Aktionen]"); pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("text=Originalhöhen wiederherstellen"); assert pg.get_by_text("Höhe aus Uhr (bereits abgeglichen)").count() == 1
+    pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("async () => { await DB.kvSet('zepp', { token: 'x', viaToken: true }); window.__zsums = []; location.hash = '#/import'; }"); pg.wait_for_selector("#imp-mt")
+    pg.get_by_text("Zepp / Amazfit").click(); pg.wait_for_selector("#zp-ele"); assert pg.locator("#zp-ele input").is_checked() and "Originalhöhen wiederherstellen" in pg.inner_text(".sheet")
+    pg.click("#zp-ele"); pg.wait_for_function("Set_.get('zeppEle') === false")
+    seen = pg.evaluate("""async () => { const o = Import.Zepp.importAll; let got = null; Import.Zepp.importAll = async (acc, upd, opts) => { got = opts; return { added: 0, dup: 0, fail: 0 }; };
+      document.querySelector('.sheet .btn.pri').click(); await new Promise(r => setTimeout(r, 400)); Import.Zepp.importAll = o; return got; }""")
+    assert seen == {"ele": False}, seen
+    pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("async (keep) => { Import.Zepp.req = window.__zreq0; delete window.__zsums; for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'zepp'); await Set_.set('zeppEle', true); }", vorher)
+    assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
+
+
 def sheet_check(pg, label, opener):
     """Ein Blatt bei 360 px mit 100 % und 130 % Schrift prüfen. opener() öffnet es."""
     bad = []
@@ -1117,6 +1182,7 @@ def main():
         assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
 
         meine_touren(pg)
+        uhr_hoehen(pg)
         neu = neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px

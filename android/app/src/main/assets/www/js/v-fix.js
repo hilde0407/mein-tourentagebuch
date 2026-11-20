@@ -91,7 +91,7 @@ const Fix = {
   async zeppEleWith(t, trk, acc, sum, opts) {
     opts = opts || {};
     const Z = Import.Zepp;
-    const dj = await Z.req(acc, '/v1/sport/run/detail.json', { trackid: sum.trackid, source: sum.source || '' });
+    const dj = opts.det || await Z.req(acc, '/v1/sport/run/detail.json', { trackid: sum.trackid, source: sum.source || '' });
     const t0 = trk.t.find(x => x != null);
     // Nur ganze Halbstunden ausgleichen (Zeitzonen-Versatz, z. B. bei Komoot-Zeiten); ein paar Minuten Startunterschied zwischen Uhr und Handy sind echte Zeit und dürfen die Höhenreihe nicht verschieben
     const shift = t0 != null ? Math.round((t0 - parseInt(sum.trackid, 10) * 1000) / 1800000) * 1800000 : 0;
@@ -103,6 +103,7 @@ const Fix = {
     await DB.put('tracks', trk);
     const r = await Tours.recalc(t.id, { eigen: !!opts.eigen });
     r.elevSrc = 'zepp'; delete r.elevFix; r.origUp = t.origUp; r.origDown = t.origDown;
+    if (opts.auto) r.zele = 1;
     await Tours.save(r); return r;
   },
   /** Alle Touren mit passendem Zepp-Training abgleichen (Verlauf nur einmal laden). Schon abgeglichene oder mit Geländemodell korrigierte Touren bleiben unberührt. */
