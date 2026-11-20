@@ -353,18 +353,19 @@ def meine_touren(pg):
     # Blatt: unverschlüsselte Adresse außerhalb des eigenen Netzes → deutlicher Hinweis und Rückfrage; im eigenen Netz nur der Hinweis
     go = lambda: (pg.evaluate("location.hash = '#/import'"), pg.wait_for_selector("#imp-mt"), pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_selector(".sheet", state="detached"), pg.click("#imp-mt"))
     toast = lambda rx, t=20000: (pg.wait_for_function("rx => { const t = document.querySelector('#toast'); return !!t && t.classList.contains('on') && new RegExp(rx).test(t.textContent); }", arg=rx, timeout=t), pg.inner_text("#toast"))[1]
+    leise = lambda: pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000)      # alte Meldung abwarten, sonst passt der Text der vorigen
     go(); pg.wait_for_selector("#mt-url"); assert pg.locator("#mt-http").is_hidden() and pg.locator("#mt-zahlen input").is_checked()
     pg.fill("#mt-url", "http://192.168.1.20:8080"); assert "Im eigenen Netz" in pg.inner_text("#mt-http")
     pg.fill("#mt-url", "http://touren.example.org"); assert "Achtung" in pg.inner_text("#mt-http") and "unverschlüsselt" in pg.inner_text("#mt-http")
-    pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234"); pg.click("#mt-go"); pg.wait_for_selector(".sheet[aria-label='Unverschlüsselt verbinden?']")
+    pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234"); (leise(), pg.click("#mt-go")); pg.wait_for_selector(".sheet[aria-label='Unverschlüsselt verbinden?']")
     pg.click(".sheet[aria-label='Unverschlüsselt verbinden?'] .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet[aria-label='Unverschlüsselt verbinden?']", state="detached")
     assert pg.evaluate("window.__mt.log.length") == 0 and pg.locator("#mt-url").count() == 1, "ohne Zustimmung geht nichts ins Netz"
     # Falsches Passwort: verständliche Meldung, nichts gemerkt, das Blatt bleibt benutzbar
-    pg.fill("#mt-url", "mt.test"); pg.fill("#mt-pw", "falsch"); pg.click("#mt-go"); assert "Name oder Passwort stimmt nicht" in toast("Passwort")
+    pg.fill("#mt-url", "mt.test"); pg.fill("#mt-pw", "falsch"); (leise(), pg.click("#mt-go")); assert "Name oder Passwort stimmt nicht" in toast("Passwort")
     assert pg.evaluate("DB.kvGet('mt', null)") is None and pg.evaluate("window.__mt.log") == ["GET /api/me", "POST /api/login"]
     # Anmeldung als Betrachter und erster Abgleich
     pg.wait_for_selector(".sheet", state="detached"); go(); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "mt.test"); pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234")
-    pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); msg = toast("importiert", 60000)
+    pg.evaluate("window.__mt.log = []"); (leise(), pg.click("#mt-go")); msg = toast("importiert", 60000)
     nur = " · %d Touren nur in der App" % (1 + pg.evaluate("ids => Tours.list().then(l => l.filter(t => ids.includes(t.id) && t.status !== 'planned' && !t.hidden).length)", vorher))      # was vorher da war, und die „andere Tour zur selben Zeit“
     assert msg == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server" + nur, msg
     log = pg.evaluate("window.__mt.log"); assert log[:3] == ["GET /api/me", "POST /api/login", "GET /api/tours"] and len([x for x in log if x.endswith("/gpx")]) == 14 and not [x for x in log if x.split()[0] != "GET" and "login" not in x], log
@@ -392,7 +393,7 @@ def meine_touren(pg):
     assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "stammen aus Meine Touren" in f and "Eigene Rechnung aus der Spur: 4,5 km · ↑ " in f and "5 von 5 Sternen" in f, f
     # Verbundenes Blatt, Wiederholung: nichts doppelt, keine Strecke wird noch einmal geladen (außer dem Versuch für die Tour ohne Strecke)
     go(); pg.wait_for_selector("#mt-state"); assert pg.inner_text("#mt-state") == "✓ Verbunden mit mt.test als Tagebuch (nur ansehen)", pg.inner_text("#mt-state")
-    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.click("#mt-go"); assert toast("schon vorhanden") == "16 schon vorhanden · 1 ohne Strecke auf dem Server" + nur
+    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000); (leise(), pg.click("#mt-go")); tx = toast("schon vorhanden"); assert tx == "16 schon vorhanden · 1 ohne Strecke auf dem Server" + nur, tx
     assert pg.evaluate("window.__mt.log") == ["GET /api/tours", "GET /api/tours/987654322/gpx"] and pg.evaluate("Tours.list().then(l => l.length)") == n1
     sync = "async (z) => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: z }, null)"
     # Rangfolge der Zahlen: nach einer Korrektur der Spur von Hand gilt die eigene Rechnung – bis zum nächsten Abgleich
@@ -406,10 +407,10 @@ def meine_touren(pg):
     assert pg.evaluate("async id => { const t = await DB.get('tours', id); const r = await Fix.restoreEle(t); return [r.zMt === undefined, Math.abs(r.up - 655) > 5]; }", pre["a"]["id"]) == [True, True], "Originalhöhen wiederherstellen = von Hand"
     pg.evaluate(sync, True)
     # Schalter aus (im Blatt): überall wieder die eigene Rechnung, die Werte von Meine Touren bleiben als Angabe; Schalter an: wieder angeglichen
-    go(); pg.wait_for_selector("#mt-zahlen"); pg.click("#mt-zahlen"); pg.wait_for_function("Set_.get('mtZahlen') === false"); pg.click("#mt-go"); toast("schon vorhanden"); pg.wait_for_selector(".sheet", state="detached")
+    go(); pg.wait_for_selector("#mt-zahlen"); pg.click("#mt-zahlen"); pg.wait_for_function("Set_.get('mtZahlen') === false"); (leise(), pg.click("#mt-go")); toast("schon vorhanden"); pg.wait_for_selector(".sheet", state="detached")
     z = pg.evaluate("Tours.list().then(l => [l.filter(t => t.zMt).length, l.filter(t => t.upSrc === 'mt').length, l.filter(t => t.upMt != null).length])"); assert z == [0, 0, 16], z
     assert abs(pg.evaluate("id => DB.get('tours', id).then(t => t.up)", pre["a"]["id"]) - pre["a"]["up"]) < 1e-6
-    go(); pg.wait_for_selector("#mt-zahlen"); assert not pg.locator("#mt-zahlen input").is_checked(); pg.click("#mt-zahlen"); pg.wait_for_function("Set_.get('mtZahlen') === true"); pg.click("#mt-go")
+    go(); pg.wait_for_selector("#mt-zahlen"); assert not pg.locator("#mt-zahlen input").is_checked(); pg.click("#mt-zahlen"); pg.wait_for_function("Set_.get('mtZahlen') === true"); (leise(), pg.click("#mt-go"))
     assert "Zahlen bei" in toast("angeglichen") and pg.evaluate("Tours.list().then(l => l.filter(t => t.zMt).length)") == 16
     pg.wait_for_selector(".sheet", state="detached")
     # Namen: am Server umbenannt → zieht nach; in der App von Hand benannt → bleibt; ein Name aus Meine Touren hat Vorrang vor Komoot
@@ -439,17 +440,17 @@ def meine_touren(pg):
     assert big["r2"]["zahlen"] == 0 and big["r2"]["namesMt"] == 0 and big["r2"]["dup"] == 800, big["r2"]
     # Abbruch: langsamer Server, „Abbrechen“ im Fortschrittsblatt – der Rest kommt beim nächsten Mal, nichts doppelt
     pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^mt:s\\d+$/.test(t.srcId))) await Tours.remove(t.id); window.__mt.delay = 250; }")
-    go(); pg.wait_for_selector("#mt-go"); pg.click("#mt-go"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/\\d+ von 12/.test(document.querySelector('.sheet p').textContent)"); pg.click("#prog-stop")
+    go(); pg.wait_for_selector("#mt-go"); (leise(), pg.click("#mt-go")); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/\\d+ von 12/.test(document.querySelector('.sheet p').textContent)"); pg.click("#prog-stop")
     m = toast("abgebrochen", 30000); assert "abgebrochen – der Rest kommt beim nächsten Mal" in m, m
     k = pg.evaluate("Tours.list().then(l => l.filter(t => /^mt:s\\d+$/.test(t.srcId)).length)"); assert 0 < k < 11, k
     pg.evaluate("window.__mt.delay = 0"); r = pg.evaluate(sync, True); assert r["added"] == 11 - k and pg.evaluate("Tours.list().then(l => l.filter(t => /^mt:s\\d+$/.test(t.srcId)).length)") == 11, r
     # Abgelaufene Sitzung: freundliche Meldung ohne Schlüssel, Schlüssel vergessen, das Anmeldeblatt kommt mit Adresse und Name wieder
-    pg.wait_for_selector(".sheet", state="detached"); pg.evaluate("window.__mt.sessions.clear()"); go(); pg.wait_for_selector("#mt-go"); pg.click("#mt-go")
+    pg.wait_for_selector(".sheet", state="detached"); pg.evaluate("window.__mt.sessions.clear()"); go(); pg.wait_for_selector("#mt-go"); (leise(), pg.click("#mt-go"))
     m = toast("abgelaufen"); assert m == "Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden." and "SITZUNG" not in m, m
     pg.wait_for_selector("#mt-pw"); assert pg.input_value("#mt-url") == "https://mt.test" and pg.input_value("#mt-name") == "Tagebuch" and pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Tagebuch"}
     # Zwei-Faktor: falscher Code → Meldung; richtiger Code → verbunden
     for code, want in (("000000", "Der Code stimmt nicht"), ("123456", "schon vorhanden")):
-        pg.wait_for_selector("#prog-stop", state="detached"); go(); pg.wait_for_selector("#mt-pw"); pg.fill("#mt-name", "Zweifach"); pg.fill("#mt-pw", "zwei-faktor-1234"); pg.click("#mt-go")
+        pg.wait_for_selector("#prog-stop", state="detached"); go(); pg.wait_for_selector("#mt-pw"); pg.fill("#mt-name", "Zweifach"); pg.fill("#mt-pw", "zwei-faktor-1234"); (leise(), pg.click("#mt-go"))
         pg.wait_for_selector(".sheet[aria-label='Zweiter Schritt'] input"); pg.fill(".sheet[aria-label='Zweiter Schritt'] input", code); pg.click(".sheet[aria-label='Zweiter Schritt'] .btn.pri"); assert want in toast(want)
     acc = pg.evaluate("DB.kvGet('mt')"); assert acc["name"] == "Zweifach" and acc["role"] == "user" and acc["token"] == "SITZUNG-ZWEIFACH-BEISPIEL", acc
     # Verbindung trennen: am Server abgemeldet, Schlüssel gelöscht; ohne Hinweis „nur ansehen“ stand der Tipp zum Nur-Lese-Konto da
