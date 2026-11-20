@@ -311,10 +311,32 @@ MT_FAKE = """(fx) => {
     if (path === '/api/login/2fa' && m === 'POST') { const b = JSON.parse(o.body);
       if (b.ticket === 'TICKET-BEISPIEL' && b.code === '123456') { S.sessions.add('SITZUNG-ZWEIFACH-BEISPIEL'); return R(A.login_2fa_ok); } return R(A.login_2fa_falsch); }
     if (path === '/api/logout' && m === 'POST') { S.sessions.delete(tok); return R(A.logout); }
-    if (m !== 'GET') return { status: 405, headers: {}, body: '{"detail":"Method Not Allowed"}' };      // die App ruft sonst nur lesend auf
+    /* 2.5.0 Senden: nachgestellt wird, was der Server tut (app/main.py api_record_upload, extras.py /note, more.py /rating): Konto „nur ansehen“ → 403, Kennung g<Start in s>, zweites Mal dup */
+    S.mine = S.mine || []; S.up = S.up || []; S.notes = S.notes || {}; S.stars = S.stars || {}; S.gpx = S.gpx || {};
+    if (m === 'POST' && /^\\/api\\/(record\\/upload|tours\\/[^/]+\\/(note|rating))$/.test(path)) {
+      if (!S.sessions.has(tok)) return R(A.ohne_sitzung);
+      if (/^SITZUNG-BETRACHTER/.test(tok)) return { status: 403, headers: {}, body: '{"detail":"Nur ansehen: dieses Konto darf nichts ändern"}' };
+      if (S.fail) return { status: S.fail, headers: {}, body: '{"detail":"Testfehler"}' };
+      const b = JSON.parse(o.body);
+      if (path === '/api/record/upload') {
+        const tm = String(b.gpx).match(/<trkpt[^>]*>[\\s\\S]*?<time>([^<]+)</); if (!tm || String(b.gpx).indexOf('<trkpt') < 0) return { status: 400, headers: {}, body: '{"detail":"Keine GPS-Punkte"}' };
+        const ts = Math.round(Date.parse(tm[1]) / 1000), id = 'g' + ts;
+        if (S.mine.some(x => x.id === id) || JSON.parse(A.tours.body).some(x => x.id === id)) return { status: 200, headers: {}, body: JSON.stringify({ id, dup: true }) };
+        S.up.push(b); S.gpx[id] = b.gpx;
+        const n = (String(b.gpx).match(/<trkpt/g) || []).length;
+        S.mine.push({ id, name: b.name, sport: b.sport || 'hike', start_ts: ts, end_ts: ts + n * 30, dist_m: S.dist || (n - 1) * 44.478, dur_s: n * 30, up_m: 10, down_m: 10, lat: 47, lng: 11, status: 'tour_recorded', source: 'local', photos: 0, note: null, stars: null });
+        return { status: 200, headers: {}, body: JSON.stringify({ id, dup: false, device: null }) };
+      }
+      const id = decodeURIComponent(path.split('/')[3]);
+      if (!S.mine.some(x => x.id === id)) return { status: 404, headers: {}, body: '{"detail":"Tour nicht gefunden"}' };
+      if (/note$/.test(path)) S.notes[id] = b.note; else S.stars[id] = b.stars;
+      return { status: 200, headers: {}, body: '{"ok":true}' };
+    }
+    if (m !== 'GET') return { status: 405, headers: {}, body: '{"detail":"Method Not Allowed"}' };
     if (!S.sessions.has(tok)) return R(A.ohne_sitzung);
-    if (path === '/api/tours') { let l = JSON.parse(A.tours.body); if (S.edit) l = S.edit(l); return { status: 200, headers: {}, body: JSON.stringify(l) }; }
+    if (path === '/api/tours') { let l = JSON.parse(A.tours.body); if (S.edit) l = S.edit(l); return { status: 200, headers: {}, body: JSON.stringify(l.concat(S.mine)) }; }
     const g = path.match(/^\\/api\\/tours\\/([^/]+)\\/gpx$/), gid = g && ((S.gleich || {})[g[1]] || g[1]);
+    if (g && S.gpx[g[1]]) return { status: 200, headers: {}, body: S.gpx[g[1]] };
     if (g) return fx.gpx[gid] ? { status: 200, headers: {}, body: fx.gpx[gid] } : R(A.gpx_fehlt);
     return { status: 404, headers: {}, body: '{"detail":"Not Found"}' };
   };
@@ -811,6 +833,103 @@ ALLES_STUBS = """() => { const S = window.__al = { calls: [], gate: null, mode: 
     return Object.assign({ added: 0, dup: 5, fail: 0 }, res);
   };
   Import.Zepp.importAll = mk('zepp', { added: 1, hr: 2 }); Import.Komoot.importAll = mk('komoot', { added: 2, names: 1 }); Import.MT.importAll = mk('mt', { added: 0, namesMt: 3, zahlen: 4 }); }"""
+
+def senden(pg):
+    """2.5.0, Funktion 1: Tour an Meine Touren senden. Konto „nur ansehen“ → Erklärung statt stillem Scheitern; Rückfrage; Hochladen mit Sportart; Notiz und Sterne nur bei neu angelegter Tour;
+    erneutes Senden → „war schon vorhanden“ (nichts doppelt); gemerkte Kennung → „Aus Meine Touren holen“ legt nichts doppelt an; Auswahl; unverschlüsselte Adresse; automatisch senden
+    (Vorgabe aus, Warteschlange und erneuter Versuch). Der Server ist nachgestellt (MT_FAKE); gegen den echten Server prüft tests/check_meine_touren.py."""
+    fx = mt_fixture(); srv = json.loads(fx["antworten"]["tours"]["body"])
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    pg.evaluate(MT_FAKE, fx)
+    toast = lambda rx, t=20000: (pg.wait_for_function("rx => { const t = document.querySelector('#toast'); return !!t && t.classList.contains('on') && new RegExp(rx).test(t.textContent); }", arg=rx, timeout=t), pg.inner_text("#toast"))[1]
+    leise = lambda: pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000)
+    zu = lambda: (pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_function("() => !document.querySelector('.sheet-back')"))
+    posts = lambda: pg.evaluate("window.__mt.log.filter(x => x.startsWith('POST '))")
+    konto = lambda rolle, tok: pg.evaluate("async ([r, k]) => { await DB.kvSet('mt', { base: 'https://mt.test', name: 'Tagebuch', role: r, token: k, since: Date.now() }); window.__mt.sessions.add(k); window.__mt.log.length = 0; }", [rolle, tok])
+    ids = pg.evaluate("""async () => {
+      const T0 = Date.UTC(2027, 0, 10, 8, 0), line = (t0, n) => Array.from({ length: n }, (_, i) => ({ lat: 47.5 + i * 0.0004, lon: 11.2, ele: 800 + 40 * Math.sin(i / 4), t: t0 + i * 30000 }));
+      const mk = async (name, sport, t0, extra) => { const t = (await Tours.add({ name, sport, pts: line(t0, 40), src: 'file' })).tour; Object.assign(t, extra || {}); await Tours.save(t); return t.id; };
+      return { a: await mk('Sendetour Hüttenrunde', 'hike', T0, { note: 'Schöner Tag, Quellwasser am Wegkreuz.', stars: 4 }), b: await mk('Sendetour Radrunde', 'bike', T0 + 86400000),
+        c: await mk('Sendetour Lauf', 'run', T0 + 2 * 86400000), d: await mk('Sendetour Abend', 'other', T0 + 3 * 86400000), p: await mk('Sendetour geplant', 'hike', T0 + 4 * 86400000, { status: 'planned' }) }; }""")
+    tour = lambda i: pg.evaluate("id => DB.get('tours', id)", ids[i])
+    menue = lambda i: (pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", ids[i]), pg.wait_for_selector(".tourp h1"), pg.click("button[aria-label=Aktionen]"), pg.wait_for_selector(".sheet .menu"))
+    try:
+        # 1. Ohne Verbindung: kein Eintrag. Konto „nur ansehen“: Eintrag da, Tippen erklärt (nichts geht ins Netz).
+        pg.evaluate("DB.del('kv', 'mt')"); menue("a"); assert pg.locator("#mt-senden-tour").count() == 0, "ohne Verbindung kein Eintrag"; zu()
+        konto("viewer", "SITZUNG-BETRACHTER-BEISPIEL"); menue("a"); assert pg.locator("#mt-senden-tour").count() == 1
+        pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-grund")
+        assert "Schreibrechten" in pg.inner_text("#send-grund") and pg.locator("#send-ja").count() == 0 and posts() == [], pg.inner_text("#send-grund")
+        pg.click("#send-ok"); zu()
+        # geplante Tour: kein Eintrag
+        konto("user", "SITZUNG-SCHREIBER-BEISPIEL"); menue("p"); assert pg.locator("#mt-senden-tour").count() == 0, "geplante Tour wird nicht angeboten"; zu()
+        # 2. Schreibkonto: Rückfrage mit Name und Server; „Abbrechen“ sendet nichts
+        menue("a"); pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-ja")
+        assert "Sendetour Hüttenrunde" in pg.inner_text("#send-name") and "mt.test" in pg.inner_text("#send-frage") and "Fotos nicht" in pg.inner_text("#send-frage")
+        pg.click("#send-nein"); zu(); assert posts() == [] and "mtId" not in tour("a")
+        # 3. Senden: Hochladen mit Sportart und Name, danach Notiz und Sterne; Kennung gemerkt
+        menue("a"); pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-ja"); pg.click("#send-ja")
+        assert "wurde an Meine Touren gesendet" in toast("gesendet|schon in Meine Touren")
+        up = pg.evaluate("window.__mt.up"); assert len(up) == 1 and up[0]["name"] == "Sendetour Hüttenrunde" and up[0]["sport"] == "hike" and "<trkpt" in up[0]["gpx"] and "<time>" in up[0]["gpx"], up
+        t = tour("a"); gid = "g" + str(int(__import__("datetime").datetime(2027, 1, 10, 8, 0, tzinfo=__import__("datetime").timezone.utc).timestamp()))
+        assert t["mtId"] == gid and t["mtSent"] > 0, t
+        assert posts() == ["POST /api/record/upload", "POST /api/tours/%s/note" % gid, "POST /api/tours/%s/rating" % gid], posts()
+        assert pg.evaluate("window.__mt.notes") == {gid: "Schöner Tag, Quellwasser am Wegkreuz."} and pg.evaluate("window.__mt.stars") == {gid: 4}
+        pg.wait_for_selector("#mtsent"); assert "gesendet am" in pg.inner_text("#mtsent")
+        pg.click("button[aria-label=Aktionen]"); pg.wait_for_selector(".sheet .menu"); assert pg.locator("#mt-senden-tour").count() == 0, "nach dem Senden kein zweiter Eintrag"; zu()
+        # 4. Kennung verloren (z. B. aus alter Sicherung): erneutes Senden erkennt die Tour am Server – nichts doppelt
+        pg.evaluate("async id => { const t = await DB.get('tours', id); delete t.mtId; delete t.mtSent; await Tours.save(t); }", ids["a"]); leise()
+        pg.evaluate("window.__mt.log.length = 0"); menue("a"); pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-ja"); pg.click("#send-ja")
+        assert "schon in Meine Touren" in toast("schon in Meine Touren|wurde an Meine Touren gesendet") and posts() == [], posts()
+        assert len(pg.evaluate("window.__mt.up")) == 1 and tour("a")["mtId"] == gid
+        # 5. „Aus Meine Touren holen“: die gesendete Tour wird erkannt, nichts doppelt
+        pg.evaluate("window.__mt.log.length = 0")
+        n0 = pg.evaluate("Tours.list().then(l => l.filter(t => t.name.startsWith('Sendetour')).length)")
+        pg.evaluate("async () => { const acc = await DB.kvGet('mt', null); window.__imp = await Import.MT.importAll(acc, { zahlen: false }, () => {}); Tours.invalidate(); }")
+        l = pg.evaluate("Tours.list().then(l => l.map(t => ({ id: t.id, name: t.name, mtId: t.mtId, srcId: t.srcId })))")
+        assert sum(1 for t in l if t["mtId"] == gid or t["srcId"] == "mt:" + gid) == 1, [t for t in l if t["mtId"] == gid or t["srcId"] == "mt:" + gid]
+        assert sum(1 for t in l if t["name"] == "Sendetour Hüttenrunde") == 1 and not any("/api/tours/%s/gpx" % gid in x for x in pg.evaluate("window.__mt.log")), "die Tour wird nicht noch einmal geholt"
+        # 6. Auswahl unter „Meine Touren“: nur noch nicht gesendete; nichts vorgewählt
+        pg.evaluate("location.hash = '#/import'"); pg.wait_for_selector("#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-senden")
+        assert pg.locator("#mt-auto").count() == 1 and pg.locator("#mt-viewer").count() == 0
+        pg.click("#mt-senden"); pg.wait_for_selector("#send-liste .send-row")
+        assert pg.locator("#send-liste .send-row[data-id='%s']" % ids["a"]).count() == 0, "Gesendetes erscheint nicht"
+        assert pg.locator("#send-liste .send-row[data-id='%s']" % ids["p"]).count() == 0 and pg.locator("#send-liste .send-row[data-id='%s']" % ids["b"]).count() == 1
+        assert pg.locator("#send-los").is_disabled() and "0 von" in pg.inner_text("#send-zahl")
+        pg.locator("#send-liste .send-row[data-id='%s'] input" % ids["b"]).check(); assert pg.locator("#send-los").is_enabled() and "1 Tour senden" in pg.inner_text("#send-los")
+        pg.click("#send-keine"); assert pg.locator("#send-los").is_disabled(); pg.locator("#send-liste .send-row[data-id='%s'] input" % ids["b"]).check()
+        pg.click("#send-los"); pg.wait_for_selector("#send-ja"); pg.click("#send-ja")
+        pg.wait_for_selector("#send-ergebnis-t"); assert "1 Tour gesendet" in pg.inner_text("#send-ergebnis-t"), pg.inner_text("#send-ergebnis-t")
+        assert tour("b")["mtId"].startswith("g") and pg.evaluate("window.__mt.up.length") == 2 and pg.evaluate("window.__mt.up[1].sport") == "touringbicycle"
+        pg.click("#send-fertig"); pg.wait_for_selector("#mt-senden"); zu()      # danach geht es zurück zum Blatt „Meine Touren“
+        # 7. Konto „nur ansehen“ im Blatt: kein Senden, ein Hinweis
+        konto("viewer", "SITZUNG-BETRACHTER-BEISPIEL"); pg.evaluate("location.hash = '#/'"); pg.evaluate("location.hash = '#/import'"); pg.wait_for_selector("#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-viewer")
+        assert pg.locator("#mt-senden").count() == 0 and pg.locator("#mt-auto").count() == 0 and "Schreibrechten" in pg.inner_text("#mt-viewer"); zu()
+        # 8. Unverschlüsselte Adresse außerhalb des eigenen Netzes: Warnung vor dem Senden; „Abbrechen“ geht nicht ins Netz
+        pg.evaluate("async () => { await DB.kvSet('mt', { base: 'http://touren.example.org', name: 'x', role: 'user', token: 'K' }); window.__mt.log.length = 0; }")
+        menue("c"); pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-ja"); assert "unverschlüsselt" in pg.inner_text("#send-frage").lower(), pg.inner_text("#send-frage"); pg.click("#send-nein"); zu(); assert posts() == [] and "mtId" not in tour("c")
+        # 9. Automatisch senden: Vorgabe aus → nichts; eingeschaltet → still gesendet; Fehler → vorgemerkt und später erneut versucht
+        konto("user", "SITZUNG-SCHREIBER-BEISPIEL"); assert pg.evaluate("Set_.get('mtAuto')") is False
+        pg.evaluate("id => DB.get('tours', id).then(t => Senden.auto(t))", ids["c"]); assert posts() == [] and pg.evaluate("DB.kvGet('mtOffen', [])") == [], "ausgeschaltet: nichts geht raus"
+        pg.evaluate("Set_.set('mtAuto', true)"); leise()
+        pg.evaluate("id => DB.get('tours', id).then(t => Senden.auto(t))", ids["c"]); assert "gesendet" in toast("gesendet|schon in Meine Touren")
+        assert pg.evaluate("window.__mt.up.length") == 3 and pg.evaluate("DB.kvGet('mtOffen', [])") == [] and tour("c")["mtId"].startswith("g"), "Auto: gesendet, Warteschlange leer"
+        pg.evaluate("window.__mt.fail = 503"); leise()
+        pg.evaluate("id => DB.get('tours', id).then(t => Senden.auto(t))", ids["d"]); toast("später noch einmal")
+        q = pg.evaluate("DB.kvGet('mtOffen', [])"); assert q == [{"id": ids["d"], "n": 1}], q
+        assert "mtId" not in tour("d") and pg.evaluate("window.__mt.up.length") == 3, "nichts angekommen, Tour unverändert"
+        pg.evaluate("window.__mt.fail = null"); leise(); pg.evaluate("Senden.nachholen()"); toast("gesendet")
+        assert pg.evaluate("DB.kvGet('mtOffen', [])") == [] and tour("d")["mtId"].startswith("g") and pg.evaluate("window.__mt.up.length") == 4
+        assert pg.evaluate("window.__mt.up[3].sport") is None, "„Sonstiges“: keine Sportart mitgesendet"
+        # Sicherung: Sitzungsschlüssel und Warteschlange bleiben draußen
+        bk = pg.evaluate("Backup.SKIP.includes('mt') && Backup.SKIP.includes('mtOffen')"); assert bk
+        assert "Passwort" not in json.dumps(pg.evaluate("DB.kvGet('mt', null)")) and "password" not in json.dumps(pg.evaluate("DB.kvGet('mt', null)")).lower()
+    finally:
+        pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
+        pg.evaluate("async () => { window.__mt.fail = null; for (const t of (await Tours.list())) if (t.name.startsWith('Sendetour')) await Tours.remove(t.id); await DB.del('kv', 'mt'); await DB.del('kv', 'mtOffen'); await Set_.set('mtAuto', false); Tours.invalidate(); }")
+    nachher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    new_ = [i for i in nachher if i not in vorher]
+    if new_: pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i); Tours.invalidate(); }", new_)      # was „Aus Meine Touren holen“ aus dem Beispielserver mitgebracht hat
+
 
 def alles(pg):
     """2.2.0, Punkt C: „Alles abgleichen“ – nur mit verbundenen Quellen, Reihenfolge, gespeicherte Einstellungen, gemeinsames Fortschrittsblatt, Abbruch, Fehler einer Quelle,
@@ -2211,6 +2330,7 @@ def main():
         assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
 
         meine_touren(pg)
+        senden(pg)
         uhr_hoehen(pg)
         doppelte(pg)
         winter(pg)
@@ -2218,6 +2338,7 @@ def main():
         alles(pg)
         alles_echt(pg)
         jahr_bad = jahr(pg)
+        pdf(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
 
