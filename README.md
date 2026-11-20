@@ -23,6 +23,7 @@ Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das 
   (bei Zwei-Faktor mit Code). Ein Betrachter-Konto („nur ansehen“) genügt und wird empfohlen; die App liest nur. Neue Touren kommen mit Strecke, vorhandene bekommen Name, Sportart, Notiz – und auf
   Wunsch Strecke und Aufstieg aus Meine Touren als maßgebliche Zahlen, damit beide Apps dasselbe zeigen. Gemerkt wird nur ein Sitzungsschlüssel (nie das Passwort, nie in der Sicherung).
   Einzelheiten: `docs/versionen/2.1.0.md`.
+- **Alles abgleichen** (Import-Seite oben, Startseite): Zepp, Komoot und Meine Touren nacheinander mit den gespeicherten Einstellungen, ein Fortschrittsfenster, eine Zeile je Quelle; optional beim Öffnen automatisch (höchstens einmal am Tag). Dazu **eigene Bewertung** (1–5 Sterne, Filter, Sicherung) und getrennte **Wintersportarten** (Ski alpin, Skitour, Langlauf; Schneeschuh = Wandern + Schlagwort). Einzelheiten: `docs/versionen/2.2.0.md`.
 - **Doppelte Touren prüfen** (Mehr → Touren importieren → Aufräumen): findet dieselbe Tour aus zwei Quellen, schlägt vor, welche bleibt, und führt auf Wunsch zusammen
   (Fotos, Puls, Notiz, Pins, Zuordnungen wandern mit) – oder merkt sich „keine Doppelten“. Nie von selbst.
 - **Heimatort** (Mehr → Einstellungen): Ort oder Adresse suchen und übernehmen; dient als Kartenmitte der Planung.

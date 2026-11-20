@@ -249,8 +249,8 @@ def main():
             assert o["g1"]["note"] == "Früh los, oben Gämsen gesehen." and o["g1"]["stars"] == 5 and sorted(o["g1"]["tags"]) == ["Gipfel", "Wetterstein"] and o["g1"]["hr"] and o["g1"]["src"] == "mt", o["g1"]
             sports = {t["sport"]: o[t["id"]]["sport"] for t in srv if o.get(t["id"])}
             print("Sportarten:", sports)
-            assert sports == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run", "skialpin": "ski", "skitour": "ski",
-                              "snowshoe": "ski", "nordic": "ski", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}, sports
+            assert sports == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run", "skialpin": "skialpin", "skitour": "skitour",
+                              "snowshoe": "hike", "nordic": "nordic", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}, sports
             sumS = (sum(t["dist_m"] for t in srv if t["id"] != "987654322"), sum(t["up_m"] for t in srv if t["id"] != "987654322"))
             sumA = pg.evaluate("Tours.list().then(l => [l.reduce((s, t) => s + t.dist, 0), l.reduce((s, t) => s + t.up, 0)])")
             assert abs(sumS[0] - sumA[0]) < 0.01 and abs(sumS[1] - sumA[1]) < 0.01, (sumS, sumA); print("Summen gleich: %.1f km, ↑ %.0f m" % (sumA[0] / 1000, sumA[1]))

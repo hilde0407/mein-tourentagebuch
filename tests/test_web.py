@@ -83,7 +83,7 @@ def neue_funktionen(pg):
     DAY = 86400000
     # --- 1. Sicherungs-Erinnerung ---
     pg.evaluate("async () => { await DB.del('kv', 'lastBackup'); await DB.del('kv', 'backupSnooze'); await Set_.set('backupDays', 14); }")
-    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#backupnote")
+    pg.evaluate("() => { if (location.hash === '#/start') Nav.render(); else location.hash = '#/start'; }"); pg.wait_for_selector("#backupnote")
     assert "Noch keine Sicherung gemacht" in pg.inner_text("#backupnote"), pg.inner_text("#backupnote")
     pg.click("#bk-later"); pg.wait_for_selector("#backupnote", state="detached")
     assert pg.evaluate("DB.kvGet('backupSnooze', 0).then(v => v > Date.now() + 6.9 * 86400000)")
@@ -929,7 +929,11 @@ def layout_22(pg):
     bad += sheet_check(pg, "Filter mit Bewertung", lambda: (go(pg, "#/", "#filterbtn"), pg.click("#filterbtn")))
     bad += sheet_check(pg, "Sportart ändern", lambda: (go(pg, "#/tour/" + ids["a"], "header.top button[aria-label=Aktionen]"), pg.click("header.top button[aria-label=Aktionen]"), pg.wait_for_selector(".sheet .li"), pg.get_by_text("Sportart ändern").click()))
     bad += sheet_check(pg, "Ziel mit Skiarten", lambda: (go(pg, "#/stats/ziele", "#goaladd"), pg.evaluate("document.querySelector('#goaladd').click()")))
-    bad += sheet_check(pg, "Alles abgleichen, Fortschritt", lambda: (go(pg, "#/start", "#startsync"), pg.evaluate("() => { __al.mode = { zepp: { gate: new Promise(r => { window.__alGo = r; }) } }; document.querySelector('#startsync').click(); }"), pg.wait_for_selector("#prog-stop")))
+    def fortschritt():
+        if pg.evaluate("!!window.__alGo"):      # ein früherer Durchgang hängt noch: freigeben, Zusammenfassung abwarten und schließen
+            pg.evaluate("window.__alGo(); window.__alGo = null"); pg.wait_for_selector("#sum"); zu(pg)
+        go(pg, "#/start", "#startsync"); pg.evaluate("() => { __al.mode = { zepp: { gate: new Promise(r => { window.__alGo = r; }) } }; document.querySelector('#startsync').click(); }"); pg.wait_for_selector("#prog-stop")
+    bad += sheet_check(pg, "Alles abgleichen, Fortschritt", fortschritt)
     pg.evaluate("window.__alGo()"); pg.wait_for_selector("#sum")
     bad += ["Zusammenfassung: " + m for m in pg.evaluate(LAYOUT_JS)]
     zu(pg)

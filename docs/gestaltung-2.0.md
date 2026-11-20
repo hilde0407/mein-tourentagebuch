@@ -91,6 +91,7 @@ Fünf Reiter in einer Petrol-Leiste, „Aufnehmen“ in der Mitte als gelbe Sche
 | Mehr       | `#/mehr`  | Tour planen, Reisen & Alben, Statistik, Importieren, Foto-Quellen, Einstellungen |
 
 Unter „Mehr → Touren importieren“ stehen die Quellen (ab 2.1.0 auch „Meine Touren“) und der Abschnitt „Aufräumen“ mit „Doppelte Touren prüfen“ (`#/doppelt`).
+Ab 2.2.0: oben auf der Import-Seite die Hauptaktion „Alles abgleichen“ (gelb); auf der Startseite nur als leise Zweitaktion (kein Gelb) mit Zeile „Zuletzt abgeglichen“. Sterne der eigenen Bewertung in Tinte (`--ink`), nicht gelb, je 44 px.
 Die Seite der Doppelten trägt bewusst kein Gelb: Zusammenführen ist keine Hauptaktion, sondern eine Entscheidung je Paar – welche Tour bleibt, steht in Worten daneben.
 
 Alle bisherigen Adressen bleiben gültig. Die Leiste bleibt sichtbar, solange man blättert (Reiter, Karte, Reisen,
