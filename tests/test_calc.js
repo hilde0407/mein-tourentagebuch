@@ -411,4 +411,126 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(AB.faellig(null) === false && AB.faellig({}) === false, 'ohne Angaben nicht fällig');
 })();
 
+
+/* ---------- 2.3.0 Jahresrückblick (calc-jahr.js) ---------- */
+(() => {
+  const J = require(W + 'calc-jahr.js'), AB = require(W + 'calc-abgleich.js');
+  const T = (id, sport, start, dist, up, o) => Object.assign({ id, name: id, sport, start, dist, up, dur: dist / 1.2, moving: dist / 1.5, maxAlt: 1000 + (up || 0), status: 'done', timed: true }, o);
+  const eq = (a, b, m) => { n++; A.deepStrictEqual(a, b, m); };
+
+  // Leeres Jahr, ohne Daten, nur geplante/ausgeblendete Touren: nichts Erfundenes
+  const leer = J.berechne([], 2026, new Date(2026, 10, 20));
+  ok(leer.leer && leer.n === 0 && leer.hoehepunkte === null && leer.vorjahr === null && leer.sportarten.length === 0 && leer.monate.length === 12 && leer.monate.every(m => m.n === 0), 'Jahr ohne Touren');
+  ok(J.berechne(null, 2026).leer && J.berechne(undefined, 2026).leer, 'ohne Liste: leer, kein Absturz');
+  ok(J.berechne([T('p', 'hike', day(2026, 5, 1), 5000, 100, { status: 'planned' }), T('h', 'hike', day(2026, 5, 2), 5000, 100, { hidden: true })], 2026).leer, 'geplant und ausgeblendet zählen nicht');
+  ok(!J.zaehlt(null) && !J.zaehlt(T('x', 'hike', undefined, 1, 1)) && !J.zaehlt(T('x', 'hike', NaN, 1, 1)) && !J.zaehlt(T('x', 'hike', day(2026, 1, 1), 1, 1, { status: 'planned' })) && J.zaehlt(T('x', 'hike', day(2026, 1, 1), 1, 1)), 'zaehlt');
+  ok(J.zaehlt(T('u', 'hike', day(2026, 1, 1), 1, 1, { timed: false })), 'Touren ohne Uhrzeit zählen mit (wie in der Statistik)');
+
+  // Kennzahlen: Zeit = Summe „in Bewegung“, ersatzweise Summe der Dauer (wie die Statistik); aktive Tage = verschiedene Kalendertage
+  const A1 = [T('a', 'hike', day(2026, 3, 7, 8), 10000, 500), T('b', 'hike', day(2026, 3, 7, 15), 5000, 200), T('c', 'run', day(2026, 3, 9, 7), 8000, 50)];
+  const k = J.kennzahlen(A1);
+  ok(k.n === 3 && k.dist === 23000 && k.up === 750 && k.tage === 2 && Math.abs(k.zeit - 23000 / 1.5) < 1e-6, 'Kennzahlen');
+  ok(Math.abs(J.kennzahlen(A1.map(t => Object.assign({}, t, { moving: 0 }))).zeit - 23000 / 1.2) < 1e-6, 'Zeit: ohne „in Bewegung“ die Dauer');
+  ok(Math.abs(J.kennzahlen(A1.map((t, i) => i ? Object.assign({}, t, { moving: 0 }) : t)).zeit - 10000 / 1.5) < 1e-6, 'Zeit: wie die Statistik die Summe der Bewegungszeit, wenn es sie gibt (nicht je Tour gemischt)');
+  eq(J.kennzahlen([]), { n: 0, dist: 0, up: 0, zeit: 0, tage: 0 }, 'Kennzahlen leer');
+  ok(J.kennzahlen([T('n', 'hike', day(2026, 1, 1), undefined, undefined, { dur: undefined, moving: undefined })]).dist === 0, 'fehlende Werte zählen 0');
+
+  // Jahreswechsel nach Startzeit (Ortszeit): 31.12. 23:30 gehört zum alten, 01.01. 00:30 zum neuen Jahr; 31.12.23:59:59.999 / 1.1. 00:00:00
+  const sylv = new Date(2025, 11, 31, 23, 30).getTime(), neujahr = new Date(2026, 0, 1, 0, 30).getTime();
+  const W2 = [T('s', 'hike', sylv, 12000, 300), T('j', 'hike', neujahr, 8000, 100), T('e', 'hike', new Date(2025, 11, 31, 23, 59, 59, 999).getTime(), 1000, 0), T('f', 'hike', new Date(2026, 0, 1, 0, 0, 0, 0).getTime(), 2000, 0)];
+  ok(J.berechne(W2, 2025, new Date(2026, 5, 1)).n === 2 && J.berechne(W2, 2026, new Date(2026, 5, 1)).n === 2 && J.berechne(W2, 2025, new Date(2026, 5, 1)).ids.join() === 's,e', 'Jahreswechsel nach Startzeit');
+  ok(J.jahre(W2).join() === '2026,2025' && J.jahre([]).length === 0 && J.jahre(null).length === 0, 'Jahre, neueste zuerst');
+  // Zeitzone: dieselbe Tour (UTC 31.12.2025 23:30) liegt in Madrid schon im neuen, in Los Angeles noch im alten Jahr – wie die App sonst Tage bestimmt (Ortszeit des Geräts)
+  const utc = Date.UTC(2025, 11, 31, 23, 30), tz0 = process.env.TZ;
+  const inJahr = tz => { process.env.TZ = tz; try { return [J.berechne([T('z', 'hike', utc, 5000, 10)], 2025, new Date(2026, 5, 1)).n, J.berechne([T('z', 'hike', utc, 5000, 10)], 2026, new Date(2026, 5, 1)).n]; } finally { process.env.TZ = tz0; } };
+  eq(inJahr('Europe/Madrid'), [0, 1], 'Europe/Madrid: 00:30 am 1. Januar');
+  eq(inJahr('America/Los_Angeles'), [1, 0], 'Los Angeles: noch der 31. Dezember');
+  eq(inJahr('Europe/Berlin'), [0, 1], 'Berlin wie Madrid');
+  process.env.TZ = 'Europe/Madrid';
+  { const k2 = J.kennzahlen([T('m1', 'hike', Date.UTC(2026, 5, 10, 21, 30), 1, 1), T('m2', 'hike', Date.UTC(2026, 5, 10, 22, 30), 1, 1)]); ok(k2.tage === 2, 'Madrid: 23:30 und 00:30 Ortszeit sind zwei Tage (UTC: ein Tag)'); }
+  process.env.TZ = tz0;
+  ok(process.env.TZ === 'Europe/Berlin', 'Zeitzone zurückgestellt');
+
+  // Vorjahr: nur wenn das Vorjahr Touren hat; im laufenden Jahr bis zum gleichen Kalendertag, sonst volles Jahr
+  const V = [T('v1', 'hike', day(2025, 3, 1), 20000, 400), T('v2', 'hike', day(2025, 11, 25), 30000, 900), T('c1', 'hike', day(2026, 3, 1), 25000, 500), T('c2', 'hike', day(2026, 6, 1), 15000, 100)];
+  const lauf = J.berechne(V, 2026, new Date(2026, 10, 20, 9));
+  ok(lauf.vorjahr && lauf.vorjahr.bisHeute && lauf.vorjahr.year === 2025 && lauf.vorjahr.kennzahlen.n === 1 && lauf.vorjahr.diff.n === 1 && lauf.vorjahr.diff.dist === 40000 - 20000 && lauf.vorjahr.diff.up === 600 - 400, 'laufendes Jahr: Vorjahr bis zum 20.11. (die Tour vom 25.11. fehlt noch)');
+  const fertig = J.berechne(V, 2025, new Date(2026, 10, 20, 9));
+  ok(fertig.vorjahr === null, 'Vorjahr ohne Touren: kein Vergleich');
+  const voll = J.berechne(V.concat([T('v0', 'hike', day(2024, 5, 5), 10000, 0)]), 2025, new Date(2026, 10, 20));
+  ok(voll.vorjahr && !voll.vorjahr.bisHeute && voll.vorjahr.diff.n === 1 && voll.vorjahr.diff.dist === 50000 - 10000, 'abgeschlossenes Jahr: ganzes Jahr gegen ganzes Jahr');
+  ok(J.berechne([T('a', 'hike', day(2025, 2, 28), 1000, 0), T('b', 'hike', day(2026, 1, 5), 1000, 0)], 2026, new Date(2026, 1, 28, 12)).vorjahr.kennzahlen.n === 1, 'Vorjahr bis 28.02.');
+  ok(J.berechne([T('a', 'hike', day(2024, 2, 10), 1000, 0), T('a2', 'hike', day(2024, 2, 29), 1000, 0), T('b', 'hike', day(2024, 3, 1), 1000, 0), T('c', 'hike', day(2025, 1, 5), 1000, 0)], 2025, new Date(2025, 1, 28, 12)).vorjahr.kennzahlen.n === 1, 'Vorjahr (Schaltjahr) bis 28.02.: der 29.02. und spätere fehlen noch');
+  ok(J.berechne([T('a', 'hike', day(2023, 2, 28), 1000, 0), T('c', 'hike', day(2024, 1, 5), 1000, 0)], 2024, new Date(2024, 1, 29, 12)).vorjahr.kennzahlen.n === 1, 'Stichtag 29.02.: Vorjahr bis 28.02.');
+  ok(J.berechne([T('a', 'hike', day(2025, 3, 1), 1000, 0), T('c', 'hike', day(2026, 1, 5), 1000, 0)], 2026, new Date(2026, 1, 1, 12)).vorjahr === null, 'Vorjahr ohne Touren bis zum Stichtag: kein Vergleich');
+  ok(J.berechne([T('a', 'hike', day(2025, 12, 1), 1000, 0), T('c', 'hike', day(2026, 1, 5), 1000, 0)], 2026, new Date(2026, 0, 10)).vorjahr === null, 'Vorjahr hat erst später im Jahr Touren: kein Vergleich im Januar');
+
+  // Sportarten: Gruppen; Schneeschuh bleibt Wandern (Sportart hike + Schlagwort); Anteil nach Strecke, absteigend
+  const S = [T('w1', 'hike', day(2026, 1, 10), 10000, 300, { tags: ['Schneeschuh'] }), T('w2', 'walk', day(2026, 1, 11), 2000, 10), T('w3', 'mountaineering', day(2026, 1, 12), 6000, 900),
+    T('r1', 'mtb', day(2026, 5, 1), 40000, 800), T('r2', 'ebike', day(2026, 5, 2), 20000, 200), T('l1', 'run', day(2026, 6, 1), 10000, 50),
+    T('s1', 'skitour', day(2026, 2, 1), 9000, 1200), T('s2', 'nordic', day(2026, 2, 2), 3000, 20), T('s3', 'ski', day(2026, 2, 3), 1000, 0), T('o1', 'other', day(2026, 7, 1), 1000, 0), T('o2', 'unbekannt', day(2026, 7, 2), 1000, 0)];
+  const sp = J.nachSportart(S);
+  eq(sp.map(g => [g.key, g.n]), [['rad', 2], ['wandern', 3], ['ski', 3], ['laufen', 1], ['sonst', 2]].sort((a, b) => ({ rad: 60, wandern: 18, ski: 13, laufen: 10, sonst: 2 })[b[0]] - ({ rad: 60, wandern: 18, ski: 13, laufen: 10, sonst: 2 })[a[0]]), 'Sportgruppen nach Strecke sortiert');
+  ok(sp.find(g => g.key === 'wandern').dist === 18000 && sp.find(g => g.key === 'wandern').up === 1210 && Math.abs(sp.reduce((a, g) => a + g.anteil, 0) - 1) < 1e-9, 'Wandern enthält Schneeschuh, Spazieren und Bergsteigen; Anteile ergeben 1');
+  ok(J.nachSportart([]).length === 0, 'keine Touren: keine Gruppen');
+  ok(J.nachSportart([T('z', 'hike', day(2026, 1, 1), 0, 0), T('y', 'run', day(2026, 1, 2), 0, 0)]).every(g => g.anteil === 0.5), 'ohne Strecke teilt die Zahl der Touren');
+
+  // Monate und aktivster Monat
+  const M = J.nachMonat(S.concat([T('x', 'hike', day(2026, 5, 20), 1000, 0)]));
+  ok(M.length === 12 && M[4].n === 3 && M[4].dist === 61000 && M[0].name === 'Januar' && M[11].n === 0, 'Monate');
+  ok(J.aktivsterMonat(M).m === 4 && J.aktivsterMonat(J.nachMonat([])) === null, 'aktivster Monat nach Strecke');
+  ok(J.aktivsterMonat(J.nachMonat([T('a', 'hike', day(2026, 3, 1), 0, 0), T('b', 'hike', day(2026, 8, 1), 0, 0), T('c', 'hike', day(2026, 8, 2), 0, 0)])).m === 7, 'Gleichstand bei der Strecke: mehr Touren');
+
+  // Höhepunkte (Bestwerte wiederverwendet), Serie, schönste Tour
+  const hp = J.berechne(S, 2026, new Date(2027, 0, 5)).hoehepunkte;
+  ok(hp.laengste.id === 'r1' && hp.aufstieg.id === 's1' && hp.hoechster.id === 's1' && hp.monat.m === 4, 'Höhepunkte');
+  eq(J.berechne(S, 2026, new Date(2027, 0, 5)).hoehepunkte.laengste, Z.bestwerte(S, 1).strecke[0], 'längste Tour = Bestwerte');
+  ok(J.berechne([T('a', 'hike', day(2026, 1, 1), 0, 0, { maxAlt: null })], 2026).hoehepunkte.hoechster === null && J.berechne([T('a', 'hike', day(2026, 1, 1), 0, 0)], 2026).hoehepunkte.laengste === null, 'ohne Werte keine Höhepunkte');
+  ok(hp.schoenste === null, 'nichts bewertet: keine schönste Tour');
+  const R = [T('a', 'hike', day(2026, 4, 1), 1000, 0, { stars: 4, starsMan: 1 }), T('b', 'hike', day(2026, 4, 2), 5000, 0, { starsMt: 5 }), T('c', 'hike', day(2026, 4, 3), 9000, 0, { starsMt: 5 }), T('d', 'hike', day(2026, 4, 4), 99000, 0)];
+  const sc = J.schoenste(R);
+  ok(sc.tour.id === 'c' && sc.sterne === 5 && sc.gleiche === 2, 'schönste: 5 Sterne (aus Meine Touren), bei Gleichstand die längere');
+  ok(J.schoenste([T('a', 'hike', day(2026, 4, 1), 1, 0, { stars: 5, starsMan: 1 }), T('b', 'hike', day(2026, 4, 1), 1, 0, { starsMt: 3, stars: 0, starsMan: 1 })]).tour.id === 'a' && AB.sterne(R[0]) === 4, 'von Hand gesetzte Sterne gelten');
+  ok(J.schoenste([T('a', 'hike', day(2026, 4, 1), 1, 0, { stars: 0 })]) === null && J.schoenste([]) === null, 'Bewertung 0 zählt nicht');
+  // Serie: Wochen (Mo–So) in Folge, nur Touren des Jahres; über die Jahresgrenze gezählt jede Woche für sich
+  const wk = (y, m, d) => T('w' + y + m + d, 'hike', day(y, m, d), 1000, 0);
+  const serie = (ts, y) => J.berechne(ts, y, new Date(y + 1, 5, 1)).hoehepunkte.serieWochen;
+  ok(serie([wk(2026, 1, 5), wk(2026, 1, 12), wk(2026, 1, 20), wk(2026, 2, 16)], 2026) === 3 && serie([wk(2026, 3, 2)], 2026) === 1, 'Serie: drei Wochen in Folge, dann Lücke');
+  ok(serie([wk(2026, 1, 5), wk(2026, 1, 7), wk(2026, 1, 11)], 2026) === 1, 'mehrere Touren in einer Woche (Mo–So) zählen einmal');
+  ok(serie([wk(2025, 12, 15), wk(2025, 12, 22), wk(2025, 12, 29), wk(2026, 1, 5), wk(2026, 1, 12)], 2026) === 2 && serie([wk(2025, 12, 15), wk(2025, 12, 22), wk(2025, 12, 29), wk(2026, 1, 5), wk(2026, 1, 12)], 2025) === 3, 'Serie über die Jahresgrenze: jedes Jahr zählt nur seine eigenen Touren (29.12. liegt in der Woche bis 4.1.)');
+  ok(serie([wk(2025, 12, 30), wk(2026, 1, 2)], 2026) === 1 && serie([wk(2025, 12, 30), wk(2026, 1, 2)], 2025) === 1, 'dieselbe Kalenderwoche über Silvester: in beiden Jahren eine Woche');
+  ok(serie([wk(2026, 12, 21), wk(2026, 12, 28)], 2026) === 2 && serie([wk(2026, 12, 21), wk(2026, 12, 28), wk(2027, 1, 4)], 2026) === 2, 'Serie bis zum Jahresende');
+  eq(J.berechne(S, 2026, new Date(2027, 0, 5)).hoehepunkte.serieWochen, Z.serie(S, new Date(2026, 11, 31)).rekord, 'Serie = vorhandene Wochen-Serie (Rekord)');
+
+  // Regionen: nur bekannte, nichts erfunden
+  const rg = J.regionen([T('a', 'hike', 1, 3000, 0), T('b', 'hike', 2, 5000, 0), T('c', 'hike', 3, 1000, 0), T('d', 'hike', 4, 1000, 0)], t => ({ a: 'Tirol', b: 'Tirol', c: 'Südtirol' })[t.id] || '');
+  eq(rg, [{ name: 'Tirol', n: 2, dist: 8000 }, { name: 'Südtirol', n: 1, dist: 1000 }], 'Regionen: Tour d ohne Ort fehlt');
+  ok(J.regionen([T('a', 'hike', 1, 1, 0)], () => '').length === 0 && J.regionen([T('a', 'hike', 1, 1, 0)], null).length === 0 && J.regionen([], t => 'x').length === 0, 'ohne Ortsangaben: leer');
+  ok(J.regionen(Array.from({ length: 9 }, (_, i) => T('t' + i, 'hike', i, 1, 0)), t => 'R' + t.id).length === 5 && J.regionen(Array.from({ length: 9 }, (_, i) => T('t' + i, 'hike', i, 1, 0)), t => 'R' + t.id, 3).length === 3, 'höchstens fünf (oder die gewünschte Zahl)');
+
+  // Jahr wählen und Startseiten-Eintrag
+  const jj = [T('a', 'hike', day(2025, 6, 1), 1, 0), T('b', 'hike', day(2026, 1, 20), 1, 0)];
+  ok(J.vorgabe(jj, new Date(2026, 10, 20)) === 2026 && J.vorgabe(jj, new Date(2026, 0, 31, 23, 59)) === 2025 && J.vorgabe(jj, new Date(2026, 1, 1)) === 2026, 'Vorgabe: im Januar das Vorjahr, ab 1. Februar das laufende');
+  ok(J.vorgabe([T('b', 'hike', day(2026, 1, 20), 1, 0)], new Date(2026, 0, 31)) === 2026 && J.vorgabe([], new Date(2026, 0, 3)) === 2026, 'Januar ohne Touren im Vorjahr: das laufende Jahr');
+  ok(J.waehle('2024', jj, new Date(2026, 10, 20)) === 2024 && J.waehle('abc', jj, new Date(2026, 10, 20)) === 2026 && J.waehle(undefined, jj, new Date(2026, 10, 20)) === 2026 && J.waehle('99999', jj, new Date(2026, 10, 20)) === 2026 && J.waehle('1850', jj, new Date(2026, 10, 20)) === 2026 && J.waehle('2025 ', jj, new Date(2026, 0, 5)) === 2025 && J.waehle('2025-1', jj, new Date(2026, 0, 5)) === 2025, 'Jahr aus der Adresse');
+  eq(J.vorschlag(jj, new Date(2026, 10, 20)), { year: 2026, n: 1, hervor: false }, 'Nov: ruhig');
+  eq(J.vorschlag(jj, new Date(2026, 11, 2)), { year: 2026, n: 1, hervor: true }, 'Dez: hervorgehoben');
+  eq(J.vorschlag(jj, new Date(2026, 0, 15)), { year: 2025, n: 1, hervor: true }, 'Jan: Vorjahr, hervorgehoben');
+  eq(J.vorschlag([T('a', 'hike', day(2025, 6, 1), 1, 0)], new Date(2026, 11, 2)), { year: 2026, n: 0, hervor: false }, 'Dez ohne Touren im Jahr: nicht hervorgehoben');
+  eq(J.vorschlag([], new Date(2026, 11, 2)), { year: 2026, n: 0, hervor: false }, 'ohne Touren');
+
+  // Gleiche Zahlen wie die Jahresstatistik: v-stats.js filtert mit Jahr.zaehlt und rechnet mit Jahr.kennzahlen (Quelltext geprüft); hier die Zahlen gegen eine unabhängige Nachrechnung nach dem alten Text der Statistik
+  const fs = require('fs'), stats = fs.readFileSync(W + 'v-stats.js', 'utf8');
+  ok(/filter\(Jahr\.zaehlt\)/.test(stats) && /Jahr\.kennzahlen\(ts\)/.test(stats) && !/status !== 'planned'/.test(stats), 'v-stats.js benutzt Jahr.zaehlt und Jahr.kennzahlen');
+  const alt = (all, year) => { const ts = all.filter(t => t.status !== 'planned' && !t.hidden).filter(t => new Date(t.start).getFullYear() === year); const sm = k => ts.reduce((a, t) => a + (t[k] || 0), 0);
+    return { n: ts.length, dist: sm('dist'), up: sm('up'), zeit: sm('moving') || sm('dur'), tage: new Set(ts.map(t => new Date(t.start).toDateString())).size }; };
+  let seed = 7; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const viele = Array.from({ length: 400 }, (_, i) => T('r' + i, ['hike', 'run', 'mtb', 'skitour', 'walk', 'other'][i % 6], new Date(2024 + (i % 3), Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 28), Math.floor(rnd() * 24), Math.floor(rnd() * 60)).getTime(), Math.round(rnd() * 30000), Math.round(rnd() * 900),
+    { status: i % 17 === 0 ? 'planned' : 'done', hidden: i % 23 === 0, moving: i % 5 === 0 ? 0 : Math.round(rnd() * 20000) }));
+  for (const y of [2024, 2025, 2026]) eq(J.berechne(viele, y, new Date(2030, 0, 1)).kennzahlen, alt(viele, y), 'Jahr ' + y + ' = Statistik');
+  eq(J.berechne(viele, 2025, new Date(2030, 0, 1)).kennzahlen, J.kennzahlen(viele.filter(J.zaehlt).filter(t => new Date(t.start).getFullYear() === 2025)), 'berechne = kennzahlen');
+  ok(J.berechne(viele, 2025, new Date(2030, 0, 1)).sportarten.reduce((a, g) => a + g.n, 0) === alt(viele, 2025).n && Math.abs(J.berechne(viele, 2025, new Date(2030, 0, 1)).sportarten.reduce((a, g) => a + g.dist, 0) - alt(viele, 2025).dist) < 1e-6, 'Sportarten ergeben zusammen die Gesamtzahlen');
+  ok(Math.abs(J.berechne(viele, 2025, new Date(2030, 0, 1)).monate.reduce((a, g) => a + g.dist, 0) - alt(viele, 2025).dist) < 1e-6 && J.berechne(viele, 2025, new Date(2030, 0, 1)).monate.reduce((a, g) => a + g.n, 0) === alt(viele, 2025).n, 'Monate ergeben zusammen die Gesamtzahlen');
+})();
+
 console.log('OK (' + n + ' Prüfungen)');

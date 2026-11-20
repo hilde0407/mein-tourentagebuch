@@ -1,6 +1,6 @@
 'use strict';
 Views['/stats'] = async (root, [tab0]) => {
-  const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
+  const all = (await Tours.list()).filter(Jahr.zaehlt);      // gleiche Filterregel und Kennzahlen wie der Jahresrückblick (calc-jahr.js)
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
   let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'kalender', 'auswertung', 'ziele', 'fitness'].includes(tab0) ? tab0 : tab0 === 'bestwerte' ? 'rekorde' : 'ueber';
   const body = h('div', { class: 'pad' });
@@ -15,11 +15,10 @@ Views['/stats'] = async (root, [tab0]) => {
     const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
     if (tab !== 'ueber') { const r = Ausw[tab](body, ts, { all, year, sport }); return r; }
     if (!ts.length) { body.append(UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' })); return; }
-    const sum = k => ts.reduce((a, t) => a + (t[k] || 0), 0);
-    const days = new Set(ts.map(t => new Date(t.start).toDateString())).size;
+    const k = Jahr.kennzahlen(ts);
     body.append(h('div', { class: 'kpis' },
-      kpi(ts.length, 'Touren'), kpi(F.km(sum('dist')), 'Strecke'), kpi(F.m(sum('up')), 'Aufstieg'), kpi(F.dur(sum('moving') || sum('dur')), 'Zeit unterwegs'), kpi(days, 'Aktive Tage'),
-      kpi(F.km(sum('dist') / ts.length), 'Ø pro Tour')));
+      kpi(k.n, 'Touren'), kpi(F.km(k.dist), 'Strecke'), kpi(F.m(k.up), 'Aufstieg'), kpi(F.dur(k.zeit), 'Zeit unterwegs'), kpi(k.tage, 'Aktive Tage'),
+      kpi(F.km(k.dist / k.n), 'Ø pro Tour')));
     // Monatsbalken
     const mon = Array(12).fill(0); ts.forEach(t => { if (year !== 'all') mon[new Date(t.start).getMonth()] += t.dist; });
     if (year !== 'all') {
