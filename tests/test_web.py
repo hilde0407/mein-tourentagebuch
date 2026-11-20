@@ -17,8 +17,8 @@ window.MTApp={
  startRecording(s,n){window.__rec=Object.assign(window.__rec,{state:'recording',sport:s,name:n,count:5,dist_m:120,active_s:61,lat:47.5,lon:11.2,fix_age_s:1,fix_acc_m:5});window.__calls.push(['start',s,n])},
  pauseRecording(){window.__rec.state='paused'}, resumeRecording(){window.__rec.state='recording'},
  stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true}, takePhoto(){window.__calls.push(['photo']);return true}, takeVideo(){window.__calls.push(['video']);return true}, setJunctions(t){window.__calls.push(['junc',t.split(';').length])}, backups:()=>JSON.stringify(window.__baks||[]), backupGpx:()=>window.__bakgpx||'',
- setRoute(p,n){window.__calls.push(['route',n,p.split(';').length])}, routeInfo:()=>'{}', routePoints:()=>'[]', clearRoute(){}, setGuide(){}, guideTest(){},
- takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(){}, shareText(){}, logText:()=>'log',
+ setRoute(p,n){window.__calls.push(['route',n,p.split(';').length]);window.__routeName=n}, routeInfo:()=>JSON.stringify(window.__routeName?{name:window.__routeName,points:3}:{}), routePoints:()=>'[]', clearRoute(){window.__routeName=''}, setGuide(){}, guideTest(){},
+ takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(u){window.__opened=u}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r; try{
    if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:a.bin?'':await x.text()}; if(a.bin){ const u=new Uint8Array(await x.arrayBuffer()); let b=''; u.forEach(c=>b+=String.fromCharCode(c)); r.b64=btoa(b); } }
    else if(m==='appendCache') r=true; else if(m==='uploadStart') r={ip:'192.168.0.5',port:8765,url:'http://192.168.0.5:8765/abc12/'}; else if(m==='uploadStop') r=true;
@@ -44,7 +44,8 @@ LAYOUT_JS = """() => {
   if (v.scrollWidth > v.clientWidth + 1) out.push('Querrollen: Inhalt ' + v.scrollWidth + ' px breit, Platz ' + v.clientWidth + ' px');
   if (document.documentElement.scrollWidth > innerWidth + 1) out.push('Querrollen: Seite ' + document.documentElement.scrollWidth + ' px');
   const head = document.querySelector('#view > header.top:not(.over)'), tabs = document.querySelector('#tabs:not(.hide)');
-  const top = head ? head.getBoundingClientRect().bottom : 0, bottom = tabs ? tabs.getBoundingClientRect().top - 32 : innerHeight;
+  const over = document.querySelector('#view > header.top.over');      // schwebende Knöpfe der Tourseite: was darunter liegt, wird nach dem Rollen geprüft
+  const top = head ? head.getBoundingClientRect().bottom : over ? 64 : 0, bottom = tabs ? tabs.getBoundingClientRect().top - 32 : innerHeight;
   document.querySelectorAll('#view button, #view a[href], #view select, #view input, #view textarea, #view summary, #tabs a, .sheet button, .sheet a[href], .sheet select, .sheet input').forEach(el0 => {
     if (el0.closest('.leaflet-control-attribution, .leaflet-popup, .leaflet-marker-pane, .leaflet-overlay-pane')) return;
     const el = el0.type === 'checkbox' && el0.closest('label') ? el0.closest('label') : el0;      // beim Schalter zählt die ganze Zeile
@@ -69,7 +70,7 @@ def layout_check(pg, routes, widths=((360, 100), (390, 100), (430, 100), (360, 1
         for r in routes:
             pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", r)
             pg.wait_for_function("h => !Nav._busy && Nav.cur === '/' + (h.slice(2).split('/')[0] || '') && document.querySelector('#view').children.length > 0", arg=r); pg.wait_for_timeout(350)
-            steps = pg.evaluate("Math.min(6, Math.ceil(document.querySelector('#view').scrollHeight / 500))")
+            steps = pg.evaluate("Math.min(14, Math.ceil(document.querySelector('#view').scrollHeight / 500))")
             for k in range(max(1, steps)):
                 pg.evaluate("k => { document.querySelector('#view').scrollTop = k * 500 }", k); pg.wait_for_timeout(60)
                 for m in pg.evaluate(LAYOUT_JS): bad.append(f"{w} px, {fs} %, {r}: {m}")
@@ -133,6 +134,176 @@ def neue_funktionen(pg):
     pg.locator("#goals .ygoal", has_text="Touren").first.click(); pg.wait_for_selector("#goalsave"); pg.fill("#goalval", "25"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
     assert pg.evaluate("DB.kvGet('goals2', []).then(l => l.length === 3 && l.find(g => g.metric === 'count').target === 25 && l.find(g => g.metric === 'km').target === 300)")
     pg.evaluate("async () => { await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); }")
+    # --- 3. Bestwerte (ein Abschnitt, 1 oder 3) und Wochen-Serie ---
+    pg.evaluate("Nav.go('/stats/rekorde')"); pg.wait_for_selector("#bestwerte .li")
+    t1 = pg.inner_text("#bestwerte"); assert pg.locator("#bestwerte .li").count() >= 4, t1
+    for lab in ("Längste Strecke:", "Größter Aufstieg:", "Längste Dauer:", "Höchster Punkt:", "Stärkster Monat:"): assert lab in t1, (lab, t1)
+    assert pg.locator("#bestwerte a.li").count() >= 4, "Zeilen führen zur Tour"
+    pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_selector("#bestwerte h3.sub")
+    assert pg.evaluate("Set_.get('bestN')") == 3 and pg.locator("#bestwerte .li").count() > 8
+    pg.click("#bestwerte .seg button:text-is('Beste')"); pg.wait_for_function("Set_.get('bestN') === 1")
+    assert "Bester Monat" not in pg.inner_text("#view") and pg.locator("#serie-sec").count() == 1 and "aktuelle Serie" in pg.inner_text("#serie-sec")
+    pg.evaluate("Nav.go('/stats/bestwerte')"); pg.wait_for_selector("#bestwerte")      # Alias
+    pg.evaluate("location.hash = '#/stats'"); pg.wait_for_selector(".kpis"); assert "Rekorde" not in pg.inner_text("#view"), "keine zweite Rekordliste in der Übersicht"
+    # Serie auf der Startseite: standardmäßig aus; in den Einstellungen einschaltbar (Punkt 8)
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300); assert pg.locator("#serie").count() == 0
+    pg.evaluate("async () => { await Set_.set('homeShow', { serie: true }); Nav.render(); }"); pg.wait_for_selector("#serie .kpi")
+    assert "in Folge" in pg.inner_text("#serie") and "Rekord" in pg.inner_text("#serie") and ("Diese Woche" in pg.inner_text("#serie") or "Keine laufende Serie" in pg.inner_text("#serie")), pg.inner_text("#serie")
+    pg.evaluate("async () => { await Set_.set('homeShow', {}); }")
+
+    # --- 4. Rückblick „Wie ist es gelaufen?“ ---
+    # Testtouren liegen relativ zu heute („vor … Tagen“), damit die Fenster „12 Monate davor“ und „letzte 12 Wochen“ an jedem Tag stimmen.
+    # Sportart „walk“: davon legt der übrige Test keine Touren an, also zählen genau diese hier als Vergleich.
+    mk = """async ([name, sport, ago, n, dt, step, lat, lon, status]) => {
+      const base = Math.floor(Date.now() / 86400000) * 86400000 + 8 * 3600000 - ago * 86400000;
+      const pts = Array.from({ length: n }, (_, i) => ({ lat: lat + i * step, lon: lon, ele: 800 + i * 3, t: status ? null : base + i * dt }));
+      return (await Tours.add({ name, sport, pts, src: 'file', status: status || 'done' })).tour.id;
+    }"""
+    refs = [pg.evaluate(mk, [f"Vergleich {i}", "walk", 260 - i * 9, 30, 60000, 0.0005, 45.0 + i * 0.05, 9.0, None]) for i in range(6)]
+    big = pg.evaluate(mk, ["Große Runde", "walk", 180, 90, 60000, 0.0005, 45.5, 9.5, None])
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", big); pg.wait_for_selector("#rueckblick")
+    rb = pg.inner_text("#rueckblick"); assert "Wie ist es gelaufen?" in rb and "Dauer: länger als üblich" in rb and "Strecke: länger als üblich" in rb and "Aufstieg: mehr als üblich" in rb, rb
+    assert "deinen 6 Touren" in rb and "im Mittel" in rb and "NaN" not in rb and "undefined" not in rb and "null" not in rb, rb
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", refs[4]); pg.wait_for_selector(".tourp h1"); pg.wait_for_timeout(300); assert pg.locator("#rueckblick").count() == 0, "5 Vergleichstouren sind noch nicht da: kein Abschnitt, kein Platzhalter"
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", refs[0]); pg.wait_for_selector(".tourp h1"); pg.wait_for_timeout(300); assert pg.locator("#rueckblick").count() == 0
+    bike = pg.evaluate(mk, ["Radtour", "bike", 170, 40, 60000, 0.001, 44.0, 9.0, None])
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", bike); pg.wait_for_selector(".tourp h1"); pg.wait_for_timeout(300); assert pg.locator("#rueckblick").count() == 0, "andere Sportart: keine Vergleichstouren"
+    # --- 5. Planung: Notizen & Quellen, Passt die Tour zu mir? ---
+    plan = pg.evaluate(mk, ["Plan Hochtour", "walk", 0, 150, 0, 0.0005, 47.0, 11.0, "planned"]); plan_n = pg.evaluate(mk, ["Plan Nord", "walk", 0, 40, 0, 0.0005, 70.0, 20.0, "planned"])
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan); pg.wait_for_selector("#passt-sec"); pg.wait_for_selector("#pnotes-sec")
+    ps = pg.inner_text("#passt-sec"); assert "Form" in ps and "Tageslicht" in ps and "Strecke: länger als üblich" in ps and "Mehr als sonst" in ps and "Orientierung, keine Sicherheitsgarantie. Wetter, Lawinenlage und Gelände selbst prüfen." in ps, ps
+    assert pg.locator("#rueckblick").count() == 0
+    assert pg.input_value("#tl-start") == "09:00" and pg.input_value("#tl-puffer") == "20", "Standard 09:00 und 20 %"
+    pg.fill("#tl-date", "2026-06-21"); pg.dispatch_event("#tl-date", "change"); pg.wait_for_function("document.querySelector('#tl-say').innerText.includes('vor Sonnenuntergang')")
+    sy = pg.inner_text("#tl-out"); assert "Rückkehr vor Sonnenuntergang mit" in sy and "Reserve" in sy and "Sonnenaufgang" in sy and "Sonnenuntergang" in sy, sy
+    pg.fill("#tl-date", "2026-12-21"); pg.fill("#tl-start", "13:00"); pg.fill("#tl-puffer", "100"); pg.dispatch_event("#tl-puffer", "change"); pg.wait_for_function("document.querySelector('#tl-say').innerText.includes('nach Sonnenuntergang')")
+    assert pg.evaluate("PlanMeta.get(%s).then(m => m.datum === '2026-12-21' && m.start === '13:00' && m.puffer === 100)" % json.dumps(plan)), "Datum, Start und Puffer gemerkt"
+    pg.fill("#tl-start", "10:00"); pg.fill("#tl-puffer", "0"); pg.dispatch_event("#tl-puffer", "change"); pg.wait_for_function("!document.querySelector('#tl-say').innerText.includes('nach Sonnenuntergang')")
+    pg.fill("#tl-puffer", "150"); pg.dispatch_event("#tl-puffer", "change"); pg.wait_for_selector("#tl-out .err"); assert "Puffer" in pg.inner_text("#tl-out")
+    pg.fill("#tl-puffer", "20"); pg.dispatch_event("#tl-puffer", "change"); pg.wait_for_selector("#tl-say")
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan_n); pg.wait_for_selector("#passt-sec"); pg.fill("#tl-date", "2026-06-21"); pg.dispatch_event("#tl-date", "change"); pg.wait_for_function("document.querySelector('#tl-say').innerText.includes('Polartag')")
+    pg.fill("#tl-date", "2026-12-21"); pg.dispatch_event("#tl-date", "change"); pg.wait_for_function("document.querySelector('#tl-say').innerText.includes('Polarnacht')")
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan); pg.wait_for_selector("#pnotes-sec"); assert pg.input_value("#tl-date") == "2026-12-21", "Eingaben bleiben nach dem Wechsel erhalten"
+    # Notiz, Herkunft, Links
+    opened = []; pg.on("request", lambda r: opened.append(r.url) if "komoot.de" in r.url else None)
+    pg.fill("#pn-note", "Parkplatz am See, Einkehr in der Hütte"); pg.dispatch_event("#pn-note", "change")
+    pg.select_option("#pn-qart", "komoot"); pg.fill("#pn-qtext", "Tour 123"); pg.dispatch_event("#pn-qtext", "change")
+    pg.wait_for_function("PlanMeta.get(%s).then(m => m.note === 'Parkplatz am See, Einkehr in der Hütte' && m.quelle && m.quelle.art === 'komoot' && m.quelle.text === 'Tour 123')" % json.dumps(plan))
+    pg.evaluate("document.querySelector('#pn-qtext').value = 'x'.repeat(201)"); pg.dispatch_event("#pn-qtext", "change"); pg.wait_for_timeout(500); assert "zu lang" in pg.evaluate("document.querySelector('#toast').textContent"), pg.evaluate("[document.querySelector('#toast').textContent, document.querySelector('#pn-qtext').value.length, document.querySelector('#pn-qart').value]")
+    for bad, why in (("javascript:alert(1)", "http"), ("data:text/html,<b>x</b>", "http"), ("file:///etc/passwd", "http"), ("https://user:pw@example.org/", "Zugangsdaten"), ("", "Adresse fehlt")):
+        pg.click("#pn-addlink"); pg.wait_for_selector("#lk-url"); pg.fill("#lk-url", bad); pg.click("#lk-save"); pg.wait_for_selector(".sheet .err:not(:empty)")
+        assert why in pg.inner_text(".sheet .err"), (bad, pg.inner_text(".sheet .err"))
+        assert pg.evaluate("PlanMeta.get(%s).then(m => !(m.links || []).length)" % json.dumps(plan)), "abgelehnte Adresse wird nicht gespeichert: " + bad
+        pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
+    pg.click("#pn-addlink"); pg.fill("#lk-titel", "Komoot-Tour"); pg.fill("#lk-url", "https://www.komoot.de/tour/123"); pg.select_option("#lk-art", "karte"); pg.click("#lk-save"); pg.wait_for_selector(".sheet", state="detached")
+    pg.click("#pn-addlink"); pg.fill("#lk-url", "https://lawinen.report/"); pg.select_option("#lk-art", "wetter"); pg.click("#lk-save"); pg.wait_for_selector(".sheet", state="detached")
+    lk = pg.inner_text("#pn-links"); assert "Komoot-Tour" in lk and "www.komoot.de · Karte, Route" in lk and "lawinen.report · Wetter, Lawinenbericht" in lk, lk
+    a = pg.locator("#pn-links a").first; assert a.get_attribute("href") == "https://www.komoot.de/tour/123" and a.get_attribute("target") == "_blank" and "noopener" in a.get_attribute("rel")
+    pg.evaluate("window.__opened = null"); a.click(); assert pg.evaluate("window.__opened") == "https://www.komoot.de/tour/123", "öffnet über die Brücke"
+    pg.wait_for_timeout(300); assert not opened, "Links werden nie automatisch abgerufen: " + str(opened)
+    pg.evaluate("Nav.render()"); pg.wait_for_selector("#passt-sec a[href^='https://lawinen.report']"); assert pg.locator("#pn-links .li").count() == 2 and pg.locator("#passt-sec a[href^='https://lawinen.report']").count() == 1, (pg.locator("#pn-links .li").count(), pg.inner_text("#passt-sec"), pg.evaluate("[...document.querySelectorAll('#passt-sec a')].map(a=>a.href)"))
+    pg.click("#pn-links button[aria-label^='Link entfernen: Komoot']"); pg.wait_for_function("document.querySelectorAll('#pn-links .li').length === 1")
+    pg.evaluate("async id => { const m = await PlanMeta.get(id); m.links = Array.from({ length: 20 }, (_, i) => ({ titel: 'L' + i, url: 'https://a.de/' + i, art: 'sonstiges' })); await DB.kvSet('pn:' + id, m); Nav.render(); }", plan)
+    pg.wait_for_selector("#pn-addlink[disabled]"); assert "Höchstens 20" in pg.inner_text("#pn-addlink")
+    pg.evaluate("async id => { const m = await PlanMeta.get(id); m.links = [{ titel: 'böse', url: 'javascript:alert(1)', art: 'karte' }, { titel: 'gut', url: 'https://ok.de', art: 'karte' }]; await DB.kvSet('pn:' + id, m); Nav.render(); }", plan)
+    pg.wait_for_selector("#pn-links"); assert pg.locator("#pn-links .li").count() == 1 and "gut" in pg.inner_text("#pn-links"), "ungültige Links aus fremden Daten werden beim Lesen ausgelassen"
+    # Neu-Speichern im Planer (Tour entfernen, gleiche Kennung) verliert die Notizen nicht
+    pg.evaluate("async id => { const t = await DB.get('tours', id), p = await Tours.points(id); await Tours.remove(id); await Tours.add({ id, name: t.name, sport: t.sport, pts: p, status: 'planned', src: 'plan' }); }", plan)
+    assert pg.evaluate("PlanMeta.get(%s).then(m => m.note.startsWith('Parkplatz'))" % json.dumps(plan))
+    # --- 6. Plan und Ergebnis: manuell verknüpfen, und aus einer Aufzeichnung heraus ---
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", big); pg.wait_for_selector("#rueckblick"); pg.click("header.top button[aria-label=Aktionen]"); pg.get_by_text("Mit Plan vergleichen").click(); pg.wait_for_selector(".sheet .li")
+    pg.locator(".sheet .li", has_text="Plan Hochtour").click(); pg.wait_for_selector("#planergebnis")
+    pe = pg.inner_text("#planergebnis"); assert "geplant" in pe and "geschätzt" in pe and ("mehr" in pe or "weniger" in pe or "wie geplant" in pe), pe
+    assert pg.locator("#rueckblick").count() == 0, "mit Plan zeigt nur „Plan und Ergebnis“, nichts doppelt"
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan); pg.wait_for_selector("#ranby"); assert "Große Runde" in pg.inner_text("#ranby")
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", big); pg.wait_for_selector("#unlinkplan"); pg.click("#unlinkplan"); pg.wait_for_selector("#rueckblick"); assert pg.locator("#planergebnis").count() == 0
+    # Aufzeichnung aus der Planung: Verknüpfung nur, wenn die Route noch die der Planung ist
+    pg.evaluate("window.__routeName = 'Plan Nord'"); pg.evaluate("async id => { TourHelp.armPlan(await DB.get('tours', id)); }", plan_n); pg.wait_for_timeout(100)
+    pg.evaluate("window.__routeName = 'Etwas anderes'"); pg.evaluate("TourHelp.lockPlan()"); pg.wait_for_timeout(200)
+    assert pg.evaluate("DB.kvGet('recPlanRun', 'x')") is None, "andere Route: keine Verknüpfung"
+    pg.evaluate("window.__routeName = 'Plan Nord'"); pg.evaluate("TourHelp.lockPlan()"); pg.wait_for_timeout(200)
+    assert pg.evaluate("DB.kvGet('recPlanRun', null)") == plan_n
+    lid = pg.evaluate(mk, ["Gelaufen Nord", "walk", 160, 30, 60000, 0.0005, 70.0, 20.0, None])
+    assert pg.evaluate("async ([id, pid]) => { const t = await DB.get('tours', id); await TourHelp.attachPlan(t); return (await DB.get('tours', id)).plan === pid; }", [lid, plan_n])
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", lid); pg.wait_for_selector("#planergebnis"); assert "Plan Nord" in pg.inner_text("#planergebnis")
+    pg.evaluate("window.__routeName = ''")
+    # --- 7. Fitness-Einordnung ---
+    for i in range(6): pg.evaluate(mk, [f"Fit {i}", "hike", 70 - i * 11, 60, 60000, 0.0005, 46.0 + i * 0.05, 8.0, None])
+    pg.evaluate("async () => { await Set_.set('birthYear', ''); }")
+    pg.evaluate("Nav.go('/stats/fitness')"); pg.wait_for_selector("#fitness"); assert pg.locator("#fit-year").count() == 1 and "Orientierung, keine medizinische Aussage" in pg.inner_text("#fitness") and pg.locator("#fit-total").count() == 0
+    pg.fill("#fit-year", "1850"); pg.click("#fit-save"); pg.wait_for_timeout(200); assert "plausibel" in pg.inner_text("#fitness").lower() or "zwischen" in pg.inner_text("#fitness").lower() or "Jahr" in pg.inner_text("#fitness"); assert pg.evaluate("Set_.get('birthYear')") == ""
+    pg.fill("#fit-year", "1975"); pg.click("#fit-save"); pg.wait_for_selector("#fit-total"); ft = pg.inner_text("#fitness")
+    assert "von 100" in ft and "Umfang" in ft and "Regelmäßigkeit" in ft and "Intensität" in ft and "NaN" not in ft and "undefined" not in ft, ft
+    assert "Orientierung, keine medizinische Aussage" in ft and pg.locator("#fit-how").count() == 1 and pg.evaluate("document.querySelector('#fit-how').open") is False
+    pg.click("#fit-how summary"); assert "Tanaka" in pg.inner_text("#fit-how") and "WHO" in pg.inner_text("#fit-how") or "Weltgesundheitsorganisation" in pg.inner_text("#fit-how")
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300); assert pg.locator("#fitness-home").count() == 0, "Fitness auf der Startseite ist standardmäßig aus"
+    pg.evaluate("async () => { await Set_.set('homeShow', { fitness: true }); Nav.render(); }"); pg.wait_for_selector("#fitness-home"); assert "Orientierung, keine medizinische Aussage" in pg.inner_text("#fitness-home")
+    pg.evaluate("async () => { await Set_.set('homeShow', {}); }")
+    # --- 8. Startseite einrichten (Einstellungen) ---
+    pg.evaluate("Nav.go('/settings')"); pg.wait_for_selector("#homeset")
+    assert pg.locator("#homeset input[type=checkbox]").count() >= 5 and "Sicherung" in pg.inner_text("#view")
+    assert not pg.is_checked("#hs-serie input") and not pg.is_checked("#hs-fitness input") and pg.is_checked("#hs-recent input") and pg.is_checked("#hs-memo input")
+    pg.click("#hs-serie"); pg.click("#hs-recent"); pg.wait_for_function("Set_.get('homeShow').serie === true && Set_.get('homeShow').recent === false")
+    pg.evaluate("Nav.go('/start')"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(400)
+    assert pg.locator("#serie").count() == 1 and pg.locator("#recent").count() == 0 and pg.locator("#hero").count() == 1
+    pg.evaluate("async () => { await Set_.set('homeShow', {}); }")
+    # --- Sicherung hin und zurück: neue Daten reisen mit, alte Sicherungen laden ---
+    pg.evaluate("async () => { await Goals.save([{ id: 'gbk', period: 'year', year: 2026, metric: 'km', target: 555, sport: '' }]); await Set_.set('homeShow', { serie: true }); await Set_.set('backupDays', 30); }")
+    pg.evaluate("async id => { const m = await PlanMeta.get(id); m.note = 'Sicherungsnotiz'; await DB.kvSet('pn:' + id, m); }", plan)
+    pg.evaluate("async () => { window.__bk = JSON.parse(JSON.stringify(await Backup.collect())); }")
+    assert pg.evaluate("__bk.kv.some(e => e.k === 'goals2') && __bk.kv.some(e => e.k.startsWith('pn:')) && __bk.kv.some(e => e.k === 'settings' && e.v.birthYear == 1975 && e.v.backupDays === 30) && !__bk.kv.some(e => e.k === 'lastBackup')")
+    pg.evaluate("async id => { await DB.del('kv', 'goals2'); await DB.del('kv', 'pn:' + id); await Set_.set('birthYear', ''); await Set_.set('homeShow', {}); await Set_.set('backupDays', 14); }", plan)
+    pg.evaluate("async () => { await Backup.apply(__bk); }")
+    assert pg.evaluate("Goals.list().then(l => l.some(g => g.id === 'gbk' && g.target === 555))")
+    assert pg.evaluate("async id => (await PlanMeta.get(id)).note === 'Sicherungsnotiz'", plan)
+    assert pg.evaluate("Set_.get('birthYear') == 1975 && Set_.get('homeShow').serie === true && Set_.get('backupDays') === 30")
+    pg.evaluate("async () => { await Backup.apply({ app: 'tourentagebuch', v: 1, tours: [], tracks: [], photos: [], kv: [{ k: 'goals', v: { 2025: { km: 700 } } }] }); await Backup.apply({ app: 'tourentagebuch', v: 1, tours: [], tracks: [], photos: [] }); }")
+    assert pg.evaluate("Goals.list().then(l => l.some(g => g.year === 2025 && g.target === 700) && l.some(g => g.id === 'gbk'))"), "ältere Ziele werden ergänzt, nichts geht verloren"
+    pg.evaluate("async () => { await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); await Set_.set('homeShow', {}); await Set_.set('backupDays', 14); }")
+    return {"big": big, "plan": plan, "linked": lid}
+
+
+def sheet_check(pg, label, opener):
+    """Ein Blatt bei 360 px mit 100 % und 130 % Schrift prüfen. opener() öffnet es."""
+    bad = []
+    for fs in (100, 130):
+        pg.set_viewport_size({"width": 360, "height": 800})
+        pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+        opener(); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(300)
+        if pg.evaluate("(() => { const s = document.querySelector('.sheet'); return s.scrollWidth > s.clientWidth + 1 })()"): bad.append(f"{label}, {fs} %: Blatt rollt quer")
+        bad += [f"{label}, {fs} %: " + m for m in pg.evaluate(LAYOUT_JS)]
+        pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    return bad
+
+
+def neue_layout(pg, ids):
+    """Gestaltungsprüfung der neuen Abschnitte, Seiten und Blätter (Rückblick, Plan und Ergebnis, Planungshilfe, Fitness, Ziele, Startseite mit allen Bausteinen)."""
+    tour = lambda k: "#/tour/" + ids[k]
+    pg.evaluate("async () => { await Goals.save([{ id: 'lay1', period: 'year', year: new Date().getFullYear(), metric: 'km', target: 1200, sport: '' }, { id: 'lay2', period: 'week', year: 0, metric: 'count', target: 2, sport: 'grp:foot' }]); }")
+    bad = layout_check(pg, ["#/stats/fitness", "#/stats/ziele", "#/stats/rekorde", tour("big"), tour("linked"), tour("plan"), "#/settings"])
+    for sel, name in (("#fitness #fit-total", "Fitness"), ("#goals .ygoal", "Ziele")):      # die Seiten zeigen wirklich die neuen Inhalte
+        pg.evaluate("h => { location.hash = h }", "#/stats/" + ("fitness" if name == "Fitness" else "ziele")); pg.wait_for_selector(sel)
+    pg.evaluate("h => { location.hash = h }", tour("big")); pg.wait_for_selector("#rueckblick")
+    pg.evaluate("h => { location.hash = h }", tour("linked")); pg.wait_for_selector("#planergebnis")
+    pg.evaluate("h => { location.hash = h }", tour("plan")); pg.wait_for_selector("#passt-sec"); pg.wait_for_selector("#pn-links .li")
+    # Startseite mit allem, was sich einschalten lässt, und fälligem Sicherungs-Hinweis
+    pg.evaluate("async () => { await Set_.set('homeShow', { serie: true, fitness: true }); await DB.del('kv', 'lastBackup'); await DB.kvSet('backupSnooze', 0); }")
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#backupnote"); pg.wait_for_selector("#serie"); pg.wait_for_selector("#fitness-home"); pg.wait_for_selector("#year .ygoal")
+    bad += ["alle Bausteine: " + m for m in layout_check(pg, ["#/start"])]
+    pg.evaluate("async () => { await Set_.set('homeShow', {}); await DB.kvSet('lastBackup', Date.now()); }")
+    # Fitness ohne Geburtsjahr (Eingabe) und beim Ändern
+    pg.evaluate("async () => { await Set_.set('birthYear', ''); }")
+    bad += ["ohne Geburtsjahr: " + m for m in layout_check(pg, ["#/stats/fitness"], widths=((360, 100), (360, 130)))]
+    pg.evaluate("async () => { await Set_.set('birthYear', 1975); }")
+    # Blätter
+    def go(h, sel): pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h); pg.wait_for_selector(sel); pg.wait_for_timeout(250)
+    bad += sheet_check(pg, "Link hinzufügen", lambda: (go(tour("plan"), "#pn-addlink"), pg.evaluate("document.querySelector('#pn-addlink').click()")))
+    bad += sheet_check(pg, "Mit Plan vergleichen", lambda: (go(tour("big"), "#rueckblick"), pg.evaluate("DB.get('tours', location.hash.split('/')[2]).then(t => TourHelp.linkSheet(t))")))
+    bad += sheet_check(pg, "Ziel", lambda: (go("#/stats/ziele", "#goaladd"), pg.evaluate("document.querySelector('#goaladd').click()")))
+    bad += sheet_check(pg, "Aktionen (gelaufene Tour)", lambda: (go(tour("big"), "header.top button[aria-label=Aktionen]"), pg.click("header.top button[aria-label=Aktionen]")))
+    pg.evaluate("async () => { await DB.del('kv', 'goals2'); }")
+    return sorted(set(bad))
 
 
 def main():
@@ -242,7 +413,11 @@ def main():
         pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); pg.mouse.up()
         pg.wait_for_selector("#pins"); assert "Schöne Aussicht" in pg.inner_text("#pins")
         tid = pg.evaluate("location.hash.split('/')[2]")
+        # Aufzeichnung aus einer Planung gestartet („Speichern & starten“): die Tour ist mit der Planung verknüpft und zeigt Plan und Ergebnis
+        assert pg.evaluate("async id => { const t = await DB.get('tours', id), p = (await Tours.list()).find(x => x.name === 'Geplant A'); return !!p && t.plan === p.id; }", tid), "Verknüpfung mit der Planung fehlt"
+        pg.wait_for_selector("#planergebnis"); assert "Geplant A" in pg.inner_text("#planergebnis") and "geplant" in pg.inner_text("#planergebnis")
         # Gesicherte Aufzeichnung wiederherstellen (Tour war gelöscht)
+        pg.evaluate("window.__routeName = ''")
         pg.evaluate("t => Tours.remove(t)", tid)
         pg.evaluate("g => { window.__baks=[{file:'rec_20260101_100000.gpx',size:2048,ts:1767261600000}]; window.__bakgpx=g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
         pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector("#baks"); pg.wait_for_selector("#gpxroute"); pg.click("#baks"); pg.locator(".sheet .li").first.click()
@@ -311,8 +486,8 @@ def main():
         # Auswertung: Rekorde, Kalender, Auswertung (Neuland, Wetter), Ziele
         pg.route("**/archive-api.open-meteo.com/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"daily": {"temperature_2m_mean": [8.5], "temperature_2m_max": [12.0], "precipitation_sum": [2.4]}})))
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".kpis")
-        pg.get_by_role("button", name="Rekorde", exact=True).click(); pg.wait_for_selector("text=Bester Tag"); tx = pg.inner_text("#view")
-        assert "Längste Serie" in tx and "Beste Woche" in tx and "Je Sportart" in tx, tx[:400]
+        pg.get_by_role("button", name="Bestwerte", exact=True).click(); pg.wait_for_selector("text=Bester Tag"); tx = pg.inner_text("#view")
+        assert "Längste Serie" in tx and "Beste Woche" in tx and "Je Sportart" in tx and "Bestwerte" in tx and "Bester Monat" not in tx, tx[:400]
         pg.get_by_role("button", name="Kalender", exact=True).click(); pg.wait_for_selector(".cal")
         assert pg.locator(".cd.l1, .cd.l2, .cd.l3, .cd.l4").count() >= 1
         pg.locator("button.cd").first.click(); pg.wait_for_selector(".sheet .li"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
@@ -594,12 +769,13 @@ def main():
         assert tz[0]["pos"] == "track" and abs(tz[0]["lat"] - 47.0) < 0.05, tz[0]      # Position aus der Spur zur korrigierten Zeit
         assert not tz[1]["tour"] and "tzOff" not in tz[1], tz[1]      # 20 h daneben: kein Fenster, bleibt unzugeordnet
 
-        neue_funktionen(pg)
+        neu = neue_funktionen(pg)
 
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
         pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
         lt = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0].id)")
         bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
+        bad += neue_layout(pg, neu)
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

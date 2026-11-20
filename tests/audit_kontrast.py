@@ -65,9 +65,41 @@ def main():
                     pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(200)
                 except Exception as e: print("übersprungen:", name, str(e)[:60])
             pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".chips")
-            for tabname in ("Rekorde", "Kalender", "Auswertung", "Ziele"):
+            for tabname in ("Bestwerte", "Kalender", "Auswertung", "Ziele", "Fitness"):
                 pg.get_by_role("button", name=tabname, exact=True).click(); pg.wait_for_timeout(500)
                 for item in pg.evaluate(JS): bad.setdefault(("Statistik " + tabname, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            # Funktionen aus „Meine Touren“ (2.0.0): Rückblick, Plan und Ergebnis, Planungshilfe, Fitness, Ziele, Startseite mit allen Bausteinen
+            def scan(label):
+                for item in pg.evaluate(JS): bad.setdefault((label, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            def go(h, sel): pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h); pg.wait_for_selector(sel); pg.wait_for_timeout(400)
+            neu = pg.evaluate("""async () => {
+              const mk = async (name, ago, n, status) => { const base = Math.floor(Date.now() / 86400000) * 86400000 + 8 * 3600000 - ago * 86400000;
+                const pts = Array.from({ length: n }, (_, i) => ({ lat: 46 + ago * 0.01 + i * 0.0005, lon: 9, ele: 800 + i * 3, t: status ? null : base + i * 60000 }));
+                return (await Tours.add({ name, sport: 'hike', pts, src: 'file', status: status || 'done' })).tour; };
+              for (let i = 0; i < 6; i++) await mk('Vergleich ' + i, 75 - i * 11, 40);
+              const big = await mk('Große Runde', 5, 120), plan = await mk('Plan Hochtour', 0, 200, 'planned'), plan2 = await mk('Plan Runde', 0, 40, 'planned'), run = await mk('Gelaufen nach Plan', 3, 45);
+              run.plan = plan2.id; await Tours.save(run);
+              await DB.kvSet('pn:' + plan.id, { note: 'Parkplatz am See', quelle: { art: 'komoot', text: 'Tour 123' }, links: [{ titel: 'Karte', url: 'https://www.komoot.de/tour/1', art: 'karte' }, { titel: 'Lawinenbericht', url: 'https://lawinen.report/', art: 'wetter' }] });
+              const y = new Date().getFullYear();
+              await Goals.save([{ id: 'a1', period: 'year', year: y, metric: 'km', target: 400, sport: '' }, { id: 'a2', period: 'week', year: 0, metric: 'count', target: 2, sport: 'grp:foot' }, { id: 'a3', period: 'year', year: y - 1, metric: 'up', target: 9000, sport: '' }]);
+              await Set_.set('birthYear', 1975); await Set_.set('homeShow', { serie: true, fitness: true }); await DB.del('kv', 'lastBackup'); await DB.kvSet('backupSnooze', 0);
+              return { big: big.id, plan: plan.id, run: run.id }; }""")
+            go("#/start", "#fitness-home"); pg.wait_for_selector("#backupnote"); pg.wait_for_selector("#serie"); scan("Start, alle Bausteine")
+            go("#/tour/" + neu["big"], "#rueckblick"); scan("Tour, Rückblick")
+            go("#/tour/" + neu["run"], "#planergebnis"); scan("Tour, Plan und Ergebnis")
+            go("#/tour/" + neu["plan"], "#pnotes-sec"); scan("Planung, Hilfe")
+            for start, puffer, label in (("13:00", "100", "spät"), ("09:00", "150", "Fehler")):      # Rückkehr nach Sonnenuntergang; ungültiger Puffer (Fehlertext)
+                pg.fill("#tl-date", "2026-12-21"); pg.fill("#tl-start", start); pg.fill("#tl-puffer", puffer); pg.dispatch_event("#tl-puffer", "change"); pg.wait_for_timeout(300); scan("Planung, Tageslicht " + label)
+            pg.fill("#tl-puffer", "20"); pg.dispatch_event("#tl-puffer", "change")
+            pg.evaluate("document.querySelector('#pn-addlink').click()"); pg.wait_for_selector("#lk-url"); pg.click("#lk-save"); pg.wait_for_selector(".sheet .err:not(:empty)"); scan("Planung, Link hinzufügen")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            go("#/stats/fitness", "#fit-total"); pg.click("#fit-how summary"); pg.wait_for_timeout(200); scan("Fitness")
+            pg.click("#fit-chg"); pg.wait_for_selector("#fit-year"); pg.fill("#fit-year", "1850"); pg.click("#fit-save"); pg.wait_for_timeout(250); scan("Fitness, Geburtsjahr")
+            pg.evaluate("Set_.set('birthYear', '')"); go("#/stats/fitness", "#fit-year"); scan("Fitness ohne Geburtsjahr"); pg.evaluate("Set_.set('birthYear', 1975)")
+            go("#/stats/ziele", "#goals .ygoal"); scan("Ziele"); pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.click("#goalsave"); pg.wait_for_timeout(250); scan("Ziele, Blatt"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            go("#/stats/rekorde", "#bestwerte .li"); pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_timeout(300); scan("Bestwerte, beste drei"); pg.click("#bestwerte .seg button:text-is('Beste')"); pg.wait_for_timeout(200)
+            go("#/settings", "#homeset"); scan("Einstellungen, Startseite")
+            pg.evaluate("(async () => { await Set_.set('homeShow', {}); await DB.kvSet('lastBackup', Date.now()); })()")
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
