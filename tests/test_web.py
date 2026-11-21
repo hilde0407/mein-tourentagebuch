@@ -1718,7 +1718,7 @@ def pdf(pg, aus=None):
     # ---- Abbrechen: nichts wird gespeichert, die Oberfläche ist danach wieder frei
     pg.evaluate("window.__saved = null; window.__cache = {}"); pg.unroute("**/thumb/pdf*")
     def langsam(r):
-        __import__("time").sleep(0.12); thumb(r)
+        __import__("time").sleep(0.6); thumb(r)
     pg.route("**/thumb/pdf*", langsam)
     pg.click("#jahr-pdf"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/Seite [2-9] von/.test(document.querySelector('.sheet').innerText)", timeout=60000)
     pg.click("#prog-stop"); pg.wait_for_selector(".sheet", state="detached", timeout=30000)
