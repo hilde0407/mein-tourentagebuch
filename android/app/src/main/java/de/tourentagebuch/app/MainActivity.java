@@ -648,6 +648,31 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("queued", q).put("hevc", l.size()).put("skipped", skipped).toString();
             }
             case "videoCancel": VideoService.cancelAll(); return "true";
+            case "videoInfo": {                        // 2.7.2: Technische Angaben zu einem Video (für die Fehlersuche, wenn es nicht abspielt)
+                String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
+                File f = new File(Photos.dir(this), vid + ".mp4");
+                if (!f.isFile()) throw new Exception("Video fehlt");
+                JSONObject o = new JSONObject().put("size", f.length());
+                try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                    byte[] b = new byte[16]; int n = in.read(b);
+                    if (n >= 12) o.put("brand", new String(b, 4, 8, "ISO-8859-1").replaceAll("[^ -~]", "?"));
+                } catch (Exception e) { /* egal */ }
+                android.media.MediaExtractor ex = new android.media.MediaExtractor();
+                try {
+                    ex.setDataSource(f.getAbsolutePath());
+                    org.json.JSONArray tr = new org.json.JSONArray();
+                    for (int k = 0; k < ex.getTrackCount(); k++) {
+                        android.media.MediaFormat mf = ex.getTrackFormat(k);
+                        JSONObject t = new JSONObject().put("mime", String.valueOf(mf.getString(android.media.MediaFormat.KEY_MIME)));
+                        String[] ks = {"width", "height", "frame-rate", "bitrate", "rotation-degrees", "profile", "level", "color-standard", "color-transfer", "sample-rate", "channel-count"};
+                        for (String key : ks) if (mf.containsKey(key)) { try { t.put(key, mf.getInteger(key)); } catch (Exception e) { try { t.put(key, mf.getFloat(key)); } catch (Exception e2) { /* egal */ } } }
+                        tr.put(t);
+                    }
+                    o.put("tracks", tr);
+                } catch (Exception e) { o.put("fehler", String.valueOf(e)); }
+                finally { ex.release(); }
+                return o.toString();
+            }
             case "videoStatus": return VideoService.status(this).toString();
             case "readFileB64": {
                 File f = new File(a.getString("path"));

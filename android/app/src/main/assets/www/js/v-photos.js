@@ -25,7 +25,7 @@ const Lightbox = {
     // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an.
     // 2.7.1: bei Fehler 4 (Format nicht unterstützt, meist HEVC) zusätzlich „Jetzt umwandeln“ (in H.264, auf dem Handy)
     let errCode = null, errMsg = '';
-    vid.addEventListener('error', () => { const p = list[i]; if (!p || !p.video || !vid.getAttribute('src')) return; errCode = vid.error ? vid.error.code : '?'; showErr(p); });
+    vid.addEventListener('error', () => { const p = list[i]; if (!p || !p.video || !vid.getAttribute('src')) return; errCode = vid.error ? vid.error.code : '?'; showErr(p); zeigeInfo(p); });
     function busyFor(p) { const st = Videos.state; return !!(st && st.running && st.id === p.id); }
     function showErr(p, msg) {
       if (msg !== undefined) errMsg = msg;
@@ -41,10 +41,19 @@ const Lightbox = {
           errCode === 4 ? h('button', { class: 'btn sm pri', id: 'lb-conv', onclick: () => convertNow(p) }, 'Jetzt umwandeln') : null,
           h('button', { class: 'btn sm', id: 'lb-ext', onclick: extern }, 'In Video-App öffnen')));
     }
+    /** 2.7.2: technische Angaben (Codec, Größe, Datenrate …) unter die Fehlermeldung, damit sich die Ursache finden lässt */
+    async function zeigeInfo(p) {
+      try {
+        const o = await Native.json('videoInfo', { id: p.id });
+        const tr = (o.tracks || []).map(t => [t.mime, t.width && t.height ? t.width + '×' + t.height : '', t['frame-rate'] ? Math.round(t['frame-rate']) + ' B/s' : '', t.bitrate ? Math.round(t.bitrate / 1e5) / 10 + ' Mbit/s' : '', t.profile != null ? 'Profil ' + t.profile : '', t['rotation-degrees'] ? 'Drehung ' + t['rotation-degrees'] : '', t['color-transfer'] != null ? 'Farbe ' + t['color-transfer'] : ''].filter(Boolean).join(' · '));
+        const q = h('p', { class: 'muted small', id: 'lb-info2' }, 'Technik: ' + [o.brand, Math.round(o.size / 1048576 * 10) / 10 + ' MB'].concat(tr, o.fehler ? ['Fehler ' + o.fehler] : []).join(' | '));
+        err.querySelector('#lb-info2') && err.querySelector('#lb-info2').remove(); err.append(q);
+      } catch (e) { /* egal */ }
+    }
     async function convertNow(p) {
       let r;
       try { r = await Native.json('videoConvert', { ids: [p.id] }); } catch (e) { toast('Umwandeln nicht möglich: ' + e.message, 6000); return; }
-      if (!r.hevc) { toast('Dieses Video ist kein HEVC – Umwandeln hilft hier nicht. „In Video-App öffnen“ geht trotzdem.', 7000); return; }
+      if (!r.hevc) { toast('Dieses Video ist kein HEVC – Umwandeln hilft hier nicht. „In Video-App öffnen“ geht trotzdem.', 7000); await zeigeInfo(p); return; }
       errMsg = '';
       await Videos.poll();
       if (list[i] === p) showErr(p);
