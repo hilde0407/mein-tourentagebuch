@@ -111,6 +111,7 @@ public class MainActivity extends Activity {
         });
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_PERM2);
+        VideoService.listener = videoListener;      // 2.7.1: die Video-Umwandlung meldet sich bei der Oberfläche
         if (b != null) web.restoreState(b);
         else web.loadUrl("https://" + HOST + "/index.html");
         handleIntent(getIntent());
@@ -121,6 +122,8 @@ public class MainActivity extends Activity {
 
     @Override protected void onNewIntent(Intent in) { super.onNewIntent(in); setIntent(in); handleIntent(in); }
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
+    private final VideoService.Listener videoListener = () -> js("window.dispatchEvent(new Event('mtvideo'))");
+    @Override protected void onDestroy() { if (VideoService.listener == videoListener) VideoService.listener = null; super.onDestroy(); }
 
     @Override
     protected void onResume() {
@@ -245,6 +248,9 @@ public class MainActivity extends Activity {
                         JSONObject m = Photos.importVideo(getApplicationContext(), f, ts, la, lo);
                         queue("photoq", m);
                         js("window.dispatchEvent(new Event('mtphoto'))");
+                        // 2.7.1: HEVC-Video im Hintergrund in H.264 umwandeln (das WebView spielt HEVC oft nicht ab); das Original bleibt bis dahin
+                        String vid = m.getString("id");
+                        if (VideoConvert.isHevc(new File(Photos.dir(this), vid + ".mp4"))) VideoService.enqueue(this, java.util.Collections.singletonList(vid));
                     } catch (Exception e) { AppLog.log("Kamera-Video: " + e); }
                     f.delete();
                 });
@@ -617,6 +623,32 @@ public class MainActivity extends Activity {
                 });
                 return "true";
             }
+            case "videoScan": {                        // 2.7.1: welche Videos in photos/ sind HEVC (spielen im WebView evtl. nicht)?
+                JSONArray ids = new JSONArray();
+                int all = 0;
+                File[] fs = Photos.dir(this).listFiles();
+                if (fs != null) for (File f : fs) {
+                    String nm = f.getName();
+                    if (!nm.endsWith("v.mp4")) continue;
+                    all++;
+                    if (VideoConvert.isHevc(f)) ids.put(nm.substring(0, nm.length() - 4));
+                }
+                return new JSONObject().put("all", all).put("n", ids.length()).put("ids", ids).toString();
+            }
+            case "videoConvert": {                     // 2.7.1: Videos (ids) zur Umwandlung vormerken; nur HEVC wird angenommen
+                JSONArray ids = a.optJSONArray("ids");
+                if (ids == null) ids = new JSONArray().put(a.optString("id"));
+                ArrayList<String> l = new ArrayList<>();
+                int skipped = 0;
+                for (int i = 0; i < ids.length(); i++) {
+                    String vid = ids.optString(i).replaceAll("[^A-Za-z0-9]", "");
+                    if (!vid.isEmpty() && VideoConvert.isHevc(new File(Photos.dir(this), vid + ".mp4"))) l.add(vid); else skipped++;
+                }
+                int q = l.isEmpty() ? 0 : VideoService.enqueue(this, l);
+                return new JSONObject().put("queued", q).put("hevc", l.size()).put("skipped", skipped).toString();
+            }
+            case "videoCancel": VideoService.cancelAll(); return "true";
+            case "videoStatus": return VideoService.status(this).toString();
             case "readFileB64": {
                 File f = new File(a.getString("path"));
                 if (!f.getCanonicalPath().startsWith(getCacheDir().getCanonicalPath())) throw new Exception("Pfad nicht erlaubt");

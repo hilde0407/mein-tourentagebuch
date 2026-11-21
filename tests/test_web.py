@@ -79,6 +79,119 @@ def layout_check(pg, routes, widths=((360, 100), (390, 100), (430, 100), (360, 1
     return sorted(set(bad))
 
 
+MINI_WEBM = "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAJZEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggEeTbuMU6uEHFO7a1OsggJD7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjAuMTYuMTAwV0GNTGF2ZjYwLjE2LjEwMESJiECPQAAAAAAAFlSua8GuAQAAAAAAADjXgQFzxYgn36A3G11dd5yBACK1nIN1bmSIgQCGhVZfVlA4g4EBI+ODhAvrwgDgibCBILqBIJqBAhJUw2f8c3OgY8CAZ8iaRaOHRU5DT0RFUkSHjUxhdmY2MC4xNi4xMDBzc9ZjwItjxYgn36A3G11dd2fIoUWjh0VOQ09ERVJEh5RMYXZjNjAuMzEuMTAyIGxpYnZweGfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDEuMDAwMDAwMDAwAB9DtnVAnueBAKO9gQAAgBADAJ0BKiAAIAAARwiFhYiFhIgCAgJ1qgP4A/oCCFkMvQD+/W7z/+K1h1nF/4rf/9Nk8VeM/+mLAKOVgQDIALEBAAEQEAAYABhYL/QACHAAo5WBAZAAsQEAARAQABgAGFgv9AAIcACjlYECWACxAQABEBAAGAAYWC/0AAhwAKOVgQMgALEBAAEQEAAYABhYL/QACHAAHFO7a5G7j7OBALeK94EB8YIBn/CBAw=="      # 1 s, 32×32, VP8 – spielt im Test-Chromium (H.264/HEVC kann es nicht)
+
+VIDEO_MOCK = """() => {
+  /* 2.7.1: Video-Umwandlung der Hülle nachgestellt: videoScan / videoConvert / videoStatus / videoCancel */
+  const c0 = window.MTApp.call; window.__vcall0 = c0;
+  window.__vs = { todo: [], cur: '', pct: 0, i: 0, n: 0, done: [], scan: { all: 0, n: 0, ids: [] }, hevc: true, calls: [] };
+  window.MTApp.call = (id, m, a) => {
+    const V = window.__vs;
+    if (!/^video/.test(m)) return c0.call(window.MTApp, id, m, a);
+    const o = JSON.parse(a || '{}'); V.calls.push(m); let r;
+    if (m === 'videoScan') r = V.scan;
+    else if (m === 'videoConvert') {
+      const ids = o.ids || [];
+      if (!V.hevc) r = { queued: 0, hevc: 0, skipped: ids.length };
+      else { if (!V.cur && !V.todo.length) { V.i = 0; V.n = 0; } V.todo.push(...ids); V.n += ids.length; if (!V.cur) { V.cur = V.todo.shift(); V.i++; } r = { queued: ids.length, hevc: ids.length, skipped: 0 }; }
+    } else if (m === 'videoCancel') { if (V.cur) V.done.push({ id: V.cur, ok: false, cancel: true, msg: 'abgebrochen' }); V.cur = ''; V.todo = []; V.pct = 0; r = true; }
+    else if (m === 'videoStatus') { r = { running: !!V.cur, id: V.cur, i: V.i, n: V.n, pct: V.pct, waiting: V.todo.length, done: V.done }; V.done = []; }
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+  window.__vfin = res => { const V = window.__vs; V.done.push(Object.assign({ id: V.cur }, res)); V.cur = V.todo.shift() || ''; if (V.cur) V.i++; V.pct = 0; window.dispatchEvent(new Event('mtvideo')); };
+  window.__vpct = p => { window.__vs.pct = p; window.dispatchEvent(new Event('mtvideo')); };
+}"""
+
+def videos_271(pg):
+    """2.7.1: HEVC-Videos umwandeln – Knopf „Jetzt umwandeln“ in der Vollbildansicht, Sammelumwandlung unter Foto-Quellen, Meldungen."""
+    import base64
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    webm = base64.b64decode(MINI_WEBM)
+    # ohne „?c=“ (vor der Umwandlung): Datei, die der Browser nicht abspielen kann (MediaError 4, wie HEVC im WebView); danach ein spielbares Video
+    pg.route("**/photo/*v.mp4*", lambda r: r.fulfill(status=200, body=webm, content_type="video/webm") if "?c=" in r.request.url else r.fulfill(status=200, body=b"\x00\x00\x00\x18ftypheic" + b"\x00" * 400, content_type="video/mp4"))
+    pg.evaluate(VIDEO_MOCK)
+    vid1, vid2 = "a1b2c3d4e5f6a7b8c9dv", "b1b2c3d4e5f6a7b8c9dv"
+    pg.evaluate("""async ([a, b]) => { for (const id of [a, b]) await DB.put('photos', { id, name: 'Video.mp4', ts: 1700000300000, w: 0, h: 0, dur: 0, video: true, src: 'kamera' }); }""", [vid1, vid2])
+    go(pg, "#/photos", ".photos")
+
+    # 1. Vollbild: Fehler 4 → Meldung mit „Jetzt umwandeln“ und „In Video-App öffnen“
+    pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", vid1)
+    pg.wait_for_selector("#lb-err:not([hidden]) #lb-conv", timeout=20000)
+    assert "Fehler 4" in pg.inner_text("#lb-err") and pg.is_visible("#lb-ext"), pg.inner_text("#lb-err")
+    leise(); pg.click("#lb-conv")
+    pg.wait_for_function("() => /Video wird umgewandelt/.test(document.querySelector('#lb-err').textContent) && !!document.querySelector('#lb-stop')")
+    assert pg.evaluate("__vs.calls.includes('videoConvert') && __vs.cur") == vid1
+    pg.evaluate("__vpct(40)"); pg.wait_for_function("() => /40 %/.test(document.querySelector('#lb-err').textContent)")
+    leise(); pg.evaluate("__vfin({ ok: true, w: 1920, h: 1080, dur: 5000 })")
+    assert "Video fertig" in toast_text(pg, "Video fertig")
+    pg.wait_for_function("() => document.querySelector('#lb-err').hidden && /\\?c=/.test(document.querySelector('video.lb-img').getAttribute('src'))")
+    pg.wait_for_timeout(800)      # das neue (spielbare) Video meldet keinen Fehler: die Meldung bleibt weg
+    assert pg.evaluate("document.querySelector('#lb-err').hidden"), pg.inner_text("#lb-err")
+    ph = pg.evaluate("id => DB.get('photos', id)", vid1)
+    assert ph["w"] == 1920 and ph["h"] == 1080 and ph["dur"] == 5000 and ph.get("h264") is True, ph
+    pg.evaluate("window.__lightbox && window.__lightbox.close()")
+
+    # 2. kein HEVC: Umwandeln wird nicht angeboten als Lösung; Hinweis statt Warteschlange
+    pg.evaluate("__vs.hevc = false")
+    pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", vid2)
+    pg.wait_for_selector("#lb-err:not([hidden]) #lb-conv", timeout=20000)
+    leise(); pg.click("#lb-conv")
+    assert "kein HEVC" in toast_text(pg, "kein HEVC")
+    assert not pg.evaluate("__vs.cur")
+
+    # 3. Umwandlung scheitert: Original bleibt, Meldung sagt es, Video-App bleibt als Weg
+    pg.evaluate("__vs.hevc = true"); leise(); pg.click("#lb-conv")
+    pg.wait_for_selector("#lb-stop")
+    leise(); pg.evaluate("__vfin({ ok: false, msg: 'kein H.264-Encoder' })")
+    assert "konnte nicht umgewandelt werden" in toast_text(pg, "nicht umgewandelt")
+    pg.wait_for_function("() => /nicht geklappt/.test(document.querySelector('#lb-err').textContent) && /Original bleibt/.test(document.querySelector('#lb-err').textContent)")
+    assert pg.is_visible("#lb-ext")
+    # 3b. Abbrechen aus der Vollbildansicht
+    leise(); pg.click("#lb-conv"); pg.wait_for_selector("#lb-stop"); pg.click("#lb-stop")
+    pg.evaluate("window.dispatchEvent(new Event('mtvideo'))")
+    assert "abgebrochen" in toast_text(pg, "abgebrochen")
+    pg.wait_for_function("() => /abgebrochen/.test(document.querySelector('#lb-err').textContent)")
+    pg.evaluate("window.__lightbox && window.__lightbox.close()")
+
+    # 4. Umwandlung nach einer Aufnahme (startet in der Hülle): Meldung „wird umgewandelt …“, dann „fertig“
+    leise(); pg.evaluate("() => { const V = __vs; V.cur = 'c1b2c3d4e5f6a7b8c9dv'; V.i = 1; V.n = 1; window.dispatchEvent(new Event('mtvideo')); }")
+    assert "Video wird umgewandelt" in toast_text(pg, "wird umgewandelt")
+    leise(); pg.evaluate("__vfin({ ok: true, w: 640, h: 480, dur: 2000 })")
+    assert "Video fertig" in toast_text(pg, "Video fertig")
+
+    # 5. Foto-Quellen: „Vorhandene Videos umwandeln“ – nichts zu tun
+    go(pg, "#/sources", "#src-vconv")
+    pg.evaluate("__vs.scan = { all: 4, n: 0, ids: [] }")
+    leise(); pg.click("#src-vconv")
+    assert "schon ab" in toast_text(pg, "schon ab")
+    # … drei HEVC-Videos: zählen, nachfragen, „1 von 3“ → „2 von 3 · 50 %“, Abbrechen, Zusammenfassung
+    ids = ["d1b2c3d4e5f6a7b8c9dv", "d2b2c3d4e5f6a7b8c9dv", "d3b2c3d4e5f6a7b8c9dv"]
+    pg.evaluate("ids => { __vs.scan = { all: 6, n: 3, ids }; }", ids)
+    leise(); pg.click("#src-vconv")
+    pg.wait_for_selector(".sheet[aria-label='Videos umwandeln?']")
+    assert "3 Videos sind im Format HEVC" in pg.inner_text(".sheet[aria-label='Videos umwandeln?']")
+    pg.click(".sheet[aria-label='Videos umwandeln?'] button.pri")
+    pg.wait_for_function("() => /^1 von 3/.test((document.querySelector('#vc-txt') || {}).textContent || '')")
+    pg.evaluate("__vfin({ ok: true, w: 1280, h: 720, dur: 3000 })"); pg.evaluate("__vpct(50)")
+    pg.wait_for_function("() => /^2 von 3 · 50 %/.test((document.querySelector('#vc-txt') || {}).textContent || '')")
+    leise(); pg.click("#vc-stop")
+    msg = toast_text(pg, "umgewandelt")
+    assert msg.startswith("1 Video umgewandelt") and "abgebrochen" in msg, msg
+    pg.wait_for_selector(".sheet[aria-label='Videos umwandeln']", state="detached")
+    assert not pg.evaluate("__vs.cur") and not pg.evaluate("__vs.todo.length")
+    # … ohne Abbruch bis zum Ende, ein Video scheitert
+    leise(); pg.click("#src-vconv"); pg.wait_for_selector(".sheet[aria-label='Videos umwandeln?']"); pg.click(".sheet[aria-label='Videos umwandeln?'] button.pri")
+    pg.wait_for_function("() => /^1 von 3/.test((document.querySelector('#vc-txt') || {}).textContent || '')")
+    pg.evaluate("__vfin({ ok: true })"); pg.evaluate("__vfin({ ok: false, msg: 'HDR-Video' })"); leise(); pg.evaluate("__vfin({ ok: true })")
+    msg = toast_text(pg, "umgewandelt")
+    assert msg == "2 Videos umgewandelt · 1 nicht möglich (bleiben erhalten)", msg
+    pg.wait_for_selector(".sheet[aria-label='Videos umwandeln']", state="detached")
+
+    # aufräumen: Nachstellung zurück, Testvideos weg
+    pg.unroute("**/photo/*v.mp4*")
+    pg.evaluate("ids => { window.MTApp.call = window.__vcall0; return Promise.all(ids.map(id => DB.del('photos', id))); }", [vid1, vid2])
+
+
 def von_aussen(pg):
     """2.6.2: Von außen geöffnete Strecke (z. B. Total Commander): Rückfrage gemacht/geplant/abbrechen."""
     t0 = 1700000000000
@@ -2626,6 +2739,7 @@ def main():
         blaetter(pg)
         von_aussen(pg)
         aufnahme_270(pg)
+        videos_271(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
 

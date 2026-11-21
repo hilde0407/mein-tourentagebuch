@@ -8,6 +8,7 @@ const Lightbox = {
     const vid = h('video', { class: 'lb-img', controls: true, playsinline: true, preload: 'metadata' });
     vid.hidden = true;
     const info = h('div', { class: 'lb-info' });
+    const err = h('div', { class: 'lb-err', id: 'lb-err', role: 'status', hidden: true });      // 2.7.1: Meldung mit „Jetzt umwandeln“ statt nur einer kurzen Einblendung
     const cnt = h('span', { class: 'lb-cnt' });
     const el = h('div', { class: 'lb', role: 'dialog', 'aria-label': 'Foto' },
       h('div', { class: 'lb-top' }, cnt, h('span', { class: 'sp' }),
@@ -15,16 +16,50 @@ const Lightbox = {
         h('button', { class: 'ico', 'aria-label': 'Diashow', onclick: toggle }, h('span', { id: 'lbp' }, '▶')),
         h('button', { class: 'ico', 'aria-label': 'Details', onclick: details }, 'ⓘ'),
         h('button', { class: 'ico', 'aria-label': 'Schließen', onclick: close }, '✕')),
-      img, vid, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
+      img, vid, err, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
     let x0 = null;
     el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
     el.addEventListener('touchend', e => { if (x0 == null) return; const d = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
     const appB = el.querySelector('#lb-app');
     async function extern() { try { vid.pause(); await Native.call('openVideo', { id: list[i].id }); } catch (e) { toast('Video lässt sich nicht öffnen.'); } }
-    // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an
-    vid.addEventListener('error', () => { if (!list[i].video) return; toast('Video lässt sich hier nicht abspielen (Fehler ' + (vid.error ? vid.error.code : '?') + '). Oben „⤴“ öffnet es in der Video-App.', 7000); });
+    // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an.
+    // 2.7.1: bei Fehler 4 (Format nicht unterstützt, meist HEVC) zusätzlich „Jetzt umwandeln“ (in H.264, auf dem Handy)
+    let errCode = null, errMsg = '';
+    vid.addEventListener('error', () => { const p = list[i]; if (!p || !p.video || !vid.getAttribute('src')) return; errCode = vid.error ? vid.error.code : '?'; showErr(p); });
+    function busyFor(p) { const st = Videos.state; return !!(st && st.running && st.id === p.id); }
+    function showErr(p, msg) {
+      if (msg !== undefined) errMsg = msg;
+      err.innerHTML = ''; err.hidden = false;
+      const busy = busyFor(p), st = Videos.state;
+      if (busy) {
+        err.append(h('p', null, 'Video wird umgewandelt …' + (st.pct ? ' ' + st.pct + ' %' : '')),
+          h('div', { class: 'row' }, h('button', { class: 'btn sm', id: 'lb-stop', onclick: async e => { e.currentTarget.disabled = true; try { await Native.call('videoCancel'); } catch (x) { /* egal */ } } }, 'Abbrechen')));
+        return;
+      }
+      err.append(h('p', null, errMsg || 'Video lässt sich hier nicht abspielen (Fehler ' + errCode + ').'),
+        h('div', { class: 'row' },
+          errCode === 4 ? h('button', { class: 'btn sm pri', id: 'lb-conv', onclick: () => convertNow(p) }, 'Jetzt umwandeln') : null,
+          h('button', { class: 'btn sm', id: 'lb-ext', onclick: extern }, 'In Video-App öffnen')));
+    }
+    async function convertNow(p) {
+      let r;
+      try { r = await Native.json('videoConvert', { ids: [p.id] }); } catch (e) { toast('Umwandeln nicht möglich: ' + e.message, 6000); return; }
+      if (!r.hevc) { toast('Dieses Video ist kein HEVC – Umwandeln hilft hier nicht. „In Video-App öffnen“ geht trotzdem.', 7000); return; }
+      errMsg = '';
+      await Videos.poll();
+      if (list[i] === p) showErr(p);
+    }
+    const onState = () => { const p = list[i]; if (p && p.video && !err.hidden && errCode != null) showErr(p); };
+    const onDone = e => {
+      const p = list[i]; if (!p || !p.video) return;
+      const d = (e.detail || []).find(x => x.id === p.id); if (!d) return;
+      if (d.ok) { Object.assign(p, { w: d.w || p.w, h: d.h || p.h, dur: d.dur || p.dur }); err.hidden = true; errCode = null; errMsg = ''; vid.src = Photos.url(p.id) + '?c=' + Date.now(); vid.poster = Photos.thumb(p.id) + '?c=' + Date.now(); }
+      else if (!err.hidden) showErr(p, d.cancel ? 'Umwandlung abgebrochen – das Original ist unverändert.' : 'Umwandeln hat nicht geklappt (' + (d.msg || 'Fehler') + '). Das Original bleibt erhalten.');
+    };
+    window.addEventListener('video-state', onState); window.addEventListener('video-converted', onDone);
     function show() {
       const p = list[i];
+      err.hidden = true; errCode = null; errMsg = '';
       appB.hidden = !p.video;
       if (p.video) { img.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
       else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; img.src = Photos.url(p.id); }
@@ -34,7 +69,7 @@ const Lightbox = {
     }
     function step(d) { i = (i + d + list.length) % list.length; show(); }
     function toggle() { if (timer) { clearInterval(timer); timer = null; $('#lbp').textContent = '▶'; } else { timer = setInterval(() => { if (!(list[i].video && !vid.paused && !vid.ended)) step(1); }, 4000); $('#lbp').textContent = '❚❚'; } }
-    function close() { if (timer) clearInterval(timer); try { vid.pause(); } catch (e) { /* egal */ } el.remove(); window.__lightbox = null; }
+    function close() { if (timer) clearInterval(timer); try { vid.pause(); } catch (e) { /* egal */ } window.removeEventListener('video-state', onState); window.removeEventListener('video-converted', onDone); el.remove(); window.__lightbox = null; }
     async function details() {
       const p = list[i], tour = p.tour ? await DB.get('tours', p.tour) : null;
       const s = sheet('Foto', h('div', null,
@@ -47,6 +82,81 @@ const Lightbox = {
           h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmBox('Foto löschen?', 'Das Foto wird aus dem Tourentagebuch entfernt (das Original bleibt unberührt).', 'Löschen')) { await Photos.remove(p.id); list.splice(i, 1); s.close(); if (!list.length) close(); else { i = Math.min(i, list.length - 1); show(); } window.dispatchEvent(new Event('photos-changed')); } } }, 'Löschen'))));
     }
     document.body.append(el); window.__lightbox = { close }; show();
+  },
+};
+/* 2.7.1: HEVC-Videos (H.265) in H.264 umwandeln – die eigentliche Arbeit macht die Android-Hülle (VideoService).
+   Hier: Zustand abholen (Native 'videoStatus'), fertige Videos in der Datenbank nachtragen, Meldungen, Sammelumwandlung. */
+const Videos = {
+  state: null, _said: false, bulk: null,
+  async poll() {
+    if (!window.MTApp) return null;
+    let st;
+    try { st = await Native.json('videoStatus'); } catch (e) { return null; }
+    Videos.state = st;
+    const done = st.done || [];
+    for (const d of done) {
+      if (!d.ok) continue;
+      const p = await DB.get('photos', d.id);
+      if (p) { if (d.w) p.w = d.w; if (d.h) p.h = d.h; if (d.dur) p.dur = d.dur; p.h264 = true; await DB.put('photos', p); }
+    }
+    if (done.length) {
+      window.dispatchEvent(new CustomEvent('video-converted', { detail: done }));
+      if (Videos.bulk) Videos.bulk.push(...done);
+      else {
+        const ok = done.filter(d => d.ok).length, bad = done.filter(d => !d.ok && !d.cancel && !d.skip);
+        if (bad.length) toast('Video konnte nicht umgewandelt werden (' + (bad[0].msg || 'Fehler') + '). Es bleibt erhalten und lässt sich in der Video-App öffnen.', 7000);
+        else if (ok) toast(ok === 1 ? 'Video fertig' : ok + ' Videos fertig', 4000);
+        else if (done.some(d => d.cancel)) toast('Umwandlung abgebrochen – das Original ist unverändert.', 4000);
+      }
+      if (done.some(d => d.ok)) window.dispatchEvent(new Event('photos-changed'));
+    }
+    if (st.running && !Videos._said && !Videos.bulk) toast('Video wird umgewandelt …', 4000);
+    Videos._said = !!st.running;
+    window.dispatchEvent(new CustomEvent('video-state', { detail: st }));
+    return st;
+  },
+  /** „Vorhandene Videos umwandeln“: zählen, nachfragen, nacheinander umwandeln (Fortschritt „2 von 5“, Abbrechen). */
+  async alle() {
+    let sc;
+    try { sc = await Native.json('videoScan'); } catch (e) { toast(e.message, 5000); return; }
+    if (!sc.n) { toast(sc.all ? 'Alle Videos spielen schon ab – nichts umzuwandeln.' : 'Keine Videos vorhanden.', 5000); return; }
+    const txt = (sc.n === 1 ? '1 Video ist' : sc.n + ' Videos sind') + ' im Format HEVC gespeichert, das die Ansicht in der App oft nicht abspielt. '
+      + 'Sie werden nacheinander auf dem Handy in H.264 umgewandelt. Das dauert je Video etwa so lange wie das Video selbst oder länger und braucht Akku – am besten am Ladegerät. '
+      + 'Das Original wird erst ersetzt, wenn die Umwandlung geklappt hat.';
+    if (!await confirmBox('Videos umwandeln?', txt, 'Umwandeln')) return;
+    let r;
+    try { r = await Native.json('videoConvert', { ids: sc.ids }); } catch (e) { toast('Umwandeln nicht möglich: ' + e.message, 6000); return; }
+    if (!r.hevc) { toast('Nichts umzuwandeln.', 4000); return; }
+    return Videos.follow();
+  },
+  /** Fortschrittsblatt, bis nichts mehr läuft; danach eine Zusammenfassung. Schließen des Blatts bricht nicht ab. */
+  follow() {
+    Videos.bulk = [];
+    const bar = h('div', { class: 'prog' }, h('i')), txt = h('p', { id: 'vc-txt' }, 'Wird gestartet …');
+    const stop = h('button', { class: 'btn', id: 'vc-stop', onclick: async e => { e.currentTarget.disabled = true; e.currentTarget.textContent = 'Wird abgebrochen …'; try { await Native.call('videoCancel'); } catch (x) { /* egal */ } Videos.poll(); } }, 'Abbrechen');
+    let fertig = false, timer = null;
+    return new Promise(res => {
+      const ende = () => {
+        if (fertig) return; fertig = true; clearInterval(timer); window.removeEventListener('video-state', upd);
+        const l = Videos.bulk || []; Videos.bulk = null;
+        const ok = l.filter(d => d.ok).length, bad = l.filter(d => !d.ok && !d.cancel && !d.skip).length, ab = l.some(d => d.cancel);
+        if (l.length) toast((ok === 1 ? '1 Video umgewandelt' : ok + ' Videos umgewandelt') + (bad ? ' · ' + bad + ' nicht möglich (bleiben erhalten)' : '') + (ab ? ' · abgebrochen' : ''), 6000);
+        res(l);
+      };
+      const s = sheet('Videos umwandeln', h('div', null, txt, bar,
+        h('p', { class: 'muted small' }, 'Läuft im Hintergrund weiter, auch wenn du die App verlässt (siehe Benachrichtigung). Schließen bricht nicht ab.'),
+        h('div', { class: 'row end' }, stop)), { onclose: () => { if (!fertig) { fertig = true; clearInterval(timer); window.removeEventListener('video-state', upd); Videos.bulk = null; res(null); } } });
+      function upd(e) {
+        const st = e.detail; if (fertig || !st) return;
+        if (!st.running) { ende(); s.close(); return; }
+        const n = Math.max(1, st.n || 1), i = Math.max(1, st.i || 1);
+        txt.textContent = `${i} von ${n}` + (st.pct ? ' · ' + st.pct + ' %' : '');
+        bar.firstChild.style.width = Math.min(100, ((i - 1) + (st.pct || 0) / 100) / n * 100) + '%';
+      }
+      window.addEventListener('video-state', upd);
+      timer = setInterval(() => Videos.poll(), 1500);      // falls ein Ereignis der Hülle ausbleibt
+      Videos.poll();
+    });
   },
 };
 async function pickTour() {
@@ -309,7 +419,8 @@ Views['/sources'] = async root => {
   body.append(h('p', { class: 'muted' }, 'Fotos werden verkleinert (max. 2400 Pixel) in den privaten Speicher der App kopiert. Originale bleiben unverändert.'),
     h('div', { class: 'list' },
       h('button', { class: 'li', onclick: () => PhotoSources.sheet(null, null) }, h('span', { class: 'li-i' }, '＋'), h('span', { class: 'li-t' }, h('b', null, 'Fotos hinzufügen'), h('small', null, 'Galerie, Ordner, SMB, Nextcloud'))),
-      h('button', { class: 'li', onclick: async () => { try { toast((await PhotoSources.scanFolders()) + ' neue Foto(s)'); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt einlesen'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt')))));
+      h('button', { class: 'li', onclick: async () => { try { toast((await PhotoSources.scanFolders()) + ' neue Foto(s)'); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt einlesen'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
+      window.MTApp ? h('button', { class: 'li', id: 'src-vconv', onclick: () => Videos.alle() }, h('span', { class: 'li-i' }, '🎬'), h('span', { class: 'li-t' }, h('b', null, 'Vorhandene Videos umwandeln'), h('small', null, 'HEVC-Videos in H.264, damit sie hier abspielen'))) : null));
   const sto = await Native.json('storage').catch(() => null);
   if (sto) body.append(h('p', { class: 'muted' }, `Belegt: ${sto.photos} Fotos · ${F.size(sto.bytes)}`));
   if (folders.length) body.append(h('h3', null, 'Gemerkte Ordner'), h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Entfernen', onclick: async () => { folders.splice(i, 1); await DB.kvSet('photoFolders', folders); Nav.render(); } }, '✕')))));

@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Tests (Parser, Aufzeichnungslogik, Wegansagen)
+      - name: Tests (Parser, Aufzeichnungslogik, Wegansagen, Video-Umwandlung)
         run: |
           node tests/test_parse.js
           node tests/test_calc.js
@@ -41,6 +41,8 @@ jobs:
           java -cp /tmp/jc GuideCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/UploadRoute.java tests/android/UploadServerCheck.java
           java -cp /tmp/jc UploadServerCheck
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/VideoPlan.java tests/android/VideoPlanCheck.java
+          java -cp /tmp/jc VideoPlanCheck
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

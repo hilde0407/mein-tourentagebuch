@@ -372,6 +372,7 @@ button.ygoal:active{background:var(--soft)}
 .lb-top .ico{color:#fff}.lb .ico:active{background:#fff3}
 .lb-nav{position:absolute;top:50%;transform:translateY(-50%);display:grid;place-items:center;background:#0008;color:#fff;border:0;width:48px;height:68px;font-size:2rem;cursor:pointer;z-index:2}.lb-nav.l{left:0;border-radius:0 12px 12px 0}.lb-nav.r{right:0;border-radius:12px 0 0 12px}
 .lb-info{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(env(safe-area-inset-bottom) + 14px);background:linear-gradient(transparent,#000c);color:#fff;font-weight:500}
+.lb-err{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 64px);z-index:3;background:#000d;color:#fff;border-radius:12px;padding:12px 14px;line-height:1.4}.lb-err[hidden]{display:none}.lb-err p{margin:0 0 10px}.lb-err .row{display:flex;flex-wrap:wrap;gap:8px}.lb-err .btn{min-height:44px}.lb-err .btn:not(.pri){color:#fff;border-color:#fff9}
 
 /* ---------- Erzählung ---------- */
 .stl{padding-top:16px}

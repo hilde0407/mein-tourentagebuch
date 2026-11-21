@@ -132,7 +132,7 @@ public final class Photos {
         StringBuilder sb = new StringBuilder();
         for (byte x : md.digest()) sb.append(String.format(Locale.US, "%02x", x));
         String id = sb.substring(0, 19) + "v";
-        File out = new File(dir(c), id + ".mp4"), th = new File(thumbDir(c), id + ".jpg");
+        File out = new File(dir(c), id + ".mp4");
         if (!out.exists()) {
             try (FileInputStream in = new FileInputStream(src); FileOutputStream o = new FileOutputStream(out)) {
                 byte[] b = new byte[64 * 1024];
@@ -140,6 +140,18 @@ public final class Photos {
                 while ((n = in.read(b)) > 0) o.write(b, 0, n);
             }
         }
+        long[] m = videoMeta(c, id);
+        int w = (int) m[0], h = (int) m[1];
+        long dur = m[2];
+        JSONObject j = new JSONObject();
+        j.put("id", id).put("name", "Video.mp4").put("ts", ts).put("w", w).put("h", h).put("dur", dur).put("video", true).put("src", "kamera");
+        if (!Double.isNaN(lat)) j.put("lat", lat).put("lon", lon);
+        return j;
+    }
+
+    /** Breite, Höhe (gedreht wie angezeigt), Dauer (ms) eines Videos in photos/; schreibt dabei das Vorschaubild neu (2.7.1: auch nach der Umwandlung). */
+    public static long[] videoMeta(Context c, String id) {
+        File out = new File(dir(c), id + ".mp4"), th = new File(thumbDir(c), id + ".jpg");
         int w = 0, h = 0;
         long dur = 0;
         android.media.MediaMetadataRetriever mr = new android.media.MediaMetadataRetriever();
@@ -159,13 +171,12 @@ public final class Photos {
                 Bitmap t = s2 < 1f ? Bitmap.createScaledBitmap(fr, Math.round(fr.getWidth() * s2), Math.round(fr.getHeight() * s2), true) : fr;
                 try (FileOutputStream fo = new FileOutputStream(th)) { t.compress(Bitmap.CompressFormat.JPEG, 80, fo); }
             }
+        } catch (Exception e) {
+            AppLog.log("Video-Daten " + id + ": " + e);
         } finally {
             try { mr.release(); } catch (Exception e) { /* egal */ }
         }
-        JSONObject j = new JSONObject();
-        j.put("id", id).put("name", "Video.mp4").put("ts", ts).put("w", w).put("h", h).put("dur", dur).put("video", true).put("src", "kamera");
-        if (!Double.isNaN(lat)) j.put("lat", lat).put("lon", lon);
-        return j;
+        return new long[]{w, h, dur};
     }
 
     public static void delete(Context c, String id) {
