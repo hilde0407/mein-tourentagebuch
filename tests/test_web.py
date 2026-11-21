@@ -196,7 +196,8 @@ def karte_281(pg, shots=None):
     """2.8.1: Tourenkarte – Startpunkte in Sportfarbe, weit draußen zu Gruppen mit Anzahl zusammengefasst; Linien erst nah (ab Zoom 9 bzw. wie bisher,
     wenn alle Touren in einer Gegend liegen) und nur im Ausschnitt; Gruppe antippen zoomt hinein, am selben Ort gibt es eine Liste; Jahresfilter;
     „Alle Touren“; „N Touren“ unten. Geprüft werden Marker und Leaflet-Ebenen, nicht das Kartenbild (Kacheln gibt es im Test nicht)."""
-    orte = [("Alpen Hausrunde", 47.50, 11.20, 2023, "hike"), ("Alpen Hausrunde", 47.50, 11.20, 2024, "hike"), ("Alpen Hausrunde", 47.50, 11.20, 2024, "hike"),
+    import re
+    orte = [("Alpen Hausrunde", 47.7012, 12.0123, 2023, "hike"), ("Alpen Hausrunde", 47.7012, 12.0123, 2024, "hike"), ("Alpen Hausrunde", 47.7012, 12.0123, 2024, "hike"),
             ("Karwendel", 47.42, 11.45, 2023, "mtb"), ("Roque Nublo", 27.97, -15.61, 2024, "hike"), ("Barranco de Guayadeque", 27.93, -15.48, 2024, "hike"),
             ("Tamadaba", 28.05, -15.73, 2024, "hike"), ("Pico de las Nieves Rad", 27.96, -15.57, 2024, "bike"), ("Island Esja", 64.21, -21.70, 2023, "hike"),
             ("New York Central Park", 40.77, -73.97, 2023, "run"), ("Blue Mountains", -33.73, 150.31, 2024, "hike"), ("Machu Picchu", -13.16, -72.54, 2023, "hike"),
@@ -214,6 +215,7 @@ def karte_281(pg, shots=None):
     stand = lambda: pg.evaluate("""() => { const k = document.querySelector('.map.full').__karte;
       const g = [...document.querySelectorAll('.map.full .tgrp span')].map(e => +e.textContent), e = document.querySelectorAll('.map.full .tmk').length;
       return { zoom: k.map.getZoom(), linien: k.linien.getLayers().length, gruppen: g, einzeln: e, summe: g.reduce((a, b) => a + b, 0) + e, marker: k.punkte.getLayers().length, info: document.querySelector('#mapinfo').textContent }; }""")
+    im_bild = lambda: pg.evaluate(f"async () => {{ const b = {K}.map.getBounds(); return (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden && t.lat != null && b.contains([t.lat, t.lon])).length; }}")      # andere Testtouren können mit im Bild liegen
     def ruhig():      # keine Zoom-/Schwenk-Animation mehr, danach kurz Zeit für moveend
         pg.wait_for_function(f"() => {{ const k = {K}; return k && !k.map._animatingZoom && !(k.map._panAnim && k.map._panAnim._inProgress); }}", timeout=10000); pg.wait_for_timeout(400)
     # 1. Weltansicht: Touren über mehrere Kontinente → Gruppen statt Linien, alle Touren gezählt, Linien erst ab Zoom 9
@@ -236,19 +238,20 @@ def karte_281(pg, shots=None):
     assert stand()["zoom"] > z0
     # 3. Gran Canaria: nah genug → Linien im Ausschnitt, Startpunkte einzeln, Popup mit Name, Datum, Strecke und „Öffnen“
     pg.evaluate(f"{K}.map.setView([27.99, -15.58], 10, {{ animate: false }})"); ruhig()
-    pg.wait_for_function(f"() => {K}.linien.getLayers().length === 4", timeout=10000)
-    s = stand(); assert s["einzeln"] == 4 and not s["gruppen"] and s["info"] == "4 Touren", s
+    pg.wait_for_function(f"ids => {{ const l = {K}.linien.getLayers().map(x => x._tid); return ids.every(i => l.includes(i)); }}", arg=ids[4:8], timeout=10000)
+    s = stand(); n_gc = im_bild(); assert s["summe"] >= n_gc >= 4 and s["info"] == f"{n_gc} Touren", (s, n_gc)
+    for name in ("Roque Nublo", "Barranco de Guayadeque", "Tamadaba", "Pico de las Nieves Rad"): assert pg.locator(f".map.full .tmk[title^='{name}']").count() == 1, name
     if shots: pg.screenshot(path=shots + "/karte_gran_canaria.png")
     pg.locator(".map.full .tmk[title^='Tamadaba']").click(); pg.wait_for_selector(".leaflet-popup-content")
     tx = pg.inner_text(".leaflet-popup-content"); assert "Tamadaba" in tx and "km" in tx and "Öffnen" in tx, tx
     assert pg.get_attribute(".leaflet-popup-content a", "href") == "#/tour/" + ids[6]
     # Herauszoomen unter Zoom 9: Linien verschwinden, Punkte bleiben
     pg.evaluate(f"{K}.map.setZoom(8, {{ animate: false }})"); ruhig()
-    pg.wait_for_function(f"() => {K}.linien.getLayers().length === 0", timeout=10000); assert stand()["summe"] == 4
+    pg.wait_for_function(f"() => {K}.linien.getLayers().length === 0", timeout=10000); s = stand(); assert s["summe"] >= im_bild() and s["info"] == pg.evaluate("n => KartenPunkte.anzahlText(n)", im_bild()), s
     # 4. Selber Ort (Hausrunde dreimal): auch ganz nah eine Gruppe „3“, Antippen zeigt die Liste
     for zz in ("14", f"{K}.map.getMaxZoom()"):      # schon vor der höchsten Stufe: hineinzoomen würde nichts trennen, also gleich die Liste
-        pg.evaluate(f"{K}.map.closePopup(); {K}.map.setView([47.5, 11.2], {zz}, {{ animate: false }})"); ruhig(); z1 = stand()["zoom"]
-        pg.locator(".map.full .tgrp", has_text="3").click(); pg.wait_for_selector(".leaflet-popup-content")
+        pg.evaluate(f"{K}.map.closePopup(); {K}.map.setView([47.7012, 12.0123], {zz}, {{ animate: false }})"); ruhig(); z1 = stand()["zoom"]
+        pg.locator(".map.full .tgrp", has=pg.locator("span", has_text=re.compile(r"^3$"))).click(); pg.wait_for_selector(".leaflet-popup-content")
         tx = pg.inner_text(".leaflet-popup-content"); assert "3 Touren" in tx and tx.count("Alpen Hausrunde") == 3 and stand()["zoom"] == z1, tx
     # 5. Jahresfilter wirkt auf die Punkte; „Alle Touren“ zeigt alle Startpunkte des Jahres
     pg.select_option("select[aria-label=Jahr]", "2023"); pg.click("#alletouren"); ruhig()
@@ -264,8 +267,10 @@ def karte_281(pg, shots=None):
     pg.evaluate("async ids => { for (const id of ids) await Tours.remove(id); }", ids)
     go(pg, "#/start", "#view"); go(pg, "#/map", ".map.full .leaflet-marker-icon"); ruhig()
     ab = int(pg.evaluate("document.querySelector('.map.full').dataset.linienAb"))
-    pg.wait_for_function(f"() => {K}.linien.getLayers().length > 0", timeout=10000)
-    s = stand(); assert ab <= 9 and s["zoom"] >= ab and s["linien"] > 0 and s["summe"] == n_alle - len(ids), (ab, s, n_alle)
+    sp = pg.evaluate("Tours.list().then(l => KartenPunkte.spanneKm(l.filter(t => t.status !== 'planned' && !t.hidden && t.lat != null)))")
+    s = stand(); assert s["summe"] >= im_bild() and s["info"] == pg.evaluate("n => KartenPunkte.anzahlText(n)", im_bild()), s
+    if sp <= 1000: pg.wait_for_function(f"() => {K}.linien.getLayers().length > 0", timeout=10000); assert ab <= 9 and s["zoom"] >= ab, (ab, s)
+    else: assert ab == 9, (ab, sp)      # im großen Testlauf liegen auch andere Testtouren weit verstreut
     print("Karte 2.8.1: Welt, Gruppen, Gran Canaria, Jahresfilter, Liste am selben Ort – in Ordnung")
 
 def panorama_280(pg):
