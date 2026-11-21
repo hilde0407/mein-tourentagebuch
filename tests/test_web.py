@@ -240,8 +240,9 @@ def karte_281(pg, shots=None):
     pg.evaluate(f"{K}.map.setView([27.99, -15.58], 10, {{ animate: false }})"); ruhig()
     pg.wait_for_function(f"ids => {{ const l = {K}.linien.getLayers().map(x => x._tid); return ids.every(i => l.includes(i)); }}", arg=ids[4:8], timeout=10000)
     s = stand(); n_gc = im_bild(); assert s["summe"] >= n_gc >= 4 and s["info"] == f"{n_gc} Touren", (s, n_gc)
-    for name in ("Roque Nublo", "Barranco de Guayadeque", "Tamadaba", "Pico de las Nieves Rad"): assert pg.locator(f".map.full .tmk[title^='{name}']").count() == 1, name
+    if n_gc == 4: assert s["einzeln"] == 4 and not s["gruppen"], s      # allein auf der Insel: vier einzelne Startpunkte (im großen Lauf liegen dort auch Wanderführer-Touren)
     if shots: pg.screenshot(path=shots + "/karte_gran_canaria.png")
+    pg.evaluate(f"{K}.map.setView([28.05, -15.73], 15, {{ animate: false }})"); ruhig()
     pg.locator(".map.full .tmk[title^='Tamadaba']").click(); pg.wait_for_selector(".leaflet-popup-content")
     tx = pg.inner_text(".leaflet-popup-content"); assert "Tamadaba" in tx and "km" in tx and "Öffnen" in tx, tx
     assert pg.get_attribute(".leaflet-popup-content a", "href") == "#/tour/" + ids[6]
