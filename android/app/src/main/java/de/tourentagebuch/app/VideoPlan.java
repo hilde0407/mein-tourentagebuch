@@ -59,4 +59,43 @@ public final class VideoPlan {
         long p = tUs * 100 / durUs;
         return (int) Math.max(0, Math.min(100, p));
     }
+
+    /* ---------- 2.9.0: Wiedergabe und Aufnahme ---------- */
+
+    /**
+     * Zeitpunkt (µs) für das Vorschaubild: nicht das allererste Bild (oft schwarz oder verwackelt), sondern etwa 1 s hinein.
+     * Kurze Videos (unter 2 s): die Mitte. Dauer unbekannt (0): 1 s versuchen – scheitert das, nimmt Photos.videoMeta Bild 0.
+     */
+    public static long thumbTimeUs(long durMs) {
+        if (durMs <= 0) return 1_000_000L;
+        if (durMs >= 2000) return 1_000_000L;
+        return durMs * 1000L / 2;
+    }
+
+    /** Einstellung „Längste Aufnahme“ (Text aus der Oberfläche: "30", "120", "300", "0") in Sekunden; 0 = unbegrenzt. Unbekannt: 120 (wie bisher). */
+    public static int limitSeconds(String v) {
+        if (v == null) return 120;
+        switch (v.trim()) {
+            case "30": return 30;
+            case "120": return 120;
+            case "300": return 300;
+            case "0": return 0;
+            default: return 120;
+        }
+    }
+
+    /** Bildschirmlage für den Player: 1 = Querformat (breiter als hoch), 2 = Hochformat, 0 = egal (quadratisch oder unbekannt). w/h wie angezeigt (nach Drehung). */
+    public static int orientation(int w, int h) {
+        if (w <= 0 || h <= 0 || w == h) return 0;
+        return w > h ? 1 : 2;
+    }
+
+    /** Dateiname der Galerie-Kopie: Tourentagebuch_JJJJMMTT_HHMMSS_&lt;6 Zeichen der Kennung&gt;.mp4 (Ortszeit; eindeutig über die Kennung). */
+    public static String galleryName(String id, long ts, java.util.TimeZone tz) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT);
+        f.setTimeZone(tz == null ? java.util.TimeZone.getDefault() : tz);
+        String k = id == null ? "" : id.replaceAll("[^A-Za-z0-9]", "");
+        if (k.length() > 6) k = k.substring(0, 6);
+        return "Tourentagebuch_" + f.format(new java.util.Date(ts > 0 ? ts : System.currentTimeMillis())) + (k.isEmpty() ? "" : "_" + k) + ".mp4";
+    }
 }

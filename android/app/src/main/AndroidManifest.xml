@@ -72,6 +72,13 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
+        <!-- 2.9.0: eigener Vollbild-Player für Videos; bei Drehung kein Neustart (Position bleibt) -->
+        <activity
+            android:name=".VideoPlayerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
         <provider
             android:name=".PhotoProvider"
             android:authorities="de.tourentagebuch.app.fileprovider"

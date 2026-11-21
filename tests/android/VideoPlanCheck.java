@@ -56,6 +56,23 @@ public class VideoPlanCheck {
         check(VideoPlan.percent(2000, 1000) == 100, "über Ende");
         check(VideoPlan.percent(500, 0) == 0, "Dauer unbekannt");
 
+        // 2.9.0: Vorschaubild bei etwa 1 s, kurze Videos in der Mitte
+        check(VideoPlan.thumbTimeUs(35_000) == 1_000_000L, "langes Video: 1 s");
+        check(VideoPlan.thumbTimeUs(2000) == 1_000_000L, "2 s: 1 s");
+        check(VideoPlan.thumbTimeUs(1000) == 500_000L, "1 s: Mitte");
+        check(VideoPlan.thumbTimeUs(0) == 1_000_000L, "unbekannt: 1 s versuchen");
+        // Längenbegrenzung
+        check(VideoPlan.limitSeconds("30") == 30 && VideoPlan.limitSeconds("120") == 120 && VideoPlan.limitSeconds("300") == 300, "Grenzen");
+        check(VideoPlan.limitSeconds("0") == 0, "unbegrenzt");
+        check(VideoPlan.limitSeconds(null) == 120 && VideoPlan.limitSeconds("abc") == 120 && VideoPlan.limitSeconds("") == 120, "unbekannt: wie bisher 120");
+        // Bildschirmlage
+        check(VideoPlan.orientation(1920, 1080) == 1 && VideoPlan.orientation(1080, 1920) == 2, "quer/hoch");
+        check(VideoPlan.orientation(0, 1080) == 0 && VideoPlan.orientation(500, 500) == 0, "unbekannt/quadratisch");
+        // Galerie-Name
+        String gn = VideoPlan.galleryName("a1b2c3d4e5f6v", 1_700_000_000_000L, java.util.TimeZone.getTimeZone("UTC"));
+        check(gn.equals("Tourentagebuch_20231114_221320_a1b2c3.mp4"), "Galerie-Name: " + gn);
+        check(VideoPlan.galleryName("../x", 1_700_000_000_000L, java.util.TimeZone.getTimeZone("UTC")).equals("Tourentagebuch_20231114_221320_x.mp4"), "Name ohne Pfadzeichen");
+
         System.out.println("VideoPlanCheck OK");
     }
 }

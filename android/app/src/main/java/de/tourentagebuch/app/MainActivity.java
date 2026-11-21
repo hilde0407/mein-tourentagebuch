@@ -59,7 +59,7 @@ import okhttp3.Response;
  */
 public class MainActivity extends Activity {
     static final String HOST = "app.local";
-    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16, REQ_VIDEO = 17;
+    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16, REQ_VIDEO = 17, REQ_PLAY = 18;
     private WebView web;
     private SharedPreferences prefs;
     private GeolocationPermissions.Callback geoCb;
@@ -249,13 +249,25 @@ public class MainActivity extends Activity {
                         JSONObject m = Photos.importVideo(getApplicationContext(), f, ts, la, lo);
                         queue("photoq", m);
                         js("window.dispatchEvent(new Event('mtphoto'))");
-                        // 2.7.1: HEVC-Video im Hintergrund in H.264 umwandeln (das WebView spielt HEVC oft nicht ab); das Original bleibt bis dahin
                         String vid = m.getString("id");
-                        if (VideoConvert.isHevc(new File(Photos.dir(this), vid + ".mp4"))) VideoService.enqueue(this, java.util.Collections.singletonList(vid));
+                        File vf = new File(Photos.dir(this), vid + ".mp4");
+                        // 2.9.0: Kopie in die Galerie (Einstellung, Vorgabe an; ab Android 10 ohne Berechtigung). Fehler nur ins Protokoll.
+                        if (prefs.getBoolean("video_gallery", true)) copyToGallery(vf, vid, ts);
+                        // 2.7.1: HEVC im Hintergrund in H.264 umwandeln – seit 2.9.0 nur noch, wenn eingeschaltet (Vorgabe aus; der eigene Player spielt HEVC meist ab)
+                        if (prefs.getBoolean("video_auto", false) && VideoConvert.isHevc(vf)) VideoService.enqueue(this, java.util.Collections.singletonList(vid));
                     } catch (Exception e) { AppLog.log("Kamera-Video: " + e); }
                     f.delete();
                 });
             } else if (!pf.isEmpty()) f.delete();
+            return;
+        }
+        if (req == REQ_PLAY) {                          // 2.9.0: eigener Player geschlossen – ok, oder Fehler mit Code (dann Rückfall in der Oberfläche)
+            if (cid == null) return;
+            try {
+                JSONObject o = new JSONObject().put("ok", res != RESULT_FIRST_USER);
+                if (res == RESULT_FIRST_USER && data != null) o.put("what", data.getIntExtra("what", 0)).put("extra", data.getIntExtra("extra", 0));
+                reply(cid, true, o.toString());
+            } catch (Exception e) { reply(cid, false, String.valueOf(e)); }
             return;
         }
         if (cid == null) return;
@@ -519,7 +531,8 @@ public class MainActivity extends Activity {
                     Uri u = PhotoProvider.uriFor(f);
                     Intent i = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
                     i.putExtra(MediaStore.EXTRA_OUTPUT, u);
-                    i.putExtra(MediaStore.EXTRA_DURATION_LIMIT, 120);
+                    int lim = prefs.getInt("video_limit", 120);      // 2.9.0: einstellbar (30 s / 2 min / 5 min / unbegrenzt = 0)
+                    if (lim > 0) i.putExtra(MediaStore.EXTRA_DURATION_LIMIT, lim);
                     i.setClipData(android.content.ClipData.newRawUri("", u));
                     i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivityForResult(i, REQ_VIDEO);
@@ -755,6 +768,33 @@ public class MainActivity extends Activity {
                 return o.toString();
             }
             case "videoStatus": return VideoService.status(this).toString();
+            case "playVideo": {                        // 2.9.0: eigener Vollbild-Player (VideoPlayerActivity), Datei direkt aus photos/; Antwort erst beim Schließen
+                final String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
+                File f = new File(Photos.dir(this), vid + ".mp4");
+                if (vid.isEmpty() || !f.isFile()) return new JSONObject().put("ok", false).put("what", -1).put("msg", "Video fehlt").toString();
+                final int[] wh = Photos.videoSize(f);
+                pending.put(REQ_PLAY, id);
+                runOnUiThread(() -> {
+                    try {
+                        Intent i = new Intent(MainActivity.this, VideoPlayerActivity.class)
+                                .putExtra(VideoPlayerActivity.EXTRA_ID, vid).putExtra(VideoPlayerActivity.EXTRA_W, wh[0]).putExtra(VideoPlayerActivity.EXTRA_H, wh[1]);
+                        startActivityForResult(i, REQ_PLAY);
+                    } catch (Exception e) {
+                        pending.remove(REQ_PLAY);
+                        AppLog.log("Player: " + e);
+                        try { reply(id, true, new JSONObject().put("ok", false).put("what", -2).put("msg", String.valueOf(e)).toString()); } catch (Exception e2) { reply(id, false, String.valueOf(e)); }
+                    }
+                });
+                return null;
+            }
+            case "videoPrefs": {                       // 2.9.0: Einstellungen, die die Hülle selbst braucht (Aufnahme-Länge, Galerie-Kopie, automatische Umwandlung)
+                SharedPreferences.Editor e = prefs.edit();
+                if (a.has("limit")) e.putInt("video_limit", VideoPlan.limitSeconds(a.optString("limit")));
+                if (a.has("gallery")) e.putBoolean("video_gallery", a.optBoolean("gallery", true));
+                if (a.has("auto")) e.putBoolean("video_auto", a.optBoolean("auto", false));
+                e.apply();
+                return new JSONObject().put("limit", prefs.getInt("video_limit", 120)).put("gallery", prefs.getBoolean("video_gallery", true)).put("auto", prefs.getBoolean("video_auto", false)).toString();
+            }
             case "readFileB64": {
                 File f = new File(a.getString("path"));
                 if (!f.getCanonicalPath().startsWith(getCacheDir().getCanonicalPath())) throw new Exception("Pfad nicht erlaubt");
@@ -765,13 +805,58 @@ public class MainActivity extends Activity {
                 if (fs != null) for (File f : fs) f.delete();
                 return "true";
             }
-            case "storage": {
-                long ph = 0;
+            case "storage": {                          // 2.9.0: Fotos und Videos getrennt (bytes = zusammen, wie bisher); vids: Größe je Video
+                long ph = 0, vb = 0;
+                int np = 0, nv = 0;
+                JSONObject vids = new JSONObject();
                 File[] fs = Photos.dir(this).listFiles();
-                if (fs != null) for (File f : fs) ph += f.length();
-                return new JSONObject().put("photos", fs == null ? 0 : fs.length).put("bytes", ph).toString();
+                if (fs != null) for (File f : fs) {
+                    String nm = f.getName();
+                    if (nm.endsWith(".mp4")) { nv++; vb += f.length(); vids.put(nm.substring(0, nm.length() - 4), f.length()); }
+                    else { np++; ph += f.length(); }
+                }
+                return new JSONObject().put("photos", np).put("photoBytes", ph).put("videos", nv).put("videoBytes", vb).put("bytes", ph + vb).put("vids", vids).toString();
             }
             default: throw new Exception("unbekannt: " + m);
+        }
+    }
+
+    /**
+     * 2.9.0: Kopie eines aufgenommenen Videos in die Galerie (Movies/Tourentagebuch). Nur ab Android 10 (API 29): dort braucht das Einfügen
+     * in MediaStore keine Berechtigung. Unter Android 10 wird übersprungen. Jede Kennung nur einmal (gemerkt in „gal_vids“). Fehler nur ins Protokoll.
+     */
+    private void copyToGallery(File src, String vid, long ts) {
+        if (Build.VERSION.SDK_INT < 29) return;
+        java.util.Set<String> done = new java.util.HashSet<>(prefs.getStringSet("gal_vids", new java.util.HashSet<>()));
+        if (done.contains(vid) || !src.isFile()) return;
+        try { copyToGalleryQ(src, vid, ts); done.add(vid); prefs.edit().putStringSet("gal_vids", done).apply(); }
+        catch (Exception e) { AppLog.log("Galerie-Kopie " + vid + ": " + e); }
+    }
+
+    @TargetApi(29)
+    private void copyToGalleryQ(File src, String vid, long ts) throws Exception {
+        android.content.ContentResolver cr = getContentResolver();
+        android.content.ContentValues v = new android.content.ContentValues();
+        v.put(MediaStore.MediaColumns.DISPLAY_NAME, VideoPlan.galleryName(vid, ts, null));
+        v.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
+        v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Tourentagebuch");
+        v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        if (ts > 0) v.put(MediaStore.Video.VideoColumns.DATE_TAKEN, ts);
+        Uri u = cr.insert(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
+        if (u == null) throw new Exception("MediaStore lehnt ab");
+        try {
+            try (InputStream in = new FileInputStream(src); OutputStream o = cr.openOutputStream(u)) {
+                if (o == null) throw new Exception("kein Ausgabestrom");
+                byte[] b = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(b)) > 0) o.write(b, 0, n);
+            }
+            android.content.ContentValues done = new android.content.ContentValues();
+            done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            cr.update(u, done, null, null);
+        } catch (Exception e) {
+            try { cr.delete(u, null, null); } catch (Exception e2) { /* egal */ }
+            throw e;
         }
     }
 

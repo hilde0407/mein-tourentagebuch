@@ -163,7 +163,8 @@ public final class Photos {
         return j;
     }
 
-    /** Breite, Höhe (gedreht wie angezeigt), Dauer (ms) eines Videos in photos/; schreibt dabei das Vorschaubild neu (2.7.1: auch nach der Umwandlung). */
+    /** Breite, Höhe (gedreht wie angezeigt), Dauer (ms) eines Videos in photos/; schreibt dabei das Vorschaubild neu (2.7.1: auch nach der Umwandlung).
+     *  Aufgerufen nur beim Import und nach einer Umwandlung – vorhandene Videos behalten ihr Vorschaubild. */
     public static long[] videoMeta(Context c, String id) {
         File out = new File(dir(c), id + ".mp4"), th = new File(thumbDir(c), id + ".jpg");
         int w = 0, h = 0;
@@ -171,7 +172,6 @@ public final class Photos {
         android.media.MediaMetadataRetriever mr = new android.media.MediaMetadataRetriever();
         try {
             mr.setDataSource(out.getAbsolutePath());
-            Bitmap fr = mr.getFrameAtTime(0);
             String sw = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
             String sh = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
             String sd = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
@@ -180,6 +180,10 @@ public final class Photos {
             if (sh != null) h = Integer.parseInt(sh);
             if (sd != null) dur = Long.parseLong(sd);
             if (ro != null && (ro.equals("90") || ro.equals("270"))) { int t = w; w = h; h = t; }
+            // 2.9.0: Vorschaubild bei etwa 1 s (das erste Bild ist oft schwarz oder verwackelt); Rückfall Bild 0
+            Bitmap fr = null;
+            try { fr = mr.getFrameAtTime(VideoPlan.thumbTimeUs(dur), android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC); } catch (Exception e) { fr = null; }
+            if (fr == null) fr = mr.getFrameAtTime(0);
             if (fr != null) {
                 float s2 = (float) THUMB_PX / Math.max(fr.getWidth(), fr.getHeight());
                 Bitmap t = s2 < 1f ? Bitmap.createScaledBitmap(fr, Math.round(fr.getWidth() * s2), Math.round(fr.getHeight() * s2), true) : fr;
@@ -191,6 +195,24 @@ public final class Photos {
             try { mr.release(); } catch (Exception e) { /* egal */ }
         }
         return new long[]{w, h, dur};
+    }
+
+    /** 2.9.0: Breite und Höhe wie angezeigt (Drehung berücksichtigt), ohne das Vorschaubild anzufassen; {0, 0} bei Fehler. */
+    public static int[] videoSize(File f) {
+        android.media.MediaMetadataRetriever mr = new android.media.MediaMetadataRetriever();
+        try {
+            mr.setDataSource(f.getAbsolutePath());
+            String sw = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+            String sh = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+            String ro = mr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+            int w = sw == null ? 0 : Integer.parseInt(sw), h = sh == null ? 0 : Integer.parseInt(sh);
+            if (ro != null && (ro.equals("90") || ro.equals("270"))) return new int[]{h, w};
+            return new int[]{w, h};
+        } catch (Exception e) {
+            return new int[]{0, 0};
+        } finally {
+            try { mr.release(); } catch (Exception e) { /* egal */ }
+        }
     }
 
     public static void delete(Context c, String id) {
