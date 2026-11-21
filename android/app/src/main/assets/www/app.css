@@ -313,7 +313,7 @@ button.ygoal:active{background:var(--soft)}
 .tourp>.sub{margin-top:4px}
 .tourp .kpis.big{margin:18px 0 14px}
 .strip{display:flex;gap:6px;overflow-x:auto;padding:0 var(--gut) 6px;margin:0 calc(var(--gut) * -1);scrollbar-width:none}
-.th{flex:none;border:0;padding:0;background:none;cursor:pointer;border-radius:var(--r-s)}.th img{width:108px;height:108px;object-fit:cover;border-radius:var(--r-s);display:block;background:var(--soft)}
+.th{position:relative;flex:none;border:0;padding:0;background:none;cursor:pointer;border-radius:var(--r-s)}.th img{width:108px;height:108px;object-fit:cover;border-radius:var(--r-s);display:block;background:var(--soft)}
 .hb>span:first-child{display:flex;align-items:center;gap:6px;min-width:0}
 .hbars .hb{display:grid;grid-template-columns:minmax(0,7.2rem) 1fr auto;gap:10px;align-items:center;margin:8px 0;font-size:.92rem}
 .hb>div{height:10px;background:var(--soft);border-radius:5px;overflow:hidden}.hb i{display:block;height:100%;background:var(--mark);border-radius:5px}
@@ -382,11 +382,23 @@ button.ygoal:active{background:var(--soft)}
 .lb.panofit .lb-pan .lb-img{height:100%;width:auto;max-width:none;max-height:none;flex:none}
 .lb-pb{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 12px;margin-right:4px;border-radius:22px;border:1.5px solid #fff9;background:#0006;color:#fff;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;white-space:nowrap}.lb-pb[hidden]{display:none}.lb-pb:active{background:#fff3}
 .tag-pano{display:inline-flex;align-items:center;gap:5px;padding:2px 10px 2px 7px;border-radius:12px;background:var(--soft);color:var(--ink);font-weight:600;font-size:.9rem;vertical-align:middle}
+/* 2.9.0: Video auf der Kachel: Abspiel-Symbol und Dauer, dunkle Unterlage (lesbar auf hellen und dunklen Bildern, in Hell und Dunkel gleich) */
+.vmark{position:absolute;left:4px;bottom:4px;display:inline-flex;align-items:center;gap:3px;padding:2px 7px 2px 4px;border-radius:10px;background:rgba(0,0,0,.74);color:#fff;font-size:.78rem;font-weight:700;line-height:1.35;font-variant-numeric:tabular-nums;pointer-events:none}
+.vmark-i{display:grid;place-items:center}.vmark-i svg{display:block}
+.vthumb{position:relative;border:0;cursor:pointer}.vthumb-i{position:absolute;inset:0;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 0 2px #000)}
 .pt-pano{position:absolute;left:5px;top:4px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 0 2px #000)}
+/* 2.9.0: Blätter, die aus dem Vollbild geöffnet werden (Details, Löschen, Tour wählen), liegen über ihm – vorher lagen sie dahinter (z-index 100 < 150) */
+.lb ~ .sheet-back{z-index:160}
 .lb-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(env(safe-area-inset-top) + 4px) 6px 4px 16px;background:linear-gradient(#000b,transparent);color:#fff;z-index:2;font-weight:600;font-variant-numeric:tabular-nums}
 .lb-top .ico{color:#fff}.lb .ico:active{background:#fff3}
 .lb-nav{position:absolute;top:50%;transform:translateY(-50%);display:grid;place-items:center;background:#0008;color:#fff;border:0;width:48px;height:68px;font-size:2rem;cursor:pointer;z-index:2}.lb-nav.l{left:0;border-radius:0 12px 12px 0}.lb-nav.r{right:0;border-radius:12px 0 0 12px}
 .lb-info{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(env(safe-area-inset-bottom) + 14px);background:linear-gradient(transparent,#000c);color:#fff;font-weight:500}
+/* 2.9.0: Video im Vollbild: Vorschaubild mit großem Abspiel-Symbol und Dauer; Tippen startet den Player der App */
+.lb-vp{position:absolute;inset:0;border:0;padding:0;margin:0;background:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}.lb-vp[hidden]{display:none}
+.lb-vp img{width:100%;height:100%;object-fit:contain;display:block}
+.lb-vp-i{position:absolute;left:50%;top:50%;width:92px;height:92px;margin:-46px 0 0 -46px;border-radius:50%;background:rgba(0,0,0,.62);border:2px solid rgba(255,255,255,.85);display:grid;place-items:center;padding-left:6px;box-sizing:border-box}
+.lb-vp:active .lb-vp-i{background:rgba(255,255,255,.25)}
+.lb-vp-d{position:absolute;left:50%;top:50%;transform:translate(-50%,58px);padding:3px 11px;border-radius:12px;background:rgba(0,0,0,.74);font-weight:700;font-variant-numeric:tabular-nums}.lb-vp-d[hidden]{display:none}
 .lb-err{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 64px);z-index:3;background:#000d;color:#fff;border-radius:12px;padding:12px 14px;line-height:1.4}.lb-err[hidden]{display:none}.lb-err p{margin:0 0 10px}.lb-err .row{display:flex;flex-wrap:wrap;gap:8px}.lb-err .btn{min-height:44px}.lb-err .btn:not(.pri){color:#fff;border-color:#fff9}
 
 /* ---------- Erzählung ---------- */

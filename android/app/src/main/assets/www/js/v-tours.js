@@ -225,7 +225,7 @@ Views['/tour'] = async (root, [id]) => {
   const showBtn = h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow');
   const drawStrip = () => {
     strip.innerHTML = '';
-    photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': 'Foto ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }))));
+    photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': (p.video ? VideoCalc.dauerText(p.dur) : 'Foto') + ' ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), UI.vidMark(p))));
     strip.hidden = showBtn.hidden = !photos.length; noPhotos.hidden = !!photos.length;
   };
   const pinList = () => (t.pins || []).length ? UI.section('Pins', (t.pins || []).map(p => h('div', { class: 'pinrow' }, h('b', null, F.time(p.ts)), h('span', null, p.text || '(ohne Text)'), p.lat != null ? h('button', { class: 'btn sm', onclick: () => { map.setView([p.lat, p.lon], 17); mapEl.scrollIntoView({ block: 'start' }); } }, 'Auf Karte') : null)), { id: 'pins' }) : null;

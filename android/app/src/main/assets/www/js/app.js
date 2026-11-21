@@ -112,7 +112,7 @@ async function boot() {
   setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
   setTimeout(autoAbgleich, 6000);
   setTimeout(() => Senden.nachholen().catch(e => console.error('Senden', e)), 9000);      // 2.5.0: vorgemerkte Aufzeichnungen noch einmal versuchen (nur wenn eingeschaltet)      // 2.2.0: still im Hintergrund, nach dem Start und nach der Neuberechnung; nur wenn eingeschaltet
-  setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); Videos.poll(); Pano.check(); }, 600);      // Pano.check: auch nach Prozessende während der Kamera      // Videos.poll: Ergebnisse, die fertig wurden, während die App zu war
+  setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); Videos.poll(); Videos.prefs(); Pano.check(); }, 600);      // Videos.prefs: 2.9.0 Einstellungen für Aufnahme und Galerie an die Hülle      // Pano.check: auch nach Prozessende während der Kamera      // Videos.poll: Ergebnisse, die fertig wurden, während die App zu war
 }
 /** „Beim Öffnen automatisch abgleichen“ (Vorgabe aus): bremst den Start nicht (6 s Abstand, wartet die Neuberechnung ab), stört keine Aufzeichnung, meldet nur Neues oder Fehler kurz. */
 async function autoAbgleich() {

@@ -746,6 +746,22 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(P.rueckfall([{ id: 'f', ts: 3, exif: false }], {})[0].ts === 3 && P.rueckfall(null, pend).length === 0, 'ohne Start nichts ändern');
 }
 
+/* ---------- 2.9.0 Videos (calc-video.js): Dauer „m:ss“, Aufnahmelänge → Sekunden, Speicherangabe ---------- */
+{
+  const V = require(W + 'calc-video.js');
+  for (const [ms, s] of [[7000, '0:07'], [125000, '2:05'], [760000, '12:40'], [3723000, '1:02:03'], [59600, '1:00'], [400, '0:01'], [1499, '0:01'], [1500, '0:02']]) ok(V.dauer(ms) === s, 'Dauer ' + ms + ' → ' + V.dauer(ms));
+  ok(V.dauer(0) === '' && V.dauer(null) === '' && V.dauer(undefined) === '' && V.dauer(-5) === '' && V.dauer('x') === '', 'unbekannte Dauer: leer');
+  ok(V.dauerText(125000) === 'Video, 2 Minuten 5 Sekunden' && V.dauerText(60000) === 'Video, 1 Minute' && V.dauerText(0) === 'Video', 'vorlesbare Dauer');
+  ok(V.limitSek('30') === 30 && V.limitSek('120') === 120 && V.limitSek('300') === 300 && V.limitSek('0') === 0 && V.limitSek(300) === 300, 'Aufnahmelänge');
+  ok(V.limitSek(undefined) === 120 && V.limitSek('') === 120 && V.limitSek('45') === 120 && V.limitSek(null) === 120, 'unbekannt: 2 Minuten');
+  ok(V.VORGABE === '120' && V.LIMITS.length === 4 && V.LIMITS.map(l => l[0]).join() === '30,120,300,0', 'Auswahl wie in VideoPlan.limitSeconds');
+  const s1 = V.speicher({ photos: 10, photoBytes: 5e6, videos: 2, videoBytes: 7e7, bytes: 7.5e7, vids: { a1v: 3e7 } });
+  ok(s1.fotos === 10 && s1.fotoBytes === 5e6 && s1.videos === 2 && s1.videoBytes === 7e7 && s1.vids.a1v === 3e7, 'Speicher getrennt');
+  const s2 = V.speicher({ photos: 12, bytes: 9e6 });
+  ok(s2.fotos === 12 && s2.fotoBytes === 9e6 && s2.videos === null && Object.keys(s2.vids).length === 0, 'alte Hülle: Videos unbekannt');
+  ok(V.speicher(null) === null && V.speicher('x') === null, 'ohne Angabe');
+}
+
 /* ---------- 2.8.1 Tourenkarte (calc-kartenpunkte.js): Startpunkte, Raster-Gruppen, Jahresfilter, Linien-Zoom, Ausschnitt ---------- */
 {
   const K = require(W + 'calc-kartenpunkte.js');

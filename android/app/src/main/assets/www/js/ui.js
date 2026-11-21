@@ -80,6 +80,13 @@ const UI = {
     const s = sheet(title, UI.list(items.filter(Boolean).map(it => UI.row({ icon: it[0], title: it[1], sub: it[3], id: it[4], onclick: () => { s.close(); it[2](); } })), { cls: 'menu' }));
     return s;
   },
+  /** 2.9.0: Kennzeichen eines Videos auf seiner Kachel (Fotoraster, Fotoleiste der Tour und der Reise): Abspiel-Symbol und Dauer „m:ss“.
+      Dunkle Unterlage mit weißer Schrift – lesbar auf jedem Vorschaubild. Für Fotos null. */
+  vidMark(p) {
+    if (!p || !p.video) return null;
+    const d = VideoCalc.dauer(p.dur);
+    return h('span', { class: 'vmark', 'aria-hidden': 'true' }, h('span', { class: 'vmark-i', html: Ico.svg('play', 13) }), d ? h('span', null, d) : null);
+  },
   /** „Mo., 21.09.“ – im Tagebuch steht das Jahr in der Monatsüberschrift. */
   day: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '–',
 

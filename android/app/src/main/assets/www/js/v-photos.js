@@ -11,6 +11,13 @@ const Lightbox = {
     const pb = h('button', { class: 'lb-pb', id: 'lb-pano', hidden: true, onclick: () => { panoFit = !panoFit; setPano(true); } });
     const vid = h('video', { class: 'lb-img', controls: true, playsinline: true, preload: 'metadata' });
     vid.hidden = true;
+    // 2.9.0: In der App spielt ein eigener Vollbild-Player (Android, Datei direkt) das Video. Hier steht nur das Vorschaubild mit großem Abspiel-Symbol und Dauer.
+    // Das <video>-Element ist der Rückfall: ohne Hülle (Browser) oder wenn der Player meldet, dass er das Video nicht abspielen kann.
+    const native = !!window.MTApp;
+    const vpImg = h('img', { alt: '' }), vpDur = h('span', { class: 'lb-vp-d', id: 'lb-dur' });
+    const vp = h('button', { class: 'lb-vp', id: 'lb-play', 'aria-label': 'Video abspielen', hidden: true, onclick: () => playNative() }, vpImg, h('span', { class: 'lb-vp-i', html: Ico.svg('play', 46) }), vpDur);
+    const viaView = new Set();      // Videos, bei denen der Player gescheitert ist: hier im <video>-Element versuchen
+    let playAt = 0;
     const info = h('div', { class: 'lb-info' });
     const err = h('div', { class: 'lb-err', id: 'lb-err', role: 'status', hidden: true });      // 2.7.1: Meldung mit „Jetzt umwandeln“ statt nur einer kurzen Einblendung
     const cnt = h('span', { class: 'lb-cnt' });
@@ -20,12 +27,28 @@ const Lightbox = {
         h('button', { class: 'ico', 'aria-label': 'Diashow', onclick: toggle }, h('span', { id: 'lbp' }, '▶')),
         h('button', { class: 'ico', 'aria-label': 'Details', onclick: details }, 'ⓘ'),
         h('button', { class: 'ico', 'aria-label': 'Schließen', onclick: close }, '✕')),
-      pan, vid, err, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
+      pan, vid, vp, err, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
     let x0 = null;
     el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
     el.addEventListener('touchend', e => { if (x0 == null) return; if (el.classList.contains('panofit') && e.target.closest && e.target.closest('.lb-pan')) { x0 = null; return; } const d = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
     const appB = el.querySelector('#lb-app');
     async function extern() { try { vid.pause(); await Native.call('openVideo', { id: list[i].id }); } catch (e) { toast('Video lässt sich nicht öffnen.'); } }
+    /** 2.9.0: eigener Player der App (Native 'playVideo'). Die Antwort kommt beim Schließen: { ok } oder { ok: false, what, extra } – dann Rückfall hier. */
+    async function playNative() {
+      const p = list[i]; if (!p || !p.video) return;
+      if (Date.now() - playAt < 1500) return;      // Doppeltipp startet nicht zwei Player
+      playAt = Date.now();
+      if (timer) toggle();      // Diashow anhalten, solange das Video läuft
+      let r;
+      try { r = await Native.json('playVideo', { id: p.id }); } catch (e) { r = { ok: false, msg: e.message }; }
+      if (r && r.ok) return;
+      viaView.add(p.id);
+      if (list[i] !== p) return;
+      const code = r && r.what != null ? ' (Fehler ' + r.what + (r.extra ? '/' + r.extra : '') + ')' : '';
+      toast('Der Player der App kann dieses Video nicht abspielen' + code + '. Es wird hier versucht.', 6000);
+      show();
+      try { const pr = vid.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) { /* Fehler meldet das error-Ereignis */ }
+    }
     // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an.
     // 2.7.1: bei Fehler 4 (Format nicht unterstützt, meist HEVC) zusätzlich „Jetzt umwandeln“ (in H.264, auf dem Handy)
     let errCode = null, errMsg = '';
@@ -96,20 +119,34 @@ const Lightbox = {
       await Videos.poll();
       if (list[i] === p) showErr(p);
     }
-    const onState = () => { const p = list[i]; if (p && p.video && !err.hidden && errCode != null) showErr(p); };
+    const onState = () => { const p = list[i]; if (p && p.video && !err.hidden) showErr(p); };      // 2.9.0: auch wenn die Umwandlung aus „Details“ gestartet wurde (ohne Fehler)
     const onDone = e => {
       const p = list[i]; if (!p || !p.video) return;
       const d = (e.detail || []).find(x => x.id === p.id); if (!d) return;
-      if (d.ok) { blobFor = null; Object.assign(p, { w: d.w || p.w, h: d.h || p.h, dur: d.dur || p.dur }); err.hidden = true; errCode = null; errMsg = ''; vid.src = Photos.url(p.id) + '?c=' + Date.now(); vid.poster = Photos.thumb(p.id) + '?c=' + Date.now(); }
+      if (d.ok) {
+        blobFor = null; Object.assign(p, { w: d.w || p.w, h: d.h || p.h, dur: d.dur || p.dur }); err.hidden = true; errCode = null; errMsg = '';
+        if (useView(p)) { vid.src = Photos.url(p.id) + '?c=' + Date.now(); vid.poster = Photos.thumb(p.id) + '?c=' + Date.now(); }
+        else { vpImg.src = Photos.thumb(p.id) + '?c=' + Date.now(); vpDur.textContent = VideoCalc.dauer(p.dur); vpDur.hidden = !vpDur.textContent; }
+      }
       else if (!err.hidden) showErr(p, d.cancel ? 'Umwandlung abgebrochen – das Original ist unverändert.' : 'Umwandeln hat nicht geklappt (' + (d.msg || 'Fehler') + '). Das Original bleibt erhalten.');
     };
     window.addEventListener('video-state', onState); window.addEventListener('video-converted', onDone);
+    /** <video>-Element statt eigenem Player: ohne Hülle oder nach einem Fehler des Players */
+    function useView(p) { return !native || viaView.has(p.id); }
     function show() {
       const p = list[i];
       err.hidden = true; errCode = null; errMsg = ''; blobFor = null; freeBlob();
       appB.hidden = !p.video;
-      if (p.video) { img.hidden = true; pan.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
-      else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; pan.hidden = false; img.src = Photos.url(p.id); }
+      const view = p.video && useView(p);
+      vp.hidden = !(p.video && !view);
+      if (p.video) { img.hidden = true; pan.hidden = true; img.removeAttribute('src'); }
+      if (view) { vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
+      else { try { vid.pause(); } catch (e) { /* egal */ } vid.hidden = true; vid.removeAttribute('src'); }
+      if (p.video && !view) {
+        vpImg.src = Photos.thumb(p.id); vpDur.textContent = VideoCalc.dauer(p.dur); vpDur.hidden = !vpDur.textContent;
+        vp.setAttribute('aria-label', 'Video abspielen' + (vpDur.textContent ? ' (' + vpDur.textContent + ')' : ''));
+      }
+      if (!p.video) { img.hidden = false; pan.hidden = false; img.src = Photos.url(p.id); }
       setPano(!p.video && PanoCalc.ist(p));
       cnt.textContent = (i + 1) + ' / ' + list.length;
       info.textContent = (p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : '') + (p.tourName ? ' · ' + p.tourName : '');
@@ -119,16 +156,22 @@ const Lightbox = {
     function toggle() { if (timer) { clearInterval(timer); timer = null; $('#lbp').textContent = '▶'; } else { timer = setInterval(() => { if (!(list[i].video && !vid.paused && !vid.ended)) step(1); }, 4000); $('#lbp').textContent = '❚❚'; } }
     function close() { freeBlob(); if (timer) clearInterval(timer); try { vid.pause(); } catch (e) { /* egal */ } window.removeEventListener('video-state', onState); window.removeEventListener('video-converted', onDone); el.remove(); window.__lightbox = null; }
     async function details() {
-      const p = list[i], tour = p.tour ? await DB.get('tours', p.tour) : null;
-      const s = sheet('Foto', h('div', null,
-        h('p', null, h('b', null, p.name || 'Foto'), h('br'), p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : 'Aufnahmezeit unbekannt'),
+      const p = list[i], tour = p.tour ? await DB.get('tours', p.tour) : null, V = !!p.video;
+      const s = sheet(V ? 'Video' : 'Foto', h('div', null,
+        h('p', null, h('b', null, p.name || (V ? 'Video' : 'Foto')), h('br'), p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : 'Aufnahmezeit unbekannt',
+          V && VideoCalc.dauer(p.dur) ? ' · ' + VideoCalc.dauer(p.dur) + ' min' : null),
+        // 2.9.0: Wege für Videos gesammelt: eigener Player, Video-App, Umwandeln (nur HEVC; sonst sagt die App es)
+        V && native ? h('div', { class: 'row wrap', id: 'lb-vwege' },
+          h('button', { class: 'btn sm', id: 'lb-dplay', onclick: () => { s.close(); playNative(); } }, '▶ Abspielen'),
+          h('button', { class: 'btn sm', id: 'lb-dext', onclick: () => { s.close(); extern(); } }, '⤴ In Video-App öffnen'),
+          h('button', { class: 'btn sm', id: 'lb-dconv', onclick: () => { s.close(); convertNow(p); } }, 'Umwandeln (HEVC → H.264)')) : null,
         PanoCalc.ist(p) ? h('p', { id: 'lb-panotag' }, h('span', { class: 'tag-pano', html: Ico.svg('pano', 18) + '<span>Panorama</span>' }), ' ' + p.w + ' × ' + p.h + ' Pixel') : null,
         h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
         tour ? h('p', null, '🥾 ', h('a', { href: '#/tour/' + tour.id, onclick: () => { s.close(); close(); } }, tour.name)) : h('p', null, 'Keiner Tour zugeordnet'),
         h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); } } }, 'Tour wählen'),
           p.lat != null ? h('button', { class: 'btn sm', onclick: () => { s.close(); close(); sessionStorage.setItem('mapFocus', JSON.stringify([p.lat, p.lon])); Nav.go('/map'); } }, 'Auf Karte') : null,
-          h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmBox('Foto löschen?', 'Das Foto wird aus dem Tourentagebuch entfernt (das Original bleibt unberührt).', 'Löschen')) { await Photos.remove(p.id); list.splice(i, 1); s.close(); if (!list.length) close(); else { i = Math.min(i, list.length - 1); show(); } window.dispatchEvent(new Event('photos-changed')); } } }, 'Löschen'))));
+          h('button', { class: 'btn sm danger', id: 'lb-del', onclick: async () => { if (await (V ? confirmBox('Video löschen?', 'Das Video wird aus dem Tourentagebuch gelöscht: Datei, Vorschaubild und Eintrag. Eine Kopie in der Galerie bleibt, falls es eine gibt.', 'Löschen') : confirmBox('Foto löschen?', 'Das Foto wird aus dem Tourentagebuch entfernt (das Original bleibt unberührt).', 'Löschen'))) { await Photos.remove(p.id); list.splice(i, 1); s.close(); if (!list.length) close(); else { i = Math.min(i, list.length - 1); show(); } window.dispatchEvent(new Event('photos-changed')); } } }, 'Löschen'))));
     }
     document.body.append(el); window.__lightbox = { close }; show();
   },
@@ -201,6 +244,12 @@ const Pano = {
    Hier: Zustand abholen (Native 'videoStatus'), fertige Videos in der Datenbank nachtragen, Meldungen, Sammelumwandlung. */
 const Videos = {
   state: null, _said: false, bulk: null,
+  /** 2.9.0: Einstellungen, die die Hülle selbst braucht (Aufnahmelänge, Galerie-Kopie, automatische Umwandlung) – beim Start und nach jeder Änderung. */
+  async prefs() {
+    if (!window.MTApp) return null;
+    try { return await Native.json('videoPrefs', { limit: String(Set_.get('videoLimit') == null ? VideoCalc.VORGABE : Set_.get('videoLimit')), gallery: Set_.get('videoGallery') !== false, auto: !!Set_.get('videoAuto') }); }
+    catch (e) { return null; }
+  },
   async poll() {
     if (!window.MTApp) return null;
     let st;
@@ -518,8 +567,8 @@ Views['/photos'] = async root => {
       const day = p.ts ? F.date(p.ts) : 'Ohne Datum';
       if (day !== last) { last = day; body.append(h('h3', { class: 'month' }, day)); grid = h('div', { class: 'pgrid' }); body.append(grid); }
       const pano = PanoCalc.ist(p);
-      grid.append(h('button', { class: 'pt', 'aria-label': pano ? 'Panorama öffnen' : 'Foto öffnen', onclick: () => Lightbox.open(list, list.indexOf(p)) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }),
-        pano ? h('b', { class: 'pt-pano', title: 'Panorama', html: Ico.svg('pano', 16) }) : null, p.lat != null ? null : h('i', { title: 'ohne Position' }, '∅')));
+      grid.append(h('button', { class: 'pt', 'aria-label': p.video ? VideoCalc.dauerText(p.dur) + ' öffnen' : pano ? 'Panorama öffnen' : 'Foto öffnen', onclick: () => Lightbox.open(list, list.indexOf(p)) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }),
+        pano ? h('b', { class: 'pt-pano', title: 'Panorama', html: Ico.svg('pano', 16) }) : null, UI.vidMark(p), p.lat != null ? null : h('i', { title: 'ohne Position' }, '∅')));
     });
   };
   const re = () => draw(); window.addEventListener('photos-changed', re);
@@ -536,7 +585,24 @@ Views['/sources'] = async root => {
       h('button', { class: 'li', onclick: () => PhotoSources.sheet(null, null) }, h('span', { class: 'li-i' }, '＋'), h('span', { class: 'li-t' }, h('b', null, 'Fotos hinzufügen'), h('small', null, 'Galerie, Ordner, SMB, Nextcloud'))),
       h('button', { class: 'li', onclick: async () => { try { toast((await PhotoSources.scanFolders()) + ' neue Foto(s)'); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt einlesen'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
       window.MTApp ? h('button', { class: 'li', id: 'src-vconv', onclick: () => Videos.alle() }, h('span', { class: 'li-i' }, '🎬'), h('span', { class: 'li-t' }, h('b', null, 'Vorhandene Videos umwandeln'), h('small', null, 'HEVC-Videos in H.264, damit sie hier abspielen'))) : null));
-  const sto = await Native.json('storage').catch(() => null);
-  if (sto) body.append(h('p', { class: 'muted' }, `Belegt: ${sto.photos} Fotos · ${F.size(sto.bytes)}`));
+  // 2.9.0: Speicher getrennt nach Fotos und Videos; darunter die Videos einzeln (antippen = ansehen, Papierkorb = löschen)
+  const sto = VideoCalc.speicher(await Native.json('storage').catch(() => null));
+  if (sto) body.append(h('div', { id: 'src-sto' }, UI.facts([['Fotos', sto.fotos + ' · ' + F.size(sto.fotoBytes)],
+    sto.videos != null ? ['Videos', sto.videos + ' · ' + F.size(sto.videoBytes)] : null, ['Zusammen belegt', F.size(sto.bytes)]])));
+  const vids = (await Photos.all()).filter(p => p.video).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  if (vids.length) {
+    const tours = Object.fromEntries((await Tours.list()).map(t => [t.id, t]));
+    vids.forEach(p => { p.tourName = p.tour && tours[p.tour] ? tours[p.tour].name : ''; });
+    const zeile = (p, k) => h('div', { class: 'li', id: 'src-v-' + p.id },
+      h('button', { class: 'li-i cov vthumb', 'aria-label': VideoCalc.dauerText(p.dur) + ' ansehen', onclick: () => Lightbox.open(vids, k) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), h('span', { class: 'vthumb-i', html: Ico.svg('play', 14) })),
+      h('span', { class: 'li-t' }, h('b', null, p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : 'Ohne Datum'),
+        h('small', null, [VideoCalc.dauer(p.dur), sto && sto.vids[p.id] != null ? F.size(sto.vids[p.id]) : '', p.tourName].filter(Boolean).join(' · ') || 'Video')),
+      h('button', { class: 'ico', 'aria-label': 'Video löschen', title: 'Video löschen', onclick: async () => {
+        if (!await confirmBox('Video löschen?', 'Das Video wird aus dem Tourentagebuch gelöscht: Datei, Vorschaubild und Eintrag. Eine Kopie in der Galerie bleibt, falls es eine gibt.', 'Löschen')) return;
+        await Photos.remove(p.id); toast('Video gelöscht'); window.dispatchEvent(new Event('photos-changed')); Nav.render();
+      } }, h('span', { html: Ico.svg('trash', 20) })));
+    body.append(h('h3', { id: 'src-vh' }, 'Videos (' + vids.length + ')'), h('div', { class: 'list', id: 'src-vlist' }, vids.slice(0, 200).map(zeile)),
+      vids.length > 200 ? h('p', { class: 'muted small' }, 'Die ältesten ' + (vids.length - 200) + ' Videos stehen im Fotoraster.') : null);
+  }
   if (folders.length) body.append(h('h3', null, 'Gemerkte Ordner'), h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Entfernen', onclick: async () => { folders.splice(i, 1); await DB.kvSet('photoFolders', folders); Nav.render(); } }, '✕')))));
 };

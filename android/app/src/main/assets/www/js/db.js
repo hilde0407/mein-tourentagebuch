@@ -48,6 +48,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     backupDays: 14, birthYear: '', homeShow: {}, bestN: 1,
     mtZahlen: true, zeppEle: true, autoAbgleich: false, mtAuto: false, komootPlanned: false,      // 2.1.0: Zahlen aus Meine Touren übernehmen; Höhen der Uhr beim Zepp-Import übernehmen
     panoHinweisAus: false,      // 2.8.0: Hinweis vor „Panorama“ (Modus in der Kamera wählen) nicht mehr zeigen
+    videoLimit: '120', videoGallery: true, videoAuto: false,      // 2.9.0: längste Video-Aufnahme (Sekunden, '0' = unbegrenzt), Kopie in die Galerie, HEVC automatisch umwandeln
     pdfKarte: true,      // 2.6.0: Karte (OpenStreetMap-Kacheln) im Tour-PDF; aus = Streckenskizze wie in 2.5.0
   },
   async load() { this.v = Object.assign({}, this.defaults, await DB.kvGet('settings', {})); },

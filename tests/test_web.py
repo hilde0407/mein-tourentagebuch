@@ -24,7 +24,7 @@ window.MTApp={
    else if(m==='appendCache') r=true; else if(m==='uploadStart') r={ip:'192.168.0.5',port:8765,url:'http://192.168.0.5:8765/abc12/'}; else if(m==='uploadStop') r=true;
    else if(m==='uploadPoll'){ r={photos:window.__upl||[],failed:0,running:true}; window.__upl=[]; }
    else if(m==='perm') r={granted:true}; else if(m==='saveFile'){ r='Download/Tourentagebuch/'+a.name; window.__saved=a; }
-   else if(m==='storage') r={photos:0,bytes:0}; else if(m==='galleryRange') r=window.__gallery||[];
+   else if(m==='storage') r=window.__sto||{photos:0,bytes:0}; else if(m==='playVideo'){ (window.__plays=window.__plays||[]).push(a.id); r=window.__playRes||{ok:false,what:1,extra:-1004}; } else if(m==='videoPrefs'){ window.__vprefs=a; r=a; } else if(m==='galleryRange') r=window.__gallery||[];
    else if(m==='importUris') r=(a.uris||[]).map((u,i)=>({id:'g'+i+u.length,name:'g.jpg',ts:window.__gts||0,w:10,h:10,src:'galerie'}));
    else if(m==='pickPhotos'){ window.__pickArgs=a; window.__pickN=(window.__pickN||0)+1; r=window.__pickPh||[{id:'p1aaaaaa',name:'a.jpg',ts:1700000300000,w:10,h:10,src:'galerie',lat:47.4,lon:11.1}]; }
    else if(m==='pickFiles') r=window.__pick||[];
@@ -115,7 +115,9 @@ def videos_271(pg):
     go(pg, "#/photos", ".photos")
 
     # 1. Vollbild: Fehler 4 → Meldung mit „Jetzt umwandeln“ und „In Video-App öffnen“
+    #    (2.9.0: erst der Player der App – hier nachgestellt mit Fehler, dann der bisherige Weg im <video>-Element)
     pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", vid1)
+    pg.click("#lb-play")
     pg.wait_for_selector("#lb-err:not([hidden]) #lb-conv", timeout=20000)
     assert "Fehler 4" in pg.inner_text("#lb-err") and pg.is_visible("#lb-ext"), pg.inner_text("#lb-err")
     leise(); pg.click("#lb-conv")
@@ -134,6 +136,7 @@ def videos_271(pg):
     # 2. kein HEVC: Umwandeln wird nicht angeboten als Lösung; Hinweis statt Warteschlange
     pg.evaluate("__vs.hevc = false")
     pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", vid2)
+    pg.click("#lb-play")
     pg.wait_for_selector("#lb-err:not([hidden]) #lb-conv", timeout=20000)
     leise(); pg.click("#lb-conv")
     assert "kein HEVC" in toast_text(pg, "kein HEVC")
@@ -190,6 +193,124 @@ def videos_271(pg):
     # aufräumen: Nachstellung zurück, Testvideos weg
     pg.unroute("**/photo/*v.mp4*")
     pg.evaluate("ids => { window.MTApp.call = window.__vcall0; return Promise.all(ids.map(id => DB.del('photos', id))); }", [vid1, vid2])
+
+
+def videos_290(pg):
+    """2.9.0: eigener Player (Native 'playVideo' mit id), Rückfall ins <video>-Element, Vorschaubild mit Abspiel-Symbol und Dauer, Kachel-Kennzeichen,
+    Details mit Video-Wegen und Löschen, Einstellungen (Länge, Galerie, Umwandeln) gespeichert und an die Hülle gegeben, Speicheranzeige mit Videos."""
+    import base64
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    webm = base64.b64decode(MINI_WEBM)
+    pg.route("**/photo/*v.mp4*", lambda r: r.fulfill(status=200, body=webm, content_type="video/webm"))
+    tid = pg.evaluate("Tours.list().then(a => a.filter(t => t.status !== 'planned')[0].id)")
+    v1, v2 = "e1b2c3d4e5f6a7b8c9dv", "e2b2c3d4e5f6a7b8c9dv"
+    pg.evaluate("""async ([a, b, tid]) => { await DB.put('photos', { id: a, name: 'Video.mp4', ts: 1700000400000, w: 1920, h: 1080, dur: 125000, video: true, src: 'kamera', tour: tid });
+      await DB.put('photos', { id: b, name: 'Video.mp4', ts: 1700000500000, w: 1080, h: 1920, dur: 0, video: true, src: 'kamera', tour: '' }); window.__plays = []; window.__playRes = null; }""", [v1, v2, tid])
+
+    # 1. Kacheln: Abspiel-Symbol und Dauer im Fotoraster und in der Fotoleiste der Tour; vorlesbar; Video ohne Dauer nur mit Symbol
+    go(pg, "#/photos", ".pgrid")
+    lab = f"button.pt[aria-label='Video, 2 Minuten 5 Sekunden öffnen']"
+    pg.wait_for_selector(lab)
+    assert pg.inner_text(lab + " .vmark").strip() == "2:05", pg.inner_text(lab)
+    assert pg.locator("button.pt[aria-label='Video öffnen'] .vmark .vmark-i").count() == 1 and pg.inner_text("button.pt[aria-label='Video öffnen'] .vmark").strip() == ""
+    assert pg.locator(".pgrid .vmark").count() == 2, pg.locator(".pgrid .vmark").count()
+    go(pg, "#/tour/" + tid, ".strip")
+    pg.wait_for_selector(".strip .th .vmark")
+    assert "2:05" in pg.inner_text(".strip .th .vmark") and pg.locator(".strip .th .vmark").count() == 1
+
+    # 2. Vollbild in der App: Vorschaubild mit großem Abspiel-Symbol und Dauer; kein <video>; Tipp ruft playVideo mit der id
+    pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", v1)
+    pg.wait_for_selector("#lb-play:not([hidden])")
+    assert pg.inner_text("#lb-dur") == "2:05" and pg.get_attribute("#lb-play", "aria-label") == "Video abspielen (2:05)"
+    assert pg.evaluate("document.querySelector('video.lb-img').hidden && !document.querySelector('video.lb-img').getAttribute('src')")
+    assert "/thumb/" + v1 in pg.get_attribute("#lb-play img", "src")
+    pg.evaluate("window.__playRes = { ok: true }")
+    pg.click("#lb-play")
+    pg.wait_for_function("id => (window.__plays || []).includes(id)", arg=v1)
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("document.querySelector('video.lb-img').hidden") and pg.is_visible("#lb-play"), "nach normalem Schließen bleibt das Vorschaubild"
+    assert pg.is_visible("#lb-app"), "⤴ In Video-App öffnen bleibt oben erreichbar"
+
+    # 3. Player meldet Fehler: Meldung mit Code, dann der bisherige Weg im <video>-Element (spielt hier ab)
+    pg.evaluate("window.__playRes = { ok: false, what: 1, extra: -1010 }")
+    leise(); pg.wait_for_timeout(1600)      # Doppeltipp-Sperre (1,5 s) sicher abwarten
+    pg.click("#lb-play")
+    assert "nicht abspielen (Fehler 1/-1010)" in toast_text(pg, "Fehler 1/-1010")
+    pg.wait_for_function("id => { const v = document.querySelector('video.lb-img'); return !v.hidden && (v.getAttribute('src') || '').includes(id); }", arg=v1)
+    assert pg.evaluate("document.querySelector('#lb-play').hidden")
+    pg.wait_for_timeout(600)
+    assert pg.evaluate("document.querySelector('#lb-err').hidden"), "spielbares Video: keine Fehlermeldung"
+    pg.evaluate("window.__lightbox && window.__lightbox.close()")
+
+    # 4. Native fehlt (Browser): direkt das <video>-Element wie bisher, kein Abspiel-Knopf
+    pg.evaluate("window.__mtSave = window.MTApp; window.MTApp = undefined")
+    try:
+        pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", v2)
+        pg.wait_for_function("id => { const v = document.querySelector('video.lb-img'); return v && !v.hidden && (v.getAttribute('src') || '').includes(id); }", arg=v2)
+        assert pg.evaluate("document.querySelector('#lb-play').hidden")
+        pg.evaluate("window.__lightbox && window.__lightbox.close()")
+    finally:
+        pg.evaluate("window.MTApp = window.__mtSave")
+
+    # 5. Details eines Videos: Abspielen, Video-App, Umwandeln erreichbar; Löschen mit Rückfrage entfernt den Eintrag (und ruft deletePhoto)
+    pg.evaluate("async id => Lightbox.open([await DB.get('photos', id)], 0)", v2)
+    pg.wait_for_selector("#lb-play:not([hidden])")
+    assert pg.evaluate("document.querySelector('#lb-dur').hidden"), "ohne bekannte Dauer keine Zeitangabe"
+    pg.click(".lb button[aria-label='Details']")
+    pg.wait_for_selector(".sheet[aria-label='Video'] #lb-dext")
+    assert pg.is_visible("#lb-dplay") and pg.is_visible("#lb-dconv") and pg.is_visible("#lb-del")
+    pg.evaluate("window.__plays = []; window.__playRes = { ok: true }")
+    pg.click("#lb-dplay")
+    pg.wait_for_function("id => (window.__plays || []).includes(id)", arg=v2)
+    pg.click(".lb button[aria-label='Details']"); pg.wait_for_selector(".sheet[aria-label='Video'] #lb-del")
+    pg.click("#lb-del")
+    pg.wait_for_selector(".sheet[aria-label='Video löschen?']")
+    assert "Datei, Vorschaubild und Eintrag" in pg.inner_text(".sheet[aria-label='Video löschen?']")
+    pg.click(".sheet[aria-label='Video löschen?'] button.pri")
+    pg.wait_for_function("id => DB.get('photos', id).then(p => !p)", arg=v2)
+    pg.wait_for_selector(".lb", state="detached")
+
+    # 6. Einstellungen: Vorgaben (2 Minuten, Galerie an, Umwandeln aus), Änderungen gespeichert und an die Hülle (videoPrefs)
+    go(pg, "#/settings", "#set-vlimit")
+    assert pg.input_value("#set-vlimit") == "120", pg.input_value("#set-vlimit")
+    assert [o.strip() for o in pg.locator("#set-vlimit option").all_inner_texts()] == ["30 Sekunden", "2 Minuten", "5 Minuten", "Unbegrenzt"]
+    assert pg.is_checked("#set-vgal input") and not pg.is_checked("#set-vauto input")
+    pg.select_option("#set-vlimit", "300")
+    pg.wait_for_function("() => window.__vprefs && window.__vprefs.limit === '300'")
+    pg.click("#set-vgal"); pg.wait_for_function("() => window.__vprefs && window.__vprefs.gallery === false")
+    pg.click("#set-vauto"); pg.wait_for_function("() => window.__vprefs && window.__vprefs.auto === true")
+    st = pg.evaluate("DB.kvGet('settings', {})")
+    assert st["videoLimit"] == "300" and st["videoGallery"] is False and st["videoAuto"] is True, st
+    go(pg, "#/settings", "#set-vlimit")      # neu aufgebaut: zeigt die gespeicherten Werte
+    assert pg.input_value("#set-vlimit") == "300" and not pg.is_checked("#set-vgal input") and pg.is_checked("#set-vauto input")
+    assert "nicht enthalten" in pg.inner_text("#bk-media") and "Videos" in pg.inner_text("#bk-media")
+    pg.select_option("#set-vlimit", "0"); pg.wait_for_function("() => window.__vprefs.limit === '0'")
+    # zurück auf die Vorgaben
+    pg.select_option("#set-vlimit", "120"); pg.click("#set-vgal"); pg.click("#set-vauto")
+    pg.wait_for_function("() => window.__vprefs.limit === '120' && window.__vprefs.gallery === true && window.__vprefs.auto === false")
+
+    # 7. Foto-Quellen: Fotos und Videos getrennt gezählt, Videos einzeln mit Dauer und Größe, Löschen mit Rückfrage
+    pg.evaluate("id => { window.__sto = { photos: 3, photoBytes: 3145728, videos: 1, videoBytes: 36700160, bytes: 39845888, vids: { [id]: 36700160 } }; }", v1)
+    go(pg, "#/sources", "#src-sto")
+    t = pg.inner_text("#src-sto")
+    assert "Fotos" in t and "3 · 3,0 MB" in t and "Videos" in t and "1 · 35,0 MB" in t and "38,0 MB" in t, t
+    row = "#src-v-" + v1
+    pg.wait_for_selector(row)
+    assert "2:05" in pg.inner_text(row) and "35,0 MB" in pg.inner_text(row), pg.inner_text(row)
+    bad = layout_check(pg, ["#/sources", "#/photos"], widths=((360, 100), (390, 100), (360, 130)))
+    assert not bad, bad
+    go(pg, "#/sources", row)
+    pg.click(row + " button[aria-label='Video löschen']")
+    pg.wait_for_selector(".sheet[aria-label='Video löschen?']"); pg.click(".sheet[aria-label='Video löschen?'] button.pri")
+    pg.wait_for_function("id => DB.get('photos', id).then(p => !p)", arg=v1)
+    pg.wait_for_selector(row, state="detached")
+    # alte Hülle ohne Videoangaben: nur Fotos und Zusammen
+    pg.evaluate("window.__sto = { photos: 5, bytes: 5242880 }")
+    go(pg, "#/sources", "#src-sto")
+    assert "Videos" not in pg.inner_text("#src-sto") and "5 · 5,0 MB" in pg.inner_text("#src-sto")
+    pg.evaluate("window.__sto = null; window.__playRes = null")
+    pg.unroute("**/photo/*v.mp4*")
+    print("Videos 2.9.0: Player, Rückfall, Kacheln, Details, Einstellungen, Speicher – in Ordnung")
 
 
 def karte_281(pg, shots=None):
@@ -2941,6 +3062,7 @@ def main():
         aufnahme_270(pg)
         karte_281(pg)
         videos_271(pg)
+        videos_290(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
