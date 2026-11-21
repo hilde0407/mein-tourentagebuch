@@ -20,7 +20,7 @@ Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das 
 ## Funktionen
 - **Start**: die letzte Tour groß, die drei Hauptaktionen, „Dieses Jahr“ mit Zielen, letzte Touren, „An diesem Tag“; Hinweis, wenn die Sicherung fällig ist. Welche Bausteine erscheinen, steht unter Einstellungen → Startseite (Wochen-Serie und Fitness lassen sich einschalten).
 - **Touren**: Liste mit Miniatur (Foto oder Strecke), Suche, Chips (Favoriten, Geplant, Sportart), Filter (Jahr, Region), Detail mit Karte, Höhenprofil (berührbar), Kennzahlen, Notiz, GPX-Export.
-- **Karte** (Touren → Karte): alle Touren nach Sportart gefärbt, Fotos als Marker, Offline-Kacheln für den sichtbaren Ausschnitt.
+- **Karte** (Touren → Karte): alle Touren nach Sportart gefärbt, Fotos als Marker, Offline-Kacheln für den sichtbaren Ausschnitt. Seit 2.8.1 hat jede Tour einen Startpunkt; weit herausgezoomt werden nahe Touren zu Kreisen mit Anzahl zusammengefasst (antippen zoomt hinein), Linien erscheinen ab etwa Zoom 9; Knopf „Alle Touren“, unten „N Touren“. Einzelheiten: `docs/versionen/2.8.1.md`.
 - **Fotos**: Raster nach Tag, Vollbild mit Wischen und Diashow, automatische Zuordnung zu Touren per Aufnahmezeit, Position aus der Spur berechnet, wenn das Foto keine hat.
   Quellen: Galerie (auch automatisch passend zu allen Touren), beliebige Ordner, **SMB-Freigaben** (NAS, Fritz!Box), **Nextcloud/WebDAV**, Teilen-Menü, Kamera während der Aufzeichnung.
   Videos aus der Kamera im Format HEVC werden auf dem Handy in H.264 umgewandelt, damit die Ansicht sie abspielt (auch nachträglich: Foto-Quellen → „Vorhandene Videos umwandeln“). Seit 2.7.1: `docs/versionen/2.7.1.md`.
