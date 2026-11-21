@@ -258,7 +258,7 @@ def panorama_280(pg):
     pg.evaluate("window.__pano = { ts: Date.now() - 13 * 3600000, lat: 47.5, lon: 11.2 }; window.dispatchEvent(new Event('mtresume'))")
     pg.wait_for_function("!window.__pano", timeout=5000); pg.wait_for_timeout(300); assert pg.locator(".sheet").count() == 0
     # 6. nach Prozessende (App neu gestartet): Prüfung beim Start; Schließen mit ✕ = später
-    pg.evaluate("window.__pano = { ts: Date.now() - 3 * 3600000 }; Pano.check()"); pg.wait_for_selector(".sheet[aria-label='Panorama übernehmen?']")
+    pg.evaluate("window.__pano = { ts: Date.now() - 3 * 3600000 }; void Pano.check()"); pg.wait_for_selector(".sheet[aria-label='Panorama übernehmen?']")
     pg.click(".sheet[aria-label='Panorama übernehmen?'] .sheet-h button"); pg.wait_for_selector(".sheet", state="detached")
     assert pg.evaluate("!!window.__pano"); pg.evaluate("window.__pano = null; window.__pickPh = null")
     pg.evaluate("window.__rec.state = 'idle'; window.__rec.unsent = false; Set_.set('panoHinweisAus', false)")
