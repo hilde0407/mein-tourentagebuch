@@ -376,7 +376,7 @@ public class MainActivity extends Activity {
         → Startbildschirm der App, die Fotos aufnimmt (IMAGE_CAPTURE). Ein Aufnahme-Intent ohne Ausgabedatei wäre sinnlos (dort gibt es meist kein Panorama). */
     private boolean openCameraApp() {
         try { startActivity(new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)); return true; } catch (Exception e) { /* nächster Weg */ }
-        try { startActivity(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_CAMERA)); return true; } catch (Exception e) { /* nächster Weg */ }
+        try { startActivity(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, "android.intent.category.APP_CAMERA")); return true; } catch (Exception e) { /* nächster Weg */ }
         try {
             android.content.pm.ResolveInfo ri = getPackageManager().resolveActivity(new Intent(MediaStore.ACTION_IMAGE_CAPTURE), PackageManager.MATCH_DEFAULT_ONLY);
             Intent li = ri != null && ri.activityInfo != null ? getPackageManager().getLaunchIntentForPackage(ri.activityInfo.packageName) : null;
