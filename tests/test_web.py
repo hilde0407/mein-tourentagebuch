@@ -1748,8 +1748,11 @@ def pdf(pg, aus=None):
     def langsam(r):
         __import__("time").sleep(0.6); thumb(r)
     pg.route("**/thumb/pdf*", langsam)
-    pg.click("#jahr-pdf"); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/Seite 2 von/.test(document.querySelector('.sheet').innerText)", timeout=60000)
-    pg.click("#prog-stop"); pg.wait_for_selector(".sheet", state="detached", timeout=30000)
+    pg.click("#jahr-pdf"); pg.wait_for_selector("#prog-stop")
+    # Abbrechen im selben Takt wie die Seitenanzeige (kein Hin und Her zum Test, das auf schneller CI zu spät käme)
+    pg.evaluate("""() => new Promise((ok, no) => { const t0 = Date.now(), iv = setInterval(() => { const s = document.querySelector('.sheet'), b = document.querySelector('#prog-stop');
+      if (s && b && /Seite 2 von/.test(s.innerText)) { clearInterval(iv); b.click(); ok(); } else if (Date.now() - t0 > 60000) { clearInterval(iv); no('Seite 2 nie gesehen'); } }, 5); })""")
+    pg.wait_for_selector(".sheet", state="detached", timeout=30000)
     assert "Abgebrochen" in toast_text(pg, "Abgebrochen") and pg.evaluate("window.__saved") is None and pg.evaluate("Object.keys(window.__cache).length") == 0, "Abbruch speichert nichts"
     assert pg.evaluate("PdfUI.busy") is False and pg.locator("#jahr-pdf").is_enabled()
     pg.unroute("**/thumb/pdf*"); pg.route("**/thumb/pdf*", thumb)
