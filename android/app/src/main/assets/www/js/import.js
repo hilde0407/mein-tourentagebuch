@@ -8,7 +8,8 @@ const Import = {
     if (!acts.length) { res.fail = 1; return res; }
     for (const a of acts) {
       try {
-        const r = await Tours.add(Object.assign({ name: a.name, sport: a.sport, tags: a.tags, pts: a.pts, src }, extra || {}));
+        const pts = extra && extra.ohneZeit ? a.pts.map(p => Object.assign({}, p, { t: null })) : a.pts;      // Geplantes hat keine Zeiten (wie im Planer)
+        const r = await Tours.add(Object.assign({ name: a.name, sport: a.sport, tags: a.tags, pts, src }, extra || {}));
         if (r.dup) res.dup++; else res.added++;
       } catch (e) { res.fail++; }
     }
@@ -37,13 +38,13 @@ const Import = {
     const files = await Native.json('pickFiles');
     return Import.cacheFiles(files, onProgress);
   },
-  async cacheFiles(files, onProgress) {
+  async cacheFiles(files, onProgress, extra) {
     let tot = { added: 0, dup: 0, fail: 0 };
     for (let i = 0; i < files.length; i++) {
       if (onProgress) onProgress(i + 1, files.length, files[i].name);
       try {
         const buf = await Import.fetchBuf(files[i].url);
-        tot = Import.sum(tot, await Import.fromData(files[i].name, buf, 'file'));
+        tot = Import.sum(tot, await Import.fromData(files[i].name, buf, extra && extra.src || 'file', extra));
       } catch (e) { tot.fail++; }
     }
     try { await Native.call('clearCache'); } catch (e) { /* egal */ }

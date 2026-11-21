@@ -79,6 +79,34 @@ def layout_check(pg, routes, widths=((360, 100), (390, 100), (430, 100), (360, 1
     return sorted(set(bad))
 
 
+def von_aussen(pg):
+    """2.6.2: Von außen geöffnete Strecke (z. B. Total Commander): Rückfrage gemacht/geplant/abbrechen."""
+    t0 = 1700000000000
+    g = gpx(t0 + 86400000 * 3, name="Aussen")
+    pg.evaluate("() => { window.__fb0 = Import.fetchBuf; window.__ts0 = MTApp.takeShared; }")
+    def offnen(antwort):
+        pg.evaluate("""g => { window.__tn = 0; Import.fetchBuf = async () => new TextEncoder().encode(g);
+          MTApp.takeShared = () => { window.__tn++; return window.__tn === 1 ? JSON.stringify([{ name: 'aussen.gpx', url: 'x://y' }]) : '[]'; };
+          window.__shared = handleShared(); }""", g)
+        pg.wait_for_selector(".sheet #sh-gemacht")
+        assert "geplant" in pg.inner_text(".sheet") and pg.locator(".sheet #sh-geplant").count() == 1
+        pg.click(".sheet #" + antwort); pg.wait_for_selector(".sheet", state="detached")
+        pg.evaluate("window.__shared"); pg.wait_for_timeout(300)
+    n0 = pg.evaluate("Tours.list().then(l => l.length)")
+    offnen("sh-abbruch")
+    assert pg.evaluate("Tours.list().then(l => l.length)") == n0, "Abbrechen speichert nichts"
+    offnen("sh-geplant")
+    l = pg.evaluate("Tours.list().then(l => l.filter(t => t.name === 'Aussen').map(t => ({ s: t.status, timed: t.timed, src: t.src })))")
+    assert len(l) == 1 and l[0]["s"] == "planned" and not l[0]["timed"], l
+    pg.evaluate("Tours.list().then(l => Promise.all(l.filter(t => t.name === 'Aussen').map(t => Tours.remove ? Tours.remove(t.id) : DB.del('tours', t.id)))).then(() => Tours.invalidate())")
+    offnen("sh-gemacht")
+    l = pg.evaluate("Tours.list().then(l => l.filter(t => t.name === 'Aussen').map(t => ({ s: t.status, timed: t.timed })))")
+    assert len(l) == 1 and l[0]["s"] == "done" and l[0]["timed"], l
+    pg.evaluate("Tours.list().then(l => Promise.all(l.filter(t => t.name === 'Aussen').map(t => Tours.remove ? Tours.remove(t.id) : DB.del('tours', t.id)))).then(() => Tours.invalidate())")
+    pg.evaluate("() => { Import.fetchBuf = window.__fb0; MTApp.takeShared = window.__ts0; }")      # die Nachstellung darf andere Prüfungen nicht stören
+    print("Von außen geöffnet: Rückfrage gemacht/geplant/abbrechen ok")
+
+
 def neue_funktionen(pg):
     """Funktionen aus „Meine Touren“ (2.0.0): Sicherungs-Erinnerung, Ziele, Bestwerte, Rückblick, Planung, Fitness, Startseite einrichten."""
     DAY = 86400000
@@ -2497,6 +2525,7 @@ def main():
         pdf(pg)
         pdf_karte(pg)
         blaetter(pg)
+        von_aussen(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
 

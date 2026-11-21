@@ -72,6 +72,19 @@ function confirmBox(title, text, okLabel) {
         h('button', { class: 'btn pri', onclick: () => { done = true; s.close(); res(true); } }, okLabel || 'OK'))), { onclose: () => { if (!done) res(false); } });
   });
 }
+/** Von außen geöffnete Strecke: gemacht oder geplant? Gibt 'done', 'planned' oder null (Abbrechen) zurück. */
+function frageGemachtGeplant(n) {
+  return new Promise(res => {
+    let done = false;
+    const pick = v => () => { done = true; s.close(); res(v); };
+    const s = sheet(n > 1 ? n + ' Strecken öffnen' : 'Strecke öffnen', h('div', null,
+      h('p', null, n > 1 ? 'Wurden diese Strecken schon gegangen oder sind sie nur geplant?' : 'Wurde diese Strecke schon gegangen oder ist sie nur geplant?'),
+      h('p', { class: 'muted small' }, 'Gemacht kommt als Tour ins Tagebuch. Geplant erscheint unter den Planungen, ohne Zeiten.'),
+      h('div', { class: 'row end wrap' }, h('button', { class: 'btn', id: 'sh-abbruch', onclick: pick(null) }, 'Abbrechen'),
+        h('button', { class: 'btn', id: 'sh-geplant', onclick: pick('planned') }, 'Geplant'),
+        h('button', { class: 'btn pri', id: 'sh-gemacht', onclick: pick('done') }, 'Gemacht'))), { onclose: () => { if (!done) res(null); } });
+  });
+}
 function askText(title, label, value, okLabel) {
   return new Promise(res => {
     let done = false;

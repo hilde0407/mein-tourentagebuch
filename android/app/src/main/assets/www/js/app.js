@@ -134,7 +134,11 @@ async function handleShared() {
     for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird geladen …'); try { toast(Import.describe(await Import.fromUrl(m[0]))); } catch (e) { toast(e.message); } } }
     if (!files.length) return;
     const photos = files.filter(f => /\.(jpe?g|png|heic|webp)$/i.test(f.name)), tracks = files.filter(f => !photos.includes(f));
-    if (tracks.length) { toast('Import läuft …'); const r = await Import.cacheFiles(tracks); toast(Import.describe(r), 5000); Tours.invalidate(); if (Nav.cur === '/' || Nav.cur === '/start') Nav.render(); }
+    if (tracks.length) {
+      const was = await frageGemachtGeplant(tracks.length);      // 2.6.2: von außen geöffnete Strecken nicht blind als „gemacht“ speichern
+      if (!was) { try { await Native.call('clearCache'); } catch (e) { /* egal */ } toast('Nicht übernommen'); }
+      else { toast('Import läuft …'); const r = await Import.cacheFiles(tracks, null, was === 'planned' ? { status: 'planned', src: 'plan', ohneZeit: true } : null); toast(Import.describe(r), 5000); Tours.invalidate(); if (Nav.cur === '/' || Nav.cur === '/start') Nav.render(); }
+    }
     if (photos.length) {
       const m = await Native.json('importFiles', { paths: photos.map(f => f.path), src: 'geteilt' });
       const n = await Photos.addMeta(m); toast(n + ' Foto(s) übernommen', 4000);
