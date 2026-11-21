@@ -590,6 +590,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     try {
                         Intent i = new Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, PhotoProvider.uriFor(dst));
+                        i.setClipData(android.content.ClipData.newRawUri(dst.getName(), PhotoProvider.uriFor(dst)));
                         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                         startActivity(Intent.createChooser(i, title));
                     } catch (Exception e) { AppLog.log("Teilen: " + e); Toast.makeText(MainActivity.this, "Teilen nicht möglich", Toast.LENGTH_LONG).show(); }
