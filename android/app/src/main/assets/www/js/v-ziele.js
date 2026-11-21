@@ -19,7 +19,7 @@ const Goals = {
     await Goals.save(merged); return true;
   },
   sportName(s) { return !s ? '' : s === 'grp:bike' ? 'Rad (alle Arten)' : s === 'grp:foot' ? 'Wandern und Bergsteigen' : s === 'grp:ski' || s === 'ski' ? 'Ski (alle Arten)' : s === 'grp:run' ? 'Laufen' : Sports.label(s); },
-  name(g) { const m = Ziele.METRIKEN.find(x => x[0] === g.metric); return m[1] + (g.period === 'week' ? ' pro Woche' : '') + (g.sport ? ' · ' + Goals.sportName(g.sport) : ''); },
+  name(g) { const m = Ziele.METRIKEN.find(x => x[0] === g.metric); return m[1] + (g.period === 'week' ? ' pro Woche' : '') + ' · ' + (g.sport ? Goals.sportName(g.sport) : 'Alle Sportarten'); },
   /** Zahl mit Einheit: „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
   dec: g => (g.metric === 'hours' || (g.metric === 'km' && g.target < 50) ? 1 : 0),
   fmt(v, g) {
