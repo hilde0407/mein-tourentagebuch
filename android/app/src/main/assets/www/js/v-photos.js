@@ -11,6 +11,7 @@ const Lightbox = {
     const cnt = h('span', { class: 'lb-cnt' });
     const el = h('div', { class: 'lb', role: 'dialog', 'aria-label': 'Foto' },
       h('div', { class: 'lb-top' }, cnt, h('span', { class: 'sp' }),
+        h('button', { class: 'ico', id: 'lb-app', 'aria-label': 'Mit Video-App öffnen', title: 'Mit Video-App öffnen', hidden: true, onclick: extern }, h('span', null, '⤴')),
         h('button', { class: 'ico', 'aria-label': 'Diashow', onclick: toggle }, h('span', { id: 'lbp' }, '▶')),
         h('button', { class: 'ico', 'aria-label': 'Details', onclick: details }, 'ⓘ'),
         h('button', { class: 'ico', 'aria-label': 'Schließen', onclick: close }, '✕')),
@@ -18,8 +19,13 @@ const Lightbox = {
     let x0 = null;
     el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
     el.addEventListener('touchend', e => { if (x0 == null) return; const d = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
+    const appB = el.querySelector('#lb-app');
+    async function extern() { try { vid.pause(); await Native.call('openVideo', { id: list[i].id }); } catch (e) { toast('Video lässt sich nicht öffnen.'); } }
+    // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an
+    vid.addEventListener('error', () => { if (!list[i].video) return; toast('Video lässt sich hier nicht abspielen (Fehler ' + (vid.error ? vid.error.code : '?') + '). Oben „⤴“ öffnet es in der Video-App.', 7000); });
     function show() {
       const p = list[i];
+      appB.hidden = !p.video;
       if (p.video) { img.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
       else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; img.src = Photos.url(p.id); }
       cnt.textContent = (i + 1) + ' / ' + list.length;

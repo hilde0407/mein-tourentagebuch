@@ -597,6 +597,23 @@ public class MainActivity extends Activity {
                 });
                 return "true";
             }
+            case "openVideo": {                        // Video in der System-Video-App öffnen (Rückfall, wenn das WebView es nicht abspielt, z. B. HEVC)
+                String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
+                File src = new File(Photos.dir(this), vid + ".mp4");
+                if (!src.isFile()) throw new Exception("Video fehlt");
+                final File dst = new File(PhotoProvider.camDir(this), "ansicht_" + vid + ".mp4");
+                if (!dst.exists() || dst.length() != src.length()) java.nio.file.Files.copy(src.toPath(), dst.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                runOnUiThread(() -> {
+                    try {
+                        Uri u = PhotoProvider.uriFor(dst);
+                        Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(u, "video/mp4");
+                        i.setClipData(android.content.ClipData.newRawUri(dst.getName(), u));
+                        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(i);
+                    } catch (Exception e) { AppLog.log("Video öffnen: " + e); Toast.makeText(MainActivity.this, "Keine Video-App gefunden", Toast.LENGTH_LONG).show(); }
+                });
+                return "true";
+            }
             case "readFileB64": {
                 File f = new File(a.getString("path"));
                 if (!f.getCanonicalPath().startsWith(getCacheDir().getCanonicalPath())) throw new Exception("Pfad nicht erlaubt");
