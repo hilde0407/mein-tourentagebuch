@@ -1617,20 +1617,23 @@ def pdf_bytes(pg, name):
     assert ch, "Das PDF wurde nicht an die Hülle übergeben: " + name
     return b"".join(base64.b64decode(c) for c in ch)
 
-def pdf_pruefen(data, seiten, wo=""):
-    """Das PDF mit einem echten Werkzeug lesen: Kopf, Ende, Seitenzahl, Seitengröße (A4), ein Bild je Seite, Bilder lassen sich entpacken."""
+def pdf_pruefen(data, seiten, wo="", karte=0):
+    """Das PDF mit einem echten Werkzeug lesen: Kopf, Ende, Seitenzahl, Seitengröße (A4), ein Seitenbild je Seite, Bilder lassen sich entpacken.
+    karte = 1 (2.6.0): Seite 1 trägt zusätzlich die Karte als eigenes Bild und die Quellenangabe als echten Text; 0: keine Karte (Skizze), kein Text."""
     import io
     assert data.startswith(b"%PDF-1.4") and data.rstrip().endswith(b"%%EOF"), wo + ": Kopf/Ende"
-    assert data.count(b"/Subtype /Image") == seiten and data.count(b"/Filter /DCTDecode") == seiten, (wo, data.count(b"/Subtype /Image"))
+    assert data.count(b"/Subtype /Image") == seiten + karte and data.count(b"/Filter /DCTDecode") == seiten + karte, (wo, data.count(b"/Subtype /Image"), seiten, karte)
     from pypdf import PdfReader
     r = PdfReader(io.BytesIO(data), strict=True)
     assert len(r.pages) == seiten, (wo, len(r.pages))
     bilder = []
-    for pgn in r.pages:
+    for i, pgn in enumerate(r.pages):
         assert abs(float(pgn.mediabox.width) - 595.2) < 0.1 and abs(float(pgn.mediabox.height) - 841.92) < 0.1, pgn.mediabox
-        assert len(pgn.images) == 1, wo
+        assert len(pgn.images) == 1 + (karte if i == 0 else 0), (wo, i, len(pgn.images))
         im = pgn.images[0].image; assert im.size == (1240, 1754), im.size
         bilder.append(im.convert("RGB"))
+    quelle = "OpenStreetMap-Mitwirkende" in (r.pages[0].extract_text() or "")
+    assert quelle == bool(karte), (wo, "Quellenangabe", quelle, karte)
     return r, bilder
 
 def pdf_anteil(im, box=None):
@@ -1661,7 +1664,7 @@ def pdf(pg, aus=None):
     pg.get_by_text("Als PDF", exact=True).click(); pg.wait_for_selector("#pdf-fertig", timeout=60000)
     assert "Download/Tourentagebuch/Tour_Huettenrunde_am_Wank_mit_Blick_auf_den_See_und_das_Wetterst" in pg.inner_text("#pdf-ort") and pg.inner_text("#pdf-ort").endswith(".pdf")
     sv = pg.evaluate("window.__saved"); assert sv["mime"] == "application/pdf" and sv["name"].endswith(".pdf") and sv["path"] == sv["name"], sv
-    d1 = pdf_bytes(pg, sv["name"]); r1, b1 = pdf_pruefen(d1, 1, "Tour ohne Fotos"); zeigen(d1, "tour-1-seite.pdf")
+    d1 = pdf_bytes(pg, sv["name"]); r1, b1 = pdf_pruefen(d1, 1, "Tour ohne Fotos", 1); zeigen(d1, "tour-1-seite.pdf")
     assert pdf_anteil(b1[0]) > 0.08, "Seite 1 ist nicht leer"
     assert (r1.metadata.title or "").startswith("Hüttenrunde am Wank"), r1.metadata.title
     assert pg.evaluate("window.__fotoCalls") == 0
@@ -1671,20 +1674,20 @@ def pdf(pg, aus=None):
     pg.evaluate("async ([id, n]) => { const t = await DB.get('tours', id); t.note = n; await Tours.save(t); for (let k = 0; k < 11; k++) await DB.put('photos', { id: 'pdfph' + k, name: 'p' + k + '.jpg', ts: t.start + 120000 + k * 90000, w: 480, h: 360, src: 'galerie', tour: id }); }", [tid, PDF_LANG])
     zaehl["thumb"] = 0
     pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000)
-    sv = pg.evaluate("window.__saved"); d2 = pdf_bytes(pg, sv["name"]); r2, b2 = pdf_pruefen(d2, 2, "Tour mit Fotos"); zeigen(d2, "tour-2-seiten.pdf")
+    sv = pg.evaluate("window.__saved"); d2 = pdf_bytes(pg, sv["name"]); r2, b2 = pdf_pruefen(d2, 2, "Tour mit Fotos", 1); zeigen(d2, "tour-2-seiten.pdf")
     assert pg.evaluate("window.__fotoCalls") == 9 and zaehl["thumb"] == 9, (pg.evaluate("window.__fotoCalls"), zaehl)      # höchstens neun Fotos, gleichmäßig verteilt
     assert pdf_anteil(b2[1], (90, 700, 1150, 1650)) > 0.5, "Fotoraster füllt die zweite Seite: %.2f" % pdf_anteil(b2[1], (90, 700, 1150, 1650))
     assert len(d2) > len(d1) + 30000, (len(d1), len(d2))
     zu(pg); print("Tour-PDF mit 9 Fotos und Notiz: 2 Seiten,", len(d2) // 1024, "KB")
     # ---- Tour mit Notiz, ohne Fotos: eine Seite (Notiz passt); mit sehr langer Notiz: zwei Seiten, auf Seite 2 gekürzt
     pg.evaluate("async id => { for (let k = 0; k < 11; k++) await DB.del('photos', 'pdfph' + k); const t = await DB.get('tours', id); t.note = 'Kurz und schön.'; await Tours.save(t); }", tid)
-    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000); d3 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); pdf_pruefen(d3, 1, "Tour mit kurzer Notiz"); zu(pg)
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000); d3 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); pdf_pruefen(d3, 1, "Tour mit kurzer Notiz", 1); zu(pg)
     pg.evaluate("async ([id, n]) => { const t = await DB.get('tours', id); t.note = n.repeat(8); await Tours.save(t); }", [tid, PDF_LANG])
-    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000); d4 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); r4, b4 = pdf_pruefen(d4, 2, "Tour mit sehr langer Notiz"); zeigen(d4, "tour-lange-notiz.pdf"); zu(pg)
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid); pg.wait_for_selector("#pdf-fertig", timeout=60000); d4 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); r4, b4 = pdf_pruefen(d4, 2, "Tour mit sehr langer Notiz", 1); zeigen(d4, "tour-lange-notiz.pdf"); zu(pg)
     # ---- Tour ohne Höhen und ohne Zeit: keine Fehler, Profil entfällt
     tid2 = pg.evaluate("""async () => { const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 47.0 + i * 0.0006, lon: 11.0 + 0.002 * Math.sin(i / 5), ele: null, t: null }));
       return (await Tours.add({ name: 'Ohne Höhen und Zeit', sport: 'other', pts, src: 'file' })).tour.id; }""")
-    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2); pg.wait_for_selector("#pdf-fertig", timeout=60000); d5 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); pdf_pruefen(d5, 1, "Tour ohne Höhen"); zeigen(d5, "tour-ohne-hoehen.pdf"); zu(pg)
+    pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2); pg.wait_for_selector("#pdf-fertig", timeout=60000); d5 = pdf_bytes(pg, pg.evaluate("window.__saved.name")); pdf_pruefen(d5, 1, "Tour ohne Höhen", 1); zeigen(d5, "tour-ohne-hoehen.pdf"); zu(pg)
     # ---- Teilen aus dem Ergebnisblatt: gleiche Datei noch einmal an die Hülle, mit dem Typ application/pdf
     pg.evaluate("() => { window.__shared = null; const c1 = window.MTApp.call; window.MTApp.call = (id, m, a) => { if (m === 'shareCache') window.__shared = JSON.parse(a); return c1.call(window.MTApp, id, m, a); }; }")
     pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2); pg.wait_for_selector("#pdf-teilen", timeout=60000); pg.click("#pdf-teilen")
@@ -1693,7 +1696,7 @@ def pdf(pg, aus=None):
     # ---- Im Browser (ohne Hülle): Download statt Speichern
     pg.evaluate("window.__mtapp = window.MTApp; window.MTApp = undefined")
     with pg.expect_download(timeout=60000) as dl: pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", tid2)
-    d6 = open(dl.value.path(), "rb").read(); pdf_pruefen(d6, 1, "Download"); assert dl.value.suggested_filename == "Tour_Ohne_Hoehen_und_Zeit.pdf", dl.value.suggested_filename
+    d6 = open(dl.value.path(), "rb").read(); pdf_pruefen(d6, 1, "Download", 1); assert dl.value.suggested_filename == "Tour_Ohne_Hoehen_und_Zeit.pdf", dl.value.suggested_filename
     assert "PDF gespeichert" in toast_text(pg, "PDF gespeichert"); pg.evaluate("window.MTApp = window.__mtapp")
     # ---- Jahr: 100 Touren, ohne und mit Fotos; die Oberfläche bleibt bedienbar
     ids = pg.evaluate(PDF_JAHR_JS, [2015, 100, True]); jahr_start = ids
@@ -1728,6 +1731,98 @@ def pdf(pg, aus=None):
     pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const p of await DB.all('photos')) if (/^pdf(ph|jh)/.test(p.id)) await DB.del('photos', p.id); Tours.invalidate(); }", vorher)
     pg.unroute("**/thumb/pdf*")
     return bad
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------
+# 2.6.0 Karte im Tour-PDF: Kacheln (nachgestellt), Quellenangabe als Text, höflich laden, Rückfall auf die Skizze, Abbrechen, Schalter, Kachelgrenze
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------
+def kachel_png():
+    """Nachgestellte Kartenkachel: hellblau mit Gitter und einer weißen „Straße“ – leicht von der Strecke (kräftiges Rot) zu unterscheiden."""
+    import io
+    from PIL import Image, ImageDraw
+    im = Image.new("RGB", (256, 256), (150, 190, 230)); d = ImageDraw.Draw(im)
+    for k in range(0, 256, 64): d.line([(k, 0), (k, 255)], fill=(120, 150, 200), width=2); d.line([(0, k), (255, k)], fill=(120, 150, 200), width=2)
+    d.line([(0, 200), (255, 60)], fill=(250, 250, 250), width=10)
+    b = io.BytesIO(); im.save(b, "PNG"); return b.getvalue()
+
+KACHEL_ZAEHLER = """() => { if (window.__klH0) return; const h0 = Native.http; window.__klH0 = h0; window.__kl = { aktiv: 0, max: 0, n: 0, ua: '' };
+  Native.http = async o => { if (!/tile\\.openstreetmap\\.org/.test(o.url)) return h0(o); const k = window.__kl; k.n++; k.aktiv++; k.max = Math.max(k.max, k.aktiv); k.ua = (o.headers || {})['User-Agent'] || '';
+    try { if (window.__klHaengen) await new Promise(() => {}); return await h0(o); } finally { k.aktiv--; } }; }"""
+CACHE_ZAHL = "async () => { if (!window.caches) return 0; let n = 0; for (const k of await caches.keys()) n += (await (await caches.open(k)).keys()).length; return n; }"
+
+def pdf_karte(pg, aus=None):
+    """2.6.0: Karte im Tour-PDF. aus: Ordner für ein Beispiel (PDF und PNG der Seite)."""
+    import os, re, subprocess, time
+    png = kachel_png(); st = {"urls": [], "modus": "ok"}
+    def kachel(r):
+        st["urls"].append(r.request.url)
+        if st["modus"] == "404" and len(st["urls"]) % 3 == 0: r.fulfill(status=404, body="nicht da", headers={"access-control-allow-origin": "*"})
+        elif st["modus"] == "abbruch": r.abort("internetdisconnected")
+        else: r.fulfill(status=200, body=png, content_type="image/png", headers={"access-control-allow-origin": "*"})
+    pg.route("**/tile.openstreetmap.org/**", kachel)
+    if not pg.evaluate("!!window.__cache"): pg.evaluate(PDF_FANG)
+    pg.evaluate(KACHEL_ZAEHLER)
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    tid = pg.evaluate(PDF_ROUTE_JS, ["Kartenrunde am Wank", "", 0, 0])
+    def neu(): st["urls"].clear(); pg.evaluate("window.__kl.n = 0; window.__kl.max = 0; window.__kl.aktiv = 0; window.__saved = null")
+    def tour_pdf(t=None):
+        pg.wait_for_function(LEISE, timeout=15000)
+        pg.evaluate("t => DB.get('tours', t).then(x => PdfUI.tour(x))", t or tid); pg.wait_for_selector("#pdf-fertig", timeout=60000)
+        d = pdf_bytes(pg, pg.evaluate("window.__saved.name")); hw = pg.locator("#pdf-hinweis").count(); txt = pg.inner_text("#pdf-fertig"); zu(pg)
+        return d, hw, txt
+    def anteil(im, f):
+        b = im.tobytes(); px = [b[i:i + 3] for i in range(0, len(b), 3)]; return sum(1 for p in px if f(p)) / len(px)
+    # ---- Karte: eigenes Bild an der Stelle der Skizze, Strecke gut sichtbar, Quellenangabe als echter Text, höflich geladen, nichts gespeichert
+    neu(); c0 = pg.evaluate(CACHE_ZAHL)
+    d, hw, _ = tour_pdf(); r, b = pdf_pruefen(d, 1, "Tour mit Karte", 1)
+    kl = pg.evaluate("window.__kl")
+    assert hw == 0 and 2 <= kl["n"] <= 12 and len(st["urls"]) == kl["n"] and len(set(st["urls"])) == len(st["urls"]), (hw, kl, st["urls"])
+    assert kl["max"] <= 3 and "MeinTourentagebuch/" in kl["ua"], kl
+    assert all(re.fullmatch(r"https://tile\.openstreetmap\.org/1[1-6]/\d+/\d+\.png", u) for u in st["urls"]), st["urls"]
+    assert pg.evaluate(CACHE_ZAHL) == c0, "Kacheln des PDFs dürfen nicht gespeichert werden"
+    karte = [x.image for x in r.pages[0].images if x.image.size != (1240, 1754)][0].convert("RGB")
+    assert karte.size[0] == 1060 and 240 <= karte.size[1] <= 820, karte.size
+    blau = anteil(karte, lambda p: p[2] > p[0] + 40 and p[2] > 170); rot = anteil(karte, lambda p: p[0] > 150 and p[1] < 90 and p[2] < 150)
+    assert blau > 0.5 and rot > 0.004, ("Karte und Strecke", round(blau, 3), round(rot, 4))
+    text = r.pages[0].extract_text() or ""; assert "© OpenStreetMap-Mitwirkende" in text, text
+    print("Tour-PDF mit Karte:", kl["n"], "Kacheln, höchstens", kl["max"], "gleichzeitig,", len(d) // 1024, "KB; Karte", karte.size, "Blau %.2f, Strecke %.3f" % (blau, rot))
+    if aus:
+        os.makedirs(aus, exist_ok=True); fn = os.path.join(aus, "tour-mit-karte.pdf"); open(fn, "wb").write(d)
+        subprocess.run(["pdftoppm", "-r", "100", "-png", "-f", "1", "-l", "1", fn, os.path.join(aus, "tour-mit-karte")], check=False)
+    # ---- Rückfall: eine Kachel fehlt (404) → Skizze, Hinweis im Ergebnisblatt, kein Fehler
+    neu(); st["modus"] = "404"
+    d, hw, txt = tour_pdf(); pdf_pruefen(d, 1, "Kachel fehlt", 0)
+    assert hw == 1 and "Karte nicht verfügbar" in txt, txt
+    assert pg.evaluate("window.__kl.n") <= 12
+    # ---- Rückfall: kein Netz (Verbindung bricht ab)
+    neu(); st["modus"] = "abbruch"
+    d, hw, txt = tour_pdf(); pdf_pruefen(d, 1, "Kein Netz", 0); assert hw == 1, txt
+    if aus:
+        fn = os.path.join(aus, "tour-skizze-rueckfall.pdf"); open(fn, "wb").write(d)
+        subprocess.run(["pdftoppm", "-r", "60", "-png", "-f", "1", "-l", "1", fn, os.path.join(aus, "tour-skizze-rueckfall")], check=False)
+    st["modus"] = "ok"
+    # ---- Rückfall: Kachelserver antwortet nicht (Zeitüberschreitung je Kachel, hier verkürzt)
+    neu(); pg.evaluate("window.__klHaengen = true; PdfUI.KARTE.ms = 400"); t0 = time.time()
+    d, hw, txt = tour_pdf(); pdf_pruefen(d, 1, "Zeitüberschreitung", 0); assert hw == 1 and time.time() - t0 < 20, (hw, time.time() - t0)
+    # ---- Abbrechen während die Kacheln laden: greift sofort (nicht erst nach 8 s), nichts wird gespeichert
+    neu(); pg.evaluate("PdfUI.KARTE.ms = 8000"); pg.wait_for_function(LEISE, timeout=15000)
+    pg.evaluate("t => { DB.get('tours', t).then(x => PdfUI.tour(x)); }", tid)
+    pg.wait_for_function("(document.querySelector('.sheet') || {}).innerText && /Karte laden/.test(document.querySelector('.sheet').innerText)", timeout=30000)
+    t0 = time.time(); pg.click("#prog-stop"); pg.wait_for_selector(".sheet", state="detached", timeout=6000)
+    assert "Abgebrochen" in toast_text(pg, "Abgebrochen") and pg.evaluate("window.__saved") is None and time.time() - t0 < 6, "Abbruch beim Kartenladen"
+    pg.wait_for_function("PdfUI.busy === false", timeout=5000); pg.evaluate("window.__klHaengen = false")
+    # ---- Schalter in den Einstellungen (Vorgabe an); aus → Skizze, kein Netz
+    go(pg, "#/settings", "#pdf-karte"); assert pg.locator("#pdf-karte input").is_checked() and "braucht Internet" in pg.inner_text("#pdf-karte")
+    pg.click("#pdf-karte"); pg.wait_for_function("Set_.get('pdfKarte') === false"); assert pg.evaluate("DB.kvGet('settings', {}).then(s => s.pdfKarte)") is False
+    neu(); d, hw, _ = tour_pdf(); pdf_pruefen(d, 1, "Schalter aus", 0); assert hw == 0 and not st["urls"] and pg.evaluate("window.__kl.n") == 0, st["urls"]
+    go(pg, "#/settings", "#pdf-karte"); pg.click("#pdf-karte"); pg.wait_for_function("Set_.get('pdfKarte') === true")
+    # ---- sehr lange Tour (etwa 560 km, 3000 Punkte): kleiner Zoom, Kachelgrenze hält
+    tl = pg.evaluate("""async () => { const N = 3000, t0 = Date.UTC(2026, 6, 1, 6); const pts = Array.from({ length: N }, (_, i) => ({ lat: 48.14 - i / (N - 1) * 2.7 + 0.2 * Math.sin(i / 140), lon: 11.58 + i / (N - 1) * 0.76, ele: 500 + 300 * Math.sin(i / 300), t: t0 + i * 60000 }));
+      return (await Tours.add({ name: 'München–Venedig', sport: 'bike', pts, src: 'file' })).tour.id; }""")
+    neu(); d, hw, _ = tour_pdf(tl); pdf_pruefen(d, 1, "Lange Tour", 1); assert hw == 0 and 2 <= len(st["urls"]) <= 12, len(st["urls"])
+    assert all(int(u.split("/")[3]) <= 9 for u in st["urls"]), st["urls"][:3]
+    # ---- Aufräumen
+    pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); Tours.invalidate(); Native.http = window.__klH0; delete window.__klH0; }", vorher)
+    pg.unroute("**/tile.openstreetmap.org/**", kachel)
 
 def pdf_seiten_erwartet(n, mit_fotos=False):
     """Seitenaufteilung wie in PdfUI.jahrPdf, aus den 100 Beispieltouren (Monate gleichmäßig über das Jahr) – gerechnet mit denselben Zahlen."""
@@ -1768,7 +1863,9 @@ def main():
         pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e) + " " + str(getattr(e, "stack", ""))))
         pg.on("console", lambda m: m.type == "error" and "Failed to load resource" not in m.text and "net::" not in m.text and errs.append("CONSOLE " + m.text))
         # Kartenserver/Routing nachstellen
-        png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
+        import io as _io
+        from PIL import Image as _Im
+        _b = _io.BytesIO(); _Im.new("RGB", (256, 256), (242, 239, 233)).save(_b, "PNG"); png = _b.getvalue()      # 2.6.0: gültige Kachel (die frühere 1-Pixel-PNG war defekt; die Karte im PDF prüft das Bild)
         pg.route("**/tile.openstreetmap.org/**", lambda r: r.fulfill(status=200, body=png, content_type="image/png", headers={"access-control-allow-origin": "*"}))
         pg.route("**/brouter.de/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"features": [{"geometry": {"coordinates": [[11.0, 47.0, 500], [11.001, 47.001, 520], [11.002, 47.002, 560]]}}]})))
         pg.goto(f"http://127.0.0.1:{port}/index.html"); pg.wait_for_selector("#tabs a")
@@ -2397,6 +2494,7 @@ def main():
         alles_echt(pg)
         jahr_bad = jahr(pg)
         pdf(pg)
+        pdf_karte(pg)
         blaetter(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

@@ -41,12 +41,42 @@
     throw new Error('JPEG ohne Größenangabe');
   }
 
-  /** Schreiber für ein PDF aus Bildseiten. addPage(jpeg) legt je Seite Seitenobjekt, Inhalt und Bild an; finish() liefert die fertigen Bytes.
+  /* Helvetica (eine der 14 Standardschriften jedes PDF-Programms): Zeichenbreiten in 1/1000 der Schriftgröße – für echten Text im PDF (2.6.0: Quellenangabe der Karte). */
+  const HELV = (() => {
+    const w = {}, a = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+    const v = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015,
+      667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333,
+      556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
+    for (let i = 0; i < a.length; i++) w[a[i]] = v[i];
+    Object.assign(w, { '©': 737, 'ä': 556, 'ö': 556, 'ü': 556, 'Ä': 667, 'Ö': 778, 'Ü': 722, 'ß': 611, '–': 556, '·': 278 });
+    return w;
+  })();
+  /** Breite eines Textes in Helvetica bei Schriftgröße size (gleiche Einheit wie size). */
+  const textBreite = (s, size) => { let t = 0; for (const ch of String(s)) t += HELV[ch] || 556; return t * size / 1000; };
+  /** Text als PDF-Hex-Zeichenfolge in WinAnsi (Latin-1-Bereich wie Unicode, Gedankenstrich und Mittelpunkt eigens; anderes wird „?“). */
+  function winAnsi(s) {
+    let o = '<';
+    for (const ch of String(s)) { const c = ch === '–' ? 0x96 : ch.charCodeAt(0); o += (c >= 32 && c < 256 && !(c >= 127 && c < 160 && c !== 0x96) ? c : 63).toString(16).toUpperCase().padStart(2, '0'); }
+    return o + '>';
+  }
+  /** Pfad eines Rechtecks mit runden Ecken für den PDF-Inhaltsstrom (Punkte, Ursprung unten links). */
+  function rundPfad(x, y, w, h, r) {
+    const k = r * 0.5523, Z = zahl;
+    if (!(r > 0)) return Z(x) + ' ' + Z(y) + ' ' + Z(w) + ' ' + Z(h) + ' re';
+    return [Z(x + r), Z(y), 'm', Z(x + w - r), Z(y), 'l', Z(x + w - r + k), Z(y), Z(x + w), Z(y + r - k), Z(x + w), Z(y + r), 'c', Z(x + w), Z(y + h - r), 'l',
+      Z(x + w), Z(y + h - r + k), Z(x + w - r + k), Z(y + h), Z(x + w - r), Z(y + h), 'c', Z(x + r), Z(y + h), 'l', Z(x + r - k), Z(y + h), Z(x), Z(y + h - r + k), Z(x), Z(y + h - r), 'c',
+      Z(x), Z(y + r), 'l', Z(x), Z(y + r - k), Z(x + r - k), Z(y), Z(x + r), Z(y), 'c', 'h'].join(' ');
+  }
+
+  /** Schreiber für ein PDF aus Bildseiten. addPage(jpeg, extra) legt je Seite Seitenobjekt, Inhalt und Bild an; finish() liefert die fertigen Bytes.
+      extra (2.6.0, freiwillig), alle Maße in Bildpunkten der Seite (Ursprung oben links):
+        bilder: [{ jpeg, x, y, w, h, r }] – weitere JPEG-Bilder über dem Seitenbild (r: Eckenradius), z. B. die Karte;
+        texte: [{ s, x, y, size, rgb: [r, g, b] (0…1) }] – echter Text in Helvetica (y = Grundlinie), z. B. die Quellenangabe der Karte.
       opts: title, author, creator, created (Date), dpi (Vorgabe 150: die Seite ist dann A4). */
   function writer(opts) {
     opts = opts || {};
     const chunks = [], offs = [];
-    let pos = 0, pages = 0, done = false;
+    let pos = 0, pages = 0, done = false, next = 4, font = 0;
     const kids = [];
     const push = b => { chunks.push(b); pos += b.length; };
     const obj = (id, head, stream) => {
@@ -55,19 +85,33 @@
       if (stream) { push(ascii('stream\n')); push(stream); push(ascii('\nendstream\n')); }
       push(ascii('endobj\n'));
     };
+    const bild = (id, jpeg, info) => obj(id, '<< /Type /XObject /Subtype /Image /Width ' + info.w + ' /Height ' + info.h + ' /ColorSpace ' + (info.comps === 1 ? '/DeviceGray' : info.comps === 4 ? '/DeviceCMYK' : '/DeviceRGB')
+      + ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpeg.length + ' >>', jpeg);
     push(ascii('%PDF-1.4\n')); push(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));      // Kommentarzeile mit Bytes über 127: kennzeichnet die Datei als binär
-    const dpi = opts.dpi || SEITE.dpi;
+    const dpi = opts.dpi || SEITE.dpi, f = 72 / dpi;
     return {
       get pages() { return pages; },
       get size() { return pos; },
-      addPage(jpeg) {
+      addPage(jpeg, extra) {
         if (done) throw new Error('PDF ist schon fertig');
-        const info = jpegInfo(jpeg), cs = info.comps === 1 ? '/DeviceGray' : info.comps === 4 ? '/DeviceCMYK' : '/DeviceRGB';
-        const base = 4 + pages * 3, pw = info.w * 72 / dpi, ph = info.h * 72 / dpi;
-        const content = ascii('q ' + zahl(pw) + ' 0 0 ' + zahl(ph) + ' 0 0 cm /Im0 Do Q\n');
-        obj(base, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + zahl(pw) + ' ' + zahl(ph) + '] /Resources << /XObject << /Im0 ' + (base + 2) + ' 0 R >> /ProcSet [/PDF /ImageC] >> /Contents ' + (base + 1) + ' 0 R >>');
+        extra = extra || {};
+        const info = jpegInfo(jpeg), base = next, pw = info.w * f, ph = info.h * f;
+        const zus = (extra.bilder || []).map(b => ({ b, info: jpegInfo(b.jpeg) })), texte = (extra.texte || []).filter(t => t && t.s);
+        next += 3 + zus.length;
+        let ops = 'q ' + zahl(pw) + ' 0 0 ' + zahl(ph) + ' 0 0 cm /Im0 Do Q\n', xo = '/Im0 ' + (base + 2) + ' 0 R';
+        zus.forEach(({ b }, i) => {
+          const x = b.x * f, w = b.w * f, h = b.h * f, y = ph - b.y * f - h;
+          ops += 'q ' + rundPfad(x, y, w, h, (b.r || 0) * f) + ' W n ' + zahl(w) + ' 0 0 ' + zahl(h) + ' ' + zahl(x) + ' ' + zahl(y) + ' cm /Im' + (i + 1) + ' Do Q\n';
+          xo += ' /Im' + (i + 1) + ' ' + (base + 3 + i) + ' 0 R';
+        });
+        if (texte.length && !font) { font = next++; obj(font, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'); }
+        texte.forEach(t => { const c = t.rgb || [0, 0, 0]; ops += 'BT /F1 ' + zahl(t.size * f) + ' Tf ' + c.map(v => zahl(v)).join(' ') + ' rg ' + zahl(t.x * f) + ' ' + zahl(ph - t.y * f) + ' Td ' + winAnsi(t.s) + ' Tj ET\n'; });
+        const content = ascii(ops);
+        obj(base, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + zahl(pw) + ' ' + zahl(ph) + '] /Resources << /XObject << ' + xo + ' >>' + (texte.length ? ' /Font << /F1 ' + font + ' 0 R >>' : '')
+          + ' /ProcSet [/PDF ' + (texte.length ? '/Text ' : '') + '/ImageC] >> /Contents ' + (base + 1) + ' 0 R >>');
         obj(base + 1, '<< /Length ' + content.length + ' >>', content);
-        obj(base + 2, '<< /Type /XObject /Subtype /Image /Width ' + info.w + ' /Height ' + info.h + ' /ColorSpace ' + cs + ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpeg.length + ' >>', jpeg);
+        bild(base + 2, jpeg, info);
+        zus.forEach(({ b, info: bi }, i) => bild(base + 3 + i, b.jpeg, bi));
         kids.push(base + ' 0 R'); pages++;
       },
       finish() {
@@ -79,7 +123,7 @@
         const d = opts.created || new Date();
         obj(3, '<< ' + (opts.title ? '/Title ' + utf16hex(String(opts.title)) + ' ' : '') + (opts.author ? '/Author ' + utf16hex(String(opts.author)) + ' ' : '')
           + '/Creator ' + utf16hex(opts.creator || 'Mein Tourentagebuch') + ' /Producer ' + utf16hex('Mein Tourentagebuch') + ' /CreationDate (' + pdfDatum(d) + ') >>');
-        const n = 4 + pages * 3, xref = pos;
+        const n = next, xref = pos;
         let x = 'xref\n0 ' + n + '\n0000000000 65535 f \n';
         for (let id = 1; id < n; id++) x += String(offs[id]).padStart(10, '0') + ' 00000 n \n';
         push(ascii(x + 'trailer\n<< /Size ' + n + ' /Root 1 0 R /Info 3 0 R >>\nstartxref\n' + xref + '\n%%EOF\n'));
@@ -220,6 +264,6 @@
   /** „2 Stunden 5 Minuten“-freie Kurzform für die Fußzeile: „20.11.2026“. */
   const datum = d => p2(d.getDate()) + '.' + p2(d.getMonth() + 1) + '.' + d.getFullYear();
 
-  const api = { A4, SEITE, MONATE, utf16hex, pdfDatum, jpegInfo, writer, build, zeilenPlan, fotoRaster, zuschnitt, ausduennen, skizze, profil, umbruch, kuerzen, dateiname, datum };
+  const api = { A4, SEITE, MONATE, utf16hex, textBreite, winAnsi, rundPfad, pdfDatum, jpegInfo, writer, build, zeilenPlan, fotoRaster, zuschnitt, ausduennen, skizze, profil, umbruch, kuerzen, dateiname, datum };
   if (node) module.exports = api; else root.Pdf = api;
 })(typeof window !== 'undefined' ? window : globalThis);

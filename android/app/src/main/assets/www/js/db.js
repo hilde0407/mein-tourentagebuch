@@ -47,6 +47,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     photoMargin: 20, camOffset: '', guide: true, units: 'km', komootEmail: '', stravaId: '', homeLat: '', homeLon: '', homeName: '', hrMax: '',
     backupDays: 14, birthYear: '', homeShow: {}, bestN: 1,
     mtZahlen: true, zeppEle: true, autoAbgleich: false, mtAuto: false, komootPlanned: false,      // 2.1.0: Zahlen aus Meine Touren übernehmen; Höhen der Uhr beim Zepp-Import übernehmen
+    pdfKarte: true,      // 2.6.0: Karte (OpenStreetMap-Kacheln) im Tour-PDF; aus = Streckenskizze wie in 2.5.0
   },
   async load() { this.v = Object.assign({}, this.defaults, await DB.kvGet('settings', {})); },
   get(k) { return this.v[k]; },

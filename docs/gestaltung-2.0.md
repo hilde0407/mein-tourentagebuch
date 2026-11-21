@@ -267,3 +267,8 @@ Kennzahlen als ruhige Reihe mit großer Zahl und kleiner Beschriftung, Streckens
 - Ergebnis (`#send-ergebnis`) und „PDF gespeichert“ (`#pdf-fertig`): ein Satz, der sagt, was geschah; „Teilen“ ist zweitrangig, OK/Fertig der Hauptknopf.
 
 Neue Blätter und der Jahresrückblick sind in `blaetter()` (Layout bei 360/390/430 px und 130 % Schrift) und in `audit_kontrast.py` (Hell und Dunkel) aufgenommen.
+
+**Karte im Tour-PDF (2.6.0):** An der Stelle der Skizze steht ein Kartenausschnitt (OpenStreetMap, Kacheln 1,5-fach vergrößert, damit die Beschriftung im Druck lesbar bleibt, leicht aufgehellt).
+Die Strecke ist kräftig rot (`#d1005f`, 8 px) mit weißem Rand (17 px), Start ○ und Ziel ● wie in der Skizze. Unten links ein weißes Kästchen mit der Legende, unten rechts eines mit
+„© OpenStreetMap-Mitwirkende“ (echter Text im PDF). Ohne Karte bleibt die Skizze auf stillem Grund; das Ergebnisblatt sagt dann in einem Satz (`#pdf-hinweis`), dass die Karte nicht verfügbar war.
+Der Schalter „Karte im PDF (braucht Internet)“ (`#pdf-karte`) steht in den Einstellungen unter „Karte“.

@@ -271,6 +271,8 @@ Views['/settings'] = async root => {
     inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}'), inp('Schlüssel (für {key})', 'tileKey', ''),
     h('div', { class: 'row' }, cnt, h('span', { class: 'sp' }), h('button', { class: 'btn sm', onclick: async () => { await MapKit.clearCache(); cnt.textContent = '0 Kacheln gespeichert'; } }, 'Offline-Karten löschen')),
     h('p', { class: 'muted small' }, 'Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),
+    UI.toggle('Karte im PDF (braucht Internet)', Set_.get('pdfKarte') !== false, v => Set_.set('pdfKarte', !!v), { id: 'pdf-karte' }),
+    h('p', { class: 'muted small' }, 'Beim Tour-PDF lädt die App dafür einen Kartenausschnitt von OpenStreetMap (nur zum Zeichnen, nichts wird gespeichert). Ohne Internet oder ausgeschaltet steht die Streckenskizze im PDF.'),
     h('h3', null, 'Routing'), inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'),
     h('h3', null, 'Fotos'), sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
     h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen'),

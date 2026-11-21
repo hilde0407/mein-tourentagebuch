@@ -2,8 +2,11 @@
 /* „Als PDF“ (2.5.0): eine Tour (1–2 Seiten) oder ein Jahr (Deckblatt und eine Zeile je Tour) als PDF zum Aufheben, Verschenken und Teilen.
    Ohne Bibliothek, ohne Server, ohne Netz: Jede Seite wird als Canvas gezeichnet (A4 hoch, 1240 × 1754 px ≈ 150 dpi, hell, wie die Jahresbildkarte),
    als JPEG (Qualität 0,85) kodiert und von js/calc-pdf.js in ein kleines PDF-1.4 geschrieben. Die Seiten entstehen nacheinander mit Pausen dazwischen
-   (die Oberfläche bleibt bedienbar), mit Fortschritt und „Abbrechen“. Karten-Kacheln gibt es bewusst nicht: Die Skizze steht auf ruhigem Grund,
-   damit das PDF ohne Netz und ohne Canvas-Taint gelingt. Fotos kommen als Vorschaubilder (480 px) aus der lokalen Foto-Ablage. */
+   (die Oberfläche bleibt bedienbar), mit Fortschritt und „Abbrechen“. Fotos kommen als Vorschaubilder (480 px) aus der lokalen Foto-Ablage.
+   2.6.0: Im Tour-PDF steht statt der Skizze eine echte Karte (OpenStreetMap-Kacheln, Berechnung in js/calc-karte.js), wenn der Schalter
+   „Karte im PDF“ an ist (Einstellungen → Karte, Vorgabe an) und das Netz mitspielt. Die Kacheln werden höflich geladen (höchstens 3 gleichzeitig,
+   8 s je Kachel, höchstens 12), nur im Speicher gehalten und nie gespeichert. Fehlt eine Kachel, gibt es kein Netz oder wird abgebrochen,
+   kommt wie bisher die Skizze ins PDF. Die Karte ist ein eigenes JPEG-Bild im PDF, die Quellenangabe echter Text. Das Jahres-PDF bleibt ohne Karten. */
 const PdfUI = {
   W: 1240, H: 1754, M: 90, IW: 1060, TOP: 150, BOT: 1754 - 130,
   C: { paper: '#fbfcf8', ink: '#0c2526', muted: '#4d615e', line: '#d3dad0', mark: '#5c8a84', soft: '#e4e9e0', petrol: '#0c2526', onPetrol: '#fbfcf8', onPetrol2: '#b4c8c3', acc: '#0f5a55', fill: '#cdd8d2' },
@@ -49,8 +52,8 @@ const PdfUI = {
     });
   },
   /** Canvas → JPEG-Bytes. */
-  async jpeg(cv) {
-    const blob = await new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error('Seite konnte nicht erzeugt werden')), 'image/jpeg', PdfUI.jpegQ));
+  async jpeg(cv, q) {
+    const blob = await new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error('Seite konnte nicht erzeugt werden')), 'image/jpeg', q || PdfUI.jpegQ));
     return new Uint8Array(await blob.arrayBuffer());
   },
   /** Foto in eine Zelle, ohne Verzerrung zugeschnitten, mit leicht gerundeten Ecken. */
@@ -71,6 +74,73 @@ const PdfUI = {
     punkt(sk.start, C.paper, C.petrol); punkt(sk.ziel, C.petrol, C.paper);
     ctx.restore();
     PdfUI.txt(ctx, 'Start ○   Ziel ●', x + w - 24, y + hh - 22, PdfUI.font(500, 24), C.muted, 'right');
+  },
+  /* ---------------------------------------------------------------- Karte (2.6.0) ---------------------------------------------------------------- */
+  KARTE: { parallel: 3, ms: 8000, linie: '#d1005f', jpegQ: 0.88, schrift: 20 },
+  /** Eine Kachel als ImageBitmap – in der App über die Hülle (kein CORS, kein Zwischenspeicher), im Browser per fetch ohne Cache.
+      Wirft bei HTTP-Fehler, Zeitüberschreitung (ms) oder Abbruch (Promise abbruch). Nichts wird auf dem Gerät gespeichert. */
+  async kachel(url, ms, abbruch) {
+    let tm, ac = null;
+    const zeit = new Promise((_, no) => { tm = setTimeout(() => no(new Error('Zeitüberschreitung')), ms); });
+    const laden = (async () => {
+      let blob;
+      if (Native.available()) {
+        const r = await Native.http({ url, bin: true, headers: { 'User-Agent': 'MeinTourentagebuch/' + (window.MTApp && MTApp.version ? MTApp.version() : '2') + ' (Android; Karte im PDF)' } });
+        if (!r || r.status !== 200 || !r.b64) throw new Error('HTTP ' + (r && r.status));
+        const bin = atob(r.b64), u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        blob = new Blob([u], { type: 'image/png' });
+      } else {
+        ac = window.AbortController ? new AbortController() : null;
+        const r = await fetch(url, { mode: 'cors', cache: 'no-store', credentials: 'omit', signal: ac ? ac.signal : undefined });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        blob = await r.blob();
+      }
+      return createImageBitmap(blob);
+    })();
+    laden.catch(() => {});
+    let ok = false;
+    try { const b = await Promise.race([laden, zeit, abbruch]); ok = true; return b; }
+    finally { clearTimeout(tm); if (!ok) { if (ac) ac.abort(); laden.then(b => b && b.close && b.close(), () => {}); } }      // zu spät gekommene Kachel gleich wieder freigeben
+  },
+  /** Karte der Strecke als Canvas w × hh: Kacheln, darüber die Strecke (kräftige Farbe, weißer Rand), Start und Ziel, Kästchen für Legende und Quellenangabe.
+      Gibt { cv, plan, quelle: { s, x, y, size } } zurück oder null (keine Strecke, Fehler, fehlende Kachel, Abbruch). ctl.stop() wird laufend geprüft. */
+  async kartenBild(pts, w, hh, ctl) {
+    const plan = Karte.plan(pts, w, hh);
+    if (!plan || typeof createImageBitmap !== 'function') return null;
+    const K = PdfUI.KARTE, ks = plan.kacheln, bm = new Array(ks.length);
+    let iv, fehler = null, next = 0;
+    const abbruch = new Promise((_, no) => { iv = setInterval(() => { if (ctl.stop()) no(new Error('Abgebrochen')); }, 100); });
+    abbruch.catch(() => {});
+    const arbeiter = async () => {
+      while (!fehler && next < ks.length) {
+        if (ctl.stop()) { fehler = 'Abgebrochen'; break; }
+        const i = next++;
+        try { bm[i] = await PdfUI.kachel(Karte.url(ks[i]), K.ms, abbruch); } catch (e) { fehler = fehler || (e && e.message) || 'Fehler'; }
+      }
+    };
+    try { await Promise.all(Array.from({ length: Math.min(K.parallel, ks.length) }, arbeiter)); } finally { clearInterval(iv); }
+    const weg = () => bm.forEach(b => b && b.close && b.close());
+    if (fehler || ctl.stop() || bm.some(b => !b)) { weg(); console.warn('Karte im PDF nicht verfügbar:', fehler); return null; }
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = hh;
+    const ctx = cv.getContext('2d'), { C } = PdfUI;
+    ctx.fillStyle = '#f2efe9'; ctx.fillRect(0, 0, w, hh);      // Grundfarbe der OSM-Karte (Land)
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ks.forEach((t, i) => ctx.drawImage(bm[i], Math.round(t.dx), Math.round(t.dy), Math.ceil(t.s) + 1, Math.ceil(t.s) + 1));
+    weg();
+    ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(0, 0, w, hh);      // Karte etwas zurücknehmen, damit die Strecke heraussticht
+    ctx.lineCap = ctx.lineJoin = 'round';
+    const linie = (lw, st) => { ctx.beginPath(); plan.punkte.forEach((p, i) => { if (i && !p[2]) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.lineWidth = lw; ctx.strokeStyle = st; ctx.stroke(); };
+    linie(17, '#ffffff'); linie(8, K.linie);
+    const punkt = (p, f, s) => { ctx.beginPath(); ctx.arc(p[0], p[1], 15, 0, 7); ctx.fillStyle = f; ctx.fill(); ctx.lineWidth = 7; ctx.strokeStyle = s; ctx.stroke(); };
+    punkt(plan.start, '#ffffff', K.linie); punkt(plan.ziel, K.linie, '#ffffff');
+    // Kästchen unten: links die Legende (im Bild), rechts die Quellenangabe (Text kommt als echter PDF-Text darüber)
+    const box = (x, y, bw, bh) => { ctx.fillStyle = 'rgba(255,255,255,0.86)'; JahrKarte.rr(ctx, x, y, bw, bh, 6); ctx.fill(); };
+    const fs = K.schrift, qw = Pdf.textBreite(plan.quelle, fs), bh = fs + 16, qx = w - 12 - qw - 20, qy = hh - 12 - bh;
+    box(qx, qy, qw + 20, bh);
+    ctx.font = PdfUI.font(500, 22); const lt = 'Start ○   Ziel ●', lw = ctx.measureText(lt).width;
+    box(12, hh - 12 - 38, lw + 24, 38); PdfUI.txt(ctx, lt, 24, hh - 12 - 11, PdfUI.font(500, 22), C.ink);
+    return { cv, plan, quelle: { s: plan.quelle, x: qx + 10, y: qy + bh - 11, size: fs } };
   },
   /** Höhenprofil in der Fläche (x, y, w, h) mit Höhenangaben links und Strecke darunter. Gibt false zurück, wenn es keine Höhen gibt. */
   profil(ctx, pts, x, y, w, hh) {
@@ -101,8 +171,10 @@ const PdfUI = {
     }
     return { pts, bilder, nFotos: ps.length };
   },
-  /** Seite 1: Titel, Datum, Sterne, Kennzahlen, Skizze, Profil, Anfang der Notiz. Gibt { cv, ctx, rest: übrige Notizzeilen } zurück. */
-  tourSeite1(t, d, now) {
+  /** Seite 1: Titel, Datum, Sterne, Kennzahlen, Karte (oder Skizze), Profil, Anfang der Notiz. Gibt { cv, ctx, rest: übrige Notizzeilen, extra } zurück;
+      extra: Karte als eigenes Bild und die Quellenangabe als Text (für Pdf.writer().addPage), sonst null. ctl: { upd, stop, hinweis } (freiwillig). */
+  async tourSeite1(t, d, now, ctl) {
+    ctl = ctl || { upd() {}, stop: () => false };
     const { W, M, IW, C } = PdfUI, { cv, ctx } = PdfUI.page('Tour · ' + new Date(t.start).getFullYear());
     let y = 190;
     // Titel: höchstens zwei Zeilen; ein langer Name wird erst kleiner gesetzt (76 → 64 → 54 px) und erst dann gekürzt
@@ -139,7 +211,17 @@ const PdfUI = {
     const note = String(d.note || t.note || '').trim(), hasPr = !!Pdf.profil(d.pts, 100, 100);
     const profH = hasPr ? 200 : 0, profT = hasPr ? 116 : 0, noteMin = note ? 220 : 0, frei = PdfUI.BOT - y - 20;
     const skH = Math.max(240, Math.min(hasPr ? 560 : 820, frei - profH - profT - noteMin - 40));
-    PdfUI.skizze(ctx, d.pts, M, y, IW, skH); y += skH + 34;
+    let karte = null, extra = null;
+    if (d.mitKarte && Karte.plan(d.pts, IW, skH)) {      // 2.6.0: echte Karte; ohne Netz, bei Fehler oder Abbruch die Skizze wie bisher
+      ctl.upd(1, 3, 'Karte laden');
+      karte = await PdfUI.kartenBild(d.pts, IW, skH, ctl).catch(e => { console.warn('Karte im PDF', e); return null; });
+      if (!karte && !ctl.stop()) { ctl.hinweis = 'Karte nicht verfügbar – Skizze'; ctl.upd(1, 3, ctl.hinweis); }
+    }
+    if (karte) {
+      ctx.fillStyle = C.soft; JahrKarte.rr(ctx, M, y, IW, skH, 8); ctx.fill();
+      extra = { karte: karte.cv, bilder: [{ x: M, y, w: IW, h: skH, r: 8 }], texte: [{ s: karte.quelle.s, x: M + karte.quelle.x, y: y + karte.quelle.y, size: karte.quelle.size, rgb: [12 / 255, 37 / 255, 38 / 255] }] };
+    } else PdfUI.skizze(ctx, d.pts, M, y, IW, skH);
+    y += skH + 34;
     if (hasPr) { PdfUI.txt(ctx, 'Höhenprofil', M, y + 30, PdfUI.font(600, 38, 'D'), C.ink); y += 52; PdfUI.profil(ctx, d.pts, M, y, IW, profH); y += profH + 80; }
     // Notiz: so viele Zeilen wie passen, der Rest geht auf Seite 2
     let rest = [], fort = false;
@@ -150,7 +232,7 @@ const PdfUI = {
         const take = all.slice(0, fit); take.forEach((l, i) => PdfUI.txt(ctx, l, M, y + i * 46, nf, C.ink)); rest = all.slice(fit); fort = true;
       } else rest = all;
     }
-    return { cv, ctx, rest, fort, W };
+    return { cv, ctx, rest, fort, W, extra };
   },
   /** Seite 2: Rest der Notiz und das Fotoraster. */
   tourSeite2(t, d, rest, now, fort) {
@@ -178,9 +260,14 @@ const PdfUI = {
     ctl.upd(0, 3, 'Fotos laden');
     const d = await PdfUI.tourDaten(t, ctl);
     if (ctl.stop()) return 0;
+    d.mitKarte = Set_.get('pdfKarte') !== false;
     ctl.upd(1, 3, 'Seite 1');
-    const s1 = PdfUI.tourSeite1(t, d, now), zwei = d.bilder.length > 0 || s1.rest.length > 0, n = zwei ? 2 : 1;
-    PdfUI.fuss(s1.ctx, 0, n, datum); w.addPage(await PdfUI.jpeg(s1.cv)); s1.cv.width = s1.cv.height = 0;
+    const s1 = await PdfUI.tourSeite1(t, d, now, ctl), zwei = d.bilder.length > 0 || s1.rest.length > 0, n = zwei ? 2 : 1;
+    if (ctl.stop()) return 0;
+    PdfUI.fuss(s1.ctx, 0, n, datum);
+    let extra;
+    if (s1.extra) { const kv = s1.extra.karte; extra = { bilder: [Object.assign({ jpeg: await PdfUI.jpeg(kv, PdfUI.KARTE.jpegQ) }, s1.extra.bilder[0])], texte: s1.extra.texte }; kv.width = kv.height = 0; }
+    w.addPage(await PdfUI.jpeg(s1.cv), extra); s1.cv.width = s1.cv.height = 0;
     await sleep(0);
     if (zwei) {
       if (ctl.stop()) return 0;
@@ -303,12 +390,12 @@ const PdfUI = {
         const ctl = { stop: () => halt, upd: (i, n, text) => upd(Math.min(i, n), n, null, text || 'Wird erstellt …') };
         const pages = await make(w, ctl);
         if (halt || !pages) return null;
-        return { pages, bytes: w.finish() };
+        return { pages, bytes: w.finish(), hinweis: ctl.hinweis || '' };
       }, { cancel: () => { halt = true; }, note: 'Das Tagebuch zeichnet die Seiten nacheinander und setzt sie zu einem PDF zusammen. Bitte die App so lange geöffnet lassen.' });
     } catch (e) { console.error('PDF', e); toast('Das PDF konnte nicht erstellt werden: ' + (e && e.message || e), 7000); return null; }
     finally { PdfUI.busy = false; }
     if (!res) { toast('Abgebrochen – es wurde nichts gespeichert.', 4000); return null; }
-    try { await PdfUI.ausgeben(res.bytes, name, title, res.pages); } catch (e) { console.error('PDF speichern', e); toast('Das PDF konnte nicht gespeichert werden: ' + (e && e.message || e), 7000); return null; }
+    try { await PdfUI.ausgeben(res.bytes, name, title, res.pages, res.hinweis); } catch (e) { console.error('PDF speichern', e); toast('Das PDF konnte nicht gespeichert werden: ' + (e && e.message || e), 7000); return null; }
     return { name, bytes: res.bytes, pages: res.pages };
   },
   /** Datei in den Zwischenspeicher der Hülle legen (stückweise, Base64). */
@@ -321,16 +408,17 @@ const PdfUI = {
     }
   },
   /** In der App: in den Ordner „Download/Tourentagebuch“ speichern (richtiger Dateityp application/pdf) und zum Teilen anbieten; im Browser: Download. */
-  async ausgeben(bytes, name, title, pages) {
+  async ausgeben(bytes, name, title, pages, hinweis) {
     const info = pages + (pages === 1 ? ' Seite · ' : ' Seiten · ') + F.size(bytes.length);
     if (!Native.available()) {
       const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      toast('PDF gespeichert: ' + name + ' (' + info + ')', 6000); return;
+      toast('PDF gespeichert: ' + name + ' (' + info + ')' + (hinweis ? '. ' + hinweis + '.' : ''), hinweis ? 7000 : 6000); return;
     }
     await PdfUI.zwischenspeichern(bytes, name);
     const ort = await Native.json('saveFile', { name, mime: 'application/pdf', path: name });
     const s = sheet('PDF gespeichert', h('div', { id: 'pdf-fertig' },
       h('p', { id: 'pdf-ort' }, 'Gespeichert: ' + ort), h('p', { class: 'muted small' }, info + '. Du findest die Datei in der Dateien-App unter „Download“ und kannst sie von dort verschicken oder drucken.'),
+      hinweis ? h('p', { class: 'muted small', id: 'pdf-hinweis' }, 'Karte nicht verfügbar – im PDF steht die Streckenskizze (kein Internet oder der Kartenserver antwortet nicht).') : null,
       h('div', { class: 'row end wrap' },
         h('button', { class: 'btn', id: 'pdf-teilen', onclick: async e => {
           const b = e.currentTarget; b.disabled = true;

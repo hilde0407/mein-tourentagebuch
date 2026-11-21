@@ -641,6 +641,70 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
 })();
 
 
+/* ---------- 2.6.0 Karte im Tour-PDF (calc-karte.js) und Zusatzbild/Text im PDF-Schreiber (calc-pdf.js) ---------- */
+(() => {
+  const K = require(W + 'calc-karte.js'), P = require(W + 'calc-pdf.js');
+  // Projektion: bekannte Werte (Zoom 0: Welt 256 px; Greenwich/Äquator in der Mitte), Kachel von Garmisch bei z = 12 wie MapKit.tileXY, Hin und zurück
+  { const [x, y] = K.welt(0, 0, 0); close(x, 128, 'Mitte x'); close(y, 128, 'Mitte y'); }
+  { const [x, y] = K.welt(85.0511287798, -180, 3); close(x, 0, 'Ecke x'); ok(Math.abs(y) < 1e-6, 'Ecke oben'); ok(K.welt(89.9, 0, 0)[1] === K.welt(85.06, 0, 0)[1], 'Breite über 85,05° wird begrenzt'); }
+  { const lat = 47.49, lon = 11.1, z = 12, n = 2 ** z, tx = Math.floor((lon + 180) / 360 * n), ty = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+    const [x, y] = K.welt(lat, lon, z); ok(Math.floor(x / 256) === tx && Math.floor(y / 256) === ty && tx === 2174 && ty === 1432, 'Kachel wie MapKit.tileXY: ' + Math.floor(x / 256) + '/' + Math.floor(y / 256)); }
+  for (const [la, lo, z] of [[47.6, 11.2, 14], [-33.9, 151.2, 9], [64.1, -21.9, 5]]) { const [x, y] = K.welt(la, lo, z), [b, l] = K.geo(x, y, z); ok(Math.abs(b - la) < 1e-9 && Math.abs(l - lo) < 1e-9, 'hin und zurück ' + la + ',' + lo); }
+  // Maßstab und Kachelgrenze: ein Feld braucht im schlimmsten Fall höchstens 12 Kacheln, nie mehr als 16
+  for (const [w, h] of [[1060, 560], [1060, 820], [1060, 240], [500, 500], [2000, 1400]]) {
+    const k = K.massstab(w, h); ok(k >= 1.5 && K.hoechstens(w, h, k) <= 12, 'Maßstab ' + w + '×' + h + ': ' + k + ' → höchstens ' + K.hoechstens(w, h, k) + ' Kacheln');
+  }
+  ok(K.massstab(1060, 560) === 1.5, 'Standardfeld: Maßstab 1,5 (12 Kacheln)');
+  // Strecke wie im Web-Test: Runde am Wank (etwa 3 × 2,5 km)
+  const rund = Array.from({ length: 420 }, (_, i) => { const a = i / 419 * Math.PI * 2; return { lat: 47.60 + 0.011 * Math.sin(a) + 0.004 * Math.sin(3 * a), lon: 11.20 + 0.019 * Math.cos(a) * (1 + 0.25 * Math.sin(2 * a)) }; });
+  const inFeld = (pl, w, h, pad) => pl.punkte.every(p => p[0] >= pad - 1e-6 && p[0] <= w - pad + 1e-6 && p[1] >= pad - 1e-6 && p[1] <= h - pad + 1e-6);
+  const deckt = (pl, w, h) => {      // die Kacheln decken das ganze Feld lückenlos ab
+    for (const [x, y] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1], [w / 2, h / 2], [w / 3, h * 0.7]]) if (!pl.kacheln.some(t => x >= t.dx - 1e-6 && x < t.dx + t.s && y >= t.dy - 1e-6 && y < t.dy + t.s)) return false;
+    return true;
+  };
+  { const pl = K.plan(rund, 1060, 560);
+    ok(pl && pl.z >= 12 && pl.z <= 15, 'Runde: Zoom ' + (pl && pl.z)); ok(pl.kacheln.length >= 2 && pl.kacheln.length <= 12, 'Runde: ' + pl.kacheln.length + ' Kacheln');
+    ok(inFeld(pl, 1060, 560, 56) && deckt(pl, 1060, 560), 'Runde liegt mit Rand im Feld, Kacheln decken das Feld');
+    // größtmöglicher Zoom: eine Stufe mehr passt nicht mehr
+    const xs = pl.punkte.map(p => p[0]), ys = pl.punkte.map(p => p[1]); ok((Math.max(...xs) - Math.min(...xs)) * 2 > 1060 - 112 || (Math.max(...ys) - Math.min(...ys)) * 2 > 560 - 112, 'Zoom ist der größte, der passt');
+    ok(new Set(pl.kacheln.map(t => t.z + '/' + t.x + '/' + t.y)).size === pl.kacheln.length && pl.kacheln.every(t => t.z === pl.z), 'Kacheln verschieden, gleiche Zoomstufe');
+    ok(pl.punkte.length < 420 && pl.punkte.length > 30, 'Linie vereinfacht: ' + pl.punkte.length + ' von 420 Punkten');
+    ok(pl.start === pl.punkte[0] && pl.ziel === pl.punkte[pl.punkte.length - 1] && pl.quelle === '© OpenStreetMap-Mitwirkende', 'Start, Ziel, Quellenangabe');
+    ok(K.url(pl.kacheln[0]) === 'https://tile.openstreetmap.org/' + pl.z + '/' + pl.kacheln[0].x + '/' + pl.kacheln[0].y + '.png', 'Kacheladresse'); }
+  { const pl = K.plan(rund, 1060, 820); ok(pl.kacheln.length <= 12 && inFeld(pl, 1060, 820, 56) && deckt(pl, 1060, 820), 'hohes Feld: ' + pl.kacheln.length + ' Kacheln'); }
+  // kurze Tour (50 m) und Strecke mit nur einem Ort: höchster Zoom 17, trotzdem Karte
+  { const kurz = [{ lat: 47.5, lon: 11.1 }, { lat: 47.5003, lon: 11.1004 }], pl = K.plan(kurz, 1060, 560); ok(pl && pl.z === 17 && pl.kacheln.length <= 12 && inFeld(pl, 1060, 560, 56), 'kurze Tour: Zoom 17'); }
+  { const pl = K.plan([{ lat: 47.5, lon: 11.1 }, { lat: 47.5, lon: 11.1 }], 1060, 560); ok(pl && pl.z === 17 && Math.abs(pl.start[0] - 530) < 1e-6 && Math.abs(pl.start[1] - 280) < 1e-6, 'zwei gleiche Punkte: Mitte'); }
+  // sehr lange Tour (Fernradweg München–Venedig, etwa 560 km) und eine quer durch Europa: kleiner Zoom, Kachelgrenze hält
+  { const lang = Array.from({ length: 20000 }, (_, i) => ({ lat: 48.14 - i / 19999 * 2.7 + 0.2 * Math.sin(i / 900), lon: 11.58 + i / 19999 * 0.76 }));
+    const pl = K.plan(lang, 1060, 560); ok(pl && pl.z >= 6 && pl.z <= 9 && pl.kacheln.length <= 12 && inFeld(pl, 1060, 560, 56) && deckt(pl, 1060, 560), 'lange Tour: Zoom ' + pl.z + ', ' + pl.kacheln.length + ' Kacheln');
+    ok(pl.punkte.length < 2500, 'lange Tour vereinfacht: ' + pl.punkte.length + ' Punkte'); }
+  { const eu = [{ lat: 38.7, lon: -9.1 }, { lat: 59.3, lon: 18.1 }], pl = K.plan(eu, 1060, 560); ok(pl && pl.z <= 5 && pl.kacheln.length <= 12 && pl.kacheln.every(t => t.y >= 0 && t.y < 2 ** t.z && t.x >= 0 && t.x < 2 ** t.z), 'Lissabon–Stockholm: Zoom ' + pl.z); }
+  for (const w of [300, 700, 1060]) for (const h of [240, 400, 560, 820]) { const pl = K.plan(rund, w, h); ok(pl.kacheln.length <= 12 && pl.kacheln.length <= K.GRENZE && deckt(pl, w, h), 'Feld ' + w + '×' + h + ': ' + pl.kacheln.length + ' Kacheln'); }
+  // ohne GPS: keine Karte
+  ok(K.plan([], 1060, 560) === null && K.plan(null, 1060, 560) === null && K.plan([{ lat: 47, lon: 11 }], 1060, 560) === null, 'leer oder ein Punkt: keine Karte');
+  ok(K.plan([{ lat: null, lon: null, ele: 500 }, { lat: undefined, lon: 11 }, { lat: NaN, lon: 1 }], 1060, 560) === null, 'Punkte ohne Position: keine Karte');
+  ok(K.plan(rund, 0, 560) === null, 'Feld ohne Fläche: keine Karte');
+  // Vereinfachung: gerade Linie → zwei Punkte; Lücken (neues Stück) bleiben erhalten; Abweichungen über der Toleranz bleiben
+  { const g = Array.from({ length: 100 }, (_, i) => [i, 2 * i, false]); A.deepStrictEqual(K.vereinfachen(g, 0.5).map(p => [p[0], p[1]]), [[0, 0], [99, 198]]); n++; }
+  { const g = Array.from({ length: 100 }, (_, i) => [i, 0, i === 50]), v = K.vereinfachen(g, 0.5); ok(v.length === 4 && v[2][2] === true && v[2][0] === 50 && !v[1][2], 'Lücke bleibt: ' + JSON.stringify(v)); }
+  { const zack = [[0, 0, false], [5, 3, false], [10, 0, false]]; ok(K.vereinfachen(zack, 0.5).length === 3 && K.vereinfachen(zack, 4).length === 2, 'Toleranz'); }
+  // Schreiber: Seite mit Karte (zweites Bild, runde Ecken) und echtem Text (Helvetica, WinAnsi) – Querverweise stimmen weiter
+  const jpg = (w, h) => { const sof = [0xFF, 0xC0, 0x00, 17, 8, h >> 8, h & 255, w >> 8, w & 255, 3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0]; return Uint8Array.from([0xFF, 0xD8, ...sof, ...new Uint8Array(30).fill(9), 0xFF, 0xD9]); };
+  const wr = P.writer({ created: new Date(Date.UTC(2026, 10, 21)) });
+  wr.addPage(jpg(1240, 1754), { bilder: [{ jpeg: jpg(1060, 560), x: 90, y: 700, w: 1060, h: 560, r: 8 }], texte: [{ s: '© OpenStreetMap-Mitwirkende', x: 800, y: 1240, size: 20, rgb: [0, 0, 0] }] });
+  wr.addPage(jpg(1240, 1754));
+  const txt = Buffer.from(wr.finish()).toString('latin1');
+  ok((txt.match(/\/Subtype \/Image/g) || []).length === 3 && (txt.match(/\/Type \/Page /g) || []).length === 2, 'zwei Seiten, drei Bilder');
+  ok(/\/XObject << \/Im0 6 0 R \/Im1 7 0 R >> \/Font << \/F1 8 0 R >> \/ProcSet \[\/PDF \/Text \/ImageC\]/.test(txt), 'Ressourcen der Kartenseite');
+  ok(/\/BaseFont \/Helvetica \/Encoding \/WinAnsiEncoding/.test(txt) && txt.includes('<A9204F70656E5374726565744D61702D4D69747769726B656E6465> Tj'), 'Quellenangabe als echter Text (© in WinAnsi)');
+  ok(/ W n 508\.8 0 0 268\.8 43\.2 /.test(txt) && / c h W n /.test(txt), 'Karte an ihrer Stelle, mit runden Ecken beschnitten');
+  { const sx = +/startxref\n(\d+)\n%%EOF\n$/.exec(txt)[1], m = /xref\n0 (\d+)\n((?:\d{10} \d{5} [nf] \n)+)trailer/.exec(txt.slice(sx)), cnt = +m[1], e = m[2].match(/[\s\S]{20}/g);
+    ok(cnt === 12, 'Objekte: ' + cnt); for (let i = 1; i < cnt; i++) ok(txt.slice(+e[i].slice(0, 10)).startsWith(i + ' 0 obj\n'), 'xref ' + i);
+    for (const mm of txt.matchAll(/\/Length (\d+) >>\nstream\n/g)) { const s = mm.index + mm[0].length; ok(txt.slice(s + +mm[1], s + +mm[1] + 10) === '\nendstream', 'Stromlänge'); } }
+  ok(Math.abs(P.textBreite('© OpenStreetMap-Mitwirkende', 20) - 274.82) < 0.01 && P.winAnsi('Ä–€') === '<C4963F>', 'Textbreite und WinAnsi');
+})();
+
 /* ---------- An Meine Touren senden (calc-senden.js) ---------- */
 {
   const S = require(W + 'calc-senden.js');
