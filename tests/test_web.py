@@ -14,10 +14,10 @@ window.__rec={state:'idle',sport:'hike',name:'',count:0,dist_m:0,up_m:0,active_s
 window.MTApp={
  version:()=>'test', hasPermission:()=>true, requestPermission(){}, status:()=>JSON.stringify(window.__rec),
  points:()=>JSON.stringify([[47.5,11.2],[47.501,11.201]]), takeFinished:()=>window.__gpx||'', discardRecording(){window.__rec.state='idle';window.__rec.unsent=false},
- startRecording(s,n){window.__rec=Object.assign(window.__rec,{state:'recording',sport:s,name:n,count:5,dist_m:120,active_s:61,lat:47.5,lon:11.2,fix_age_s:1,fix_acc_m:5});window.__calls.push(['start',s,n])},
+ startRecording(s,n){window.__rec=Object.assign(window.__rec,{state:'recording',sport:s,name:n,start:Date.now(),count:5,dist_m:120,up_m:0,down_m:0,active_s:61,lat:47.5,lon:11.2,fix_age_s:1,fix_acc_m:5});window.__calls.push(['start',s,n])},
  pauseRecording(){window.__rec.state='paused'}, resumeRecording(){window.__rec.state='recording'},
- stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true}, takePhoto(){window.__calls.push(['photo']);return true}, takeVideo(){window.__calls.push(['video']);return true}, setJunctions(t){window.__calls.push(['junc',t.split(';').length])}, backups:()=>JSON.stringify(window.__baks||[]), backupGpx:()=>window.__bakgpx||'',
- setRoute(p,n){window.__calls.push(['route',n,p.split(';').length]);window.__routeName=n}, routeInfo:()=>JSON.stringify(window.__routeName?{name:window.__routeName,points:3}:{}), routePoints:()=>'[]', clearRoute(){window.__routeName=''}, setGuide(){}, guideTest(){},
+ stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true;window.__routeName='';window.__routePts=''},      /* wie die Hülle: Beenden löscht die Route (Navi.clear) */ takePhoto(){window.__calls.push(['photo']);return true}, takeVideo(){window.__calls.push(['video']);return true}, setJunctions(t){window.__calls.push(['junc',t.split(';').length])}, backups:()=>JSON.stringify(window.__baks||[]), backupGpx:()=>window.__bakgpx||'',
+ setRoute(p,n){window.__calls.push(['route',n,p.split(';').length]);window.__routeName=n;window.__routePts=p}, routeInfo:()=>JSON.stringify(window.__routeName?{has:true,name:window.__routeName,points:3}:{}), routePoints:()=>JSON.stringify(window.__routeName&&window.__routePts?window.__routePts.split(';').map(x=>x.split(',').map(Number)):[]), clearRoute(){window.__routeName='';window.__routePts=''}, setGuide(){}, guideTest(){}, haptic(){window.__haptic=(window.__haptic||0)+1},
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(u){window.__opened=u}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r; try{
    if(m==='http'){ const x=await fetch(a.url,{method:a.method||'GET',headers:a.headers,body:a.body}); r={status:x.status,headers:{},body:a.bin?'':await x.text()}; if(a.bin){ const u=new Uint8Array(await x.arrayBuffer()); let b=''; u.forEach(c=>b+=String.fromCharCode(c)); r.b64=btoa(b); } }
@@ -688,6 +688,101 @@ def zu(pg):
 
 def go(pg, h, sel):
     pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h); pg.wait_for_selector(sel); pg.wait_for_timeout(200)
+
+def halten(pg, sel, ms):
+    """Finger (Maus) auf die Mitte von sel legen, ms halten, loslassen."""
+    bb = pg.locator(sel).bounding_box(); pg.mouse.move(bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2); pg.mouse.down(); pg.wait_for_timeout(ms); pg.mouse.up()
+
+def schieben(pg, anteil, sel="#rstopknob", leiste="#rstop"):
+    """Griff um anteil (0…1) des möglichen Wegs nach rechts ziehen (in Schritten, wie ein Finger) und loslassen."""
+    pg.evaluate("document.querySelector('#view').scrollTop = 1e6"); pg.wait_for_timeout(100)      # ganz nach unten: die Leiste liegt sonst unter der unteren Leiste
+    k = pg.locator(sel).bounding_box(); t = pg.locator(leiste).bounding_box()
+    weg = (t["width"] - k["width"] - 2 * (k["x"] - t["x"])) * anteil + (12 if anteil >= 1 else 0)
+    x, y = k["x"] + k["width"] / 2, k["y"] + k["height"] / 2
+    pg.mouse.move(x, y); pg.mouse.down()
+    for i in range(1, 13): pg.mouse.move(x + weg * i / 12, y + (i % 3) - 1); pg.wait_for_timeout(16)
+    pg.mouse.up()
+
+def aufnahme_270(pg):
+    """2.7.0: Beenden durch Schieben (zu kurz → zurück, Tastatur → Rückfrage), Pause nur durch Halten, Abstieg, gemerkte Route nach Neustart."""
+    t0 = 1760000000000
+    pg.evaluate("window.__rec.state = 'idle'; window.__rec.unsent = false; window.__routeName = ''; DB.kvSet('recRoute', null)")
+    go(pg, "#/rec", ".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime")
+    # Abstieg neben dem Aufstieg (Werte der Hülle: up_m / down_m)
+    pg.evaluate("Object.assign(window.__rec, { up_m: 412, down_m: 287, alt_m: 1650 })")
+    pg.wait_for_function("document.querySelector('.rec .kpis.big') && document.querySelector('.rec .kpis.big').innerText.includes('287')", timeout=5000)
+    k = [x.replace("\n", " ").strip() for x in pg.locator(".rec .kpis.big .kpi").all_inner_texts()]
+    assert any("↑" in x and "412" in x and "Aufstieg" in x for x in k) and any("↓" in x and "287" in x and "Abstieg" in x for x in k), k
+    tops = pg.evaluate("[...document.querySelectorAll('.rec .kpis.big .kpi')].map(e => Math.round(e.getBoundingClientRect().top))")
+    assert tops[2] == tops[3], ("Aufstieg und Abstieg nebeneinander", tops)
+    # Pause: Tippen (auch mehrfach, wie in der Hosentasche) tut nichts, Halten pausiert (Balken, Ruckeln), ein Tipp setzt fort
+    pg.locator("#rpause").scroll_into_view_if_needed()
+    for _ in range(5): pg.locator("#rpause").click(delay=40)
+    pg.wait_for_timeout(500); assert pg.evaluate("__rec.state") == "recording", "Antippen darf nicht pausieren"
+    bb = pg.locator("#rpause").bounding_box(); pg.mouse.move(bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2); pg.mouse.down()
+    pg.wait_for_function("+getComputedStyle(document.querySelector('#rpause')).getPropertyValue('--hold') > 0.05", timeout=3000)      # Balken füllt sich sichtbar
+    pg.wait_for_function("__rec.state === 'paused'", timeout=5000); pg.mouse.up()
+    assert pg.evaluate("window.__haptic || 0") >= 1, "beim Pausieren kurz ruckeln"
+    pg.wait_for_function("document.querySelector('#rpause').innerText.includes('Weiter')")
+    pg.locator("#rpause").click(); pg.wait_for_function("__rec.state === 'recording'", timeout=5000)
+    pg.wait_for_function("document.querySelector('#rpause').innerText.includes('Pause')")
+    # Losgelassen vor der Zeit: nichts
+    halten(pg, "#rpause", 150); pg.wait_for_timeout(700); assert pg.evaluate("__rec.state") == "recording", "zu kurz gehalten"
+    # Tastatur: Enter öffnet eine Rückfrage
+    pg.focus("#rpause"); pg.keyboard.press("Enter"); pg.wait_for_selector(".sheet[aria-label='Aufzeichnung pausieren?']")
+    pg.get_by_role("button", name="Pausieren", exact=True).click(); pg.wait_for_function("__rec.state === 'paused'", timeout=5000)
+    pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_function("document.querySelector('#rpause').innerText.includes('Weiter')")
+    pg.focus("#rpause"); pg.keyboard.press("Enter"); pg.wait_for_function("__rec.state === 'recording'", timeout=5000)
+    # Schieben: zu kurz → federt zurück, nichts passiert
+    schieben(pg, 0.4); pg.wait_for_function("document.querySelector('#rstopknob').style.transform === 'translateX(0px)'", timeout=3000)
+    pg.wait_for_timeout(300); assert pg.evaluate("__rec.state") == "recording", "zu kurzes Schieben"
+    # Antippen des Griffs (ohne Schieben) beendet nicht
+    pg.locator("#rstopknob").click(); pg.wait_for_timeout(400); assert pg.evaluate("__rec.state") == "recording" and pg.locator(".sheet").count() == 0
+    # Tastatur: Enter → Rückfrage; Abbrechen lässt laufen, Beenden speichert wie bisher
+    pg.focus("#rstopknob"); pg.keyboard.press("Enter"); pg.wait_for_selector(".sheet[aria-label='Aufzeichnung beenden?']")
+    pg.get_by_role("button", name="Abbrechen", exact=True).click(); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("__rec.state") == "recording"
+    pg.evaluate("g => { window.__gpx = g }", gpx(t0, n=30, lat=46.7, name=""))
+    pg.focus("#rstopknob"); pg.keyboard.press("Enter"); pg.wait_for_selector(".sheet[aria-label='Aufzeichnung beenden?']")
+    pg.get_by_role("button", name="Beenden", exact=True).click()
+    pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); rec1 = pg.evaluate("location.hash.split('/')[2]")
+    assert "Abstieg" in pg.inner_text(".tourp .facts"), "Abstieg auf der Tourseite"
+
+    # Gemerkte Route: wählen, App neu starten (die Hülle hat die Route verloren), Aufnahme öffnen → Route wieder da und auf der Karte
+    plan = pg.evaluate("""async () => { const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 47.30 + i * 0.0006, lon: 11.40 + i * 0.0005, ele: 900 + i * 4 }));
+      return (await Tours.add({ name: 'Nachgehen R', sport: 'hike', pts, src: 'plan', status: 'planned', force: true })).tour.id; }""")
+    go(pg, "#/rec", "select[aria-label='Geplante Tour als Route']")
+    pg.select_option("select[aria-label='Geplante Tour als Route']", plan); pg.wait_for_selector("#rroutesel")
+    assert pg.evaluate("id => DB.kvGet('recRoute', null).then(r => !!r && r.id === id && r.kind === 'tour')", plan)
+    pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#startrec")
+    pg.reload(); pg.wait_for_selector("#tabs a")
+    assert pg.evaluate("RecRoute.native()") is None, "nach dem Neustart hat die (nachgestellte) Hülle keine Route"
+    go(pg, "#/rec", ".bigstart"); pg.wait_for_selector("#rroutesel"); assert "Nachgehen R" in pg.inner_text("#rroutesel")
+    assert pg.evaluate("__calls.some(c => c[0] === 'route' && c[1] === 'Nachgehen R')"), "Route wieder an die Hülle gegeben"
+    pg.click(".bigstart"); pg.wait_for_selector(".bigtime"); pg.wait_for_selector("#rroute:not([hidden])")
+    assert "Nachgehen R" in pg.inner_text("#rroute") and int(pg.get_attribute(".rmap", "data-route") or 0) > 1, "Route auf der Aufnahmekarte"
+    # Neustart MITTEN in der Aufzeichnung, Route in der Hülle weg: wird wieder geladen und gezeichnet
+    pg.reload(); pg.wait_for_selector("#tabs a")
+    pg.evaluate("DB.kvGet('recRoute', null).then(r => Object.assign(window.__rec, { state: 'recording', start: r.ts + 5000, count: 9, dist_m: 900, active_s: 3600, lat: 47.3, lon: 11.4, fix_age_s: 1, fix_acc_m: 4 }))")
+    go(pg, "#/rec", ".bigtime"); pg.wait_for_selector("#rroute:not([hidden])"); assert int(pg.get_attribute(".rmap", "data-route") or 0) > 1
+    # Volkers Fall: Route wählen, während noch eine (alte) Aufzeichnung läuft; deren Beenden löscht die Route in der Hülle – die Auswahl bleibt trotzdem
+    pg.evaluate("DB.kvSet('recRoute', null); window.__routeName = ''; window.__rec.start = Date.now() - 600000")      # die alte Aufzeichnung lief schon vor der Auswahl
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan); pg.locator(".banner button", has_text="Mit Ansagen starten").click()
+    pg.wait_for_function("location.hash === '#/rec'"); pg.wait_for_selector("#rroute:not([hidden])"); assert "Nachgehen R" in pg.inner_text("#rroute")
+    pg.evaluate("g => { window.__gpx = g }", gpx(t0 + 86400000 * 3, n=30, lat=46.8, name=""))
+    schieben(pg, 1.0); pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); rec2 = pg.evaluate("location.hash.split('/')[2]")
+    assert pg.evaluate("RecRoute.native()") is None, "die Hülle hat die Route beim Beenden gelöscht (wie Navi.clear)"
+    go(pg, "#/rec", ".bigstart"); pg.wait_for_selector("#rroutesel"); assert "Nachgehen R" in pg.inner_text("#rroutesel"), "Route für die nächste Aufzeichnung wieder da"
+    # Mit dieser Route aufgezeichnet und gespeichert: danach gilt sie als erledigt
+    pg.click(".bigstart"); pg.wait_for_selector(".bigtime"); pg.evaluate("g => { window.__gpx = g }", gpx(t0 + 86400000 * 4, n=30, lat=46.9, name=""))
+    schieben(pg, 1.0); pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); rec3 = pg.evaluate("location.hash.split('/')[2]")
+    assert pg.evaluate("DB.kvGet('recRoute', null)") is None, "nach der Tour mit der Route ist die Auswahl erledigt"
+    # Gewählte Tour inzwischen gelöscht: deutlicher Hinweis statt stillem Verschwinden
+    pg.evaluate("id => DB.kvSet('recRoute', { kind: 'tour', id, name: 'Nachgehen R', ts: Date.now() })", plan); pg.evaluate("id => Tours.remove(id)", plan)
+    go(pg, "#/start", "#startrec"); pg.reload(); pg.wait_for_selector("#tabs a")
+    go(pg, "#/rec", ".bigstart"); pg.wait_for_selector("#rroutegone"); assert "Nachgehen R" in pg.inner_text("#rroutegone") and "nicht mehr" in pg.inner_text("#rroutegone")
+    pg.click("#rroutegone-ok"); pg.wait_for_selector("#rroutegone", state="detached"); assert pg.evaluate("DB.kvGet('recRoute', null)") is None
+    # Aufräumen
+    pg.evaluate("async ids => { for (const id of ids) await Tours.remove(id); window.__rec.state = 'idle'; window.__rec.unsent = false; window.__routeName = ''; }", [rec1, rec2, rec3])
 
 WINTER_TOUREN = """async (srv) => {
   /* Touren, die es in der App schon gibt – alle mit der alten Sammel-Sportart „ski“ – und passend zu s4 (Ski alpin), s5 (Skitour), s6 (Schneeschuh), s7 (Langlauf) am Server;
@@ -1978,17 +2073,18 @@ def main():
         # Pin mit Kommentar
         pg.locator("#rpin").click(); pg.wait_for_selector(".sheet input"); pg.fill(".sheet input", "Schöne Aussicht"); pg.get_by_role("button", name="Speichern", exact=True).click(); pg.wait_for_timeout(300)
         assert pg.evaluate("DB.kvGet('recPins',[]).then(a=>a.length===1&&a[0].text==='Schöne Aussicht')")
-        # Beenden: ein kurzer Druck beendet nichts, erst Halten
+        # Beenden: nur durch Schieben (2.7.0); Pause nur durch Halten
         assert "läuft" in pg.inner_text("header.top h1") and pg.locator("#tabs a.rec.live").count() == 1
-        vals = [x.strip() for x in pg.locator(".rec .kpis.big .kpi small").all_inner_texts()]; assert vals == ["Strecke", "Aufstieg", "Höhe", "Tempo"], vals
+        vals = [x.strip() for x in pg.locator(".rec .kpis.big .kpi small").all_inner_texts()]; assert vals == ["Strecke", "Höhe", "Aufstieg", "Abstieg"], vals
         assert pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.bigtime')).fontSize)") >= 56, "Laufzeit muss groß sein"
-        pg.locator("#rpause").click(); pg.wait_for_function("document.querySelector('header.top h1').innerText.includes('Pause')"); pg.locator("#rpause").click(); pg.wait_for_function("document.querySelector('header.top h1').innerText.includes('läuft')")
-        pg.locator("#rstop").scroll_into_view_if_needed(); bb = pg.locator("#rstop").bounding_box()
-        pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down(); pg.wait_for_timeout(300); pg.mouse.up(); pg.wait_for_timeout(300)
-        assert pg.evaluate("__rec.state") == "recording", "kurzer Druck darf nicht beenden"
+        pg.locator("#rpause").click(); pg.wait_for_timeout(400); assert pg.evaluate("__rec.state") == "recording", "kurzer Tipp darf nicht pausieren"
+        halten(pg, "#rpause", 1500); pg.wait_for_function("document.querySelector('header.top h1').innerText.includes('Pause')"); pg.locator("#rpause").click(); pg.wait_for_function("document.querySelector('header.top h1').innerText.includes('läuft')")
+        pg.locator("#rstop").scroll_into_view_if_needed()
+        schieben(pg, 0.35); pg.wait_for_timeout(400)
+        assert pg.evaluate("__rec.state") == "recording", "zu kurzes Schieben darf nicht beenden"
         pg.evaluate("g => { window.__gpx = g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
-        pg.mouse.move(bb["x"] + 20, bb["y"] + 20); pg.mouse.down()
-        pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); pg.mouse.up()
+        schieben(pg, 1.0)
+        pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000)
         pg.wait_for_selector("#pins"); assert "Schöne Aussicht" in pg.inner_text("#pins")
         tid = pg.evaluate("location.hash.split('/')[2]")
         # Aufzeichnung aus einer Planung gestartet („Speichern & starten“): die Tour ist mit der Planung verknüpft und zeigt Plan und Ergebnis
@@ -2529,6 +2625,7 @@ def main():
         pdf_karte(pg)
         blaetter(pg)
         von_aussen(pg)
+        aufnahme_270(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
 

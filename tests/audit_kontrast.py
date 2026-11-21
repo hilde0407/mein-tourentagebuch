@@ -136,6 +136,14 @@ def main():
             go("#/start", "#fuehrer-home-row"); scan("Start, Wanderführer-Zeile")
             go("#/tour/" + fid["tid"], "#imbuch"); scan("Tour, Aus dem Buch")
             pg.evaluate("async (f) => { await Tours.remove(f.tid); for (const b of await Buecher.liste()) await Buecher.entferne(b.id); await DB.del('kv', 'guides'); await DB.del('kv', 'guideMatch'); }", fid)
+            # 2.7.0: Aufnahme läuft (Route, Aufstieg/Abstieg, Pause halten, Zum Beenden schieben), pausiert, Route nicht mehr vorhanden
+            pid = pg.evaluate("async () => (await Tours.add({ name: 'Route K', sport: 'hike', src: 'plan', status: 'planned', force: true, pts: Array.from({ length: 30 }, (_, i) => ({ lat: 47.5 + i * 4e-4, lon: 11.2 + i * 3e-4, ele: 900 + i })) })).tour.id")
+            pg.evaluate("id => DB.kvSet('recRoute', { kind: 'tour', id, name: 'Route K', ts: Date.now() })", pid); go("#/rec", "#rroutesel"); scan("Aufnahme, Route gemerkt")
+            pg.click(".bigstart"); pg.wait_for_selector("#rroute:not([hidden])"); pg.evaluate("Object.assign(window.__rec, { up_m: 412, down_m: 287, alt_m: 1650 })"); pg.wait_for_timeout(1300)
+            for k in range(3): pg.evaluate("k => { document.querySelector('#view').scrollTop = k * 400 }", k); pg.wait_for_timeout(100); scan("Aufnahme läuft")
+            pg.evaluate("window.__rec.state = 'paused'"); pg.wait_for_timeout(1300); scan("Aufnahme pausiert")
+            pg.evaluate("async id => { window.__rec.state = 'idle'; window.__rec.unsent = false; window.__routeName = ''; await Tours.remove(id); await DB.kvSet('recRoute', { kind: 'tour', id, name: 'Route K', ts: Date.now() }); }", pid)
+            go("#/rec", "#rroutegone"); scan("Aufnahme, Route nicht mehr vorhanden"); pg.evaluate("DB.kvSet('recRoute', null)")
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)

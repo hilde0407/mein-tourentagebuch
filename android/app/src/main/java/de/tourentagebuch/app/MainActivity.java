@@ -18,6 +18,7 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
+import android.view.HapticFeedbackConstants;
 import android.view.ViewGroup;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
@@ -368,6 +369,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String routeInfo() { return Navi.info(MainActivity.this); }
         @JavascriptInterface public void setJunctions(String t) { Navi.setJunctions(MainActivity.this, t); }
         @JavascriptInterface public void setGuide(boolean on) { Navi.setEnabled(MainActivity.this, on); }
+        /** 2.7.0: kurzes Ruckeln als Rückmeldung (Halten für Pause, Schieben zum Beenden); braucht keine Berechtigung. */
+        @JavascriptInterface public void haptic() { runOnUiThread(() -> { if (web != null) web.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); }); }
         @JavascriptInterface public void guideTest() { Navi.speak(MainActivity.this, "Die Sprachansagen sind eingeschaltet. In 100 Metern links abbiegen."); }
         @JavascriptInterface public boolean hasPermission() { return hasLoc(); }
         @JavascriptInterface public String logText() { return AppLog.tail(30000); }

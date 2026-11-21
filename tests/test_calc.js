@@ -262,6 +262,21 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   const st = Geo.stats(pts), e1 = H.lauf(pts.slice(0, 40).map(p => p.ele)), e2 = H.lauf(pts.slice(40).map(p => p.ele));
   abw(st.up, e1[0] + e2[0], 'Geo.stats Läufe'); ok(st.up < 200 && st.nEle === 80, 'Seilbahn zählt nicht: ' + st.up);
   ok(Geo.stats(pts.map(p => ({ lat: p.lat, lon: p.lon, ele: null, t: p.t }))).nEle === 0, 'ohne Höhen');
+  // 2.7.0: Abstieg = gespiegelte Aufstiegsrechnung (gleiche Glättung, gleiche Schwelle). Jede Python-Reihe gespiegelt (Vorzeichen): Auf und Ab tauschen.
+  // Nicht auf den Zentimeter: Am Rand nimmt der Median über 2 Werte den oberen (wie in Python) – das verschiebt höchstens eine Schwellenstufe.
+  for (const c of E.hoehe) {
+    const cl = H.clean(c.in.filter(x => x !== null)).map(x => -x);
+    const [u, d] = H.ascent(H.smooth(cl, 3, 3)); n += 2;
+    A.ok(Math.abs(u - c.down) <= 12 && Math.abs(d - c.up) <= 12, c.name + ' gespiegelt: ↑ ' + u + ' / ↓ ' + c.down + ', ↓ ' + d + ' / ↑ ' + c.up);
+  }
+  // Reiner Abstieg mit Rauschen unter der Schwelle: rund 500 m ab (der letzte Rest unter 4 m zählt nicht), kein Aufstieg; Wellen unter 4 m zählen gar nicht
+  const ab = Array.from({ length: 251 }, (_, i) => 1500 - i * 2 + (i % 2 ? 1.2 : -1.2));
+  const [ua, da] = H.lauf(ab); ok(Math.abs(da - 500) < 12 && ua < 1, 'Abstieg 500 m: ↑ ' + ua + ' ↓ ' + da);
+  const welle = Array.from({ length: 100 }, (_, i) => 800 + (i % 4 < 2 ? 0 : 3)); ok(H.lauf(welle)[1] === 0 && H.lauf(welle)[0] === 0, 'Wellen unter der Schwelle');
+  // Hin und zurück: gleicher Weg zurück → Abstieg ≈ Aufstieg; Geo.stats liefert beides
+  const hz = []; for (let i = 0; i <= 60; i++) hz.push({ lat: 47 + i * 1e-4, lon: 11, ele: 600 + i * 5, t: 1e12 + i * 10000 });
+  for (let i = 59; i >= 0; i--) hz.push({ lat: 47 + i * 1e-4, lon: 11.0001, ele: 600 + i * 5, t: 1e12 + 700000 + (59 - i) * 10000 });
+  const sh = Geo.stats(hz); ok(Math.abs(sh.up - 300) < 15 && Math.abs(sh.down - 300) < 15 && Math.abs(sh.up - sh.down) < 1e-6, 'Hin und zurück: ↑ ' + sh.up + ' ↓ ' + sh.down);
 })();
 
 // Zepp-Typen: Gehen (6, 7) und 22 zählen als Wandern, Laufen (1, 8) bleibt getrennt

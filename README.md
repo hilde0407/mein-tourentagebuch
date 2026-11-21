@@ -23,7 +23,7 @@ Fünf Reiter: **Start** (letzte Tour, Aufzeichnen · Planen · Importieren, das 
 - **Karte** (Touren → Karte): alle Touren nach Sportart gefärbt, Fotos als Marker, Offline-Kacheln für den sichtbaren Ausschnitt.
 - **Fotos**: Raster nach Tag, Vollbild mit Wischen und Diashow, automatische Zuordnung zu Touren per Aufnahmezeit, Position aus der Spur berechnet, wenn das Foto keine hat.
   Quellen: Galerie (auch automatisch passend zu allen Touren), beliebige Ordner, **SMB-Freigaben** (NAS, Fritz!Box), **Nextcloud/WebDAV**, Teilen-Menü, Kamera während der Aufzeichnung.
-- **Aufzeichnen**: GPS im Hintergrund (Vordergrunddienst), Pause, Foto, Sprachansagen auf geplanter Route (Abbiegen, Abweichung, Restkilometer), Sicherung bei Absturz.
+- **Aufzeichnen**: GPS im Hintergrund (Vordergrunddienst), Pause (gedrückt halten), Foto, Aufstieg und Abstieg, Beenden durch Schieben, Sprachansagen auf geplanter Route (Abbiegen, Abweichung, Restkilometer; die gewählte Route bleibt gemerkt), Sicherung bei Absturz. Seit 2.7.0: `docs/versionen/2.7.0.md`.
 - **Planen**: Wegpunkte setzen, Routing auf Wegen (BRouter) je Sportart, Rundtour, Umkehren, Höhenprofil, Zeitschätzung, Speichern, GPX, „Speichern & starten“ mit Ansagen.
   Auf der Seite der geplanten Tour: **Notizen & Quellen** (Notiz, Herkunft, bis 20 Links – nie automatisch abgerufen) und **Passt die Tour zu mir?** (Strecke, Aufstieg, Dauer gegen die eigenen Touren; Tageslicht mit Datum, Startzeit und Pausenpuffer).
 - **Nach der Tour**: **Wie ist es gelaufen?** (Einordnung gegen die eigenen Touren der 12 Monate davor, ab 5 Vergleichstouren) oder **Plan und Ergebnis** (geplant gegen gelaufen, wenn die Tour aus einer Planung gestartet oder von Hand verknüpft wurde).

@@ -22,6 +22,17 @@ public class TrackStoreCheck {
         check(s.distanceM() > 2000 && s.distanceM() < 4500, "Strecke unplausibel: " + s.distanceM());
         check(s.ascentM() > 40 && s.ascentM() < 80, "Aufstieg unplausibel: " + s.ascentM());
         check(s.descentM() > 40 && s.descentM() < 80, "Abstieg unplausibel: " + s.descentM());
+        // 2.7.0: Abstieg ist dieselbe Rechnung gespiegelt (Mittel über 3 Höhen, Schwelle 3 m): reiner Abstieg zählt nur ab, gespiegelte Spur tauscht Auf und Ab
+        TrackStore dn = new TrackStore(File.createTempFile("abw", ".csv")), upS = new TrackStore(File.createTempFile("aufw", ".csv"));
+        for (int i = 0; i < 200; i++) {
+            double noise = (i % 2 == 0 ? 0.8 : -0.8);
+            double alt = 1500 - 1.5 * i + noise;
+            dn.add(t0 + i * 5000L, 47.0 + 0.0002 * i, 11.0, alt, 6f);
+            upS.add(t0 + i * 5000L, 47.0 + 0.0002 * i, 11.0, 3000 - alt, 6f);
+        }
+        check(dn.ascentM() < 3, "reiner Abstieg zählt Aufstieg: " + dn.ascentM());
+        check(Math.abs(dn.descentM() - 298.5) < 8, "Abstieg unplausibel: " + dn.descentM());
+        check(Math.abs(dn.descentM() - upS.ascentM()) < 4 && Math.abs(dn.ascentM() - upS.descentM()) < 4, "gespiegelt: " + dn.descentM() + " / " + upS.ascentM());
         // ungenaue Punkte und Stillstand werden verworfen
         check(!s.add(t0 + 400000L, 48.5, 8.5, 500, 120f), "ungenauer Punkt angenommen");
         double la = s.lastLat(), lo = s.lastLon();

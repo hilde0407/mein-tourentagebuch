@@ -352,8 +352,9 @@ function startWith(t, pts) {
   TourHelp.armPlan(t);
   if (!window.MTApp) { toast('Ansagen gibt es nur in der Android-App'); Nav.go('/rec'); return; }
   const sp = Geo.simplify(pts, 3);
-  MTApp.setRoute(sp.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join(';'), t.name);
-  Junctions.load(sp);
-  sessionStorage.setItem('recSport', t.sport); sessionStorage.setItem('recName', t.name);
-  Nav.go('/rec');
+  RecRoute.set({ kind: 'tour', id: t.id, name: t.name }, RecRoute.text(pts)).then(() => {      // 2.7.0: Auswahl dauerhaft merken (übersteht Neustart und das Beenden einer älteren Aufzeichnung)
+    Junctions.load(sp);
+    sessionStorage.setItem('recSport', t.sport); sessionStorage.setItem('recName', t.name);
+    Nav.go('/rec');
+  });
 }
