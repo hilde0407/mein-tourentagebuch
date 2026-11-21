@@ -25,7 +25,27 @@ const Lightbox = {
     // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an.
     // 2.7.1: bei Fehler 4 (Format nicht unterstützt, meist HEVC) zusätzlich „Jetzt umwandeln“ (in H.264, auf dem Handy)
     let errCode = null, errMsg = '';
-    vid.addEventListener('error', () => { const p = list[i]; if (!p || !p.video || !vid.getAttribute('src')) return; errCode = vid.error ? vid.error.code : '?'; showErr(p); zeigeInfo(p); });
+    // 2.7.3: Fehler 4 trotz normalem H.264-Video (Volker, 21.11.): Die Auslieferung über den internen Server (Bereichsabfragen) nimmt das WebView nicht an.
+    // Rückfall: die Datei ganz laden und als Blob abspielen (bis 250 MB); erst wenn auch das scheitert, kommt die Fehlermeldung.
+    let blobUrl = null, blobFor = null;
+    const freeBlob = () => { if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch (e) { /* egal */ } blobUrl = null; } };
+    async function viaBlob(p) {
+      blobFor = p.id;
+      try {
+        const r = await fetch(Photos.url(p.id)), n = +r.headers.get('content-length') || 0;
+        if (!r.ok || n > 250 * 1048576) return false;
+        const b = await r.blob();
+        if (list[i] !== p) return true;
+        freeBlob(); blobUrl = URL.createObjectURL(new Blob([b], { type: 'video/mp4' })); vid.src = blobUrl;
+        return true;
+      } catch (e) { return false; }
+    }
+    vid.addEventListener('error', async () => {
+      const p = list[i]; if (!p || !p.video || !vid.getAttribute('src')) return;
+      if (blobFor !== p.id && !(blobUrl && vid.getAttribute('src') === blobUrl) && await viaBlob(p)) return;
+      if (list[i] !== p) return;
+      errCode = vid.error ? vid.error.code : '?'; showErr(p); zeigeInfo(p);
+    });
     function busyFor(p) { const st = Videos.state; return !!(st && st.running && st.id === p.id); }
     function showErr(p, msg) {
       if (msg !== undefined) errMsg = msg;
@@ -62,13 +82,13 @@ const Lightbox = {
     const onDone = e => {
       const p = list[i]; if (!p || !p.video) return;
       const d = (e.detail || []).find(x => x.id === p.id); if (!d) return;
-      if (d.ok) { Object.assign(p, { w: d.w || p.w, h: d.h || p.h, dur: d.dur || p.dur }); err.hidden = true; errCode = null; errMsg = ''; vid.src = Photos.url(p.id) + '?c=' + Date.now(); vid.poster = Photos.thumb(p.id) + '?c=' + Date.now(); }
+      if (d.ok) { blobFor = null; Object.assign(p, { w: d.w || p.w, h: d.h || p.h, dur: d.dur || p.dur }); err.hidden = true; errCode = null; errMsg = ''; vid.src = Photos.url(p.id) + '?c=' + Date.now(); vid.poster = Photos.thumb(p.id) + '?c=' + Date.now(); }
       else if (!err.hidden) showErr(p, d.cancel ? 'Umwandlung abgebrochen – das Original ist unverändert.' : 'Umwandeln hat nicht geklappt (' + (d.msg || 'Fehler') + '). Das Original bleibt erhalten.');
     };
     window.addEventListener('video-state', onState); window.addEventListener('video-converted', onDone);
     function show() {
       const p = list[i];
-      err.hidden = true; errCode = null; errMsg = '';
+      err.hidden = true; errCode = null; errMsg = ''; blobFor = null; freeBlob();
       appB.hidden = !p.video;
       if (p.video) { img.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
       else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; img.src = Photos.url(p.id); }
@@ -78,7 +98,7 @@ const Lightbox = {
     }
     function step(d) { i = (i + d + list.length) % list.length; show(); }
     function toggle() { if (timer) { clearInterval(timer); timer = null; $('#lbp').textContent = '▶'; } else { timer = setInterval(() => { if (!(list[i].video && !vid.paused && !vid.ended)) step(1); }, 4000); $('#lbp').textContent = '❚❚'; } }
-    function close() { if (timer) clearInterval(timer); try { vid.pause(); } catch (e) { /* egal */ } window.removeEventListener('video-state', onState); window.removeEventListener('video-converted', onDone); el.remove(); window.__lightbox = null; }
+    function close() { freeBlob(); if (timer) clearInterval(timer); try { vid.pause(); } catch (e) { /* egal */ } window.removeEventListener('video-state', onState); window.removeEventListener('video-converted', onDone); el.remove(); window.__lightbox = null; }
     async function details() {
       const p = list[i], tour = p.tour ? await DB.get('tours', p.tour) : null;
       const s = sheet('Foto', h('div', null,
