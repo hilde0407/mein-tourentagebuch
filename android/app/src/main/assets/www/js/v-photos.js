@@ -5,21 +5,25 @@ const Lightbox = {
     if (window.__lightbox) window.__lightbox.close();
     let i = idx, timer = null;
     const img = h('img', { alt: '', class: 'lb-img' });
+    // 2.8.0: Panoramen (breiter als 2,2 : 1) füllen die Höhe und lassen sich quer schieben; „Ganz anzeigen“ zeigt das ganze Bild auf Breite
+    const pan = h('div', { class: 'lb-pan', id: 'lb-pan' }, img);
+    let panoFit = true;
+    const pb = h('button', { class: 'lb-pb', id: 'lb-pano', hidden: true, onclick: () => { panoFit = !panoFit; setPano(true); } });
     const vid = h('video', { class: 'lb-img', controls: true, playsinline: true, preload: 'metadata' });
     vid.hidden = true;
     const info = h('div', { class: 'lb-info' });
     const err = h('div', { class: 'lb-err', id: 'lb-err', role: 'status', hidden: true });      // 2.7.1: Meldung mit „Jetzt umwandeln“ statt nur einer kurzen Einblendung
     const cnt = h('span', { class: 'lb-cnt' });
     const el = h('div', { class: 'lb', role: 'dialog', 'aria-label': 'Foto' },
-      h('div', { class: 'lb-top' }, cnt, h('span', { class: 'sp' }),
+      h('div', { class: 'lb-top' }, cnt, h('span', { class: 'sp' }), pb,
         h('button', { class: 'ico', id: 'lb-app', 'aria-label': 'Mit Video-App öffnen', title: 'Mit Video-App öffnen', hidden: true, onclick: extern }, h('span', null, '⤴')),
         h('button', { class: 'ico', 'aria-label': 'Diashow', onclick: toggle }, h('span', { id: 'lbp' }, '▶')),
         h('button', { class: 'ico', 'aria-label': 'Details', onclick: details }, 'ⓘ'),
         h('button', { class: 'ico', 'aria-label': 'Schließen', onclick: close }, '✕')),
-      img, vid, err, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
+      pan, vid, err, h('button', { class: 'lb-nav l', 'aria-label': 'Vorheriges', onclick: () => step(-1) }, '‹'), h('button', { class: 'lb-nav r', 'aria-label': 'Nächstes', onclick: () => step(1) }, '›'), info);
     let x0 = null;
     el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
-    el.addEventListener('touchend', e => { if (x0 == null) return; const d = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
+    el.addEventListener('touchend', e => { if (x0 == null) return; if (el.classList.contains('panofit') && e.target.closest && e.target.closest('.lb-pan')) { x0 = null; return; } const d = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
     const appB = el.querySelector('#lb-app');
     async function extern() { try { vid.pause(); await Native.call('openVideo', { id: list[i].id }); } catch (e) { toast('Video lässt sich nicht öffnen.'); } }
     // 2.6.4: Spielt das eingebaute Video nicht (z. B. HEVC), sagt die Ansicht es und bietet die Video-App an.
@@ -45,6 +49,20 @@ const Lightbox = {
       if (blobFor !== p.id && !(blobUrl && vid.getAttribute('src') === blobUrl) && await viaBlob(p)) return;
       if (list[i] !== p) return;
       errCode = vid.error ? vid.error.code : '?'; showErr(p); zeigeInfo(p);
+    });
+    /** Panorama-Darstellung: on = aktuelles Bild ist ein Panorama; panoFit = auf Höhe (quer schiebbar), sonst ganz auf Breite. */
+    function setPano(on) {
+      el.classList.toggle('panofit', !!on && panoFit);
+      pb.hidden = !on;
+      pb.innerHTML = Ico.svg(panoFit ? 'pano' : 'swap', 18) + '<span>' + (panoFit ? 'Ganz anzeigen' : 'Auf Höhe') + '</span>';
+      pb.setAttribute('aria-label', panoFit ? 'Panorama ganz anzeigen' : 'Panorama auf Bildschirmhöhe zeigen (quer schieben)');
+      if (on && panoFit) mitte();
+    }
+    function mitte() { requestAnimationFrame(() => { if (el.classList.contains('panofit')) pan.scrollLeft = Math.max(0, (pan.scrollWidth - pan.clientWidth) / 2); }); }
+    img.addEventListener('load', () => {
+      const p = list[i]; if (!p || p.video) return;
+      const on = PanoCalc.ist(p) || PanoCalc.ist(img.naturalWidth, img.naturalHeight);      // ohne gespeicherte Größe: nach dem echten Bild
+      if (on !== !pb.hidden) setPano(on); else if (on) mitte();
     });
     function busyFor(p) { const st = Videos.state; return !!(st && st.running && st.id === p.id); }
     function showErr(p, msg) {
@@ -90,8 +108,9 @@ const Lightbox = {
       const p = list[i];
       err.hidden = true; errCode = null; errMsg = ''; blobFor = null; freeBlob();
       appB.hidden = !p.video;
-      if (p.video) { img.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
-      else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; img.src = Photos.url(p.id); }
+      if (p.video) { img.hidden = true; pan.hidden = true; img.removeAttribute('src'); vid.hidden = false; vid.src = Photos.url(p.id); vid.poster = Photos.thumb(p.id); }
+      else { vid.pause(); vid.hidden = true; vid.removeAttribute('src'); img.hidden = false; pan.hidden = false; img.src = Photos.url(p.id); }
+      setPano(!p.video && PanoCalc.ist(p));
       cnt.textContent = (i + 1) + ' / ' + list.length;
       info.textContent = (p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : '') + (p.tourName ? ' · ' + p.tourName : '');
       [list[(i + 1) % list.length], list[(i + list.length - 1) % list.length]].filter(q => !q.video).forEach(q => { const pre = new Image(); pre.src = Photos.url(q.id); });
@@ -103,7 +122,8 @@ const Lightbox = {
       const p = list[i], tour = p.tour ? await DB.get('tours', p.tour) : null;
       const s = sheet('Foto', h('div', null,
         h('p', null, h('b', null, p.name || 'Foto'), h('br'), p.ts ? F.date(p.ts) + ' · ' + F.time(p.ts) : 'Aufnahmezeit unbekannt'),
-        h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : '') : '📍 Keine Position'),
+        PanoCalc.ist(p) ? h('p', { id: 'lb-panotag' }, h('span', { class: 'tag-pano', html: Ico.svg('pano', 18) + '<span>Panorama</span>' }), ' ' + p.w + ' × ' + p.h + ' Pixel') : null,
+        h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
         tour ? h('p', null, '🥾 ', h('a', { href: '#/tour/' + tour.id, onclick: () => { s.close(); close(); } }, tour.name)) : h('p', null, 'Keiner Tour zugeordnet'),
         h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); } } }, 'Tour wählen'),
@@ -111,6 +131,70 @@ const Lightbox = {
           h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmBox('Foto löschen?', 'Das Foto wird aus dem Tourentagebuch entfernt (das Original bleibt unberührt).', 'Löschen')) { await Photos.remove(p.id); list.splice(i, 1); s.close(); if (!list.length) close(); else { i = Math.min(i, list.length - 1); show(); } window.dispatchEvent(new Event('photos-changed')); } } }, 'Löschen'))));
     }
     document.body.append(el); window.__lightbox = { close }; show();
+  },
+};
+/* 2.8.0: Panorama aufnehmen. Ein Standard-Intent kann den Panorama-Modus der Kamera nicht direkt starten; darum öffnet die Hülle die Kamera-App normal
+   (MTApp.takePano, ohne Ausgabedatei) und merkt sich Zeit und letzte Position (pend_pano_*, übersteht auch ein Prozessende). Kommt man zurück
+   (Ereignis mtresume oder Neustart), fragt die App „Panorama übernehmen?“ und öffnet die Fotoauswahl. Der offene Start verfällt nach 12 Stunden
+   (PanoCalc.FRIST) oder sobald er bedient/abgelehnt ist. Fotos ohne Aufnahmezeit bekommen Zeit und Ort des Kamera-Starts (PanoCalc.rueckfall). */
+const Pano = {
+  _open: false, _busy: false,
+  async start() {
+    if (!window.MTApp || !MTApp.takePano) { toast('Panorama braucht die neueste App-Version.', 5000); return; }
+    if (!Set_.get('panoHinweisAus')) {
+      const go = await new Promise(res => {
+        let done = false;
+        const cb = h('input', { type: 'checkbox', id: 'pano-nie' });
+        const s = sheet('Panorama aufnehmen', h('div', null,
+          h('p', null, 'Wähle in der Kamera den Modus Panorama. Danach hierher zurückkehren.'),
+          h('p', { class: 'muted small' }, 'Die App fragt dann, ob sie das Panorama übernehmen soll. Die Aufzeichnung läuft währenddessen weiter.'),
+          h('label', { class: 'sw' }, cb, h('span', null, 'Nicht mehr zeigen')),
+          h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { done = true; s.close(); res(false); } }, 'Abbrechen'),
+            h('button', { class: 'btn pri', id: 'pano-go', onclick: async () => { done = true; if (cb.checked) await Set_.set('panoHinweisAus', true); s.close(); res(true); } }, 'Kamera öffnen'))),
+          { onclose: () => { if (!done) res(false); } });
+      });
+      if (!go) return;
+    }
+    let ok = false;
+    try { ok = MTApp.takePano(); } catch (e) { ok = false; }
+    if (!ok) toast('Keine Kamera-App gefunden.', 5000);
+  },
+  pend() { try { return JSON.parse((window.MTApp && MTApp.panoPending && MTApp.panoPending()) || '{}') || {}; } catch (e) { return {}; } },
+  clear() { try { if (window.MTApp && MTApp.panoClear) MTApp.panoClear(); } catch (e) { /* egal */ } },
+  /** Beim Zurückkehren: offener Start → Rückfrage. „Später“ (oder Schließen) fragt beim nächsten Zurückkehren wieder, „Nein“ verwirft. */
+  async check() {
+    if (Pano._open || Pano._busy || !window.MTApp || !MTApp.panoPending) return;
+    const p = Pano.pend();
+    if (!PanoCalc.offen(p)) { if (PanoCalc.verfallen(p)) Pano.clear(); return; }
+    Pano._open = true;
+    const wahl = await new Promise(res => {
+      let done = false;
+      const pick = v => () => { done = true; s.close(); res(v); };
+      const s = sheet('Panorama übernehmen?', h('div', null,
+        h('p', null, 'Hast du in der Kamera ein Panorama aufgenommen? Wähle es aus, dann kommt es zur Tour.'),
+        h('p', { class: 'muted small' }, 'Kamera geöffnet um ' + F.time(p.ts) + ' Uhr. Du kannst auch mehrere Fotos wählen.'),
+        h('div', { class: 'row end wrap' }, h('button', { class: 'btn', id: 'pano-nein', onclick: pick('nein') }, 'Nein'),
+          h('button', { class: 'btn', id: 'pano-spaeter', onclick: pick('spaeter') }, 'Später'),
+          h('button', { class: 'btn pri', id: 'pano-pick', onclick: pick('pick') }, 'Foto auswählen'))), { onclose: () => { if (!done) res('spaeter'); } });
+    });
+    Pano._open = false;
+    if (wahl === 'spaeter') return;
+    Pano.clear();
+    if (wahl === 'pick') await Pano.pick(p);
+  },
+  /** Fotoauswahl der Hülle (System-Fotoauswahl, mehrere erlaubt); übernommen wie Galerie-Fotos (Zeit aus dem Bild → Tour, Position aus der Spur). */
+  async pick(p) {
+    Pano._busy = true;
+    try {
+      const m = await Native.json('pickPhotos', { picker: true });
+      if (!m || !m.length) { toast('Kein Foto gewählt.'); return 0; }
+      const n = await Photos.addMeta(PanoCalc.rueckfall(m, p));
+      window.dispatchEvent(new Event('photos-changed'));
+      const panos = m.filter(x => PanoCalc.ist(x)).length;
+      toast(!n ? 'Schon vorhanden' : n === 1 ? (panos ? 'Panorama übernommen' : 'Foto übernommen') : n + ' Fotos übernommen', 4000);
+      return n;
+    } catch (e) { toast(e.message, 6000); return 0; }
+    finally { Pano._busy = false; }
   },
 };
 /* 2.7.1: HEVC-Videos (H.265) in H.264 umwandeln – die eigentliche Arbeit macht die Android-Hülle (VideoService).
@@ -433,7 +517,9 @@ Views['/photos'] = async root => {
     list.forEach(p => {
       const day = p.ts ? F.date(p.ts) : 'Ohne Datum';
       if (day !== last) { last = day; body.append(h('h3', { class: 'month' }, day)); grid = h('div', { class: 'pgrid' }); body.append(grid); }
-      grid.append(h('button', { class: 'pt', 'aria-label': 'Foto öffnen', onclick: () => Lightbox.open(list, list.indexOf(p)) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), p.lat != null ? null : h('i', { title: 'ohne Position' }, '∅')));
+      const pano = PanoCalc.ist(p);
+      grid.append(h('button', { class: 'pt', 'aria-label': pano ? 'Panorama öffnen' : 'Foto öffnen', onclick: () => Lightbox.open(list, list.indexOf(p)) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }),
+        pano ? h('b', { class: 'pt-pano', title: 'Panorama', html: Ico.svg('pano', 16) }) : null, p.lat != null ? null : h('i', { title: 'ohne Position' }, '∅')));
     });
   };
   const re = () => draw(); window.addEventListener('photos-changed', re);

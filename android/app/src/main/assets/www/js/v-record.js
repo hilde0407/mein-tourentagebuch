@@ -263,6 +263,7 @@ Views['/rec'] = async root => {
     const photoBtn = ib('rbtn', 'rphoto', 'camera', 'Foto', () => { MTApp.takePhoto(); });
     const pinBtn = ib('rbtn sm', 'rpin', 'pin', 'Pin setzen', () => addPin(st, false));
     const pinPhBtn = ib('rbtn sm', 'rpinph', 'chat', 'Foto mit Text', () => addPin(st, true));
+    const panoBtn = ib('rbtn sm', 'rpano', 'pano', 'Panorama', () => Pano.start());      // 2.8.0: Kamera-App öffnen, dort Modus „Panorama“ wählen
     const vidBtn = ib('rbtn', 'rvideo', 'video', 'Video', () => { if (MTApp.takeVideo) MTApp.takeVideo(); else toast('Video braucht die neueste App-Version.'); });
     // Beenden: Griff nach rechts schieben (ab 80 % des Wegs). Tastatur/Bildschirmleser: Enter bzw. Doppeltippen öffnet eine Rückfrage.
     const knob = h('button', { class: 'ss-knob', id: 'rstopknob', 'aria-label': 'Aufzeichnung beenden. Nach rechts schieben – oder mit Enter beziehungsweise Doppeltippen eine Rückfrage öffnen.', html: Ico.svg('stop', 24) + '<i aria-hidden="true">›</i>' });
@@ -272,7 +273,7 @@ Views['/rec'] = async root => {
     const routeLine = h('div', { class: 'rroute', id: 'rroute', hidden: true });
     box.append(mapEl, h('div', { class: 'pad' }, routeLine, big, grid, gps,
       h('div', { class: 'rbtns main' }, pause, photoBtn, vidBtn),
-      h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn),
+      h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn, panoBtn),
       h('div', { class: 'stopgap' }), stopBar));
     map = MapKit.create(mapEl, { zoom: 16 });
     line = L.polyline([], { color: '#e65100', weight: 5 }).addTo(map);

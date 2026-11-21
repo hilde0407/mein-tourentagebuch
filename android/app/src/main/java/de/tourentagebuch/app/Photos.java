@@ -22,7 +22,7 @@ import java.util.TimeZone;
 public final class Photos {
     private Photos() {}
 
-    public static final int MAX_PX = 2400, THUMB_PX = 480;
+    public static final int MAX_PX = ImagePlan.MAX_PX, THUMB_PX = ImagePlan.THUMB_PX;
 
     public static File dir(Context c) { File d = new File(c.getFilesDir(), "photos"); d.mkdirs(); return d; }
     public static File thumbDir(Context c) { File d = new File(c.getFilesDir(), "thumbs"); d.mkdirs(); return d; }
@@ -60,6 +60,7 @@ public final class Photos {
                     else { f.setTimeZone(TimeZone.getDefault()); ts = f.parse(dt).getTime(); }
                 } catch (Exception e) { ts = 0; }
             }
+            boolean exifTime = ts > 0;      // 2.8.0: Aufnahmezeit stand im Bild (sonst Rückfall: Dateidatum bzw. beim Panorama der Kamera-Start)
             if (forceTs > 0) ts = forceTs;
             if (ts == 0) ts = fallbackMs;
             double lat = Double.NaN, lon = Double.NaN;
@@ -71,30 +72,43 @@ public final class Photos {
             File out = new File(dir(c), id + ".jpg"), th = new File(thumbDir(c), id + ".jpg");
             int[] wh = new int[2];
             if (!out.exists() || !th.exists()) {
+                // 2.8.0: Größe nur aus den Kopfdaten lesen (inJustDecodeBounds), dann verkleinert dekodieren. Panoramen dürfen auf der langen Seite
+                // 4096 px behalten (sonst 2400). Läuft der Speicher trotzdem über, noch einmal mit halber Auflösung (höchstens zweimal).
                 BitmapFactory.Options bo = new BitmapFactory.Options();
                 bo.inJustDecodeBounds = true;
                 BitmapFactory.decodeFile(tmp.getAbsolutePath(), bo);
-                int big = Math.max(bo.outWidth, bo.outHeight);
-                int ss = 1;
-                while (big / (ss * 2) >= MAX_PX) ss *= 2;
-                BitmapFactory.Options o2 = new BitmapFactory.Options();
-                o2.inSampleSize = ss;
-                Bitmap bm = BitmapFactory.decodeFile(tmp.getAbsolutePath(), o2);
-                if (bm == null) throw new Exception("kein Bild");
-                Matrix m = new Matrix();
-                switch (orient) {
-                    case ExifInterface.ORIENTATION_ROTATE_90: m.postRotate(90); break;
-                    case ExifInterface.ORIENTATION_ROTATE_180: m.postRotate(180); break;
-                    case ExifInterface.ORIENTATION_ROTATE_270: m.postRotate(270); break;
-                    default: break;
+                int maxLong = ImagePlan.maxLong(bo.outWidth, bo.outHeight);
+                int ss = ImagePlan.sampleSize(bo.outWidth, bo.outHeight, maxLong, ImagePlan.MAX_DECODE_PIXELS);
+                Bitmap r = null;
+                for (int attempt = 0; attempt < 3 && r == null; attempt++) {
+                    Bitmap bm = null;
+                    try {
+                        BitmapFactory.Options o2 = new BitmapFactory.Options();
+                        o2.inSampleSize = ss;
+                        bm = BitmapFactory.decodeFile(tmp.getAbsolutePath(), o2);
+                        if (bm == null) throw new Exception("kein Bild");
+                        Matrix m = new Matrix();
+                        switch (orient) {
+                            case ExifInterface.ORIENTATION_ROTATE_90: m.postRotate(90); break;
+                            case ExifInterface.ORIENTATION_ROTATE_180: m.postRotate(180); break;
+                            case ExifInterface.ORIENTATION_ROTATE_270: m.postRotate(270); break;
+                            default: break;
+                        }
+                        float sc = (float) maxLong / Math.max(bm.getWidth(), bm.getHeight());
+                        if (sc < 1f) m.postScale(sc, sc);
+                        r = Bitmap.createBitmap(bm, 0, 0, bm.getWidth(), bm.getHeight(), m, true);
+                        if (r != bm) bm.recycle();
+                    } catch (OutOfMemoryError oom) {
+                        if (bm != null && !bm.isRecycled()) bm.recycle();
+                        r = null;
+                        ss *= 2;
+                        AppLog.log("Foto-Import: zu wenig Speicher bei " + bo.outWidth + "x" + bo.outHeight + ", nächster Versuch mit inSampleSize " + ss);
+                    }
                 }
-                float sc = (float) MAX_PX / Math.max(bm.getWidth(), bm.getHeight());
-                if (sc < 1f) m.postScale(sc, sc);
-                Bitmap r = Bitmap.createBitmap(bm, 0, 0, bm.getWidth(), bm.getHeight(), m, true);
-                if (r != bm) bm.recycle();
+                if (r == null) throw new Exception("Bild zu groß für den Speicher");
                 try (FileOutputStream fo = new FileOutputStream(out)) { r.compress(Bitmap.CompressFormat.JPEG, 86, fo); }
-                float s2 = (float) THUMB_PX / Math.max(r.getWidth(), r.getHeight());
-                Bitmap t = s2 < 1f ? Bitmap.createScaledBitmap(r, Math.round(r.getWidth() * s2), Math.round(r.getHeight() * s2), true) : r;
+                int[] ts2 = ImagePlan.thumbSize(r.getWidth(), r.getHeight());
+                Bitmap t = ts2[0] < r.getWidth() ? Bitmap.createScaledBitmap(r, ts2[0], ts2[1], true) : r;
                 try (FileOutputStream fo = new FileOutputStream(th)) { t.compress(Bitmap.CompressFormat.JPEG, 80, fo); }
                 wh[0] = r.getWidth(); wh[1] = r.getHeight();
                 if (t != r) t.recycle();
@@ -106,7 +120,7 @@ public final class Photos {
                 wh[0] = bo.outWidth; wh[1] = bo.outHeight;
             }
             JSONObject j = new JSONObject();
-            j.put("id", id).put("name", name == null ? id + ".jpg" : name).put("ts", ts).put("w", wh[0]).put("h", wh[1]).put("src", src == null ? "" : src);
+            j.put("id", id).put("name", name == null ? id + ".jpg" : name).put("ts", ts).put("w", wh[0]).put("h", wh[1]).put("src", src == null ? "" : src).put("exif", exifTime);
             if (!Double.isNaN(lat)) j.put("lat", lat).put("lon", lon);
             return j;
         } finally {

@@ -720,6 +720,32 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(Math.abs(P.textBreite('© OpenStreetMap-Mitwirkende', 20) - 274.82) < 0.01 && P.winAnsi('Ä–€') === '<C4963F>', 'Textbreite und WinAnsi');
 })();
 
+/* ---------- 2.8.0 Panorama (calc-pano.js): Erkennung am Seitenverhältnis, Verfall des Kamera-Starts nach 12 h, Rückfall ohne Aufnahmezeit ---------- */
+{
+  const P = require(W + 'calc-pano.js'), H = 3600000, now = Date.UTC(2026, 10, 21, 12, 0);
+  // Erkennung: deutlich breiter als 2,2 : 1 ja, übliche Formate (4:3, 3:2, 16:9, 2:1) und Hochformat nein; Videos und fehlende Größe nie
+  for (const [w, hh] of [[12000, 3000], [6000, 1200], [4096, 1024], [9000, 2000]]) ok(P.ist(w, hh), 'Panorama ' + w + '×' + hh);
+  for (const [w, hh] of [[4000, 3000], [3000, 2000], [1920, 1080], [2000, 1000], [3000, 12000], [0, 0], [null, 10], [10, undefined]]) ok(!P.ist(w, hh), 'kein Panorama ' + w + '×' + hh);
+  ok(P.ist({ w: 6000, h: 1200 }) && !P.ist({ w: 6000, h: 1200, video: true }) && !P.ist({}), 'als Objekt, Video nie');
+  ok(P.GRENZE === 2.2, 'Grenze 2,2');
+  // Verfall: 1 h und 11 h offen, 13 h und 2 Tage verfallen; kein Start, kaputter Start und Start weit in der Zukunft nicht offen
+  ok(P.offen({ ts: now - H }, now) && P.offen({ ts: now - 11 * H }, now) && P.offen({ ts: now - 60000 }, now), 'innerhalb von 12 h offen');
+  ok(!P.offen({ ts: now - 13 * H }, now) && !P.offen({ ts: now - 48 * H }, now), 'nach 12 h verfallen');
+  ok(P.verfallen({ ts: now - 13 * H }, now) && !P.verfallen({ ts: now - H }, now) && !P.verfallen({}, now) && !P.verfallen(null, now), 'verfallen nur bei vorhandenem, altem Start');
+  ok(!P.offen(null, now) && !P.offen({}, now) && !P.offen({ ts: 0 }, now) && !P.offen({ ts: 'x' }, now), 'ohne Start nichts offen');
+  ok(!P.offen({ ts: now + 2 * H }, now) && P.offen({ ts: now + 60000 }, now), 'Zukunft: nur kleine Uhrabweichung zählt');
+  ok(P.offen({ ts: Date.now() - H }), 'ohne now: jetzt');
+  // Rückfall: ohne Aufnahmezeit (exif false) Zeit und Ort des Kamera-Starts; mit Zeit oder alter Hülle (exif fehlt) unverändert; GPS im Bild bleibt
+  const pend = { ts: now - 2 * H, lat: 47.5, lon: 11.2 };
+  const r = P.rueckfall([{ id: 'a', ts: 5, exif: false }, { id: 'b', ts: 7, exif: true }, { id: 'c', ts: 9 }, { id: 'd', ts: 0, exif: false, lat: 46, lon: 10 }], pend);
+  ok(r[0].ts === pend.ts && r[0].lat === 47.5 && r[0].lon === 11.2 && r[0].pos === 'start', 'ohne Zeit: Start als Rückfall ' + JSON.stringify(r[0]));
+  ok(r[1].ts === 7 && r[1].lat == null && r[2].ts === 9 && r[2].lat == null, 'mit Zeit bzw. ohne Angabe unverändert');
+  ok(r[3].ts === pend.ts && r[3].lat === 46 && !r[3].pos, 'Position aus dem Bild bleibt');
+  const r2 = P.rueckfall([{ id: 'e', ts: 3, exif: false }], { ts: now });
+  ok(r2[0].ts === now && r2[0].lat == null, 'Start ohne Position: nur die Zeit');
+  ok(P.rueckfall([{ id: 'f', ts: 3, exif: false }], {})[0].ts === 3 && P.rueckfall(null, pend).length === 0, 'ohne Start nichts ändern');
+}
+
 /* ---------- An Meine Touren senden (calc-senden.js) ---------- */
 {
   const S = require(W + 'calc-senden.js');

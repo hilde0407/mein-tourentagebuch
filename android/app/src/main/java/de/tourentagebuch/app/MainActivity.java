@@ -1,6 +1,7 @@
 package de.tourentagebuch.app;
 
 import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.ContentUris;
 import android.content.Intent;
@@ -334,6 +335,56 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** 2.8.0: System-Fotoauswahl (MediaStore.ACTION_PICK_IMAGES, mehrere erlaubt). Fehlt sie, die bisherige Dokumentauswahl. */
+    private void pickImages(String id, int req) {
+        pending.put(req, id);
+        prefs.edit().putString("pick_kind_" + req, "photos").apply();
+        runOnUiThread(() -> {
+            try { startActivityForResult(pickImagesIntent(), req); }
+            catch (Exception e) {
+                pending.remove(req);
+                pick(id, REQ_PICK + 100, new String[]{"image/*"}, true, true);
+            }
+        });
+    }
+
+    @TargetApi(33)
+    private Intent pickImagesIntent() {
+        Intent i = new Intent(MediaStore.ACTION_PICK_IMAGES);
+        i.setType("image/*");
+        i.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.max(2, Math.min(20, MediaStore.getPickImagesMaxLimit())));
+        return i;
+    }
+
+    /** Letzte bekannte Position: aus der laufenden Aufzeichnung, sonst die letzte des Systems (GPS, dann Netz); NaN, wenn keine. */
+    private double[] lastPos() {
+        Recorder r = Recorder.get(MainActivity.this);
+        double la = r.store().lastLat(), lo = r.store().lastLon();
+        if (Double.isNaN(la)) {
+            try {
+                android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+                android.location.Location l = hasLoc() ? lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) : null;
+                if (l == null && hasLoc()) l = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+                if (l != null) { la = l.getLatitude(); lo = l.getLongitude(); }
+            } catch (Exception e) { /* ohne Position */ }
+        }
+        return new double[]{la, lo};
+    }
+
+    /** 2.8.0: Kamera-App normal öffnen (ohne Ausgabedatei), damit man dort selbst den Modus „Panorama“ wählen kann. Reihenfolge:
+        Kamera im Fotomodus (INTENT_ACTION_STILL_IMAGE_CAMERA) → Hauptbildschirm der Kamera-App (ACTION_MAIN, Kategorie APP_CAMERA)
+        → Startbildschirm der App, die Fotos aufnimmt (IMAGE_CAPTURE). Ein Aufnahme-Intent ohne Ausgabedatei wäre sinnlos (dort gibt es meist kein Panorama). */
+    private boolean openCameraApp() {
+        try { startActivity(new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)); return true; } catch (Exception e) { /* nächster Weg */ }
+        try { startActivity(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_CAMERA)); return true; } catch (Exception e) { /* nächster Weg */ }
+        try {
+            android.content.pm.ResolveInfo ri = getPackageManager().resolveActivity(new Intent(MediaStore.ACTION_IMAGE_CAPTURE), PackageManager.MATCH_DEFAULT_ONLY);
+            Intent li = ri != null && ri.activityInfo != null ? getPackageManager().getLaunchIntentForPackage(ri.activityInfo.packageName) : null;
+            if (li != null) { startActivity(li); return true; }
+        } catch (Exception e) { /* keine Kamera-App */ }
+        return false;
+    }
+
     /* ---------- Brücke zur Weboberfläche ---------- */
     public class Bridge {
         @JavascriptInterface public String version() { return appVersion(); }
@@ -421,6 +472,40 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** 2.8.0: Panorama – Start merken (Zeit, letzte Position; übersteht auch ein Prozessende) und die Kamera-App öffnen. false = keine Kamera-App. */
+        @JavascriptInterface
+        public boolean takePano() {
+            double[] p = lastPos();
+            prefs.edit().putLong("pend_pano_ts", System.currentTimeMillis()).putLong("pend_pano_lat", Double.doubleToLongBits(p[0]))
+                    .putLong("pend_pano_lon", Double.doubleToLongBits(p[1])).commit();
+            final boolean[] ok = {false};
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            runOnUiThread(() -> { try { ok[0] = openCameraApp(); } finally { done.countDown(); } });
+            try { done.await(3, TimeUnit.SECONDS); } catch (InterruptedException e) { /* weiter */ }
+            if (!ok[0] && done.getCount() == 0) {
+                prefs.edit().remove("pend_pano_ts").remove("pend_pano_lat").remove("pend_pano_lon").apply();
+                return false;
+            }
+            return true;
+        }
+
+        /** Offener Panorama-Start als JSON {ts, lat?, lon?} oder {} (Verfall nach 12 h entscheidet die Oberfläche). */
+        @JavascriptInterface
+        public String panoPending() {
+            long ts = prefs.getLong("pend_pano_ts", 0);
+            if (ts <= 0) return "{}";
+            try {
+                JSONObject o = new JSONObject().put("ts", ts);
+                double la = Double.longBitsToDouble(prefs.getLong("pend_pano_lat", Double.doubleToLongBits(Double.NaN)));
+                double lo = Double.longBitsToDouble(prefs.getLong("pend_pano_lon", Double.doubleToLongBits(Double.NaN)));
+                if (!Double.isNaN(la) && !Double.isNaN(lo)) o.put("lat", la).put("lon", lo);
+                return o.toString();
+            } catch (Exception e) { return "{}"; }
+        }
+
+        @JavascriptInterface
+        public void panoClear() { prefs.edit().remove("pend_pano_ts").remove("pend_pano_lat").remove("pend_pano_lon").apply(); }
+
         @JavascriptInterface
         public boolean takeVideo() {
             Recorder r = Recorder.get(MainActivity.this);
@@ -449,16 +534,8 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean takePhoto() {
-            Recorder r = Recorder.get(MainActivity.this);
-            double la = r.store().lastLat(), lo = r.store().lastLon();
-            if (Double.isNaN(la)) {
-                try {
-                    android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-                    android.location.Location l = hasLoc() ? lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) : null;
-                    if (l == null && hasLoc()) l = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                    if (l != null) { la = l.getLatitude(); lo = l.getLongitude(); }
-                } catch (Exception e) { /* ohne Position */ }
-            }
+            double[] pos = lastPos();
+            double la = pos[0], lo = pos[1];
             final File f = new File(PhotoProvider.camDir(MainActivity.this), "cam_" + System.currentTimeMillis() + ".jpg");
             try { f.createNewFile(); } catch (Exception e) { return false; }
             prefs.edit().putString("pend_file", f.getName()).putLong("pend_lat", Double.doubleToLongBits(la))
@@ -493,7 +570,11 @@ public class MainActivity extends Activity {
             case "http": return httpCall(a);
             case "download": return download(a);
             case "pickFiles": pick(id, REQ_PICK, new String[]{"*/*"}, true, false); return null;
-            case "pickPhotos": pick(id, REQ_PICK + 100, new String[]{"image/*"}, true, true); return null;
+            case "pickPhotos":
+                // 2.8.0: {picker:true} (Panorama übernehmen) nimmt die System-Fotoauswahl (Android 13+, neueste Fotos zuerst, ohne Berechtigung); sonst wie bisher
+                if (a != null && a.optBoolean("picker") && Build.VERSION.SDK_INT >= 33) pickImages(id, REQ_PICK + 200);
+                else pick(id, REQ_PICK + 100, new String[]{"image/*"}, true, true);
+                return null;
             case "zeppLogin": {
                 pending.put(REQ_ZEPP, id);
                 runOnUiThread(() -> {

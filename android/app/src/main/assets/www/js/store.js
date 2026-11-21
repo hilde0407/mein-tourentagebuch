@@ -228,7 +228,7 @@ const Photos = {
     for (const m of list) {
       const old = await DB.get('photos', m.id);
       if (old) continue;
-      await DB.put('photos', { id: m.id, name: m.name, ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: m.src || '', video: !!m.video, dur: m.dur || 0, tour: '', pos: m.lat != null ? 'exif' : 'none', note: '' });
+      await DB.put('photos', { id: m.id, name: m.name, ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: m.src || '', video: !!m.video, dur: m.dur || 0, tour: '', pos: m.lat != null ? (m.pos || 'exif') : 'none', note: '' });      // 2.8.0: pos 'start' = Standort beim Kamera-Start (Panorama ohne Aufnahmezeit)
       n++;
     }
     await Photos.assignAll();
@@ -274,7 +274,7 @@ const Photos = {
       }
       p.tour = t.id;
       if (o) p.tzOff = o; else delete p.tzOff;      // erkannte Zeitzonen-Abweichung, nur zur Nachvollziehbarkeit
-      if (p.lat == null || p.pos === 'track') {
+      if (p.lat == null || p.pos === 'track' || p.pos === 'start') {
         const pts = tcache[t.id] || (tcache[t.id] = await Tours.points(t.id));
         const g = Geo.at(pts, ts - o, margin);
         if (g) { p.lat = g.lat; p.lon = g.lon; p.pos = 'track'; }

@@ -107,11 +107,12 @@ async function boot() {
   window.addEventListener('mtshared', handleShared);
   window.addEventListener('mtphoto', handlePhotoQueue);
   window.addEventListener('mtvideo', () => Videos.poll());      // 2.7.1: Video-Umwandlung im Hintergrund meldet sich
+  window.addEventListener('mtresume', () => Pano.check());      // 2.8.0: zurück aus der Kamera-App – Panorama übernehmen?
   await Nav.render();
   setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
   setTimeout(autoAbgleich, 6000);
   setTimeout(() => Senden.nachholen().catch(e => console.error('Senden', e)), 9000);      // 2.5.0: vorgemerkte Aufzeichnungen noch einmal versuchen (nur wenn eingeschaltet)      // 2.2.0: still im Hintergrund, nach dem Start und nach der Neuberechnung; nur wenn eingeschaltet
-  setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); Videos.poll(); }, 600);      // Videos.poll: Ergebnisse, die fertig wurden, während die App zu war
+  setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); Videos.poll(); Pano.check(); }, 600);      // Pano.check: auch nach Prozessende während der Kamera      // Videos.poll: Ergebnisse, die fertig wurden, während die App zu war
 }
 /** „Beim Öffnen automatisch abgleichen“ (Vorgabe aus): bremst den Start nicht (6 s Abstand, wartet die Neuberechnung ab), stört keine Aufzeichnung, meldet nur Neues oder Fehler kurz. */
 async function autoAbgleich() {

@@ -332,6 +332,7 @@ button.ygoal:active{background:var(--soft)}
 .rbtns.main .rbtn{min-height:84px;font-size:1.05rem}
 .rbtn.pause{background:var(--ink);color:var(--bg)}
 .rbtns.sub{margin-top:10px}.rbtn.sm{min-height:52px;flex-direction:row;gap:8px;font-size:.94rem}.rbtn.sm span svg{width:22px;height:22px}
+.rbtns.sub .rbtn.sm{flex-direction:column;gap:4px;min-height:64px;font-size:.9rem;line-height:1.15;text-align:center}      /* 2.8.0: drei Knöpfe (Pin, Foto mit Text, Panorama) */
 .stopgap{height:18px}
 .rbtn.pause{position:relative;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;gap:2px;padding-top:16px}
 .rbtn.pause .pl{font-weight:700}.rbtn.pause .ph{font-size:.78rem;font-weight:500;opacity:.9}
@@ -368,6 +369,13 @@ button.ygoal:active{background:var(--soft)}
 .photos .month:first-child{margin-top:6px}
 .lb{position:fixed;inset:0;z-index:150;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;touch-action:pan-y;--focus:#f2c230}
 .lb-img{max-width:100%;max-height:100%;object-fit:contain}
+/* 2.8.0: Panorama – auf Höhe (quer schiebbar) oder ganz */
+.lb-pan{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}.lb-pan[hidden]{display:none}
+.lb.panofit .lb-pan{overflow-x:auto;overflow-y:hidden;justify-content:flex-start;touch-action:pan-x;overscroll-behavior-x:contain}
+.lb.panofit .lb-pan .lb-img{height:100%;width:auto;max-width:none;max-height:none;flex:none}
+.lb-pb{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 12px;margin-right:4px;border-radius:22px;border:1.5px solid #fff9;background:#0006;color:#fff;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;white-space:nowrap}.lb-pb[hidden]{display:none}.lb-pb:active{background:#fff3}
+.tag-pano{display:inline-flex;align-items:center;gap:5px;padding:2px 10px 2px 7px;border-radius:12px;background:var(--soft);color:var(--ink);font-weight:600;font-size:.9rem;vertical-align:middle}
+.pt-pano{position:absolute;left:5px;top:4px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 0 2px #000)}
 .lb-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(env(safe-area-inset-top) + 4px) 6px 4px 16px;background:linear-gradient(#000b,transparent);color:#fff;z-index:2;font-weight:600;font-variant-numeric:tabular-nums}
 .lb-top .ico{color:#fff}.lb .ico:active{background:#fff3}
 .lb-nav{position:absolute;top:50%;transform:translateY(-50%);display:grid;place-items:center;background:#0008;color:#fff;border:0;width:48px;height:68px;font-size:2rem;cursor:pointer;z-index:2}.lb-nav.l{left:0;border-radius:0 12px 12px 0}.lb-nav.r{right:0;border-radius:12px 0 0 12px}
@@ -382,7 +390,7 @@ button.ygoal:active{background:var(--soft)}
 .stl .stev:last-child .sbody{border-left-color:transparent}
 .stl .stt{font-weight:600;display:flex;align-items:center;gap:6px}.stl .splc{font-size:.84rem;min-height:1em}
 .sph-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.sph{position:relative;border:0;padding:0;background:none;border-radius:var(--r-s);cursor:pointer}.sph img{height:92px;min-width:64px;background:var(--soft);border-radius:var(--r-s);display:block}
+.sph{position:relative;border:0;padding:0;background:none;border-radius:var(--r-s);cursor:pointer}.sph img{height:92px;min-width:64px;max-width:220px;object-fit:cover;background:var(--soft);border-radius:var(--r-s);display:block}
 .sph b{position:absolute;right:3px;bottom:3px;display:inline-flex;align-items:center;gap:3px;background:#000b;color:#fff;border-radius:10px;padding:1px 7px;font-size:.75rem}.sph b svg{width:12px;height:12px}
 .scm{font-size:.9rem;margin-top:6px}.scm2{margin:8px 0;padding:6px 6px 8px 12px;border-radius:var(--r);background:var(--soft)}
 

@@ -85,6 +85,7 @@ const ICONS = {
   nordic: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-1 4-4.5 4M11.5 12l4.5 3.5 4-1M3 20h8M13 18.5h8M12 8l5 3M8 10l4-2"/>',
   climb: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 3 1 5-2 5M13 8l4 2 2 5M10 11L6 13"/>',
   dot: '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>',
+  pano: '<path d="M2.5 7c6.3-1.8 12.7-1.8 19 0v10c-6.3-1.8-12.7-1.8-19 0z"/><path d="M5.5 14.5l3.5-3.5 2.5 2.5 2-2 4.5 4"/>',      // 2.8.0: Panorama (breites, leicht gewölbtes Bild mit Bergen)
 };
 /* Zeichen, die in Texten der Ansichten vorkommen → Name des Symbols. Längere Folgen zuerst. */
 const ICON_CHARS = {
@@ -94,7 +95,7 @@ const ICON_CHARS = {
   '■': 'stop', '⏹': 'stop', '▶': 'play', '＋': 'plus', '←': 'back', '‹': 'prev', '›': 'next', '⋮': 'dots', 'ⓘ': 'info', '⬆': 'up',
   '🧳': 'bag', '📁': 'folder', '📂': 'folder', '📄': 'file', '⌚': 'watch', '💡': 'bulb', '🛠': 'wrench', '🚁': 'flight', '🎞': 'film', '✨': 'spark',
   '💻': 'laptop', '🖧': 'server', '☁': 'cloud', '👁': 'eye', '🙈': 'eyeoff', '📅': 'calendar', '🔊': 'speaker', '📡': 'signal', '🔋': 'battery', '🗺': 'map',
-  '◎': 'locate', '⟲': 'loop', '⇄': 'swap', '🏁': 'flag', '🎯': 'target', '💬': 'chat', '🔥': 'flame', '🟢': 'dot', '🟠': 'dot',
+  '◎': 'locate', '⟲': 'loop', '⇄': 'swap', '🏁': 'flag', '🎯': 'target', '💬': 'chat', '🔥': 'flame', '🟢': 'dot', '🟠': 'dot', '🌄': 'pano',
   // Sportarten
   '🥾': 'peak', '🚶': 'walk', '🚵': 'bike', '🚴': 'bike', '🚲': 'bike', '⚡': 'bolt', '🏃': 'run', '⛷': 'ski', '🏂': 'skialpin', '🎿': 'skitour', '❄': 'nordic', '🧗': 'climb',
 };

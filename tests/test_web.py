@@ -16,7 +16,7 @@ window.MTApp={
  points:()=>JSON.stringify([[47.5,11.2],[47.501,11.201]]), takeFinished:()=>window.__gpx||'', discardRecording(){window.__rec.state='idle';window.__rec.unsent=false},
  startRecording(s,n){window.__rec=Object.assign(window.__rec,{state:'recording',sport:s,name:n,start:Date.now(),count:5,dist_m:120,up_m:0,down_m:0,active_s:61,lat:47.5,lon:11.2,fix_age_s:1,fix_acc_m:5});window.__calls.push(['start',s,n])},
  pauseRecording(){window.__rec.state='paused'}, resumeRecording(){window.__rec.state='recording'},
- stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true;window.__routeName='';window.__routePts=''},      /* wie die Hülle: Beenden löscht die Route (Navi.clear) */ takePhoto(){window.__calls.push(['photo']);return true}, takeVideo(){window.__calls.push(['video']);return true}, setJunctions(t){window.__calls.push(['junc',t.split(';').length])}, backups:()=>JSON.stringify(window.__baks||[]), backupGpx:()=>window.__bakgpx||'',
+ stopRecording(n){window.__rec.state='finished';window.__rec.unsent=true;window.__routeName='';window.__routePts=''},      /* wie die Hülle: Beenden löscht die Route (Navi.clear) */ takePhoto(){window.__calls.push(['photo']);return true}, takeVideo(){window.__calls.push(['video']);return true}, takePano(){window.__calls.push(['pano']);if(window.__panoOk===false)return false;window.__pano={ts:Date.now(),lat:47.5,lon:11.2};return true}, panoPending:()=>JSON.stringify(window.__pano||{}), panoClear(){window.__pano=null}, setJunctions(t){window.__calls.push(['junc',t.split(';').length])}, backups:()=>JSON.stringify(window.__baks||[]), backupGpx:()=>window.__bakgpx||'',
  setRoute(p,n){window.__calls.push(['route',n,p.split(';').length]);window.__routeName=n;window.__routePts=p}, routeInfo:()=>JSON.stringify(window.__routeName?{has:true,name:window.__routeName,points:3}:{}), routePoints:()=>JSON.stringify(window.__routeName&&window.__routePts?window.__routePts.split(';').map(x=>x.split(',').map(Number)):[]), clearRoute(){window.__routeName='';window.__routePts=''}, setGuide(){}, guideTest(){}, haptic(){window.__haptic=(window.__haptic||0)+1},
  takeShared:()=>'[]', takeSharedText:()=>'[]', takePhotoQueue:()=>'[]', openBatterySettings(){}, openUrl(u){window.__opened=u}, shareText(){}, logText:()=>'log',
  call(id,m,a){ a=JSON.parse(a); setTimeout(async()=>{ let r; try{
@@ -26,7 +26,7 @@ window.MTApp={
    else if(m==='perm') r={granted:true}; else if(m==='saveFile'){ r='Download/Tourentagebuch/'+a.name; window.__saved=a; }
    else if(m==='storage') r={photos:0,bytes:0}; else if(m==='galleryRange') r=window.__gallery||[];
    else if(m==='importUris') r=(a.uris||[]).map((u,i)=>({id:'g'+i+u.length,name:'g.jpg',ts:window.__gts||0,w:10,h:10,src:'galerie'}));
-   else if(m==='pickPhotos') r=[{id:'p1aaaaaa',name:'a.jpg',ts:1700000300000,w:10,h:10,src:'galerie',lat:47.4,lon:11.1}];
+   else if(m==='pickPhotos'){ window.__pickArgs=a; window.__pickN=(window.__pickN||0)+1; r=window.__pickPh||[{id:'p1aaaaaa',name:'a.jpg',ts:1700000300000,w:10,h:10,src:'galerie',lat:47.4,lon:11.1}]; }
    else if(m==='pickFiles') r=window.__pick||[];
    else r=[];
    }catch(e){ r={status:599,headers:{},body:''}; }
@@ -190,6 +190,124 @@ def videos_271(pg):
     # aufräumen: Nachstellung zurück, Testvideos weg
     pg.unroute("**/photo/*v.mp4*")
     pg.evaluate("ids => { window.MTApp.call = window.__vcall0; return Promise.all(ids.map(id => DB.del('photos', id))); }", [vid1, vid2])
+
+
+def panorama_280(pg):
+    """2.8.0: Panorama – Knopf in der Aufnahme, Hinweis (mit „Nicht mehr zeigen“), Rückkehr → „Panorama übernehmen?“, Auswahl, Später/Nein, Verfall,
+    Rückfall ohne Aufnahmezeit, Vollbild mit sehr breitem Bild (auf Höhe quer schiebbar / ganz), Kennzeichen in Details und Raster."""
+    import io
+    from PIL import Image
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    t0 = 1700000000000
+    pg.evaluate("window.__rec.state = 'idle'; window.__rec.unsent = false; window.__pano = null; window.__panoOk = true; window.__pickPh = null; Set_.set('panoHinweisAus', false)")
+    go(pg, "#/rec", ".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime")
+    pg.wait_for_selector("#rpano"); assert "Panorama" in pg.inner_text("#rpano")
+    n_pano = lambda: pg.evaluate("__calls.filter(c => c[0] === 'pano').length")
+    n0 = n_pano()
+    # 1. Hinweis: Abbrechen öffnet nichts, „Kamera öffnen“ startet die Kamera-App (Start gemerkt)
+    pg.locator("#rpano").scroll_into_view_if_needed(); pg.click("#rpano"); pg.wait_for_selector(".sheet[aria-label='Panorama aufnehmen']")
+    tx = pg.inner_text(".sheet[aria-label='Panorama aufnehmen']")
+    assert "Modus Panorama" in tx and "zurückkehren" in tx and "Nicht mehr zeigen" in tx, tx
+    pg.get_by_role("button", name="Abbrechen", exact=True).click(); pg.wait_for_selector(".sheet", state="detached")
+    assert n_pano() == n0 and not pg.evaluate("window.__pano")
+    pg.click("#rpano"); pg.wait_for_selector("#pano-go"); pg.click("#pano-go"); pg.wait_for_selector(".sheet", state="detached")
+    pg.wait_for_function("n => __calls.filter(c => c[0] === 'pano').length === n + 1", arg=n0)
+    assert pg.evaluate("!!window.__pano && window.__pano.ts > 0") and pg.evaluate("Set_.get('panoHinweisAus')") is False
+    # … mit „Nicht mehr zeigen“: danach direkt zur Kamera
+    pg.click("#rpano"); pg.wait_for_selector("#pano-go"); pg.click("label.sw:has(#pano-nie)"); assert pg.is_checked("#pano-nie")
+    pg.click("#pano-go"); pg.wait_for_function("Set_.get('panoHinweisAus') === true"); pg.wait_for_selector(".sheet", state="detached")
+    pg.click("#rpano"); pg.wait_for_function("n => __calls.filter(c => c[0] === 'pano').length === n + 3", arg=n0)
+    pg.wait_for_timeout(300); assert pg.locator(".sheet").count() == 0, "kein Hinweis mehr"
+    # keine Kamera-App: Meldung, nichts gemerkt
+    pg.evaluate("window.__pano = null; window.__panoOk = false"); leise(); pg.click("#rpano")
+    assert "Keine Kamera-App" in toast_text(pg, "Keine Kamera-App"); assert not pg.evaluate("window.__pano")
+    pg.evaluate("window.__panoOk = true"); pg.click("#rpano"); pg.wait_for_function("!!window.__pano")
+
+    # 2. Zurück aus der Kamera (mtresume) → Rückfrage. „Später“ lässt den Start offen, beim nächsten Zurückkehren wird wieder gefragt
+    pg.evaluate("window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_selector(".sheet[aria-label='Panorama übernehmen?']")
+    assert "Foto auswählen" in pg.inner_text(".sheet[aria-label='Panorama übernehmen?']")
+    pg.click("#pano-spaeter"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("!!window.__pano"), "Später: Start bleibt"
+    # zweimal schnell hintereinander zurück: nur eine Rückfrage
+    pg.evaluate("window.dispatchEvent(new Event('mtresume')); window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_selector(".sheet[aria-label='Panorama übernehmen?']")
+    pg.wait_for_timeout(200); assert pg.locator(".sheet[aria-label='Panorama übernehmen?']").count() == 1
+    # 3. „Foto auswählen“: System-Fotoauswahl, mehrere Fotos; mit Aufnahmezeit → Tour und Position aus der Spur, ohne → Zeit und Ort des Kamera-Starts
+    start = pg.evaluate("window.__pano.ts")
+    pg.evaluate("t0 => { window.__pickPh = [{ id: 'pa11aa22bb33', name: 'PANO_1.jpg', ts: t0 + 300000, w: 4096, h: 1024, src: 'galerie', exif: true }, { id: 'pa44cc55dd66', name: 'PANO_2.jpg', ts: 1234, w: 4096, h: 900, src: 'galerie', exif: false }]; window.__pickN = 0; }", t0)
+    leise(); pg.click("#pano-pick")
+    assert "2 Fotos übernommen" in toast_text(pg, "übernommen")
+    assert pg.evaluate("window.__pickArgs && window.__pickArgs.picker === true"), "System-Fotoauswahl angefordert"
+    assert not pg.evaluate("window.__pano"), "bedient: Start erledigt"
+    a, b2, tid = pg.evaluate("async () => [await DB.get('photos', 'pa11aa22bb33'), await DB.get('photos', 'pa44cc55dd66'), (await Tours.list()).find(t => t.name === 'Hüttenrunde').id]")
+    assert a["tour"] == tid and a["pos"] == "track" and abs(a["lat"] - 47.0) < 0.05 and a["ts"] == t0 + 300000, a
+    assert b2["ts"] == start and b2["lat"] == 47.5 and b2["lon"] == 11.2 and b2["pos"] == "start", b2
+    # ein Panorama allein: eigene Meldung; schon vorhandenes: „Schon vorhanden“
+    pg.click("#rpano"); pg.wait_for_function("!!window.__pano"); pg.evaluate("window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_selector("#pano-pick")
+    pg.evaluate("window.__pickPh = [{ id: 'pa77ee88ff99', name: 'PANO_3.jpg', ts: 1700000400000, w: 4096, h: 1000, src: 'galerie', exif: true }]")
+    leise(); pg.click("#pano-pick"); assert "Panorama übernommen" in toast_text(pg, "Panorama übernommen")
+    pg.click("#rpano"); pg.wait_for_function("!!window.__pano"); pg.evaluate("window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_selector("#pano-pick")
+    leise(); pg.click("#pano-pick"); assert "Schon vorhanden" in toast_text(pg, "Schon vorhanden")
+    # nichts gewählt
+    pg.click("#rpano"); pg.wait_for_function("!!window.__pano"); pg.evaluate("window.__pickPh = []; window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_selector("#pano-pick")
+    leise(); pg.click("#pano-pick"); assert "Kein Foto gewählt" in toast_text(pg, "Kein Foto gewählt")
+    # 4. „Nein“: verworfen, keine Auswahl
+    pg.click("#rpano"); pg.wait_for_function("!!window.__pano"); pg.evaluate("window.__pickN = 0; window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_selector("#pano-nein")
+    pg.click("#pano-nein"); pg.wait_for_selector(".sheet", state="detached")
+    assert not pg.evaluate("window.__pano") and pg.evaluate("window.__pickN") == 0
+    pg.evaluate("window.dispatchEvent(new Event('mtresume'))"); pg.wait_for_timeout(400); assert pg.locator(".sheet").count() == 0, "nach Nein keine Frage mehr"
+    # 5. Verfall: Start vor 13 Stunden → keine Frage, still gelöscht
+    pg.evaluate("window.__pano = { ts: Date.now() - 13 * 3600000, lat: 47.5, lon: 11.2 }; window.dispatchEvent(new Event('mtresume'))")
+    pg.wait_for_function("!window.__pano", timeout=5000); pg.wait_for_timeout(300); assert pg.locator(".sheet").count() == 0
+    # 6. nach Prozessende (App neu gestartet): Prüfung beim Start; Schließen mit ✕ = später
+    pg.evaluate("window.__pano = { ts: Date.now() - 3 * 3600000 }; Pano.check()"); pg.wait_for_selector(".sheet[aria-label='Panorama übernehmen?']")
+    pg.click(".sheet[aria-label='Panorama übernehmen?'] .sheet-h button"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("!!window.__pano"); pg.evaluate("window.__pano = null; window.__pickPh = null")
+    pg.evaluate("window.__rec.state = 'idle'; window.__rec.unsent = false; Set_.set('panoHinweisAus', false)")
+
+    # 7. Vollbild mit sehr breitem Bild (6000 × 1200): auf Höhe, quer schiebbar, umschaltbar auf „ganz“; normales Foto ohne Umschalter
+    def jpeg(w, h, farbe):
+        im = Image.new("RGB", (w, h), farbe)
+        for x in range(0, w, 500): im.paste((255, 255, 255), (x, 0, x + 20, h))
+        bb = io.BytesIO(); im.save(bb, "JPEG", quality=70); return bb.getvalue()
+    pano_jpg, norm_jpg = jpeg(6000, 1200, (40, 90, 160)), jpeg(800, 600, (120, 140, 60))
+    pg.route("**/photo/panotest*", lambda r: r.fulfill(status=200, body=pano_jpg, content_type="image/jpeg"))
+    pg.route("**/thumb/panotest*", lambda r: r.fulfill(status=200, body=pano_jpg, content_type="image/jpeg"))
+    pg.route("**/photo/normtest*", lambda r: r.fulfill(status=200, body=norm_jpg, content_type="image/jpeg"))
+    pg.evaluate("""async () => { await DB.put('photos', { id: 'normtest0001', name: 'n.jpg', ts: 1700000500000, w: 800, h: 600, src: 'galerie', tour: '', pos: 'none' });
+      await DB.put('photos', { id: 'panotest0001', name: 'PANO.jpg', ts: 1700000600000, w: 6000, h: 1200, src: 'galerie', tour: '', pos: 'none' }); }""")
+    go(pg, "#/photos", ".photos")
+    pg.wait_for_selector(".pt[aria-label='Panorama öffnen'] .pt-pano")
+    fit = pg.evaluate("getComputedStyle(document.querySelector(\".pt[aria-label='Panorama öffnen'] img\")).objectFit")
+    assert fit == "cover", fit
+    pg.evaluate("async () => Lightbox.open([await DB.get('photos', 'normtest0001'), await DB.get('photos', 'panotest0001')], 1)")
+    pg.wait_for_function("() => { const i = document.querySelector('.lb-img'); return i && i.complete && i.naturalWidth === 6000; }", timeout=20000)
+    pg.wait_for_selector("#lb-pano:not([hidden])"); assert "Ganz anzeigen" in pg.inner_text("#lb-pano")
+    m = pg.evaluate("""() => { const i = document.querySelector('img.lb-img'), p = document.querySelector('#lb-pan'), r = i.getBoundingClientRect();
+      return { h: r.height, w: r.width, sw: p.scrollWidth, cw: p.clientWidth, sl: p.scrollLeft, fit: document.querySelector('.lb').classList.contains('panofit'), vh: innerHeight, vw: innerWidth }; }""")
+    assert m["fit"] and m["h"] >= m["vh"] * 0.9 and m["w"] > m["vw"] * 5 and m["sw"] > m["cw"] + 1000, m
+    assert abs(m["w"] / m["h"] - 5) < 0.2, ("Seitenverhältnis bleibt", m)
+    pg.wait_for_function("document.querySelector('#lb-pan').scrollLeft > 200", timeout=5000)      # beginnt in der Mitte
+    pg.evaluate("document.querySelector('#lb-pan').scrollLeft = 0"); assert pg.evaluate("document.querySelector('#lb-pan').scrollLeft") == 0
+    pg.mouse.move(195, 400); pg.mouse.wheel(1500, 0); pg.wait_for_function("document.querySelector('#lb-pan').scrollLeft > 100", timeout=5000)      # quer schieben
+    tb = pg.evaluate("() => { const r = document.querySelector('#lb-pano').getBoundingClientRect(); return [r.left, r.right, r.height, innerWidth]; }")
+    assert tb[0] > 40 and tb[1] <= tb[3] and tb[2] >= 44, ("Umschalter passt in die Kopfzeile", tb)
+    # „Ganz anzeigen“: ganzes Bild auf Breite; zurück „Auf Höhe“
+    pg.click("#lb-pano"); pg.wait_for_function("!document.querySelector('.lb').classList.contains('panofit')")
+    m2 = pg.evaluate("() => { const r = document.querySelector('img.lb-img').getBoundingClientRect(); return { w: r.width, h: r.height, vw: innerWidth }; }")
+    assert m2["w"] <= m2["vw"] + 1 and m2["w"] > m2["vw"] * 0.9 and abs(m2["w"] / m2["h"] - 5) < 0.2, m2
+    assert "Auf Höhe" in pg.inner_text("#lb-pano")
+    pg.click("#lb-pano"); pg.wait_for_function("document.querySelector('.lb').classList.contains('panofit')")
+    # Details: Kennzeichen „Panorama“
+    pg.click(".lb [aria-label=Details]"); pg.wait_for_selector("#lb-panotag"); assert "Panorama" in pg.inner_text("#lb-panotag") and "6000 × 1200" in pg.inner_text("#lb-panotag")
+    zu(pg)
+    # normales Foto: kein Umschalter, normale Darstellung
+    pg.click(".lb-nav.l"); pg.wait_for_function("() => { const i = document.querySelector('.lb-img'); return i && i.complete && i.naturalWidth === 800; }", timeout=20000)
+    assert pg.evaluate("document.querySelector('#lb-pano').hidden && !document.querySelector('.lb').classList.contains('panofit')")
+    m3 = pg.evaluate("() => { const r = document.querySelector('img.lb-img').getBoundingClientRect(); return { w: r.width, vw: innerWidth }; }")
+    assert m3["w"] <= m3["vw"] + 1, m3
+    pg.click(".lb-nav.l"); pg.wait_for_selector("#lb-pano:not([hidden])")      # wieder das Panorama
+    pg.evaluate("window.__lightbox && window.__lightbox.close()")
+    pg.unroute("**/photo/panotest*"); pg.unroute("**/thumb/panotest*"); pg.unroute("**/photo/normtest*")
+    pg.evaluate("async () => { for (const id of ['pa11aa22bb33', 'pa44cc55dd66', 'pa77ee88ff99', 'normtest0001', 'panotest0001']) await DB.del('photos', id); }")
 
 
 def von_aussen(pg):
@@ -2740,6 +2858,7 @@ def main():
         von_aussen(pg)
         aufnahme_270(pg)
         videos_271(pg)
+        panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
 
