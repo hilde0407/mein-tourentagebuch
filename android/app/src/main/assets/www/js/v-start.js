@@ -111,7 +111,8 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
   };
   const used = [...new Set(all.filter(t => inYear(t, yr)).map(t => t.sport))];
   let sport = '';      // nur Seitenzustand: filtert allein diesen Abschnitt
-  const chips = UI.chips([]), box = h('div');
+  const chips = UI.chips([]), box = h('div'), goalBox = h('div', { class: 'ygoals' });
+  let mine = [];
   const draw = () => {
     const ok = t => !sport || t.sport === sport;
     const cur = all.filter(t => inYear(t, yr) && ok(t)), prev = all.filter(t => tillToday(t, yr - 1) && ok(t));
@@ -130,12 +131,15 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
       box.append(h('div', { class: 'bars', role: 'img', 'aria-label': 'Strecke je Monat' }, mon.map((v, i) => h('div', { class: 'bar' + (i === nowM ? ' now' : '') },
         h('i', { style: { height: Math.max(v ? 6 : 2, v / mx * 100) + '%' }, title: F.km(v) }), h('small', null, 'JFMAMJJASOND'[i])))));
     } else box.append(h('p', { class: 'muted' }, yr + ' steht noch keine Tour im Tagebuch.'));
+    // Ziele folgen der Auswahl: „Alle“ zeigt alle Ziele, eine Sportart nur Ziele, die genau für sie (oder ihre Gruppe) gelten – ein Ziel „Alle Sportarten“ zählt auch andere Touren und würde neben den Zahlen oben falsch wirken
+    goalBox.innerHTML = '';
+    const shown = sport ? mine.filter(g => g.sport && Ziele.sportPasst(g, sport)) : mine;
+    if (shown.length) goalBox.append(...shown.slice(0, 3).map(g => Goals.row(g, all, now)), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, shown.length > 3 ? 'Alle ' + shown.length + ' Ziele' : 'Ziele ändern'));
+    else if (mine.length) goalBox.append(h('p', { class: 'muted small', id: 'ynogoal' }, 'Kein Ziel nur für diese Sportart. Die Ziele für alle Sportarten siehst du unter „Alle“.'), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, 'Ziele ändern'));
+    else goalBox.append(h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));
   };
+  mine = Ziele.fuerJahr(await Goals.list(), yr, yr).sort((a, b) => (a.period === 'week') - (b.period === 'week'));
   draw();
-  // Ziele (Jahr und laufende Woche) stehen unter den Zahlen; höchstens drei, der Rest in der Statistik
-  const goalBox = h('div', { class: 'ygoals' }), mine = Ziele.fuerJahr(await Goals.list(), yr, yr).sort((a, b) => (a.period === 'week') - (b.period === 'week'));
-  if (mine.length) goalBox.append(...mine.slice(0, 3).map(g => Goals.row(g, all, now)), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, mine.length > 3 ? 'Alle ' + mine.length + ' Ziele' : 'Ziele ändern'));
-  else goalBox.append(h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));
   return UI.section('Dieses Jahr', [chips, box, goalBox], { cls: 'year', id: 'year', link: '#/stats', linkText: 'Statistik' });
 }, { label: 'Dieses Jahr und Ziele', sub: 'Strecke, Touren, Aufstieg, Monate, Ziele', def: true });
 

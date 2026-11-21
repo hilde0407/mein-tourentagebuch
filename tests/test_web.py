@@ -1999,9 +1999,10 @@ def main():
         big0 = pg.locator(".year .kpi b").first.inner_text(); nch = pg.locator(".home .chips .chip").count()
         if nch > 2:
             pg.locator(".home .chips .chip").nth(1).click(); pg.wait_for_timeout(200)
-            assert pg.locator(".home .chips .chip.on").count() == 1 and pg.locator(".year .ygoal").count() == 2
+            assert pg.locator(".home .chips .chip.on").count() == 1 and pg.locator(".year .ygoal").count() == 0      # 2.6.1: Ziele „Alle Sportarten“ passen nicht zu den Zahlen einer Sportart
+            assert pg.locator("#ynogoal").count() == 1 and pg.locator("#year a.ylink").count() == 1
             pg.locator(".home .chips .chip").first.click(); pg.wait_for_timeout(200)
-            assert pg.locator(".year .kpi b").first.inner_text() == big0
+            assert pg.locator(".year .kpi b").first.inner_text() == big0 and pg.locator(".year .ygoal").count() == 2
         pg.click(".year .ylink"); pg.wait_for_function("location.hash==='#/stats/ziele'")
         pg.wait_for_selector("#goals .ygoal"); assert pg.locator(".chips .chip.on").inner_text() == "Ziele"
         pg.evaluate("DB.kvSet('goals', {})"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#yset")
