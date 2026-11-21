@@ -252,6 +252,13 @@ pre.log{font-size:.72rem;white-space:pre-wrap;word-break:break-all;max-height:60
 .map.under .leaflet-top{top:54px}
 .mk span{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;color:#fff;font-weight:700;font-size:.8rem;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .mk span svg{width:15px;height:15px}
+/* Tourenkarte (2.8.1): Startpunkte, Gruppen mit Anzahl, Zahl der Touren im Ausschnitt, Knopf „Alle Touren“ */
+.tmk,.tgrp{display:grid;place-items:center}
+.tmk span{display:block;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.55)}
+.tgrp span{display:grid;place-items:center;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.55);font-weight:700;font-size:.86rem;line-height:1;font-variant-numeric:tabular-nums}
+.tmk:focus-visible span,.tgrp:focus-visible span{outline:3px solid #f2c230;outline-offset:2px}
+.mapinfo{padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.92);color:#0c2526;font-size:.78rem;font-weight:600;box-shadow:var(--sh);pointer-events:none}
+.mapbtn.wide{display:inline-flex;align-items:center;gap:6px;width:auto;padding:0 12px;font-size:.9rem;font-weight:600}
 .pmk img{width:38px;height:38px;object-fit:cover;border-radius:50%;border:3px solid #fff;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}.pmk img.est{border-color:#f2c230}
 .prof{width:100%;height:150px;display:block}.prof.small{height:96px}
 

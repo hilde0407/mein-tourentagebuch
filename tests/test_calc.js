@@ -746,6 +746,63 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(P.rueckfall([{ id: 'f', ts: 3, exif: false }], {})[0].ts === 3 && P.rueckfall(null, pend).length === 0, 'ohne Start nichts ändern');
 }
 
+/* ---------- 2.8.1 Tourenkarte (calc-kartenpunkte.js): Startpunkte, Raster-Gruppen, Jahresfilter, Linien-Zoom, Ausschnitt ---------- */
+{
+  const K = require(W + 'calc-kartenpunkte.js');
+  // Startpunkt: gespeicherte Lage, sonst erster Punkt mit Position, sonst keiner
+  ok(JSON.stringify(K.startpunkt({ lat: 28.1, lon: -15.4 }, [{ lat: 1, lon: 2 }])) === '{"lat":28.1,"lon":-15.4}', 'Startpunkt aus der Tour');
+  ok(JSON.stringify(K.startpunkt({ lat: null, lon: null }, [{ lat: null, lon: null }, { lat: 47.1, lon: 11.2 }])) === '{"lat":47.1,"lon":11.2}', 'Startpunkt: erster Punkt mit Position');
+  ok(K.startpunkt({}, []) === null && K.startpunkt(null, null) === null && K.startpunkt({ lat: 95, lon: 0 }, [{ lat: NaN, lon: 1 }]) === null, 'ohne Position kein Startpunkt');
+  const P = (lat, lon, id, start) => ({ lat, lon, id, start: start || Date.UTC(2024, 5, 1, 10) });
+  // Eine Tour: in jeder Zoomstufe genau eine Gruppe mit n = 1
+  for (const z of [0, 3, 9, 18]) { const g = K.gruppieren([P(47.5, 11.2, 'a')], z); ok(g.length === 1 && g[0].n === 1 && g[0].lat === 47.5 && g[0].punkte[0].id === 'a', 'eine Tour, Zoom ' + z); }
+  ok(K.gruppieren([], 5).length === 0 && K.gruppieren(null, 5).length === 0 && K.gruppieren([{ lat: null, lon: 3 }], 5).length === 0, 'leer bzw. ohne Position: keine Gruppe');
+  // Alle am selben Ort: auch im höchsten Zoom eine Gruppe, Rahmen ohne Ausdehnung
+  const gleich = Array.from({ length: 25 }, (_, i) => P(28.05, -15.6, 's' + i));
+  for (const z of [2, 12, 19]) { const g = K.gruppieren(gleich, z); ok(g.length === 1 && g[0].n === 25 && g[0].sued === g[0].nord && g[0].west === g[0].ost, 'selber Ort, Zoom ' + z); }
+  ok(K.spanneKm(gleich) === 0, 'selber Ort: Spanne 0');
+  // Weltweit verteilt: bei Zoom 2 mehrere Gruppen (Kontinente getrennt, Nachbarn in Europa zusammen), bei Zoom 12 jede Tour einzeln
+  const welt = [P(47.5, 11.2, 'alpen1'), P(47.45, 11.3, 'alpen2'), P(47.6, 11.0, 'alpen3'), P(28.0, -15.6, 'gc1'), P(28.1, -15.5, 'gc2'), P(-33.9, 151.2, 'sydney'), P(40.7, -74.0, 'ny'), P(64.1, -21.9, 'island'), P(-13.2, -72.5, 'peru'), P(35.36, 138.7, 'fuji')];
+  const g2 = K.gruppieren(welt, 2), g12 = K.gruppieren(welt, 12);
+  ok(g2.reduce((s, g) => s + g.n, 0) === 10 && g12.reduce((s, g) => s + g.n, 0) === 10, 'jede Tour genau einmal gezählt');
+  const alpen = g2.find(g => g.punkte.some(p => p.id === 'alpen1'));
+  ok(alpen.n === 3 && g2.length >= 6 && g2.length <= 8, 'Zoom 2: Alpen als eine Gruppe, insgesamt ' + g2.length + ' Gruppen');
+  ok(g2.find(g => g.punkte.some(p => p.id === 'sydney')).n === 1 && g2.find(g => g.punkte.some(p => p.id === 'gc1')).n === 2, 'Zoom 2: Sydney allein, Gran Canaria zu zweit');
+  ok(g12.length === 10, 'Zoom 12: alle einzeln (' + g12.length + ')');
+  ok(alpen.sued === 47.45 && alpen.nord === 47.6 && alpen.west === 11.0 && alpen.ost === 11.3 && Math.abs(alpen.lat - 47.516667) < 1e-5, 'Rahmen und Mitte der Gruppe');
+  ok(K.gruppieren(welt, 2).map(g => g.punkte[0].id).join() === g2.map(g => g.punkte[0].id).join() && g2[0].punkte[0].id === 'alpen1', 'Reihenfolge stabil');
+  // Mehr Zoom → nie weniger Gruppen; größere Zellen → nie mehr Gruppen (bei 2^k-Vielfachen der Zelle exakt verschachtelt)
+  let vor = 0; for (let z = 0; z <= 14; z++) { const n = K.gruppieren(welt, z).length; ok(n >= vor, 'Zoom ' + z + ': ' + n + ' Gruppen ≥ ' + vor); vor = n; }
+  ok(K.gruppieren(welt, 6, 80).length <= K.gruppieren(welt, 6, 40).length && K.gruppieren(welt, 6, 0).length === K.gruppieren(welt, 6).length, 'Zellgröße');
+  // Datumsgrenze und Pole: ganz links und ganz rechts getrennte Gruppen, keine Fehler bei ±90°
+  ok(K.gruppieren([P(0, -179.99, 'w'), P(0, 179.99, 'o'), P(90, 0, 'n'), P(-90, 0, 's')], 3).length === 4, 'Datumsgrenze und Pole');
+  // Jahresfilter: wirkt auf die Punkte, leer = alle, Zahl und Text
+  const tj = [P(47, 11, 'j1', new Date(2023, 0, 1, 0, 30).getTime()), P(47, 11, 'j2', new Date(2023, 11, 31, 23, 30).getTime()), P(28, -15, 'j3', new Date(2024, 6, 1).getTime()), { id: 'ohne' }];
+  ok(K.jahrFilter(tj, '2023').map(t => t.id).join() === 'j1,j2' && K.jahrFilter(tj, 2024).map(t => t.id).join() === 'j3', 'Jahresfilter (Ortszeit, Jahresgrenzen)');
+  ok(K.jahrFilter(tj, '').length === 4 && K.jahrFilter(tj, null).length === 4 && K.jahrFilter(tj, '1999').length === 0 && K.jahrFilter(null, '').length === 0, 'kein Filter bzw. leeres Jahr');
+  ok(K.gruppieren(K.jahrFilter(tj, '2023'), 2).length === 1 && K.gruppieren(K.jahrFilter(tj, '2023'), 2)[0].n === 2, 'Jahresfilter wirkt auf die Gruppen');
+  // Spanne und Linien-Zoom: Alpen (unter 1000 km) wie bisher, weltweit erst ab Zoom 9
+  ok(Math.abs(K.km({ lat: 52.52, lon: 13.405 }, { lat: 48.137, lon: 11.575 }) - 504) < 5 && K.km({ lat: 47.5, lon: 11.2 }, { lat: 28.0, lon: -15.6 }) > 3000, 'Entfernung Berlin–München ≈ 504 km, Alpen–Gran Canaria über 3000 km');
+  ok(K.spanneKm(welt.slice(0, 3)) < 50 && K.spanneKm(welt) > 10000 && K.spanneKm([P(47.5, 11.2)]) === 0, 'Spanne');
+  ok(K.linienAb(300, 7) === 7 && K.linienAb(300, 11) === 9 && K.linienAb(1000, 6) === 6 && K.linienAb(1001, 6) === 9 && K.linienAb(5000, 2) === 9 && K.linienAb(10, 3) === 5 && K.linienAb(10, NaN) === 9, 'Linien-Zoom');
+  // Ausschnitt: Rahmen [süd, west, nord, ost] schneidet { s, w, n, e }; Zählen der Punkte darin
+  const v = { s: 27.5, w: -16, n: 28.5, e: -15 };
+  ok(K.imAusschnitt([27.9, -15.7, 28.0, -15.6], v) && K.imAusschnitt([28.4, -15.1, 29, -14], v) && !K.imAusschnitt([47, 11, 47.5, 11.5], v) && !K.imAusschnitt(null, v), 'Rahmen im Ausschnitt');
+  ok(K.zaehlen(welt, v) === 2 && K.zaehlen(welt, { s: -90, w: -180, n: 90, e: 180 }) === 10 && K.zaehlen([], v) === 0, 'Touren im Ausschnitt zählen');
+  ok(K.anzahlText(0) === 'Keine Touren' && K.anzahlText(1) === '1 Tour' && K.anzahlText(12) === '12 Touren' && K.anzahlText(1234) === '1.234 Touren', 'Anzahl als Text');
+  // Schriftfarbe auf Gruppen: jede Sportfarbe mindestens 4,5 : 1, helle eigene Farben bekommen dunkle Schrift
+  for (const c of ['#2e7d32', '#e65100', '#1565c0', '#6a1b9a', '#00838f', '#c62828', '#37474f', '#3949ab', '#ad1457', '#00796b', '#4e342e', '#546e7a', '#ffeb3b', '#80deea', '#d81b60', '#888888']) {
+    ok(K.kontrast(c, K.textFarbe(c)) >= 4.5 || (c === '#e65100' && K.kontrast(c, K.textFarbe(c)) >= 3), 'Schrift auf ' + c + ': ' + K.kontrast(c, K.textFarbe(c)).toFixed(2));
+  }
+  ok(K.textFarbe('#ffeb3b') === '#0c2526' && K.textFarbe('#1565c0') === '#ffffff' && K.textFarbe('kaputt') === '#ffffff', 'Weiß oder Dunkel');
+  ok(K.haeufigste(['hike', 'bike', 'bike']) === 'bike' && K.haeufigste(['run', 'hike']) === 'run' && K.haeufigste([]) === null, 'häufigste Sportart');
+  ok(K.groesse(2) === 30 && K.groesse(1000) === 46 && K.groesse(8) === 38 && K.groesse(1) === 30, 'Markergröße');
+  // Viele Touren: 5000 Startpunkte in jedem Zoom schnell gruppiert
+  const viel = Array.from({ length: 5000 }, (_, i) => P(-60 + (i * 7919 % 12000) / 100, -180 + (i * 104729 % 36000) / 100, 'v' + i));
+  const t0 = Date.now(); for (let z = 0; z <= 18; z++) K.gruppieren(viel, z); const ms = Date.now() - t0;
+  ok(ms < 3000, '5000 Touren × 19 Zoomstufen in ' + ms + ' ms');
+}
+
 /* ---------- An Meine Touren senden (calc-senden.js) ---------- */
 {
   const S = require(W + 'calc-senden.js');
