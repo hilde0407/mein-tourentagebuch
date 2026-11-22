@@ -12,7 +12,7 @@ const Backup = {
   RESTORE_PREFIX: ['plan:', 'pn:'],
   /** Einstellungen, die zum Gerät gehören und beim Einspielen nie übernommen werden: automatische Sicherung (braucht den Ordner dieses Geräts, 2.10.0)
       und die Entscheidung „Mit Meine Touren zusammenarbeiten“ (2.15.0: ein frisches Gerät fragt selbst; eine eigene Entscheidung bleibt). */
-  GERAET: ['backupAuto', 'mtAktiv', 'mtWahl', 'flugStufe'],      // 2.16.0: flugStufe hängt vom Handy ab
+  GERAET: ['backupAuto', 'mtAktiv', 'mtWahl', 'flugStufe', 'flugVideo'],      // 2.16.0: flugStufe hängt vom Handy ab; 2.17.0: flugVideo (Auflösung je nach Kodierer) ebenso
 
   /** Inhalt der Sicherung (reines Objekt, noch nicht gepackt). */
   async collect() {

@@ -453,6 +453,14 @@ button.cd{cursor:pointer;font-weight:700}
 .flight .fmsg.prog{inset:auto;top:64px;left:50%;transform:translateX(-50%);z-index:8;background:#081415dd;color:#fff;padding:8px 16px;border-radius:10px;font-weight:600}
 .flight .fph{position:absolute;left:12px;top:64px;width:42vw;max-width:260px;background:#fff;color:#222;padding:4px;border-radius:8px;opacity:0;transition:opacity .4s;pointer-events:none;z-index:3}
 .flight .fph.on{opacity:1}.flight .fph img{width:100%;display:block;border-radius:5px}.flight .fph small{display:block;padding:2px 4px}
+.flight .fctl #fvid{font-weight:700}
+/* 2.17.0: Video erzeugen (js/v-flugvideo.js) */
+.fvd .fld{margin:10px 0}.fv-sw{display:flex;flex-direction:column;gap:2px;margin:12px 0}.fv-sw .sw{min-height:44px}
+.fv-mehr{margin:8px 0}.fv-mehr summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600}
+.fv-sch{margin:12px 0 4px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fv-warn{margin:4px 0 8px;padding-left:20px}.fv-warn li{margin:4px 0}.fv-warn .err{color:var(--danger);font-weight:600}
+.fvp .fv-vor{display:block;width:100%;height:auto;max-height:40vh;object-fit:contain;background:#081415;border-radius:var(--r);margin-bottom:10px}
+.fvp p,.fvf p{overflow-wrap:anywhere}
 .flight .fbar,.flight .fctl{transition:opacity .5s}.flight.idle .fbar,.flight.idle .fctl{opacity:0;pointer-events:none}
 .fdot{width:18px;height:18px;border-radius:50%;background:#f2c230;border:3px solid #fff;box-shadow:0 0 0 2px #0c2526}
 .fcam{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #1e88e5}

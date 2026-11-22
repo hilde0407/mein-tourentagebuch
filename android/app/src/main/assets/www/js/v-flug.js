@@ -2,7 +2,9 @@
 /* 3D-Flug: die Tour als Kameraflug über das Gelände (MapLibre GL mit Höhendaten). Kamera folgt der Strecke, weicht Bergen aus,
    Tempo/Neigung/Karte wählbar, Fotos tauchen beim Vorbeifliegen auf.
    2.16.0: Darstellungsstufen (Flüssig/Normal/Schön, js/calc-flug.js), Kamera als reine Funktion der Flugposition (FlugCalc.kamera),
-   gedrosselte Kopfzeile und Linie, Fotos als Kartenebene statt HTML-Marker, Anpassung bei langsamen Bildern, Flug.aktiv.stelleZeit(t). */
+   gedrosselte Kopfzeile und Linie, Fotos als Kartenebene statt HTML-Marker, Anpassung bei langsamen Bildern, Flug.aktiv.stelleZeit(t).
+   2.17.0: „Video erzeugen“ Bild für Bild (js/v-flugvideo.js, Schnittstelle Flug.aktiv.video()); die Echtzeit-Aufnahme heißt jetzt „Schnellaufnahme“.
+   Einblendungen (Titel, Datum, Kennzahlen, Höhenprofil, Foto, Kartenquelle) zeichnet Flug.zeichne für beide Wege. */
 const Flug = {
   loadLib: () => window.maplibregl ? Promise.resolve() : new Promise((ok, no) => {
     const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'vendor/maplibre-gl.css'; document.head.appendChild(l);
@@ -36,6 +38,56 @@ const Flug = {
     let up = 0;
     P.forEach((p, i) => { if (i && p.alt - P[i - 1].alt > 0.3) up += p.alt - P[i - 1].alt; p.up = up; });
     return { P, S, total, cum };
+  },
+  /** Einblendungen auf eine Zeichenfläche (Schnellaufnahme und Video-Export). Maße wachsen mit der kurzen Seite (720 px = 1).
+   *  d = { an: { titel, datum, kennzahlen, profil, fotos }, titel, datum, kennzahl, kennzahl2, u (0…1), ud (Strecke 0…1), profil: [[x 0…1, y 0…1]], foto (Bild), quelle }.
+   *  Die Kartenquelle steht immer da. */
+  zeichne(x, W, H, d) {
+    const s = Math.min(W, H) / 720, o = d.an || {}, px = v => Math.round(v * s);
+    const kurz = (t, max) => { t = String(t || ''); if (x.measureText(t).width <= max) return t; while (t.length > 1 && x.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
+    x.save(); x.textBaseline = 'middle';
+    let oben = 0;
+    if (o.titel || o.datum || o.kennzahlen) {
+      const zwei = (o.titel && o.datum) || (o.kennzahlen && d.kennzahl2);
+      oben = px(zwei ? 74 : 50);
+      x.fillStyle = 'rgba(14,42,43,.8)'; x.fillRect(0, 0, W, oben);
+      x.textAlign = 'right';
+      let rechts = 0;
+      if (o.kennzahlen && d.kennzahl) {
+        x.font = '600 ' + px(24) + 'px sans-serif'; x.fillStyle = '#f2c230'; x.fillText(d.kennzahl, W - px(16), px(26)); rechts = x.measureText(d.kennzahl).width;
+        if (d.kennzahl2) { x.font = '500 ' + px(18) + 'px sans-serif'; x.fillStyle = '#e8f0ee'; x.fillText(d.kennzahl2, W - px(16), px(55)); }
+      }
+      x.textAlign = 'left';
+      const platz = W - px(48) - rechts;
+      if (o.titel) { x.font = '600 ' + px(26) + 'px sans-serif'; x.fillStyle = '#fff'; x.fillText(kurz(d.titel, platz), px(16), px(26)); }
+      if (o.datum && d.datum) { x.font = px(18) + 'px sans-serif'; x.fillStyle = '#cfe3e0'; x.fillText(kurz(d.datum, platz), px(16), px(o.titel ? 55 : 26)); }
+    }
+    if (o.fotos && d.foto && d.foto.complete && d.foto.naturalWidth) {
+      const w = Math.min(px(340), W * 0.32), hh = w * d.foto.naturalHeight / d.foto.naturalWidth;
+      x.fillStyle = '#fff'; x.fillRect(px(14), oben + px(14), w + px(4), hh + px(4)); x.drawImage(d.foto, px(16), oben + px(16), w, hh);
+    }
+    let unten = H;
+    if (o.profil && d.profil && d.profil.length > 1) {
+      const ph = px(86), y0 = H - ph, pad = px(16), pw = W - 2 * pad, t0 = y0 + px(12), hg = ph - px(24);
+      x.fillStyle = 'rgba(14,42,43,.72)'; x.fillRect(0, y0, W, ph);
+      x.beginPath(); d.profil.forEach(([fx, fy], i) => { const X = pad + fx * pw, Y = t0 + (1 - fy) * hg; if (i) x.lineTo(X, Y); else x.moveTo(X, Y); });
+      x.strokeStyle = '#ffffff'; x.lineWidth = Math.max(1, px(2)); x.lineJoin = 'round'; x.stroke();
+      x.lineTo(pad + d.profil[d.profil.length - 1][0] * pw, t0 + hg); x.lineTo(pad + d.profil[0][0] * pw, t0 + hg); x.closePath();
+      x.fillStyle = 'rgba(255,255,255,.18)'; x.fill();
+      const mx = pad + Math.max(0, Math.min(1, d.ud == null ? d.u : d.ud)) * pw;
+      x.fillStyle = '#f2c230'; x.fillRect(mx - Math.max(1, px(1.5)), t0 - px(4), Math.max(2, px(3)), hg + px(8));
+      unten = y0;
+    } else {
+      x.fillStyle = '#f2c230'; x.fillRect(0, H - px(6), W * Math.max(0, Math.min(1, d.u || 0)), px(6));
+      unten = H - px(6);
+    }
+    if (d.quelle) {
+      x.font = px(14) + 'px sans-serif'; x.textAlign = 'right';
+      const tw = x.measureText(d.quelle).width, bh = px(22);
+      x.fillStyle = 'rgba(0,0,0,.5)'; x.fillRect(W - tw - px(16), unten - bh - px(4), tw + px(12), bh);
+      x.fillStyle = '#fff'; x.fillText(d.quelle, W - px(10), unten - px(4) - bh / 2);
+    }
+    x.restore();
   },
 };
 
@@ -78,7 +130,8 @@ Views['/flug'] = async (root, [id]) => {
   const ph = h('div', { class: 'fph' }), phi = h('img', { alt: '' }), phc = h('small'); ph.append(phi, phc);
   const sel = (id, title, opts, val) => h('select', { id, title, 'aria-label': title, onchange: () => apply(id) }, opts.map(([v, l]) => h('option', { value: v, selected: String(v) === String(val) }, l)));
   const pp = h('button', { class: 'btn sm', id: 'fp' }, '❚❚ Pause'), slider = h('input', { type: 'range', id: 'fs', min: 0, max: 1000, value: 0, 'aria-label': 'Position' });
-  const recB = h('button', { class: 'btn sm', id: 'frec', title: 'Flug als Video aufnehmen und speichern' }, '⏺ Video');
+  const recB = h('button', { class: 'btn sm', id: 'frec', title: 'Schnellaufnahme: den Flug so aufnehmen, wie er gerade läuft (Echtzeit, kann ruckeln)' }, '⏺ Schnellaufnahme');
+  const vidB = h('button', { class: 'btn sm', id: 'fvid', title: 'Video erzeugen: Bild für Bild, ruckelfrei und in hoher Auflösung' }, '🎬 Video erzeugen');
   let style = 'osm'; try { style = Set_.get('style3d') || (Set_.get('tiles') === 'topo' ? 'topo' : 'osm'); } catch (e) { /* egal */ }
   const ctl = h('div', { class: 'fctl' }, pp, slider,
     sel('fv', 'Tempo', [[0.5, '0,5×'], [1, '1×'], [2, '2×'], [4, '4×'], [8, '8×']], 1),
@@ -87,7 +140,7 @@ Views['/flug'] = async (root, [id]) => {
     sel('fpi', 'Neigung', [['auto', 'automatisch'], [55, 'flach'], [68, 'schräg'], [78, 'sehr schräg']], 'auto'),
     sel('fb', 'Karte', [['osm', 'Straßenkarte'], ['topo', 'Topografisch'], ['sat', 'Satellit']], style),
     sel('fst', 'Darstellung', FlugCalc.WAHL.map(([v, l]) => [v, 'Darstellung: ' + l.replace(/ \(.*\)$/, '')]), st),
-    sel('fq', 'Videoqualität', [[1280, 'Video: Standard'], [1600, 'Video: Hoch'], [1920, 'Video: Sehr hoch']], 1600), recB);
+    vidB, sel('fq', 'Qualität der Schnellaufnahme', [[1280, 'Schnell: Standard'], [1600, 'Schnell: Hoch'], [1920, 'Schnell: Sehr hoch']], 1600), recB);
   root.append(h('div', { class: 'flight', id: 'fl' }, mapEl, h('div', { class: 'fbar' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), h('b', { class: 'ft' }, t.name)), hud, ph, ctl, msg));
   const $v = k => root.querySelector('#' + k).value;
   if (!document.createElement('canvas').getContext('webgl') && !document.createElement('canvas').getContext('experimental-webgl')) { msg.textContent = 'Dieses Gerät unterstützt kein WebGL, die 3D-Ansicht ist nicht möglich.'; return; }
@@ -147,6 +200,11 @@ Views['/flug'] = async (root, [id]) => {
   if (typeof mk._updateOpacity === 'function') mk._updateOpacity = () => { dot.style.opacity = '1'; };
   mk.addTo(m);
   const col = MapKit.routeColor(t.sport, '#f2c230');
+  let demMz = S_.dem, exp = null;      // 2.17.0: exp = laufender Video-Export (tick zeichnet nicht, Neigungstabelle steht fest)
+  const demNeu = mz => {      // Höhenkacheln mit anderer höchster Zoomstufe (Video-Export in „Schön“)
+    if (mz === demMz) return;
+    try { m.setTerrain(null); m.removeSource('dem'); m.addSource('dem', demSrc(mz)); m.setTerrain({ source: 'dem', exaggeration: S_.ueber }); demMz = mz; } catch (e) { console.warn('3D: Höhendaten', e && e.message); }
+  };
   let u = 0, playing = false, last = 0, lastDraw = 0, follow = true, lastDone = -1, zBase = 14.8, stopped = false, rec = null, speed = 1, pitchMode = 'auto', blend = null;
   let hudAt = null, hudTxt = '', spurAt = null, neigAt = 0, ad = FlugCalc.adaptiv(st);
   const zahl = { bilder: 0, hud: 0, spur: 0, neig: 0, start: 0 };
@@ -163,6 +221,9 @@ Views['/flug'] = async (root, [id]) => {
     m.addLayer({ id: 'full', type: 'line', source: 'full', paint: { 'line-color': col, 'line-width': 4 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
     m.addLayer({ id: 'done', type: 'line', source: 'done', paint: { 'line-color': '#f2c230', 'line-width': 5 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
     m.addLayer({ id: 'fotos', type: 'circle', source: 'fotos', paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#1e88e5', 'circle-stroke-width': 3 } });
+    // 2.17.0: Positionspunkt als Kartenebene – der HTML-Punkt landet nicht im Videobild; sichtbar nur bei Aufnahme und Export
+    m.addSource('pos', { type: 'geojson', data: { type: 'Point', coordinates: ll(P[0]) } });
+    m.addLayer({ id: 'pos', type: 'circle', source: 'pos', layout: { visibility: 'none' }, paint: { 'circle-radius': 8, 'circle-color': '#f2c230', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3, 'circle-pitch-alignment': 'map' } });
     schatten();
     // Vorlauf: erst die Kacheln am Startpunkt laden (höchstens 4 s), dann losfliegen – sonst ruckeln die ersten Sekunden beim Nachladen
     msg.textContent = 'Karte wird geladen …';
@@ -178,18 +239,14 @@ Views['/flug'] = async (root, [id]) => {
     return `${nm}<b>${F.km(p.d)}</b> / ${F.km(total)} · <b>${Math.round(p.alt)} m</b> · ↑ ${Math.round(p.up)} m` + (p.hr ? ` · <span style="color:${MapKit.hrColor[Tours.hrZone(p.hr, hrZ)]}">♥ ${p.hr}</span>` : '');
   };
   // Video-Aufnahme: Karte + Kopfzeile + Fotos auf eine Zeichenfläche, per MediaRecorder; gespeichert wird in Stücken über die App
+  const pAt = uu => P[Math.min(N - 1, Math.round(uu * (N - 1)))];
+  const titelAt = p => SET ? (p.trans ? t.name : (segs[p.seg] || segs[0]).t.name) : t.name;
   const compose = () => {
     if (!rec) return;
-    const c = m.getCanvas(), W = rec.c.width, H = rec.c.height, x = rec.x, f = u * (N - 1), p = P[Math.min(N - 1, Math.round(f))];
-    x.drawImage(c, 0, 0, W, H);
-    x.fillStyle = 'rgba(14,42,43,.8)'; x.fillRect(0, 0, W, 48); x.textBaseline = 'middle'; x.font = '600 24px sans-serif'; x.fillStyle = '#fff'; x.textAlign = 'left';
-    x.fillText(SET ? (p.trans ? t.name : (segs[p.seg] || segs[0]).t.name) : t.name, 16, 25);
-    x.textAlign = 'right'; x.fillStyle = '#f2c230'; x.fillText(`${F.km(p.d)} · ${Math.round(p.alt)} m`, W - 16, 25);
-    x.fillRect(0, H - 6, W * u, 6);
-    if (performance.now() < phUntil && phi.complete && phi.naturalWidth) {
-      const w = Math.min(340, W * 0.32), hh = w * phi.naturalHeight / phi.naturalWidth;
-      x.fillStyle = '#fff'; x.fillRect(14, 62, w + 4, hh + 4); x.drawImage(phi, 16, 64, w, hh);
-    }
+    const p = pAt(u);
+    rec.x.drawImage(m.getCanvas(), 0, 0, rec.c.width, rec.c.height);
+    Flug.zeichne(rec.x, rec.c.width, rec.c.height, { an: { titel: true, kennzahlen: true, fotos: true }, titel: titelAt(p), kennzahl: `${F.km(p.d)} · ${Math.round(p.alt)} m`,
+      u, foto: performance.now() < phUntil ? phi : null, quelle: FlugCalc.video.quelle($v('fb')) });
   };
   m.on('render', compose);
   const saveRec = async (blob, ext) => {
@@ -202,24 +259,24 @@ Views['/flug'] = async (root, [id]) => {
     }
     toast('Video gespeichert: ' + await Native.json('saveFile', { name, mime: blob.type || 'video/mp4', path: tmp }), 7000);
   };
-  const stopRec = () => { if (!rec) return; const r = rec; rec = null; r.mr.stop(); recB.textContent = '⏺ Video'; };
+  const stopRec = () => { if (!rec) return; const r = rec; rec = null; r.mr.stop(); recB.textContent = '⏺ Schnellaufnahme'; try { m.setLayoutProperty('pos', 'visibility', 'none'); } catch (e) { /* egal */ } };
   /** Vor der Aufnahme die Strecke einmal im Schnelldurchlauf abfahren, damit alle Kartenkacheln und Höhendaten schon geladen sind (keine weißen Flächen im Video). */
-  const prewarm = async (zoom) => {
+  const prewarm = async (zoom, melde, halt) => {
     const steps = Math.min(40, Math.max(12, Math.round(N / 12))), t0 = performance.now(), e0 = mapErr;
-    msg.classList.add('prog');
+    if (!melde) msg.classList.add('prog');
     for (let k = 0; k <= steps && !stopped; k++) {
-      if (performance.now() - t0 > 60000 || mapErr - e0 >= 4) break;     // bei schlechter oder fehlender Verbindung nicht ewig warten
-      const c = FlugCalc.kamera(k / steps, bahn, { neigung: 'fest', basis: S_.neig, zBase: zoom, set: SET, rec: false });
-      m.jumpTo({ center: c.center, bearing: c.bearing, pitch: 62, zoom: c.zoom != null ? c.zoom : zoom });
-      msg.textContent = 'Karte wird geladen … ' + Math.round(k / steps * 100) + ' %'; msg.style.display = '';
+      if (performance.now() - t0 > 60000 || mapErr - e0 >= 4 || (halt && halt())) break;     // bei schlechter oder fehlender Verbindung nicht ewig warten
+      const c = FlugCalc.kamera(k / steps, bahn, { neigung: exp ? pitchMode : 'fest', basis: S_.neig, zBase: zoom, set: SET, rec: false });
+      m.jumpTo({ center: c.center, bearing: c.bearing, pitch: exp && c.pitch != null ? c.pitch : 62, zoom: c.zoom != null ? c.zoom : zoom });
+      if (melde) melde(k / steps); else { msg.textContent = 'Karte wird geladen … ' + Math.round(k / steps * 100) + ' %'; msg.style.display = ''; }
       await new Promise(ok => { let done = false; const fin = () => { if (!done) { done = true; ok(); } }; m.once('idle', fin); setTimeout(fin, 3000); m.triggerRepaint(); });
     }
-    msg.style.display = 'none'; msg.classList.remove('prog');
+    if (!melde) { msg.style.display = 'none'; msg.classList.remove('prog'); }
   };
   let preparing = false, mapErr = 0;
   recB.onclick = async () => {
     if (rec) return stopRec();
-    if (preparing) return;
+    if (preparing || exp) return;
     const mime = window.MediaRecorder && ['video/mp4;codecs=avc1.42E01E', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(x => MediaRecorder.isTypeSupported(x));
     if (!mime) return toast('Dieses Gerät kann keine Videos aufnehmen.');
     preparing = true; recB.disabled = true; playing = false; follow = false;
@@ -235,6 +292,7 @@ Views['/flug'] = async (root, [id]) => {
     mr.onstop = () => { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern fehlgeschlagen: ' + e.message, 7000)); };
     rec = { c: oc, x: oc.getContext('2d'), mr, ending: false, stall: 0 };
     u = 0; prevU = 0; playing = true; follow = true; blend = null; root.querySelector('#fc').value = 'follow'; last = performance.now(); pp.textContent = '❚❚ Pause';
+    try { m.setLayoutProperty('pos', 'visibility', 'visible'); } catch (e) { /* egal */ }
     mr.start(500); recB.textContent = '⏹ Aufnahme beenden';
   };
   window.__flugRec = () => rec;
@@ -245,7 +303,7 @@ Views['/flug'] = async (root, [id]) => {
       if (T.w[k] != null) continue;
       const i = Math.min(N - 1, k * T.schritt), s = S[i];
       try {
-        const z = SET || rec ? zBase : m.getZoom(), pm = 512 * 2 ** z / (40075016.686 * Math.cos(s.lat * Math.PI / 180)), D = m.transform.cameraToCenterDistance / pm;
+        const z = SET || rec || exp ? zBase : m.getZoom(), pm = 512 * 2 ** z / (40075016.686 * Math.cos(s.lat * Math.PI / 180)), D = m.transform.cameraToCenterDistance / pm;
         if (!(isFinite(D) && D > 0)) return;
         const r = FlugCalc.freieNeigung((a, b) => m.queryTerrainElevation([a, b]), s.lng, s.lat, bahn.brg[i], S_.neig, D);
         zahl.neig++;
@@ -258,7 +316,9 @@ Views['/flug'] = async (root, [id]) => {
   const draw = (now, force) => {
     const f = u * (N - 1), i = Math.min(N - 1, Math.round(f)), p = P[i];
     const a = Math.min(N - 2, Math.floor(f)), r = f - a;
-    mk.setLngLat([P[a].lng + (P[a + 1].lng - P[a].lng) * r, P[a].lat + (P[a + 1].lat - P[a].lat) * r]);
+    const pos = [P[a].lng + (P[a + 1].lng - P[a].lng) * r, P[a].lat + (P[a + 1].lat - P[a].lat) * r];
+    mk.setLngLat(pos);
+    if ((rec || exp) && m.getSource('pos')) m.getSource('pos').setData({ type: 'Point', coordinates: pos });
     if (i !== lastDone && (force || FlugCalc.faellig(spurAt, now, S_.spur)) && m.getSource('done')) { lastDone = i; spurAt = now; zahl.spur++; m.getSource('done').setData(line(Math.max(1, i))); }
     if (force || FlugCalc.faellig(hudAt, now, S_.hud)) {
       hudAt = now; const tx = hudText(p);
@@ -266,8 +326,8 @@ Views['/flug'] = async (root, [id]) => {
       const sv = String(Math.round(u * 1000)); if (slider.value !== sv) slider.value = sv;
     }
     if (follow) {
-      if (pitchMode === 'auto' && (force || now - neigAt > 100)) { neigAt = now; fuelleNeig(f, false); }
-      const c = FlugCalc.kamera(u, bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec });
+      if (pitchMode === 'auto' && !exp && (force || now - neigAt > 100)) { neigAt = now; fuelleNeig(f, false); }
+      const c = FlugCalc.kamera(u, bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec || !!exp });
       const o = { center: c.center, bearing: c.bearing };
       if (c.pitch != null) o.pitch = c.pitch;
       if (c.zoom != null) o.zoom = c.zoom;
@@ -285,15 +345,16 @@ Views['/flug'] = async (root, [id]) => {
   /** Stufe wechseln: Auflösung, Überhöhung, Schattierung, Takte, Grundneigung sofort; die Höhenkacheln (Zoomstufe) ab dem nächsten Flug. */
   const setStufe = (neu, auto) => {
     st = neu; S_ = FlugCalc.STUFEN[st];
-    if (!rec && !preparing) { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } }
+    if (!rec && !preparing && !exp) { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } }
     try { m.setTerrain({ source: 'dem', exaggeration: S_.ueber }); schatten(); } catch (e) { /* Karte noch nicht fertig */ }
     neuTabelle();
     const s = root.querySelector('#fst'); if (s) s.value = st;
     if (!auto) { ad = FlugCalc.adaptiv(st); Set_.set('flugStufe', st); }
   };
   const tick = now => {
-    if (stopped || !mapEl.isConnected) { stopped = true; if (rec) stopRec(); try { m.remove(); } catch (e) { /* egal */ } window.__flug = null; Flug.aktiv = null; return; }
+    if (stopped || !mapEl.isConnected) { stopped = true; if (rec) stopRec(); if (exp && exp.abbruch) exp.abbruch(); try { m.remove(); } catch (e) { /* egal */ } window.__flug = null; Flug.aktiv = null; return; }
     requestAnimationFrame(tick);
+    if (exp) { last = lastDraw = now; return; }      // 2.17.0: Video-Export stellt die Kamera selbst (Bild für Bild)
     if (now - lastDraw < FlugCalc.BILD_MIN_MS) return;   // 120/144-Hz-Bildschirm: nur jedes zweite Bild zeichnen
     const frame = now - lastDraw; lastDraw = now; zahl.bilder++;
     let dt = Math.max(0, Math.min(100, now - last)); last = now;
@@ -312,13 +373,54 @@ Views['/flug'] = async (root, [id]) => {
   /* Schnittstelle für Tests und den späteren Video-Export (Bild für Bild): Zeit t (Sekunden bei Tempo 1×) → Position → Kamera. */
   Flug.aktiv = {
     dauer: Ttot,
-    stelleZeit(sec) { playing = false; pp.textContent = '▶ Weiter'; u = Math.max(0, Math.min(1, sec / Ttot)); prevU = u; blend = null; draw(performance.now(), true); return FlugCalc.kamera(u, bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec }); },
-    kameraBei: sec => FlugCalc.kamera(Math.max(0, Math.min(1, sec / Ttot)), bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec }),
+    stelleZeit(sec) { playing = false; pp.textContent = '▶ Weiter'; u = Math.max(0, Math.min(1, sec / Ttot)); prevU = u; blend = null; if (exp) follow = true; draw(performance.now(), true); return FlugCalc.kamera(u, bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec || !!exp }); },
+    kameraBei: sec => FlugCalc.kamera(Math.max(0, Math.min(1, sec / Ttot)), bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec || !!exp }),
     fuelleNeigung() { fuelleNeig(0, true); return bahn.neig.w.filter(x => x == null).length; },
     stufe: () => st,
     bildzeiten(l) { let r = null; l.forEach(ms => { const n = FlugCalc.adaptivSchritt(ad, ms); if (n) { r = n; setStufe(n, true); toast('Flug vereinfacht', 4000); } }); return r; },
     zahlen: () => Object.assign({ ms: performance.now() - zahl.start, linie: keep.length, punkte: N }, zahl),
+    /** 2.17.0: alles, was der Video-Export (js/v-flugvideo.js) vom laufenden Flug braucht. */
+    video: () => videoKontext,
   };
+  const profil = (() => {      // Höhenprofil für die Einblendung: Strecke 0…1, Höhe 0…1 (Überflüge ausgelassen), höchstens 400 Punkte
+    const q = P.filter(p => !p.trans), lo = Math.min(...q.map(p => p.alt)), hi = Math.max(...q.map(p => p.alt)), step = Math.max(1, Math.ceil(q.length / 400));
+    return q.filter((p, i) => i % step === 0 || i === q.length - 1).map(p => [total ? p.d / total : 0, hi > lo ? (p.alt - lo) / (hi - lo) : 0.5]);
+  })();
+  const datum = (() => {
+    const a = tours[0].start, b = tours[tours.length - 1].start;
+    if (!a) return '';
+    const ds = ms => new Date(ms).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
+    return SET && b && new Date(b).toDateString() !== new Date(a).toDateString() ? ds(a) + ' – ' + ds(b) : ds(a);
+  })();
+  const videoKontext = {
+    m, mapEl, titel: t.name, start: tours[0].start, SET, dauer: Ttot, photos: photos.map(p => ({ id: p.id, u: p.u, ts: p.ts })),
+    stil: () => $v('fb'), stufe: () => st, demZoom: () => demMz, fehler: () => mapErr,
+    setzeStufe(neu) { setStufe(neu, true); demNeu(FlugCalc.STUFEN[neu].dem); },
+    /** Export beginnt: Flug anhalten, Kamera folgt, Punkt als Kartenebene. abbruch() wird gerufen, wenn der Flug verlassen wird. */
+    beginne(abbruch) {
+      exp = { abbruch }; playing = false; follow = true; blend = null; pp.textContent = '▶ Weiter';
+      const fc = root.querySelector('#fc'); if (fc) fc.value = 'follow';
+      try { m.setLayoutProperty('pos', 'visibility', 'visible'); } catch (e) { /* egal */ }
+      fl.classList.remove('idle');
+    },
+    vorwaermen: (melde, halt) => prewarm(zBase + 0.9, melde, halt),
+    neigung() { fuelleNeig(0, true); return bahn.neig.w.filter(x => x == null).length; },
+    stelleZeit: sec => Flug.aktiv.stelleZeit(sec),
+    kameraBei: sec => Flug.aktiv.kameraBei(sec),
+    /** Daten für Flug.zeichne an der Flugposition uu (0…1). */
+    einblendung(uu, an, foto) {
+      const p = pAt(uu);
+      return { an, titel: titelAt(p), datum, u: uu, ud: total ? p.d / total : uu, profil, foto, quelle: FlugCalc.video.quelle($v('fb')),
+        kennzahl: `${F.km(p.d)} · ↑ ${Math.round(p.up).toLocaleString('de-DE')} m`, kennzahl2: `${Math.round(p.alt).toLocaleString('de-DE')} m Höhe · ${F.km(total)} gesamt` };
+    },
+    ende() {
+      exp = null;
+      try { m.setLayoutProperty('pos', 'visibility', rec ? 'visible' : 'none'); } catch (e) { /* egal */ }
+      try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ }
+    },
+    aktiv: () => !stopped && mapEl.isConnected,
+  };
+  vidB.onclick = () => { if (rec || preparing || exp) return; FlugVideo.dialog(videoKontext); };
   pp.onclick = () => { if (u >= 1) { u = 0; playing = true; } else playing = !playing; pp.textContent = playing ? '❚❚ Pause' : '▶ Weiter'; if (playing) last = performance.now(); };
   slider.oninput = () => { u = +slider.value / 1000; };
   // Bedienelemente blenden sich beim Abspielen nach ein paar Sekunden aus; ein Tipp auf die Karte bringt sie zurück

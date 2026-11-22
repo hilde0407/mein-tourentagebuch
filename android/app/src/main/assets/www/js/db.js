@@ -53,6 +53,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     offlineWifi: true, tileMerken: true, offlineStufe: 'normal',      // 2.11.0: Offline-Karten nur über WLAN laden; gesehene Kacheln merken; Detailstufe (bis Zoom 15)
     fotoSkipDup: true,      // 2.14.0: beim Foto-Import schon vorhandene Fotos überspringen (gleicher Abdruck, gleicher Name + Zeit + Größe)
     mtAktiv: false, mtWahl: '',      // 2.15.0: mit „Meine Touren“ zusammenarbeiten (Vorgabe aus); mtWahl: '' noch nicht geprüft, 'offen' Frage zeigen, 'auto' Bestand, 'ja'/'nein' entschieden (js/calc-mt.js)
+    flugVideo: {},      // 2.17.0: letzte Wahl in „Video erzeugen“ (Auflösung, Format, Länge, Bildrate, Darstellung, Einblendungen; js/v-flugvideo.js)
     flugStufe: '',      // 2.16.0: Darstellung des 3D-Flugs ('fluessig' | 'normal' | 'schoen'; leer = Vorgabe, auf Handys „Flüssig“, js/calc-flug.js)
     pdfKarte: true,      // 2.6.0: Karte (OpenStreetMap-Kacheln) im Tour-PDF; aus = Streckenskizze wie in 2.5.0
   },

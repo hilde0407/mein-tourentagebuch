@@ -3589,6 +3589,251 @@ def flug_2160(pg):
 
 
 
+FV_MOCK = """(cfg) => {
+  /* 2.17.0: Hülle für „Video erzeugen“ nachgestellt: flugVideoInfo/Start/Frame/Finish/Cancel/Save/Dienst/Share, appendCache (sammelt die Bytes), playVideo */
+  if (!window.__fvcall0) window.__fvcall0 = window.MTApp.call;
+  const c0 = window.__fvcall0;
+  window.__fv = Object.assign({ calls: [], info: { avc: null, hevc: null, freiMB: 50000, ramGB: 16, sdk: 35, galerie: 'Movies/Tourentagebuch' }, dateien: {}, frames: [], nativ: null, datei: null }, cfg || {});
+  window.MTApp.call = (id, m, a) => {
+    const V = window.__fv;
+    if (!/^flugVideo|^appendCache$|^playVideo$/.test(m)) return c0.call(window.MTApp, id, m, a);
+    const o = JSON.parse(a || '{}');
+    V.calls.push([m, m === 'appendCache' || m === 'flugVideoFrame' ? { name: o.name, i: o.i, len: (o.b64 || '').length, reset: o.reset } : o]);
+    let r = true, fail = null;
+    const bytes = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+    if (m === 'flugVideoInfo') r = V.info;
+    else if (m === 'appendCache') { if (o.reset || !V.dateien[o.name]) V.dateien[o.name] = []; V.dateien[o.name].push(o.b64); }
+    else if (m === 'flugVideoSave') {
+      const parts = (V.dateien[o.tmp] || []).map(bytes), n = parts.reduce((x, p) => x + p.length, 0), all = new Uint8Array(n); let k = 0;
+      for (const p of parts) { all.set(p, k); k += p.length; }
+      all.set(bytes(o.patchB64), o.patchAt); V.datei = FlugVideo.b64(all); V.save = { tmp: o.tmp, name: o.name, patchAt: o.patchAt }; delete V.dateien[o.tmp];
+      r = { ok: true, name: o.name, bytes: n, gallery: true, shown: 'Movies/Tourentagebuch/' + o.name };
+    }
+    else if (m === 'flugVideoCancel') { if (o.tmp) delete V.dateien[o.tmp]; V.nativ = null; }
+    else if (m === 'flugVideoStart') { V.nativ = { o, n: 0 }; r = { ok: true, encoder: 'c2.mtk.avc.encoder', hw: true, w: o.w, h: o.h, name: o.name }; }
+    else if (m === 'flugVideoFrame') { if (!V.nativ) fail = 'Es läuft kein Video-Export.'; else { V.frames.push({ i: o.i, jpeg: o.b64.slice(0, 4) === '/9j/', len: o.b64.length }); V.nativ.n++; r = { ok: true, i: V.nativ.n }; } }
+    else if (m === 'flugVideoFinish') { if (!V.nativ) fail = 'Es läuft kein Video-Export.'; else { r = { ok: true, name: V.nativ.o.name, bytes: 123456, frames: V.nativ.n, gallery: true, shown: 'Movies/Tourentagebuch/' + V.nativ.o.name, encoder: 'c2.mtk.avc.encoder' }; V.nativ = null; } }
+    else if (m === 'playVideo') r = { ok: true };
+    setTimeout(() => window.__mtcb(+id, !fail, fail || JSON.stringify(r)), V.langsam || 2);
+  };
+}"""
+FV_ZURUECK = "() => { if (window.__fvcall0) window.MTApp.call = window.__fvcall0; window.__fvcall0 = null; window.__fv = null; }"
+
+
+def mp4_kaesten(b, a=0, e=None):
+    """MP4-Kästen lesen (unabhängig von js/calc-mp4.js): {Pfad: (Anfang, Größe, Kopf)}."""
+    import struct
+    e = len(b) if e is None else e
+    out = {}
+    def lauf(a, e, pfad):
+        while a + 8 <= e:
+            size, typ = struct.unpack(">I4s", b[a:a + 8]); head = 8; typ = typ.decode("latin-1")
+            if size == 1: size = struct.unpack(">Q", b[a + 8:a + 16])[0]; head = 16
+            if size == 0: size = e - a
+            assert size >= head and a + size <= e, ("Kasten kaputt", typ, a, size)
+            p = pfad + "/" + typ if pfad else typ
+            out.setdefault(p, (a, size, head))
+            if typ in ("moov", "trak", "mdia", "minf", "stbl", "dinf", "edts"): lauf(a + head, a + size, p)
+            a += size
+    lauf(a, e, "")
+    return out
+
+
+def flugvideo_2170(pg):
+    """2.17.0: 3D-Flug als Video (Bild für Bild). (a) Dialog: Voreinstellungen, Schätzung, Grenzen (Bildzahl, Speicher, Kodierer, 4K-Warnung),
+    360–430 px, 130 % Schrift, hell und dunkel; (b) Wegwahl WebCodecs/Android; (c) echter Mini-Export mit WebCodecs (320 × 240, 10 Bilder) in der
+    nachgestellten Hülle: Datei prüfen (Kästen, Bildzahl, Dauer; ffprobe, falls vorhanden); Bild i zeigt die Kamera bei t = i/fps; (d) Weg über
+    Android: Start, Bildübergabe als JPEG, Fortschritt (Dienst), Ergebnis, Abspielen/Teilen; (e) Kachel-Zeitlimit → mit Lücken weiter; (f) Abbruch
+    räumt auf (beide Wege). Stubs werden zurückgesetzt."""
+    import base64, struct, subprocess, shutil, tempfile
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    vor = pg.evaluate("JSON.stringify(Set_.get('flugVideo') || {})")
+    g0 = pg.evaluate("JSON.stringify(FlugVideo.GRENZEN)")
+    import io as _io
+    from PIL import Image as _Im
+    _b = _io.BytesIO(); _Im.new("RGB", (256, 256), (128, 0, 0)).save(_b, "PNG"); dem = _b.getvalue()      # Terrarium: 0 m (flach) – Höhenkacheln nachgestellt
+    dem_route = lambda r: r.fulfill(status=200, body=dem, content_type="image/png", headers={"access-control-allow-origin": "*"})
+    pg.route("**/elevation-tiles-prod/**", dem_route)
+    tid = pg.evaluate("""async () => {
+      const base = Date.UTC(2026, 6, 4, 7), pts = [];
+      for (let k = 0; k < 400; k++) { const a = k / 400 * Math.PI; pts.push({ lat: 47.30 + 0.02 * Math.sin(a), lon: 11.30 + 0.03 * k / 400, ele: 900 + 600 * Math.sin(a), t: base + k * 20000 }); }
+      const r = await Tours.add({ name: 'Über den Grat 2170', sport: 'hike', pts, src: 'file', force: true });
+      for (let i = 0; i < 3; i++) await DB.put('photos', { id: 'fv2170' + String(i).padStart(4, '0'), name: 'f.jpg', ts: base + (i * 120 + 50) * 20000, tour: r.tour.id, w: 10, h: 10, src: 'galerie' });
+      return r.tour.id; }""")
+    pg.evaluate(FV_MOCK)
+    pg.evaluate("id => { location.hash = '#/flug/' + id }", tid)
+    pg.wait_for_function("() => Flug.aktiv && window.__flug && (document.querySelector('.fhud')?.innerText || '').includes('↑')", timeout=60000)
+    # Bedienleiste: „Video erzeugen“ ist der Hauptweg, die Echtzeit-Aufnahme heißt „Schnellaufnahme“
+    assert "Video erzeugen" in pg.inner_text("#fvid") and "Schnellaufnahme" in pg.inner_text("#frec")
+    for w, fs in ((360, 130), (390, 100)):
+        pg.set_viewport_size({"width": w, "height": 800}); pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+        pg.dispatch_event(".flight .fm", "pointerdown"); pg.wait_for_timeout(300)
+        assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll('.flight .fctl > *')].every(e => e.getBoundingClientRect().right <= innerWidth + 1)"), (w, fs)
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    # (a) Dialog mit Voreinstellungen und Schätzung
+    pg.evaluate("Set_.set('flugVideo', {})")
+    pg.dispatch_event(".flight .fm", "pointerdown"); pg.evaluate("document.querySelector('#fvid').click()"); pg.wait_for_selector(".sheet[aria-label='Video erzeugen'] #fv-go")
+    assert "Bild für Bild" in pg.inner_text(".sheet[aria-label='Video erzeugen']") and "Schnellaufnahme" in pg.inner_text(".sheet[aria-label='Video erzeugen']")
+    assert pg.eval_on_selector("#fv-aufl", "e => e.value") == "1080" and pg.eval_on_selector("#fv-stufe", "e => e.value") == "schoen"
+    assert pg.evaluate("[...document.querySelectorAll('#fv-aufl option')].map(o => o.value + (o.disabled ? '-' : '')).join()") == "720,1080,1440,2160"
+    sch = pg.inner_text("#fv-schaetz"); assert "1920 × 1080" in sch and "1.830 Bilder" in sch and "140 MB" in sch, sch
+    assert "Quellenangabe der Karte" in pg.inner_text(".sheet[aria-label='Video erzeugen']") and "keinen Ton" in pg.inner_text(".sheet[aria-label='Video erzeugen']")
+    assert "geöffnet bleiben" in pg.inner_text(".sheet[aria-label='Video erzeugen']") and "Offline-Karte" in pg.inner_text(".sheet[aria-label='Video erzeugen']")
+    pg.select_option("#fv-format", "hoch"); assert "1080 × 1920" in pg.inner_text("#fv-schaetz")
+    pg.select_option("#fv-format", "quer")
+    # Grenzen: zu viele Bilder → Fehler, Knopf aus; wieder gültig → an
+    pg.select_option("#fv-fps", "60"); pg.select_option("#fv-dauer", "300")
+    assert "Zu viele Bilder (18060)" in pg.inner_text("#fv-warn") and pg.eval_on_selector("#fv-go", "e => e.disabled")
+    pg.select_option("#fv-fps", "30"); pg.select_option("#fv-dauer", "60"); assert not pg.eval_on_selector("#fv-go", "e => e.disabled")
+    assert "Frei: 50.000 MB" in pg.inner_text("#fv-warn")
+    # Layout 360–430 px, 130 % Schrift, hell und dunkel: nichts ragt hinaus, Tippflächen groß genug, Text lesbar
+    bad = []
+    for sch_ in ("light", "dark"):
+        pg.emulate_media(color_scheme=sch_)
+        for w, fs in ((360, 100), (390, 100), (430, 100), (360, 130), (430, 130)):
+            pg.set_viewport_size({"width": w, "height": 2000})      # hoch genug, dass das ganze Blatt ohne Rollen zu sehen ist (Treffertest je Tippfläche)
+            pg.evaluate("fs => { document.getElementById('fs-test').textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs); pg.wait_for_timeout(200)
+            assert pg.evaluate("() => { const b = document.querySelector('.sheet[aria-label=\"Video erzeugen\"] .sheet-b'); return b.scrollHeight <= b.clientHeight + 1; }"), ("Blatt rollt noch", w, fs)
+            bad += ["Video erzeugen %s %d px %d %%: %s" % (sch_, w, fs, x) for x in pg.evaluate(LAYOUT_JS) if ".sheet" in x or "fv-" in x or "Querrollen" in x]
+            assert pg.evaluate("() => { const b = document.querySelector('.sheet[aria-label=\"Video erzeugen\"]'); return b.scrollWidth <= b.clientWidth + 1 && b.getBoundingClientRect().right <= innerWidth + 1; }"), (sch_, w, fs)
+            assert pg.evaluate("() => { const e = document.querySelector('#fv-schaetz'), c = getComputedStyle(e); return c.color !== c.backgroundColor; }")
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.emulate_media(color_scheme="light"); pg.set_viewport_size({"width": 390, "height": 800})
+    assert not bad, "\n".join(sorted(set(bad)))
+    zu(pg)
+    # Grenzen aus der Hülle: Kodierer bis 1080p → 1440p/2160p gesperrt; wenig Speicher → Fehler; 4K bei 6 GB → Warnung
+    pg.evaluate("Object.assign(__fv.info, { avc: { name: 'c2.mtk.avc.encoder', hw: true, encLang: 1920, encKurz: 1080 }, freiMB: 600 })")
+    pg.evaluate("document.querySelector('#fvid').click()"); pg.wait_for_selector("#fv-go")
+    assert pg.evaluate("[...document.querySelectorAll('#fv-aufl option')].map(o => o.value + (o.disabled ? '-' : '')).join()") == "720,1080,1440-,2160-"
+    assert "Zu wenig freier Speicher" in pg.inner_text("#fv-warn") and pg.eval_on_selector("#fv-go", "e => e.disabled")
+    zu(pg)
+    pg.evaluate("Object.assign(__fv.info, { avc: { name: 'c2.mtk.avc.encoder', hw: true, encLang: 3840, encKurz: 2160 }, freiMB: 50000, ramGB: 6 })")
+    pg.evaluate("document.querySelector('#fvid').click()"); pg.wait_for_selector("#fv-go"); pg.select_option("#fv-aufl", "2160")
+    assert "8 GB" in pg.inner_text("#fv-warn") and not pg.eval_on_selector("#fv-go", "e => e.disabled") and "3840 × 2160" in pg.inner_text("#fv-schaetz")
+    zu(pg)
+    # (b) Wegwahl: mit Hardware-Kodierer der Hülle und ohne Hardware-WebCodecs (headless) → Android; ohne Hülle-Kodierer → WebCodecs (Software)
+    wc = pg.evaluate("typeof VideoEncoder !== 'undefined'")
+    w1 = pg.evaluate("async () => { const f = await FlugVideo.faehig(); return (await FlugVideo.weg({ w: 320, h: 240, fps: 30, bitrate: 1e6, codec: 'avc', weg: 'auto' }, f)).art; }")
+    assert w1 in ("android", "webcodecs"), w1
+    pg.evaluate("__fv.info.avc = null; __fv.info.ramGB = 16")
+    w2 = pg.evaluate("async () => { const f = await FlugVideo.faehig(); const w = await FlugVideo.weg({ w: 320, h: 240, fps: 30, bitrate: 1e6, codec: 'avc', weg: 'auto' }, f); return w && w.art; }")
+    assert w2 == ("webcodecs" if wc else None), w2
+    if wc and w1 == "android": print("  Wegwahl: headless meldet keine Hardware-WebCodecs → mit Hülle-Kodierer „über Android“, ohne → WebCodecs (Software)")
+    pg.evaluate("FlugVideo.GRENZEN.zeitlimit = 6000; FlugVideo.test = { protokoll: [] }")
+    alt_pr = pg.evaluate("window.__flug.getPixelRatio()")
+    WAHL = {"titel": True, "datum": True, "kennzahlen": True, "profil": True, "fotos": True, "stufe": "schoen", "codec": "avc"}
+    # (c) echter Mini-Export mit WebCodecs: 320 × 240, 10 Bilder über den ganzen Flug
+    if not wc:
+        print("  WebCodecs fehlt in diesem Chromium – echter Mini-Export übersprungen")
+    else:
+        leise()
+        r = pg.evaluate("""async (w) => { const ctx = Flug.aktiv.video(), f = await FlugVideo.faehig();
+          const weg = await FlugVideo.weg({ w: 320, h: 240, fps: 30, bitrate: 1e6, codec: 'avc', weg: 'auto' }, f);
+          const r = await FlugVideo.erzeuge(ctx, Object.assign({}, w, { w: 320, h: 240, fps: 30, dauer: 0.3, n: 10, bitrate: 1e6 }), weg);
+          return r && { name: r.name, bytes: r.bytes, frames: r.frames, dauerMs: r.dauerMs, art: r.art, luecken: r.luecken }; }""", WAHL)
+        assert r and r["art"] == "webcodecs" and r["frames"] == 10 and r["dauerMs"] == 333 and r["name"] == "Flug_Ueber_den_Grat_2170_2026-07-04.mp4", r
+        pg.wait_for_selector("#fv-fertig"); txt = pg.inner_text("#fv-fertig")
+        assert "Flug_Ueber_den_Grat_2170_2026-07-04.mp4" in txt and "320 × 240" in txt and "Movies/Tourentagebuch" in txt and "WebCodecs" in txt, txt
+        assert pg.locator("#fv-play").count() == 1 and pg.locator("#fv-share").count() == 1
+        pg.click("#fv-share"); pg.wait_for_function("() => __fv.calls.some(c => c[0] === 'flugVideoShare' && c[1].name === 'Flug_Ueber_den_Grat_2170_2026-07-04.mp4')")
+        pg.click("#fv-play"); pg.wait_for_function("() => __fv.calls.some(c => c[0] === 'playVideo' && c[1].file === 'Flug_Ueber_den_Grat_2170_2026-07-04.mp4')")
+        zu(pg)
+        d = base64.b64decode(pg.evaluate("__fv.datei"))
+        assert pg.evaluate("Object.keys(__fv.dateien).length") == 0 and len(d) == r["bytes"], (len(d), r)
+        k = mp4_kaesten(d)
+        assert d[4:8] == b"ftyp" and list(x for x in k if "/" not in x) == ["ftyp", "mdat", "moov"], list(k)
+        a, sz, hd = k["moov/trak/mdia/minf/stbl/stsz"]; assert struct.unpack(">I", d[a + 16:a + 20])[0] == 10
+        a, sz, hd = k["moov/trak/mdia/mdhd"]; ts, du = struct.unpack(">II", d[a + 20:a + 28]); assert (ts, du) == (90000, 30000), (ts, du)
+        a, sz, hd = k["moov/trak/tkhd"]; assert struct.unpack(">II", d[a + 84:a + 92]) == (320 * 65536, 240 * 65536)
+        assert d[k["moov/trak/mdia/minf/stbl/stsd"][0] + 20:k["moov/trak/mdia/minf/stbl/stsd"][0] + 24] == b"avc1"
+        if shutil.which("ffprobe"):
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as fh: fh.write(d); fn = fh.name
+            pr = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,nb_read_frames,r_frame_rate", "-of", "json", fn], capture_output=True, text=True)
+            st_ = json.loads(pr.stdout)["streams"][0]; os.unlink(fn)
+            assert st_["codec_name"] == "h264" and st_["width"] == 320 and st_["height"] == 240 and int(st_["nb_read_frames"]) == 10 and st_["r_frame_rate"] == "30/1", (st_, pr.stderr)
+        else: print("  ffprobe fehlt – MP4 nur über die Kästen geprüft")
+        # Bild i zeigt die Kamera bei t = i/fps: Flugzeit stimmt, Karte stand genau auf der Kamera der reinen Funktion
+        pro = pg.evaluate("FlugVideo.test.protokoll"); T = pg.evaluate("Flug.aktiv.dauer")
+        assert [p["i"] for p in pro] == list(range(10)), pro
+        for p in pro:
+            soll = min(T, p["i"] / 30 * T / 0.3); assert abs(p["sec"] - soll) < 1e-6, (p, soll)
+        assert pro[0]["sec"] == 0 and pro[-1]["sec"] == T
+        assert all(abs(p["zoom"] - 15.7) < 1e-6 for p in pro), [p["zoom"] for p in pro]      # Zoom wie bei der Aufnahme (zBase + 0,9)
+        assert all(p["ok"] for p in pro), "alle Bilder ohne Zeitlimit (Kacheln nachgestellt)"
+        # nach dem Export: Karte wieder wie vorher, Flug bedienbar
+        assert pg.evaluate("[window.__flug.getPixelRatio(), document.querySelector('.flight .fm').getAttribute('style'), Flug.aktiv.stufe()]") == [alt_pr, None, "fluessig"]
+        assert pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoDienst').map(c => !!c[1].an).join()").startswith("true") and pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoDienst').pop()[1].an") is False
+    # Kamera bei derselben Zeit: Export-Kamera = reine Funktion (FlugCalc.kamera über Flug.aktiv.kameraBei während des Exports)
+    pg.evaluate("""() => { const ctx = Flug.aktiv.video(), o = ctx.stelleZeit; window.__fvSoll = []; ctx.stelleZeit = sec => { const r = o(sec); window.__fvSoll.push({ sec, k: ctx.kameraBei(sec), m: [window.__flug.getCenter().lng, window.__flug.getCenter().lat, window.__flug.getBearing(), window.__flug.getPitch(), window.__flug.getZoom()] }); return r; }; window.__fvO = o; }""")
+    # (d) über Android: Start, Bilder als JPEG der Reihe nach, Fortschritt, Ergebnis
+    pg.evaluate("__fv.info.avc = { name: 'c2.mtk.avc.encoder', hw: true, encLang: 3840, encKurz: 2160 }; __fv.calls = []; FlugVideo.test = { protokoll: [] }")
+    leise()
+    r = pg.evaluate("""async (w) => { const ctx = Flug.aktiv.video(), f = await FlugVideo.faehig();
+      const weg = await FlugVideo.weg({ w: 640, h: 360, fps: 30, bitrate: 2e6, codec: 'avc', weg: 'android' }, f);
+      const r = await FlugVideo.erzeuge(ctx, Object.assign({}, w, { w: 640, h: 360, fps: 30, dauer: 6 / 30, n: 6, bitrate: 2e6, stufe: 'normal' }), weg);
+      return r && { art: r.art, frames: r.frames, name: r.name }; }""", WAHL)
+    assert r == {"art": "android", "frames": 6, "name": "Flug_Ueber_den_Grat_2170_2026-07-04.mp4"}, r
+    st_ = pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoStart')[0][1]")
+    assert st_["w"] == 640 and st_["h"] == 360 and st_["fps"] == 30 and st_["codec"] == "avc" and st_["bitrate"] == 2e6 and st_["frames"] == 6, st_
+    fr = pg.evaluate("__fv.frames"); assert [x["i"] for x in fr] == list(range(6)) and all(x["jpeg"] and x["len"] > 1000 for x in fr), fr
+    seq = [c[0] for c in pg.evaluate("__fv.calls") if c[0] in ("flugVideoStart", "flugVideoFrame", "flugVideoFinish")]
+    assert seq == ["flugVideoStart"] + ["flugVideoFrame"] * 6 + ["flugVideoFinish"], seq
+    pg.wait_for_selector("#fv-fertig"); assert "über Android" in pg.inner_text("#fv-fertig"); zu(pg)
+    soll = pg.evaluate("window.__fvSoll")
+    assert len(soll) == 6
+    for e in soll:
+        k_, m_ = e["k"], e["m"]
+        assert abs(m_[0] - k_["center"][0]) < 1e-9 and abs(m_[1] - k_["center"][1]) < 1e-9 and abs(((m_[2] - k_["bearing"] + 540) % 360) - 180) < 1e-6, e
+        assert abs(m_[3] - k_["pitch"]) < 1e-6 and abs(m_[4] - k_["zoom"]) < 1e-6, e
+    pg.evaluate("() => { Flug.aktiv.video().stelleZeit = window.__fvO; window.__fvO = null; window.__fvSoll = null; }")
+    # (e) Kacheln laden nicht (kein idle, nicht geladen) → je Bild Zeitlimit × Versuche, dann mit Lücken weiter
+    pg.evaluate("""() => { const m = window.__flug; m.once = function (t, f) { if (t === 'idle') return this; return Object.getPrototypeOf(this).once.call(this, t, f); };
+      m.areTilesLoaded = () => false; FlugVideo.GRENZEN.zeitlimit = 150; FlugVideo.GRENZEN.versuche = 2; __fv.frames = []; }""")
+    leise()
+    r = pg.evaluate("""async (w) => { const t0 = performance.now(), ctx = Flug.aktiv.video(), f = await FlugVideo.faehig(); const weg = await FlugVideo.weg({ w: 640, h: 360, fps: 30, bitrate: 2e6, codec: 'avc', weg: 'android' }, f);
+      const r = await FlugVideo.erzeuge(ctx, Object.assign({}, w, { w: 640, h: 360, fps: 30, dauer: 4 / 30, n: 4, bitrate: 2e6, stufe: 'normal' }), weg); return r && { luecken: r.luecken, frames: r.frames, ms: performance.now() - t0 }; }""", WAHL)
+    assert r["luecken"] == 4 and r["frames"] == 4 and r["ms"] >= 4 * 2 * 150, r
+    pg.wait_for_selector("#fv-fertig"); assert "4 Bilder haben Lücken" in pg.inner_text("#fv-fertig"); zu(pg)
+    pg.evaluate("() => { const m = window.__flug; delete m.once; delete m.areTilesLoaded; }")
+    assert pg.evaluate("!Object.prototype.hasOwnProperty.call(window.__flug, 'once') && window.__flug.areTilesLoaded === Object.getPrototypeOf(window.__flug).areTilesLoaded")
+    pg.evaluate("g => { Object.assign(FlugVideo.GRENZEN, JSON.parse(g)); }", g0)
+    # (f) Abbruch räumt auf: über Android (Kodierer freigeben) …
+    pg.evaluate("__fv.calls = []; __fv.frames = []; __fv.langsam = 30")
+    pg.evaluate("""(w) => { (async () => { const ctx = Flug.aktiv.video(), f = await FlugVideo.faehig(); const weg = await FlugVideo.weg({ w: 640, h: 360, fps: 30, bitrate: 2e6, codec: 'avc', weg: 'android' }, f);
+      window.__fvAb = await FlugVideo.erzeuge(ctx, Object.assign({}, w, { w: 640, h: 360, fps: 30, dauer: 10, n: 330, bitrate: 2e6, stufe: 'normal' }), weg); window.__fvAbFertig = true; })(); }""", WAHL)
+    pg.wait_for_function("() => __fv.frames.length >= 3", timeout=60000)
+    assert "Bild" in pg.inner_text("#fv-stand")
+    leise(); pg.click("#fv-stop")
+    pg.wait_for_function("() => window.__fvAbFertig === true && !FlugVideo.laeuft", timeout=60000)
+    assert "Abgebrochen" in toast_text(pg, "Abgebrochen")
+    assert pg.evaluate("window.__fvAb") is None and pg.locator("#fv-fertig").count() == 0
+    assert pg.evaluate("__fv.calls.some(c => c[0] === 'flugVideoCancel') && !__fv.calls.some(c => c[0] === 'flugVideoFinish') && __fv.nativ === null")
+    assert pg.evaluate("[window.__flug.getPixelRatio(), document.querySelector('.flight .fm').getAttribute('style'), Flug.aktiv.stufe()]") == [alt_pr, None, "fluessig"]
+    assert pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoDienst').pop()[1].an") is False
+    # … und mit WebCodecs (Zwischendatei in der Hülle gelöscht)
+    if wc:
+        pg.evaluate("__fv.info.avc = null; __fv.calls = []; __fv.langsam = 2; window.__fvAbFertig = false")
+        pg.evaluate("""(w) => { (async () => { const ctx = Flug.aktiv.video(), f = await FlugVideo.faehig(); const weg = await FlugVideo.weg({ w: 320, h: 240, fps: 30, bitrate: 1e6, codec: 'avc', weg: 'auto' }, f);
+          window.__fvAb = await FlugVideo.erzeuge(ctx, Object.assign({}, w, { w: 320, h: 240, fps: 30, dauer: 10, n: 330, bitrate: 1e6, stufe: 'normal' }), weg); window.__fvAbFertig = true; })(); }""", WAHL)
+        pg.wait_for_function("() => /Bild [3-9]/.test(document.querySelector('#fv-stand')?.textContent || '')", timeout=60000)
+        leise(); pg.click("#fv-stop")
+        pg.wait_for_function("() => window.__fvAbFertig === true && !FlugVideo.laeuft", timeout=60000)
+        tmp = pg.evaluate("(__fv.calls.find(c => c[0] === 'flugVideoCancel') || [0, {}])[1].tmp")
+        assert tmp and tmp.startswith("flugvideo-") and pg.evaluate("Object.keys(__fv.dateien).length") == 0, (tmp, pg.evaluate("Object.keys(__fv.dateien)"))
+        assert "Abgebrochen" in toast_text(pg, "Abgebrochen")
+    # Flug läuft danach normal weiter
+    pg.click("#fp"); pg.wait_for_function("() => document.querySelector('#fp').innerText.includes('Pause')")
+    # Stubs zurücksetzen
+    leise()
+    pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight') && !Flug.aktiv", timeout=20000)
+    pg.evaluate(FV_ZURUECK); pg.evaluate("FlugVideo.test = null; window.__fvAb = null; window.__fvAbFertig = null")
+    pg.evaluate("g => { FlugVideo.GRENZEN = JSON.parse(g); }", g0)
+    pg.evaluate("v => Set_.set('flugVideo', JSON.parse(v))", vor)
+    pg.evaluate("async id => { await Tours.remove(id); for (let i = 0; i < 3; i++) await DB.del('photos', 'fv2170' + String(i).padStart(4, '0')); }", tid)
+    pg.unroute("**/elevation-tiles-prod/**", dem_route)
+    assert pg.evaluate("window.__fvcall0") is None and pg.evaluate("FlugVideo.test") is None
+
+
+
 NOTIZ_MASS = """sel => { const ta = document.querySelector(sel), r = ta.getBoundingClientRect(), lh = parseFloat(getComputedStyle(ta).lineHeight);
   return { sh: ta.scrollHeight, ch: ta.clientHeight, h: r.height, lh, w: r.width, rechts: r.right, vw: innerWidth, rand: getComputedStyle(ta).borderTopColor, grund: getComputedStyle(ta).backgroundColor, farbe: getComputedStyle(ta).color, resize: getComputedStyle(ta).resize }; }"""
 
@@ -4267,6 +4512,7 @@ def main():
         assert pg.evaluate("window.__saved.name") == "Inselreise.webm" or pg.evaluate("window.__saved.name").endswith((".webm", ".mp4")), pg.evaluate("window.__saved")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
         flug_2160(pg)
+        flugvideo_2170(pg)
         notizhoehe_2160(pg)
 
         # Zeitzonentolerante Fotozuordnung: tzOff > 0 heißt, die Kamerazeit geht der echten (GPS-)Zeit um tzOff vor (Prüfzeit = ts − tzOff)

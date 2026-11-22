@@ -199,6 +199,14 @@ def main():
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             pg.evaluate("async () => { for (const id of ['kfd111111a', 'kfd222222b', 'kfd333333v', 'kfd444444v']) await DB.del('photos', id); }")
             go("#/fotodoppelt", ".empty"); pg.wait_for_function("() => !Nav._busy"); scan("Doppelte Fotos, leer")
+            # 2.17.0: Video erzeugen (Dialog mit Grenzen und Warnung, Erweitert offen; Ergebnis) – ohne laufenden Flug, mit nachgestellten Fähigkeiten
+            pg.evaluate("FlugVideo.dialog({ dauer: 100 }, { webcodecs: true, nativ: { avc: { name: 'x', hw: true, encLang: 3840, encKurz: 2160 }, hevc: null }, glMax: 8192, freiMB: 50000, ramGB: 6 })")
+            pg.wait_for_selector("#fv-go"); pg.select_option("#fv-aufl", "2160"); pg.click(".fv-mehr summary"); pg.wait_for_timeout(250); scan("Video erzeugen, 4K mit Warnung")
+            pg.select_option("#fv-fps", "60"); pg.select_option("#fv-dauer", "300"); pg.wait_for_timeout(150); scan("Video erzeugen, zu viele Bilder")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("FlugVideo.fertig({ ok: true, name: 'Flug_Test_2026-07-04.mp4', bytes: 140e6, w: 1920, h: 1080, dauerMs: 61000, shown: 'Movies/Tourentagebuch/Flug_Test_2026-07-04.mp4', luecken: 3, ms: 900000, art: 'webcodecs', hw: true }, [])")
+            pg.wait_for_selector("#fv-fertig"); pg.wait_for_timeout(250); scan("Video fertig")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
