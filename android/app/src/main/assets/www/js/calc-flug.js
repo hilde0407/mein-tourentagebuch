@@ -157,6 +157,124 @@
    *  (60/72 je Sekunde), bei 60 und 90 Hz jedes. */
   const BILD_MIN_MS = 10;
 
-  const api = { STUFEN, FOLGE, WAHL, ADAPT, BILD_MIN_MS, stufe, pixelRatio, tiefer, duenneIdx, duenne, faellig, adaptiv, adaptivSchritt, peil, peilungen, winkelLerp, neigTabelle, neigBei, kamera, freieNeigung };
+  /* ---------- 2.17.0: Video-Export Bild für Bild (Plan ohne Oberfläche; dieselben Werte stehen in VideoExportPlan.java) ----------
+     Auflösung = kurze Seite (720/1080/1440/2160), Format quer 16:9 / hoch 9:16 / quadratisch 1:1. Die Karte wird in einem Feld mit 720 CSS-Pixeln
+     kurzer Seite gezeichnet (so sieht der Ausschnitt bei jeder Auflösung gleich aus), die Schärfe kommt über das pixelRatio (kurz / 720). */
+  const VIDEO = {
+    AUFL: [[720, '720p (HD)'], [1080, '1080p (Full HD)'], [1440, '1440p (2K)'], [2160, '2160p (4K)']],
+    FORMATE: [['quer', 'Quer 16:9'], ['hoch', 'Hoch 9:16'], ['quadrat', 'Quadratisch 1:1']],
+    DAUERN: [[30, '30 Sekunden'], [60, '1 Minute'], [100, '100 Sekunden (wie der Flug)'], [120, '2 Minuten'], [180, '3 Minuten'], [300, '5 Minuten']],
+    FPS: [30, 60],
+    /** Datenrate (Mbit/s) bei 30 Bildern/s und 16:9, H.264. */
+    MBIT: { 720: 8, 1080: 18, 1440: 30, 2160: 50 },
+    MAX_BILDER: 9000,          // 30 Bilder/s × 5 Minuten
+    MIN_DAUER: 5,
+    MAX_DAUER: 300,
+    NACHLAUF: 1,               // Sekunden Standbild am Ende
+    FOTO_S: 4.5,               // so lange steht ein Foto im Video
+    MIN_FREI_MB: 500,          // so viel muss nach dem Export noch frei sein
+    CSS_KURZ: 720,
+    KEY_S: 2,                  // alle 2 s ein Schlüsselbild
+  };
+  function videoGroesse(kurz, format) {
+    const k = Math.round(+kurz / 2) * 2, l = Math.round(k * 16 / 9 / 2) * 2;
+    return format === 'hoch' ? { w: k, h: l } : format === 'quadrat' ? { w: k, h: k } : { w: l, h: k };
+  }
+  /** Feld der Karte in CSS-Pixeln und pixelRatio: Zeichenfläche = genau w × h. */
+  function videoFeld(w, h) {
+    const pr = Math.min(w, h) / VIDEO.CSS_KURZ, r = Math.max(0.25, pr);
+    return { pr: r, cw: Math.round(w / r), ch: Math.round(h / r) };
+  }
+  /** Datenrate in bit/s: Tabelle nach kurzer Seite, mit der Bildpunktzahl (quadratisch weniger), 60 Bilder/s × 1,5, HEVC × 0,65. Auf 0,5 Mbit/s gerundet. */
+  function videoBitrate(w, h, fps, codec) {
+    const kurz = Math.min(w, h), lang = Math.max(w, h);
+    const basis = VIDEO.MBIT[kurz] || 18 * kurz * kurz / (1080 * 1080);      // Zwischengrößen (nur Tests) nach Bildpunkten wie 1080p
+    const flaeche = Math.min(1, lang / (kurz * 16 / 9));                       // quadratisch: 56 % der Bildpunkte von 16:9
+    const mbit = basis * flaeche * (fps > 30 ? 1.5 : 1) * (codec === 'hevc' ? 0.65 : 1);
+    return Math.max(1, Math.round(mbit * 2) / 2) * 1e6;
+  }
+  /** Bildzahl: Flug (dauer s) plus Standbild am Ende. */
+  function videoBilder(dauer, fps) { return Math.round(dauer * fps) + Math.round(VIDEO.NACHLAUF * fps); }
+  /** Zeitstempel von Bild i in Mikrosekunden (ganzzahlig, gleichmäßig). */
+  function videoZeitUs(i, fps) { return Math.round(i * 1e6 / fps); }
+  /** Flugzeit (Sekunden bei Tempo 1×, wie Flug.aktiv.stelleZeit) für Bild i: Videozeit i/fps, auf die Flugdauer gestreckt; danach Standbild. */
+  function videoFlugZeit(i, fps, dauer, ttot) { return Math.min(ttot, (i / fps) * ttot / dauer); }
+  /** Erwartete Dateigröße in MB (Datenrate × Länge, 2 % Verpackung). */
+  function videoMB(bitrate, sekunden) { return bitrate * sekunden / 8 / 1e6 * 1.02; }
+  /** Platzbedarf: Datei im Zwischenspeicher + Kopie in der Galerie + Reserve. */
+  function videoBedarfMB(mb) { return Math.ceil(mb * 2 + VIDEO.MIN_FREI_MB); }
+  /** Rechenzeit (s): bekannt → aus gemessenen ms je Bild; sonst grobe Annahme je Auflösung (Karte schon geladen; ohne Offline-Karte eher länger). */
+  function videoRechenzeit(n, msProBild, kurz) {
+    const ms = msProBild > 0 ? msProBild : ({ 720: 250, 1080: 400, 1440: 650, 2160: 1200 }[kurz] || 400);
+    return n * ms / 1000;
+  }
+  /** Prüfung vor dem Start. o = { kurz, format, fps, dauer, codec, w?, h? }; g = { encLang, encKurz (größte Seiten des Kodierers), glMax, freiMB, ramGB }.
+   *  Rückgabe { w, h, n, bitrate, mb, bedarf, fehler: [], warn: [] }. Fehlende Grenzen (null) werden nicht geprüft. */
+  function videoPruefe(o, g) {
+    g = g || {};
+    const s = o.w && o.h ? { w: o.w, h: o.h } : videoGroesse(o.kurz, o.format), fps = +o.fps || 30, dauer = +o.dauer || 0;
+    const n = videoBilder(dauer, fps), bitrate = videoBitrate(s.w, s.h, fps, o.codec), sek = n / fps, mb = videoMB(bitrate, sek), bedarf = videoBedarfMB(mb);
+    const fehler = [], warn = [], lang = Math.max(s.w, s.h), kurz = Math.min(s.w, s.h);
+    if (!(dauer >= VIDEO.MIN_DAUER)) fehler.push('Das Video muss mindestens ' + VIDEO.MIN_DAUER + ' Sekunden lang sein.');
+    if (dauer > VIDEO.MAX_DAUER) fehler.push('Höchstens ' + VIDEO.MAX_DAUER / 60 + ' Minuten.');
+    if (n > VIDEO.MAX_BILDER) fehler.push('Zu viele Bilder (' + n + '): höchstens ' + VIDEO.MAX_BILDER + ' – also 5 Minuten bei 30 oder 2½ Minuten bei 60 Bildern je Sekunde.');
+    if (g.encLang && g.encKurz && (lang > g.encLang || kurz > g.encKurz)) fehler.push('Der Video-Kodierer dieses Handys schafft höchstens ' + g.encLang + ' × ' + g.encKurz + '.');
+    if (g.glMax && lang > g.glMax) fehler.push('Die Grafik dieses Handys kann höchstens ' + g.glMax + ' Bildpunkte breit zeichnen.');
+    if (g.freiMB != null && g.freiMB < bedarf) fehler.push('Zu wenig freier Speicher: etwa ' + bedarf + ' MB nötig, ' + Math.floor(g.freiMB) + ' MB frei.');
+    if (g.ramGB && g.ramGB < 8 && kurz > 1440) warn.push('4K braucht viel Arbeitsspeicher; auf Handys unter 8 GB kann es abbrechen. 1440p ist sicherer.');
+    if (n > 3000 && kurz >= 1440) warn.push('Lang und groß: das dauert sehr lange.');
+    return { w: s.w, h: s.h, n, bitrate, mb, bedarf, fehler, warn };
+  }
+  /** Welche Auflösungen sind möglich? [{ kurz, name, ok, grund }]. */
+  function videoAngebot(format, g) {
+    return VIDEO.AUFL.map(([kurz, name]) => {
+      const s = videoGroesse(kurz, format), lang = Math.max(s.w, s.h), k = Math.min(s.w, s.h);
+      const grund = g && g.encLang && g.encKurz && (lang > g.encLang || k > g.encKurz) ? 'Kodierer zu klein' : g && g.glMax && lang > g.glMax ? 'Grafik zu klein' : '';
+      return { kurz, name, ok: !grund, grund };
+    });
+  }
+  /** Dateiname „Flug_<Tourname>_<JJJJ-MM-TT>.mp4“: Umlaute umschreiben, nur Buchstaben, Ziffern, _ und -; Name höchstens 60 Zeichen. */
+  function videoName(tour, ms) {
+    const um = { ä: 'ae', ö: 'oe', ü: 'ue', Ä: 'Ae', Ö: 'Oe', Ü: 'Ue', ß: 'ss' };
+    let n = String(tour || '').replace(/[äöüÄÖÜß]/g, c => um[c]).normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 60).replace(/_$/, '');
+    const d = new Date(ms > 0 ? ms : Date.now()), p = x => String(x).padStart(2, '0');
+    return 'Flug_' + (n || 'Tour') + '_' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.mp4';
+  }
+  /** Welches Foto steht zur Videozeit tv (s) im Bild? fotoU = Flugpositionen (0…1) der Fotos, aufsteigend. Ein Foto erscheint, wenn der Flug
+   *  daran vorbeikommt, und bleibt FOTO_S Sekunden (das nächste löst ab). -1 = keines. */
+  function videoFotoBei(fotoU, tv, dauer, zeig) {
+    zeig = zeig == null ? VIDEO.FOTO_S : zeig;
+    let best = -1;
+    for (let k = 0; k < fotoU.length; k++) { const tp = fotoU[k] * dauer; if (tp <= tv + 1e-9 && tv - tp < zeig) best = k; }
+    return best;
+  }
+  /** Kartenquelle für die Einblendung (immer im Video). */
+  function videoQuelle(stil) {
+    const k = { osm: '© OpenStreetMap-Mitwirkende', topo: '© OpenTopoMap (CC-BY-SA), © OpenStreetMap-Mitwirkende', sat: 'Bild: Esri, Maxar, Earthstar Geographics' }[stil] || '© OpenStreetMap-Mitwirkende';
+    return k + ' · Höhen: Mapzen/AWS Terrain Tiles';
+  }
+  /* Codec-Kennungen für WebCodecs mit passender Stufe (Level): H.264 nach Makroblöcken je Sekunde und Datenrate (High-Profil), HEVC nach Bildpunkten. */
+  const AVC_LEVEL = [[31, 108000, 3600, 17500], [32, 216000, 5120, 25000], [40, 245760, 8192, 25000], [41, 245760, 8192, 62500], [42, 522240, 8704, 62500],
+    [50, 589824, 22080, 168750], [51, 983040, 36864, 300000], [52, 2073600, 36864, 300000], [60, 4177920, 139264, 300000]];
+  function avcLevel(w, h, fps, bitrate) {
+    const fs = Math.ceil(w / 16) * Math.ceil(h / 16), mbps = fs * fps, kb = (bitrate || 0) / 1000;
+    const l = AVC_LEVEL.find(([, mb, f, br]) => mbps <= mb && fs <= f && kb <= br);
+    return l ? l[0] : 62;
+  }
+  function avcCodec(w, h, fps, bitrate, profil) {
+    const p = { high: '6400', main: '4D40', base: '42E0' }[profil || 'high'];
+    return 'avc1.' + p + avcLevel(w, h, fps, bitrate).toString(16).toUpperCase().padStart(2, '0');
+  }
+  const HEVC_LEVEL = [[93, 983040, 33177600], [120, 2228224, 66846720], [123, 2228224, 133693440], [150, 8912896, 267386880], [153, 8912896, 534773760], [156, 8912896, 1069547520]];
+  function hevcCodec(w, h, fps) {
+    const ps = w * h, rate = ps * fps, l = HEVC_LEVEL.find(([, p, r]) => ps <= p && rate <= r);
+    return 'hvc1.1.6.L' + (l ? l[0] : 186) + '.B0';
+  }
+  const video = { VIDEO, groesse: videoGroesse, feld: videoFeld, bitrate: videoBitrate, bilder: videoBilder, zeitUs: videoZeitUs, flugZeit: videoFlugZeit,
+    mb: videoMB, bedarfMB: videoBedarfMB, rechenzeit: videoRechenzeit, pruefe: videoPruefe, angebot: videoAngebot, name: videoName, fotoBei: videoFotoBei,
+    quelle: videoQuelle, avcLevel, avcCodec, hevcCodec };
+
+  const api = { STUFEN, FOLGE, WAHL, ADAPT, BILD_MIN_MS, stufe, pixelRatio, tiefer, duenneIdx, duenne, faellig, adaptiv, adaptivSchritt, peil, peilungen, winkelLerp, neigTabelle, neigBei, kamera, freieNeigung, video };
   if (node) module.exports = api; else root.FlugCalc = api;
 })(typeof window !== 'undefined' ? window : this);

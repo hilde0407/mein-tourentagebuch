@@ -1390,6 +1390,92 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(berg.th < 64 && berg.voll, 'Berg im Rücken der Kamera → flacher (' + berg.th + '°)'); ok(leer.th === 64 && !leer.voll, 'ohne Höhendaten: Grundneigung, später nachrechnen');
 }
 
+/* ---------- 2.17.0 Video-Export (calc-flug.js FlugCalc.video, calc-mp4.js): Auflösung, Datenrate, Bildzahl, Zeitstempel, Grenzen, MP4-Verpackung ---------- */
+{
+  const V = require(W + 'calc-flug.js').video, M = require(W + 'calc-mp4.js');
+  // Größen: kurze Seite × Format; alle gerade; dieselben Zahlen stehen in VideoExportPlanCheck.java
+  A.deepStrictEqual([720, 1080, 1440, 2160].map(k => V.groesse(k, 'quer')), [{ w: 1280, h: 720 }, { w: 1920, h: 1080 }, { w: 2560, h: 1440 }, { w: 3840, h: 2160 }]); n++;
+  A.deepStrictEqual([V.groesse(1080, 'hoch'), V.groesse(1080, 'quadrat'), V.groesse(2160, 'hoch')], [{ w: 1080, h: 1920 }, { w: 1080, h: 1080 }, { w: 2160, h: 3840 }]); n++;
+  // Kartenfeld: immer 720 CSS-Pixel kurze Seite, Zeichenfläche genau w × h
+  for (const k of [720, 1080, 1440, 2160]) for (const f of ['quer', 'hoch', 'quadrat']) {
+    const s = V.groesse(k, f), fe = V.feld(s.w, s.h);
+    ok(Math.min(fe.cw, fe.ch) === 720 && Math.round(fe.cw * fe.pr) === s.w && Math.round(fe.ch * fe.pr) === s.h, 'Feld ' + k + ' ' + f + ': ' + JSON.stringify(fe));
+  }
+  // Datenrate: 1080p 18, 1440p 30, 2160p 50 Mbit/s; 60 Bilder/s × 1,5; HEVC kleiner; quadratisch kleiner; steigt mit der Auflösung
+  A.deepStrictEqual([[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160]].map(([w, h]) => V.bitrate(w, h, 30, 'avc') / 1e6), [8, 18, 30, 50]); n++;
+  ok(V.bitrate(1920, 1080, 60, 'avc') === 27e6 && V.bitrate(1080, 1920, 30, 'avc') === 18e6 && V.bitrate(1080, 1080, 30, 'avc') === 10e6, 'Datenrate 60 fps / hoch / quadratisch: ' + V.bitrate(1080, 1080, 30, 'avc'));
+  ok(V.bitrate(3840, 2160, 30, 'hevc') === 32.5e6 && V.bitrate(320, 240, 30, 'avc') >= 1e6, 'HEVC und Kleinstgröße');
+  // Bildzahl und Zeitstempel: 60 s × 30 + 1 s Standbild; Zeitstempel ganzzahlig, gleichmäßig, Bild i bei i/fps
+  ok(V.bilder(60, 30) === 1830 && V.bilder(100, 60) === 6060 && V.bilder(10, 30) === 330, 'Bildzahl');
+  ok(V.zeitUs(0, 30) === 0 && V.zeitUs(1, 30) === 33333 && V.zeitUs(30, 30) === 1e6 && V.zeitUs(3, 60) === 50000 && V.zeitUs(1829, 30) === 60966667, 'Zeitstempel µs');
+  let mono = true; for (let i = 1; i < 9000; i++) { const d = V.zeitUs(i, 30) - V.zeitUs(i - 1, 30); if (d < 33333 || d > 33334) mono = false; } ok(mono, 'Zeitstempel gleichmäßig (33333/33334 µs)');
+  // Flugzeit je Bild: Videozeit gestreckt auf die Flugdauer, danach Standbild auf dem Ende
+  ok(V.flugZeit(0, 30, 60, 100) === 0 && Math.abs(V.flugZeit(900, 30, 60, 100) - 50) < 1e-9 && V.flugZeit(1800, 30, 60, 100) === 100 && V.flugZeit(1829, 30, 60, 100) === 100, 'Flugzeit');
+  // Größe, Platzbedarf, Rechenzeit
+  ok(Math.abs(V.mb(18e6, 61) - 139.995) < 0.01 && V.bedarfMB(140) === 780, 'Größe/Bedarf: ' + V.mb(18e6, 61));
+  ok(V.rechenzeit(1830, 500) === 915 && V.rechenzeit(100, 0, 2160) === 120 && V.rechenzeit(100, null, 999) === 40, 'Rechenzeit');
+  // Prüfung: passt, zu lang, zu viele Bilder, Kodierer/Grafik zu klein, Speicher, 4K-Warnung bei wenig Arbeitsspeicher
+  let r = V.pruefe({ kurz: 1080, format: 'quer', fps: 30, dauer: 60, codec: 'avc' }, { encLang: 3840, encKurz: 2160, glMax: 8192, freiMB: 50000, ramGB: 16 });
+  ok(r.w === 1920 && r.h === 1080 && r.n === 1830 && r.bitrate === 18e6 && !r.fehler.length && !r.warn.length, 'gültig: ' + JSON.stringify(r));
+  ok(V.pruefe({ kurz: 1080, format: 'quer', fps: 60, dauer: 300 }, {}).fehler.some(f => /Zu viele Bilder \(18060\)/.test(f)), 'mehr als 9000 Bilder');
+  ok(V.pruefe({ kurz: 1080, format: 'quer', fps: 30, dauer: 300 }, {}).n === 9030 && V.pruefe({ kurz: 1080, format: 'quer', fps: 30, dauer: 299 }, {}).fehler.length === 0, 'Grenze 9000: 299 s geht, 300 s + Standbild nicht');
+  ok(V.pruefe({ kurz: 1080, format: 'quer', fps: 30, dauer: 3 }, {}).fehler.length === 1 && V.pruefe({ kurz: 1080, format: 'quer', fps: 30, dauer: 400 }, {}).fehler.length >= 1, 'zu kurz / zu lang');
+  ok(/Kodierer/.test(V.pruefe({ kurz: 2160, format: 'quer', fps: 30, dauer: 30 }, { encLang: 1920, encKurz: 1088 }).fehler.join()), 'Kodierer zu klein');
+  ok(V.pruefe({ kurz: 1080, format: 'hoch', fps: 30, dauer: 30 }, { encLang: 1920, encKurz: 1088 }).fehler.length === 0, 'Hochformat: lange/kurze Seite zählen');
+  ok(/Grafik/.test(V.pruefe({ kurz: 2160, format: 'quer', fps: 30, dauer: 30 }, { glMax: 2048 }).fehler.join()), 'Grafik zu klein');
+  r = V.pruefe({ kurz: 1080, format: 'quer', fps: 30, dauer: 60 }, { freiMB: 600 }); ok(/Zu wenig freier Speicher: etwa 780 MB nötig, 600 MB frei/.test(r.fehler.join()), 'Speicher: ' + r.fehler);
+  ok(V.pruefe({ kurz: 2160, format: 'quer', fps: 30, dauer: 30 }, { ramGB: 6 }).warn.length === 1 && V.pruefe({ kurz: 1440, format: 'quer', fps: 30, dauer: 30 }, { ramGB: 6 }).warn.length === 0, '4K-Warnung unter 8 GB');
+  A.deepStrictEqual(V.angebot('quer', { encLang: 1920, encKurz: 1088, glMax: 4096 }).map(a => a.ok), [true, true, false, false]); n++;
+  A.deepStrictEqual(V.angebot('quer', { encLang: 4096, encKurz: 2304, glMax: 3000 }).map(a => a.grund), ['', '', '', 'Grafik zu klein']); n++;
+  // Dateiname
+  ok(V.name('Über die Zugspitze (Höllental)', new Date(2026, 6, 4).getTime()) === 'Flug_Ueber_die_Zugspitze_Hoellental_2026-07-04.mp4', V.name('Über die Zugspitze (Höllental)', new Date(2026, 6, 4).getTime()));
+  ok(V.name('', new Date(2026, 0, 2).getTime()) === 'Flug_Tour_2026-01-02.mp4' && V.name('a/b\\c:..', new Date(2026, 0, 2).getTime()) === 'Flug_a_b_c_2026-01-02.mp4' && V.name('x'.repeat(100), 1).length === 'Flug__1970-01-01.mp4'.length + 60, 'Dateiname sicher und kurz');
+  // Fotos: erscheinen beim Vorbeiflug, bleiben 4,5 s, das nächste löst ab
+  const fu = [0.1, 0.12, 0.5];      // bei 60 s: 6 s, 7,2 s, 30 s
+  A.deepStrictEqual([0, 5.99, 6, 7, 7.2, 11.6, 11.8, 30, 34.4, 34.6].map(t => V.fotoBei(fu, t, 60)), [-1, -1, 0, 0, 1, 1, -1, 2, 2, -1]); n++;
+  ok(/OpenStreetMap/.test(V.quelle('osm')) && /OpenTopoMap/.test(V.quelle('topo')) && /Esri/.test(V.quelle('sat')) && /Höhen/.test(V.quelle('x')), 'Kartenquelle immer');
+  // Codec-Kennungen mit passender Stufe
+  A.deepStrictEqual([[1280, 720, 30, 8e6], [1920, 1080, 30, 18e6], [1920, 1080, 60, 27e6], [2560, 1440, 30, 30e6], [3840, 2160, 30, 50e6], [3840, 2160, 60, 75e6]].map(a => V.avcCodec(...a)),
+    ['avc1.64001F', 'avc1.640028', 'avc1.64002A', 'avc1.640032', 'avc1.640033', 'avc1.640034']); n++;
+  ok(V.avcCodec(1920, 1080, 30, 18e6, 'base') === 'avc1.42E028' && V.avcCodec(1920, 1080, 30, 18e6, 'main') === 'avc1.4D4028', 'Profile');
+  A.deepStrictEqual([[1280, 720, 30], [1920, 1080, 30], [1920, 1080, 60], [3840, 2160, 30], [3840, 2160, 60]].map(a => V.hevcCodec(...a)), ['hvc1.1.6.L93.B0', 'hvc1.1.6.L120.B0', 'hvc1.1.6.L123.B0', 'hvc1.1.6.L150.B0', 'hvc1.1.6.L153.B0']); n++;
+
+  // MP4: Kopf, Bilder, Ende – Kästen lesbar, Größen, Schlüsselbilder, Zeiten, Offsets zeigen auf die Bilddaten
+  const mp = (codec, nB, fps, keyAlle, umsortiert) => {
+    const s = M.schreiber({ codec, w: 640, h: 360, fps }), parts = [s.kopf()];
+    for (let i = 0; i < nB; i++) {
+      const len = 100 + (i * 37) % 900, b = new Uint8Array(len).fill(i & 255); b[0] = 0xAB; b[1] = i & 255;
+      const j = umsortiert && i > 0 ? (i % 2 ? i + 1 : i - 1) : i;      // B-Bild-artig: Darstellung vertauscht
+      parts.push(b); s.probe(len, keyAlle || i % 30 === 0, V.zeitUs(Math.min(j, nB - 1), fps));
+    }
+    const e = s.ende(Uint8Array.of(1, 0x64, 0, 0x28, 0xff, 0xe1, 0, 0)), all = new Uint8Array(parts.reduce((a, p) => a + p.length, 0) + e.moov.length);
+    let k = 0; for (const p of parts) { all.set(p, k); k += p.length; } all.set(e.moov, k); all.set(e.patch, e.patchAt);
+    return { all, e };
+  };
+  const { all, e } = mp('avc', 95, 30, false, false), bx = M.boxen(all);
+  ok(bx.map(x => x.type).join() === 'ftyp,mdat,moov' && e.bytes === all.length, 'Reihenfolge ftyp, mdat, moov');
+  const dv = new DataView(all.buffer), rd = (b, o) => dv.getUint32(b.at + o);
+  ok(String.fromCharCode(...all.subarray(8, 12)) === 'isom' && bx[1].head === 16 && bx[1].size === all.length - bx[0].size - e.moov.length, 'mdat-Größe (64 Bit) nachgetragen');
+  const stsz = M.finde(bx, 'moov/trak/mdia/minf/stbl/stsz'), stco = M.finde(bx, 'moov/trak/mdia/minf/stbl/stco'), stts = M.finde(bx, 'moov/trak/mdia/minf/stbl/stts'), stss = M.finde(bx, 'moov/trak/mdia/minf/stbl/stss');
+  ok(rd(stsz, 16) === 95 && rd(stco, 12) === 95 && rd(stts, 12) === 1 && rd(stts, 16) === 95 && rd(stts, 20) === 3000, 'Tabellen: 95 Bilder, je 3000/90000 s');
+  let alleTreffen = true; for (let i = 0; i < 95; i++) { const off = rd(stco, 16 + 4 * i), len = rd(stsz, 20 + 4 * i); if (all[off] !== 0xAB || all[off + 1] !== (i & 255) || len !== 100 + (i * 37) % 900) alleTreffen = false; }
+  ok(alleTreffen, 'jeder Offset zeigt auf sein Bild');
+  ok(rd(stss, 12) === 4 && rd(stss, 16) === 1 && rd(stss, 20) === 31, 'Schlüsselbilder 1, 31, 61, 91');
+  const mdhd = M.finde(bx, 'moov/trak/mdia/mdhd'), mvhd = M.finde(bx, 'moov/mvhd'), tkhd = M.finde(bx, 'moov/trak/tkhd');
+  ok(rd(mdhd, 20) === 90000 && rd(mdhd, 24) === 95 * 3000 && rd(mvhd, 24) === 3167 && rd(tkhd, 84) === 640 * 65536 && rd(tkhd, 88) === 360 * 65536, 'Dauer 3,167 s, 640 × 360');
+  ok(String.fromCharCode(...all.subarray(M.finde(bx, 'moov/trak/mdia/minf/stbl/stsd').at + 20, M.finde(bx, 'moov/trak/mdia/minf/stbl/stsd').at + 24)) === 'avc1' && !M.finde(bx, 'moov/trak/mdia/minf/stbl/ctts') && !M.finde(bx, 'moov/trak/edts'), 'avc1, ohne ctts/edts');
+  const h = mp('hevc', 10, 60, true, false), hb = M.boxen(h.all);
+  ok(!M.finde(hb, 'moov/trak/mdia/minf/stbl/stss') && rd.call(null, M.finde(hb, 'moov/trak/mdia/minf/stbl/stts'), 20) !== undefined, 'HEVC: nur Schlüsselbilder → kein stss');
+  const hd = new DataView(h.all.buffer), stsdH = M.finde(hb, 'moov/trak/mdia/minf/stbl/stsd');
+  ok(String.fromCharCode(...h.all.subarray(stsdH.at + 20, stsdH.at + 24)) === 'hvc1' && hd.getUint32(M.finde(hb, 'moov/trak/mdia/minf/stbl/stts').at + 20) === 1500, 'hvc1, 60 Bilder/s = 1500/90000');
+  const u = mp('avc', 11, 30, false, true), ub = M.boxen(u.all), ct = M.finde(ub, 'moov/trak/mdia/minf/stbl/ctts'), ud = new DataView(u.all.buffer);
+  ok(ct && M.finde(ub, 'moov/trak/edts') && ud.getUint32(ct.at + 12) === 11, 'umsortierte Bilder: ctts und Verschiebung (edts)');
+  let ctOk = true; for (let i = 0; i < 11; i++) if (ud.getUint32(ct.at + 20 + 8 * i) > 6000) ctOk = false; ok(ctOk, 'ctts nicht negativ');
+  A.throws(() => M.schreiber({ codec: 'avc', w: 2, h: 2, fps: 30 }).ende(Uint8Array.of(1)), /Keine Bilder/); n++;
+  const s2 = M.schreiber({ codec: 'avc', w: 2, h: 2, fps: 30 }); s2.kopf(); s2.probe(5, true, 0); A.throws(() => s2.ende(null), /Kopfdaten/); n++;
+  ok(M.schreiber({ codec: 'avc', w: 2, h: 2, fps: 24 }).timescale === 90000 && M.schreiber({ codec: 'avc', w: 2, h: 2, fps: 7 }).timescale === 7000, 'Zeitbasis');
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
