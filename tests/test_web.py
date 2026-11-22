@@ -2961,6 +2961,96 @@ def sheet_check_open(pg, label):
     return bad
 
 
+TB_MOCK = """() => {
+  /* 2.13.0: Galerie der Hülle nachgestellt (imageGallery / saveImage); Zwischenspeicher und Teilen mitschreiben */
+  const c0 = window.MTApp.call; window.__tbcall0 = c0; window.__tb = { calls: [], cache: {}, galerie: true };
+  window.MTApp.call = (id, m, a) => {
+    const T = window.__tb, o = JSON.parse(a || '{}');
+    if (m === 'appendCache') { (T.cache[o.name] = o.reset ? [] : (T.cache[o.name] || [])).push(o.b64); }
+    if (!['imageGallery', 'saveImage', 'shareCache'].includes(m)) return c0.call(window.MTApp, id, m, a);
+    T.calls.push([m, o]); let r;
+    if (m === 'imageGallery') r = { supported: T.galerie };
+    else if (m === 'saveImage') r = 'Pictures/Tourentagebuch/' + o.name;
+    else r = true;
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+}"""
+
+def teilen_2130(pg):
+    """2.13.0 A: Tour als Bild teilen – Menüeintrag, Vorschau, Hochformat/Quadrat, Fotos ein/aus (Titelfoto-Regel), Karte mit Quellenangabe,
+    ohne Kacheln Spur auf ruhigem Grund (kein Fehler), Teilen über den Zwischenspeicher, In Galerie speichern (Android 10+), Platz bei 360 px."""
+    import base64
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    t0 = 1561000000000
+    tid = None
+    ids = ["tbf1aaaaaa", "tbf2aaaaaa", "tbf3aaaaaa", "tbf4aaaaaa", "tbf5aaaav"]
+    from PIL import Image as _Im
+    import io as _io
+    _b = _io.BytesIO(); _Im.new("RGB", (480, 360), (40, 120, 90)).save(_b, "JPEG"); jpg = _b.getvalue()
+    pg.route("**/thumb/tbf*", lambda r: r.fulfill(status=200, body=jpg, content_type="image/jpeg"))
+    pg.route("**/photo/tbf*", lambda r: r.fulfill(status=200, body=jpg, content_type="image/jpeg"))
+    try:
+        tid = pg.evaluate("""async t0 => (await Tours.add({ name: 'Über den langen Grat zur Hütte und durch die Klamm zurück ins Tal', sport: 'hike', src: 'file', force: true,
+          pts: Array.from({ length: 80 }, (_, i) => ({ lat: 47.3 + i * 0.0006, lon: 11.3 + Math.sin(i / 9) * 0.004, ele: 900 + Math.sin(i / 12) * 300, t: t0 + i * 60000 })) })).tour.id""", t0)
+        pg.evaluate("""async ([t0, tid, ids]) => { const f = [2, 0, null, 0, 0];
+          for (let i = 0; i < ids.length; i++) await DB.put('photos', { id: ids[i], name: 'p.jpg', ts: t0 + (i + 1) * 600000, lat: null, lon: null, pos: 'none', tour: tid, src: 'galerie', w: 480, h: 360, faces: f[i], video: i === 4 }); }""", [t0, tid, ids])
+        pg.evaluate(TB_MOCK)
+        # Fotoauswahl wie das Titelfoto: Personenfoto (tbf1) bleibt draußen, Video auch
+        sel = pg.evaluate("tid => DB.get('tours', tid).then(t => TourBild.daten(t)).then(d => d.fotos.map(p => p.id))", tid)
+        assert sel == ["tbf2aaaaaa", "tbf3aaaaaa", "tbf4aaaaaa"], sel
+        # 1. Menü → Blatt mit Vorschau
+        go(pg, "#/tour/" + tid, "header.top button[aria-label=Aktionen]")
+        pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("#tb-menu"); pg.click("#tb-menu")
+        pg.wait_for_selector(".sheet[aria-label='Als Bild teilen'] #tb-bild[src]")
+        pg.wait_for_function("() => document.querySelector('#tb-vor').getAttribute('aria-busy') === 'false'", timeout=60000)
+        assert pg.inner_text("#tb-info") == "Hochformat · 1080 × 1350 Pixel · 3 Fotos", pg.inner_text("#tb-info")
+        assert pg.is_checked("#tb-fotos input") and pg.locator("#tb-galerie").count() == 1, "Fotos an (Vorgabe), Galerie-Knopf ab Android 10"
+        dims = pg.evaluate("() => { const i = document.querySelector('#tb-bild'); return [i.naturalWidth, i.naturalHeight]; }"); assert dims == [1080, 1350], dims
+        assert "mit 3 Fotos" in pg.get_attribute("#tb-bild", "alt")
+        # 2. Platz bei 360 px und 130 % Schrift
+        bad = sheet_check_open(pg, "Als Bild teilen")
+        # 3. Fotos aus → ohne Fotos; Quadrat → 1080 × 1080
+        pg.click("#tb-fotos"); pg.wait_for_function("() => document.querySelector('#tb-info').textContent === 'Hochformat · 1080 × 1350 Pixel'", timeout=60000)
+        pg.click("#tb .seg button:has-text('Quadrat')"); pg.wait_for_function("() => document.querySelector('#tb-info').textContent === 'Quadrat · 1080 × 1080 Pixel'", timeout=60000)
+        pg.wait_for_function("() => document.querySelector('#tb-bild').naturalHeight === 1080", timeout=30000)
+        pg.click("#tb-fotos"); pg.wait_for_function("() => /3 Fotos$/.test(document.querySelector('#tb-info').textContent)", timeout=60000)
+        # 4. Teilen: Zwischenspeicher (JPEG 1080 × 1080) + Teilen-Menü
+        pg.click("#tb-teilen"); pg.wait_for_function("__tb.calls.some(c => c[0] === 'shareCache')", timeout=30000)
+        sc = [o for m, o in pg.evaluate("__tb.calls") if m == "shareCache"][0]
+        assert sc["name"].startswith("Tourentagebuch-Tour_ueber_den_langen_Grat") and sc["name"].endswith("-quadrat.jpg") and sc["mime"] == "image/jpeg" and sc["title"].endswith(" teilen"), sc
+        raw = b"".join(base64.b64decode(x) for x in pg.evaluate("n => __tb.cache[n]", sc["name"]))
+        assert raw[:3] == b"\xff\xd8\xff", raw[:4]
+        d2 = pg.evaluate("async (b64) => { const im = new Image(); im.src = 'data:image/jpeg;base64,' + b64; await im.decode(); return [im.naturalWidth, im.naturalHeight]; }", base64.b64encode(raw).decode())
+        assert d2 == [1080, 1080], d2
+        # 5. In Galerie speichern
+        pg.wait_for_function("() => !document.querySelector('#tb-galerie').disabled"); leise(); pg.click("#tb-galerie")
+        assert "In der Galerie gespeichert: Pictures/Tourentagebuch/" in toast_text(pg, "Galerie gespeichert")
+        sv = [o for m, o in pg.evaluate("__tb.calls") if m == "saveImage"][0]; assert sv["mime"] == "image/jpeg" and sv["name"] == sc["name"], sv
+        zu(pg)
+        # 6. Karte: mit Kacheln Quellenangabe; ohne Kacheln (Server-Fehler) Spur auf ruhigem Grund, ohne Fehler
+        px = pg.evaluate("""async tid => { const t = await DB.get('tours', tid), d = await TourBild.daten(t); const cv = await TourBild.render(t, d, { format: 'hoch', mitFotos: false });
+          const L = TeilenCalc.layout('hoch', { zeilen: 2, titelSize: 72, fotos: 0, profil: true }); const k = await TourBild.karte(d, L.karte.w, L.karte.h);
+          const c = cv.getContext('2d'), at = (x, y) => [...c.getImageData(x, y, 1, 1).data].slice(0, 3);
+          return { w: cv.width, h: cv.height, head: at(1000, 20), paper: at(1060, 700), karte: !!(k && k.cv), quelle: k && k.quelle.s }; }""", tid)
+        assert px["w"] == 1080 and px["h"] == 1350 and px["head"] == [12, 37, 38] and px["paper"] == [242, 244, 238] and px["karte"] and "OpenStreetMap" in px["quelle"], px
+        pg.route("**/tile.openstreetmap.org/**", lambda r: r.fulfill(status=503, body=b""))
+        ok2 = pg.evaluate("""async tid => { const t = await DB.get('tours', tid), d = await TourBild.daten(t); const cv = await TourBild.render(t, d, { format: 'quadrat', mitFotos: true });
+          return { w: cv.width, h: cv.height, karte: [...d.karten.values()].length }; }""", tid)
+        assert ok2["w"] == 1080 and ok2["h"] == 1080, ok2
+        pg.unroute("**/tile.openstreetmap.org/**")
+        # 7. ohne Fotos: Hinweis statt Schalter; vor Android 10: kein Galerie-Knopf
+        pg.evaluate("async ids => { for (const id of ids) await DB.del('photos', id); __tb.galerie = false; }", ids)
+        pg.evaluate("tid => DB.get('tours', tid).then(t => TourBild.dialog(t))", tid)
+        pg.wait_for_selector("#tb-keine"); pg.wait_for_function("() => document.querySelector('#tb-vor').getAttribute('aria-busy') === 'false'", timeout=60000)
+        assert pg.locator("#tb-fotos").count() == 0 and pg.locator("#tb-galerie").count() == 0 and pg.inner_text("#tb-info") == "Hochformat · 1080 × 1350 Pixel"
+        zu(pg)
+        return bad
+    finally:
+        pg.unroute("**/thumb/tbf*"); pg.unroute("**/photo/tbf*")
+        pg.evaluate("""async ([ids, tid]) => { if (window.__tbcall0) { window.MTApp.call = window.__tbcall0; window.__tbcall0 = null; } for (const id of ids) await DB.del('photos', id); if (tid) await Tours.remove(tid);
+          document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -3617,6 +3707,7 @@ def main():
         rettung_2120(pg)
         fotoort_2120(pg)
         video_2120(pg)
+        tb_bad = teilen_2130(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -3644,6 +3735,7 @@ def main():
         bad += layout_22(pg)
         bad += jahr_bad
         bad += fu_bad
+        bad += tb_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

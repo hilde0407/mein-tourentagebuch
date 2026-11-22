@@ -70,7 +70,7 @@ const TourBild = {
       ctx.fillStyle = C.ink; ctx.font = `500 ${km.quelle.size}px ${B}`; ctx.textBaseline = 'alphabetic'; ctx.fillText(km.quelle.s, R.x + km.quelle.x, R.y + km.quelle.y);
     } else PdfUI.skizze(ctx, d.pts, R.x, R.y, R.w, R.h);
     // Höhenprofil (klein; Beschriftung unter der Fläche bleibt im Rechteck)
-    if (L.profil) PdfUI.profil(ctx, d.pts, L.profil.x, L.profil.y, L.profil.w, L.profil.h - 40);
+    if (L.profil) TourBild.profil(ctx, d.pts, L.profil, fmt === 'quadrat' ? 22 : 24);
     // Fotos
     for (let i = 0; i < L.fotos.length; i++) {
       const z = L.fotos[i], im = await TourBild.foto(d, fotos[i], z.w);
@@ -78,6 +78,20 @@ const TourBild = {
       else { ctx.fillStyle = '#e4e9e0'; JahrKarte.rr(ctx, z.x, z.y, z.w, z.h, 10); ctx.fill(); }
     }
     return cv;
+  },
+  /** Kleines Höhenprofil in R: Fläche mit Linie, darunter „0 km“, „höchster Punkt …“ und die Strecke (nichts liegt über der Linie). */
+  profil(ctx, pts, R, fs) {
+    const C = TourBild.C, ph = R.h - fs - 14, pr = Pdf.profil(pts, R.w, ph);
+    if (!pr) return;
+    ctx.save(); ctx.translate(R.x, R.y); JahrKarte.rr(ctx, 0, 0, R.w, ph, 8); ctx.clip();
+    ctx.fillStyle = '#e4e9e0'; ctx.fillRect(0, 0, R.w, ph);
+    ctx.beginPath(); pr.punkte.forEach((q, i) => ctx[i ? 'lineTo' : 'moveTo'](q[0], q[1] * 0.86 + ph * 0.1)); ctx.lineTo(R.w, ph); ctx.lineTo(0, ph); ctx.closePath(); ctx.fillStyle = '#cdd8d2'; ctx.fill();
+    ctx.beginPath(); pr.punkte.forEach((q, i) => ctx[i ? 'lineTo' : 'moveTo'](q[0], q[1] * 0.86 + ph * 0.1)); ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0f5a55'; ctx.stroke();
+    ctx.restore();
+    const y = R.y + R.h - 4; ctx.fillStyle = C.muted; ctx.font = `500 ${fs}px ${JahrKarte.B}`; ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left'; ctx.fillText('0 km', R.x, y);
+    ctx.textAlign = 'center'; ctx.fillText('höchster Punkt ' + F.m(pr.max), R.x + R.w / 2, y);
+    ctx.textAlign = 'right'; ctx.fillText(F.km(pr.dist), R.x + R.w, y); ctx.textAlign = 'left';
   },
   /** JPEG des Canvas. */
   blob: cv => new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error('Bild nicht möglich')), 'image/jpeg', 0.92)),

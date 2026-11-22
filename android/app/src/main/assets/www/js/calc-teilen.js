@@ -36,7 +36,7 @@
     const zy = Math.round(unter + (q ? 82 : 100)), zly = zy + (q ? 34 : 40), cg = 24, cw = (IW - 2 * cg) / 3;
     const cols = [0, 1, 2].map(i => ({ x: Math.round(M + i * (cw + cg)), w: Math.floor(cw) }));
     const fussH = q ? 44 : 52, unten = H - fussH;
-    const nF = Math.max(0, Math.min(MAX_FOTOS, o.fotos || 0)), fH = nF ? (q ? 196 : 258) : 0, pH = o.profil ? (q ? 84 : 112) : 0;
+    const nF = Math.max(0, Math.min(MAX_FOTOS, o.fotos || 0)), fH = nF ? (q ? 196 : 258) : 0, pH = o.profil ? (q ? 96 : 128) : 0;
     let y = zly + (q ? 28 : 36);
     const rest = unten - y - (fH ? fH + gap : 0) - (pH ? pH + gap : 0);
     const karte = { x: M, y, w: IW, h: Math.max(q ? 220 : 260, rest) };
