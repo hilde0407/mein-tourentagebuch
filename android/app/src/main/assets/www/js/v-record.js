@@ -271,7 +271,13 @@ Views['/rec'] = async root => {
     RecGest.slide(stopBar, knob, 0.8, () => finish());
     RecGest.keyClick(knob, async () => { if (await confirmBox('Aufzeichnung beenden?', 'Die Aufzeichnung wird beendet und als Tour gespeichert.', 'Beenden')) finish(); });
     const routeLine = h('div', { class: 'rroute', id: 'rroute', hidden: true });
-    box.append(mapEl, h('div', { class: 'pad' }, routeLine, big, grid, gps,
+    // 2.11.0: ohne Netz und ohne Offline-Karte für den Ort eine ruhige Zeile – die Aufnahme selbst braucht keine Karte
+    const offLine = h('p', { class: 'rec-off', id: 'rec-offline', role: 'status', hidden: true }, 'Keine Karte offline – Aufnahme läuft trotzdem');
+    let offGeprueft = false;
+    const pruefeOffline = s => { if (offGeprueft || s.lat == null) return; offGeprueft = true; Offline.fehltHier(s.lat, s.lon).then(f => { offLine.hidden = !f; }, () => {}); };
+    const onOnline = () => { offLine.hidden = true; };
+    window.addEventListener('online', onOnline);
+    box.append(mapEl, h('div', { class: 'pad' }, routeLine, offLine, big, grid, gps,
       h('div', { class: 'rbtns main' }, pause, photoBtn, vidBtn),
       h('div', { class: 'rbtns sub' }, pinBtn, pinPhBtn, panoBtn),
       h('div', { class: 'stopgap' }), stopBar));
@@ -291,7 +297,7 @@ Views['/rec'] = async root => {
     const onMarks = () => { drawMarks().catch(() => {}); };
     window.addEventListener('photos-changed', onMarks); window.addEventListener('pins-changed', onMarks);
     const prevStop = stop_;
-    stop_ = () => { window.removeEventListener('photos-changed', onMarks); window.removeEventListener('pins-changed', onMarks); pauseHold.reset(); prevStop(); };
+    stop_ = () => { window.removeEventListener('photos-changed', onMarks); window.removeEventListener('pins-changed', onMarks); window.removeEventListener('online', onOnline); pauseHold.reset(); prevStop(); };
     drawMarks().catch(() => {});
     let first = true;
     // Route zum Nachgehen: gemerkte Auswahl sicherstellen, deutlich zeichnen (weiß umrandet, durchgezogen), Name und „Zeigen“ unter der Karte
@@ -333,6 +339,7 @@ Views['/rec'] = async root => {
         pause.classList.toggle('resume', p);
         pause.setAttribute('aria-label', p ? 'Weiter aufzeichnen' : 'Pause – gedrückt halten (Tastatur: Rückfrage)');
       }
+      pruefeOffline(s);
       if (s.count !== lastPts && s.lat != null) {
         lastPts = s.count;
         try { const ps = JSON.parse(MTApp.points(800)); line.setLatLngs(ps); } catch (e) { /* ignorieren */ }

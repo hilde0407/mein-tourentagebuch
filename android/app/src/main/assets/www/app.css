@@ -547,3 +547,11 @@ button.cd{cursor:pointer;font-weight:700}
 .fu-circ{display:block;width:20px;height:20px;border:2px solid var(--edge);border-radius:50%}
 .fu-map{height:260px;margin:10px 0;border-radius:var(--r);overflow:hidden}
 .fu-kb .kpis{margin:8px 0}
+/* 2.11.0: Offline-Karten */
+.offmap{height:38vh;min-height:220px;margin:10px 0;border-radius:12px;overflow:hidden}
+.offline #off-belegt{margin:8px 0 6px;font-weight:600}
+.off-est{margin:6px 0 10px;font-weight:600}.off-est.warn{color:var(--danger)}
+.offli{align-items:flex-start}.off-acts{margin-top:8px;gap:8px}.off-unv{color:var(--danger)!important}
+#off-tourbox[hidden]{display:none}
+.rec-off{color:var(--muted);font-size:.9rem;font-weight:500;margin:0 0 6px}.rec-off[hidden]{display:none}
+img.tile-off{visibility:hidden}

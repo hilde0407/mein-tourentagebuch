@@ -7,9 +7,9 @@ const Nav = {
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufnehmen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
-    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr' },
+    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr', '/offline': '/mehr' },
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
-  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan'],
+  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan', '/offline'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go(Nav.home[Nav.cur] || '/start'); },
   depth: 0,
@@ -71,7 +71,8 @@ Views['/mehr'] = async root => {
   root.append(topbar('Mehr'), h('div', { class: 'pad' },
     UI.section('Unterwegs', UI.list([
       UI.row({ icon: 'route', title: 'Tour planen', sub: 'Wegpunkte setzen, Route auf Wegen, Höhenprofil', href: '#/plan', id: 'm-plan' }),
-      UI.row({ icon: 'map', title: 'Karte aller Touren', sub: 'Alle Strecken auf einer Karte, Offline-Karten', href: '#/map', id: 'm-map' }),
+      UI.row({ icon: 'map', title: 'Karte aller Touren', sub: 'Alle Strecken auf einer Karte', href: '#/map', id: 'm-map' }),
+      UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Kartenausschnitt vor der Tour laden – für unterwegs ohne Netz', href: '#/offline', id: 'm-offline' }),
       UI.row({ icon: 'book', title: 'Wanderführer', sub: 'Bücher mit GPX-Dateien: welche Touren du schon gewandert bist', href: '#/fuehrer', id: 'm-fuehrer' })])),
     UI.section('Rückblick', UI.list([
       UI.row({ icon: 'bag', title: 'Reisen & Alben', sub: 'Reisen automatisch erkannt, Alben aus Schlagworten', href: '#/reisen', id: 'm-reisen' }),

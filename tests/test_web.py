@@ -673,6 +673,165 @@ def sicherung_2100(pg):
         pg.evaluate("async () => { window.MTApp.call = window.__mdcall0; await Set_.set('backupDays', 14); await Set_.set('backupAuto', false); await DB.kvSet('lastBackup', Date.now()); await DB.kvSet('backupSnooze', 0); await DB.del('kv', 'autoBackupDay'); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); }")
 
 
+OFF_MOCK = """() => {
+  /* 2.11.0: Offline-Karten der Hülle nachgestellt: tilesList / tilesStart / tilesJob / tilesCancel / tilesDelete */
+  const c0 = window.MTApp.call; window.__offcall0 = c0;
+  window.__off = { calls: [], areas: [], bytes: 0, job: { running: false }, startRes: null };
+  window.MTApp.call = (id, m, a) => {
+    if (!/^tiles/.test(m)) return c0.call(window.MTApp, id, m, a);
+    const D = window.__off, o = JSON.parse(a || '{}'); D.calls.push([m, o]); let r;
+    if (m === 'tilesList') r = { areas: D.areas, bytes: D.bytes, max: 400 * 1048576, maxTiles: 2000, running: !!D.job.running, wifi: true };
+    else if (m === 'tilesStart') {
+      if (D.startRes) r = D.startRes;
+      else {
+        const n = o.refresh ? (D.areas.find(x => x.id === o.refresh) || {}).tiles : o.kind === 'route' ? OfflineCalc.korridor(o.pts, o.rand, 10, o.zmax).anzahl
+          : OfflineCalc.zaehleRechteck({ s: o.bbox[0], w: o.bbox[1], n: o.bbox[2], e: o.bbox[3] }, 10, o.zmax);
+        D.job = { running: true, id: o.refresh || 'a1', name: o.name || '', total: n, done: 0, loaded: 0, skipped: 0, failed: 0 }; r = { started: true, id: D.job.id };
+      }
+    }
+    else if (m === 'tilesJob') r = D.job;
+    else if (m === 'tilesCancel') { D.job = Object.assign({}, D.job, { running: false, cancelled: true }); r = true; }
+    else if (m === 'tilesDelete') { D.areas = D.areas.filter(x => x.id !== o.id); D.bytes = 0; r = { deleted: 10, bytes: 1 }; }
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+}"""
+
+def offline_2110(pg):
+    """2.11.0: Offline-Karten – Schätzung (Kacheln, MB, Grenze), Detailstufen, Ausschnitt um eine Tour, Bestätigung, Start/Fortschritt/Abbruch,
+    Liste mit Aktualisieren und Löschen, Einstellungen gespeichert, Hinweis in der Aufnahme ohne Netz, Wanderkarte ohne Netz, Karte im PDF aus Offline-Kacheln."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    pg.evaluate(OFF_MOCK)
+    calls = lambda m: pg.evaluate("m => __off.calls.filter(c => c[0] === m).map(c => c[1])", m)
+    sh = ".sheet[aria-label='Offline-Karte laden?']"
+    est = lambda: pg.inner_text("#off-est")
+    try:
+        # 1. Erreichbar über Mehr, Einstellungen und den Kartenreiter (sichtbarer Ausschnitt wird übernommen)
+        go(pg, "#/mehr", "#m-offline"); assert pg.get_attribute("#m-offline", "href") == "#/offline"
+        go(pg, "#/settings", "#set-offline"); assert "Offline-Karten sind auch nicht enthalten" in pg.inner_text("#bk-media")
+        go(pg, "#/map", "#tooffline")
+        pg.evaluate("document.querySelector('.map.full').__karte.map.setView([47.45, 11.08], 13, { animate: false })"); pg.wait_for_timeout(200)
+        vb = pg.evaluate("(() => { const b = document.querySelector('.map.full').__karte.map.getBounds(); return [b.getSouth(), b.getNorth()]; })()")
+        pg.click("#tooffline"); pg.wait_for_function("location.hash === '#/offline'"); pg.wait_for_selector("#off-est"); pg.wait_for_selector("#off-leer")
+        ob = pg.evaluate("(() => { const b = document.querySelector('#off-map').__karte.getBounds(); return [b.getSouth(), b.getNorth()]; })()")
+        assert ob[0] <= vb[0] + 0.01 and ob[1] >= vb[1] - 0.01, (vb, ob)
+        assert pg.inner_text("#off-belegt") == "Belegt: 0 MB von 400 MB" and "Noch keine Offline-Karte" in pg.inner_text("#off-liste")
+        assert "Wanderkarte" in pg.inner_text(".offline > p.muted") and "nicht offline gespeichert" in pg.inner_text("#off-quelle") and "Sicherung (.mtl)" in pg.inner_text("#off-quelle")
+        assert pg.is_checked("#off-wifi input") and pg.is_checked("#off-merken input") and pg.locator("#off-tourbox").is_hidden()
+
+        # 2. Schätzung für den sichtbaren Ausschnitt, Detailstufen (gespeichert), Grenze → Knopf aus
+        erwartet = "() => { const m = document.querySelector('#off-map').__karte, b = m.getBounds(); return OfflineCalc.umfang('topo', OfflineCalc.zaehleRechteck({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }, 10, OfflineCalc.zmaxVon(Set_.get('offlineStufe')))); }"
+        pg.wait_for_function("e => document.querySelector('#off-est').textContent === (new Function('return ' + e))()()", arg=erwartet, timeout=10000)
+        assert est().startswith("≈ ") and " Kacheln, ≈ " in est() and est().endswith("MB") and not pg.is_disabled("#off-start"), est()
+        n_normal = int(est().split()[1].replace(".", ""))
+        pg.click("#off-stufe button:has-text('Grob (bis 13)')"); pg.wait_for_function("() => DB.kvGet('settings', {}).then(s => s.offlineStufe === 'grob')")
+        assert int(est().split()[1].replace(".", "")) < n_normal, est()
+        pg.click("#off-stufe button:has-text('Fein (bis 16)')"); pg.wait_for_function("() => Set_.get('offlineStufe') === 'fein'")
+        pg.evaluate("document.querySelector('#off-map').__karte.setZoom(10, { animate: false })")
+        pg.wait_for_function("() => document.querySelector('#off-est').textContent.includes('Zu groß')", timeout=10000)
+        assert pg.is_disabled("#off-start") and "höchstens 2.000 Kacheln" in est() and pg.locator("#off-est.warn").count() == 1, est()
+        pg.click("#off-stufe button:has-text('Normal (bis 15)')"); pg.evaluate("document.querySelector('#off-map').__karte.setView([47.45, 11.08], 13, { animate: false })")
+        pg.wait_for_function("() => !document.querySelector('#off-start').disabled", timeout=10000)
+
+        # 3. Ausschnitt um eine Tour: Strecke mit 2 km Rand, Name der Tour, Bestätigung mit Umfang, Start, Fortschritt, Abbrechen
+        pg.click("#off-art button:has-text('Um eine Tour')"); pg.wait_for_selector("#off-tourbox:not([hidden])")
+        assert "Bitte eine Tour wählen" in est() and pg.is_disabled("#off-start")
+        tid = pg.evaluate("Tours.list().then(l => l.find(t => t.name === 'Hüttenrunde').id)")
+        pg.select_option("#off-tour", tid)
+        pg.wait_for_function("() => document.querySelector('#off-est').textContent.startsWith('≈')", timeout=10000)
+        nk = pg.evaluate("async id => { const p = Geo.simplify(await Tours.points(id), 20).map(q => [+q.lat.toFixed(6), +q.lon.toFixed(6)]); return OfflineCalc.korridor(p, 2000, 10, 15).anzahl; }", tid)
+        assert est() == pg.evaluate("n => OfflineCalc.umfang('topo', n)", nk) and pg.input_value("#off-name") == "Hüttenrunde", (est(), nk)
+        pg.click("#off-start"); pg.wait_for_selector(sh)
+        t = pg.inner_text(sh); assert pg.evaluate("n => OfflineCalc.umfang('topo', n)", nk) in t and "Wanderkarte (OpenTopoMap), Zoom 10–15" in t and "Nur über WLAN" in t, t
+        pg.click(sh + " button.btn.pri"); pg.wait_for_selector("#off-txt")
+        st = calls("tilesStart")[-1]
+        assert st["src"] == "topo" and st["kind"] == "route" and st["zmax"] == 15 and st["rand"] == 2000 and st["wifiOnly"] is True and st["name"] == "Hüttenrunde" and len(st["pts"]) >= 2, {k: v for k, v in st.items() if k != "pts"}
+        pg.evaluate("n => { __off.job.done = Math.round(n / 4); }", nk)
+        pg.wait_for_function("t => document.querySelector('#off-txt').textContent === t", arg=pg.evaluate("n => OfflineCalc.tausend(Math.round(n / 4)) + ' von ' + OfflineCalc.tausend(n) + ' Kacheln'", nk), timeout=10000)
+        pg.wait_for_function("() => parseInt(document.querySelector('#off-prog i').style.width) >= 24", timeout=10000)
+        leise(); pg.click("#off-stop")
+        assert "Abgebrochen. Bereits geladene Kacheln bleiben" in toast_text(pg, "Abgebrochen"); pg.wait_for_selector("#off-txt", state="detached")
+        assert len(calls("tilesCancel")) == 1
+
+        # 4. Sichtbarer Ausschnitt laden bis zum Ende: Zusammenfassung, Liste mit Name, Größe, Datum; „Belegt“
+        pg.click("#off-art button:has-text('Kartenausschnitt')"); pg.wait_for_selector("#off-tourbox[hidden]", state="attached")
+        pg.fill("#off-name", "Karwendel"); leise(); pg.click("#off-start"); pg.wait_for_selector(sh); pg.click(sh + " button.btn.pri"); pg.wait_for_selector("#off-txt")
+        st = calls("tilesStart")[-1]; assert st["kind"] == "rect" and len(st["bbox"]) == 4 and st["name"] == "Karwendel" and st["zmax"] == 15, st
+        pg.evaluate("""() => { const j = __off.job; __off.areas = [{ id: 'a1', name: 'Karwendel', src: 'topo', kind: 'rect', zmin: 10, zmax: 15, tiles: j.total, have: j.total, bytes: 7 * 1048576, date: Date.now(), complete: true,
+          bbox: [47.40, 11.00, 47.50, 11.15], cover: OfflineCalc.abdeckung(OfflineCalc.rechteck({ s: 47.40, w: 11.00, n: 47.50, e: 11.15 }, 12, 12)) }]; __off.bytes = 7 * 1048576;
+          __off.job = { running: false, name: 'Karwendel', total: j.total, loaded: j.total - 5, skipped: 5, failed: 0 }; }""")
+        assert "Offline-Karte „Karwendel“:" in toast_text(pg, "Karwendel") and "(5 waren schon da)" in pg.inner_text("#toast")
+        pg.wait_for_selector("#off-liste .offli[data-id=a1]")
+        row = pg.inner_text("#off-liste .offli[data-id=a1]")
+        heute = pg.evaluate("new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })")
+        assert "Karwendel" in row and "Wanderkarte · Zoom 10–15" in row and "7,0 MB" in row and heute in row and "Unvollständig" not in row, row
+        assert pg.inner_text("#off-belegt") == "Belegt: 7,0 MB von 400 MB"
+        assert pg.evaluate("JSON.parse(localStorage.getItem('offlineAreas'))[0].id") == "a1", "Liste für ohne Netz gemerkt"
+
+        # 5. Aktualisieren (Rückfrage, nur die Kennung), Start abgelehnt (Meldung der Hülle), Löschen
+        leise(); pg.click("#off-liste .off-upd"); pg.wait_for_selector(".sheet[aria-label='„Karwendel“ aktualisieren?']")
+        assert "älter als eine Woche" in pg.inner_text(".sheet[aria-label='„Karwendel“ aktualisieren?']")
+        pg.click(".sheet[aria-label='„Karwendel“ aktualisieren?'] button.btn.pri"); pg.wait_for_selector("#off-txt")
+        assert calls("tilesStart")[-1] == {"refresh": "a1", "wifiOnly": True}, calls("tilesStart")[-1]
+        pg.evaluate("() => { __off.job = { running: false, name: 'Karwendel', total: 10, loaded: 2, skipped: 8, failed: 0 }; }"); toast_text(pg, "Karwendel")
+        pg.evaluate("__off.startRes = { started: false, error: 'Kein WLAN. Bitte mit einem WLAN verbinden oder „Nur über WLAN“ ausschalten.' }")
+        leise(); pg.click("#off-start"); pg.wait_for_selector(sh); pg.click(sh + " button.btn.pri")
+        assert "Kein WLAN" in toast_text(pg, "Kein WLAN") and pg.locator("#off-txt").count() == 0
+        pg.evaluate("__off.startRes = null")
+        leise(); pg.click("#off-liste .off-del"); pg.wait_for_selector(".sheet[aria-label='Offline-Karte löschen?']")
+        assert "andere Offline-Karte" in pg.inner_text(".sheet[aria-label='Offline-Karte löschen?']")
+        pg.click(".sheet[aria-label='Offline-Karte löschen?'] button.btn.pri")
+        assert "gelöscht" in toast_text(pg, "gelöscht"); pg.wait_for_selector("#off-leer")
+        assert calls("tilesDelete") == [{"id": "a1"}]
+
+        # 6. Einstellungen: nur über WLAN aus → beim Start mitgegeben; gesehene Kacheln merken aus; Leeren
+        pg.click("#off-wifi"); pg.wait_for_function("() => DB.kvGet('settings', {}).then(s => s.offlineWifi === false)")
+        leise(); pg.click("#off-start"); pg.wait_for_selector(sh); assert "Auch über mobile Daten" in pg.inner_text(sh); pg.click(sh + " button.btn.pri"); pg.wait_for_selector("#off-txt")
+        assert calls("tilesStart")[-1]["wifiOnly"] is False
+        pg.evaluate("() => { __off.job = { running: false, cancelled: true }; }"); pg.wait_for_selector("#off-txt", state="detached")
+        pg.click("#off-merken"); pg.wait_for_function("() => DB.kvGet('settings', {}).then(s => s.tileMerken === false)"); assert pg.evaluate("MapKit.merken()") is False
+        leise(); pg.click("#off-leeren"); assert "gelöscht" in toast_text(pg, "Gemerkte Kacheln gelöscht")
+        pg.wait_for_function("() => document.querySelector('#off-merk-n').textContent.startsWith('0 Kacheln gemerkt')")
+
+        # 7. Gemerkte Kacheln: höchstens MERKEN_MAX, die ältesten fallen heraus
+        weg = pg.evaluate("""async () => { const c = await caches.open(MapKit.cacheName); for (let i = 0; i < 12; i++) await c.put('https://tile.opentopomap.org/1/0/' + i + '.png', new Response('x'));
+          const n = await MapKit.kuerzen(5), k = (await c.keys()).map(r => r.url); await MapKit.clearCache(); return [n, k.length, k[0]]; }""")
+        assert weg[0] == 7 and weg[1] == 5 and weg[2].endswith("/1/0/7.png"), weg
+
+        # 8. Ohne Netz: Wanderkarte statt Straßenkarte (nur mit Offline-Karte); Hinweis in der Aufnahme nur ohne passende Offline-Karte
+        pg.evaluate("() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.__netz !== false }); window.__netz = false; Offline.gebiete = []; }")
+        assert "openstreetmap" in pg.evaluate("MapKit.layer()._url"), "ohne Offline-Karte bleibt die gewählte Karte"
+        pg.evaluate("() => { Offline.gebiete = [{ id: 'b', src: 'topo', have: 5, cover: OfflineCalc.abdeckung(OfflineCalc.rechteck({ s: 47.49, w: 11.19, n: 47.51, e: 11.21 }, 12, 12)) }]; }")
+        assert "opentopomap" in pg.evaluate("MapKit.layer()._url"), "ohne Netz die Wanderkarte"
+        pg.evaluate("() => { Offline.gebiete = []; }")
+        go(pg, "#/rec", ".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime")
+        pg.wait_for_selector("#rec-offline:not([hidden])", timeout=10000)
+        assert pg.inner_text("#rec-offline") == "Keine Karte offline – Aufnahme läuft trotzdem"
+        pg.evaluate("() => { Offline.gebiete = [{ id: 'b', src: 'topo', have: 5, cover: OfflineCalc.abdeckung(OfflineCalc.rechteck({ s: 47.49, w: 11.19, n: 47.51, e: 11.21 }, 12, 12)) }]; }")
+        go(pg, "#/rec", ".bigtime"); pg.wait_for_timeout(1500); assert pg.locator("#rec-offline").is_hidden(), "Offline-Karte deckt den Ort ab"
+        pg.evaluate("() => { window.__netz = true; Offline.gebiete = []; }"); go(pg, "#/rec", ".bigtime"); pg.wait_for_timeout(1500)
+        assert pg.locator("#rec-offline").is_hidden(), "mit Netz kein Hinweis"
+        pg.evaluate("() => { window.__rec.state = 'idle'; window.__rec.unsent = false; }"); go(pg, "#/start", "#hero")
+
+        # 9. Karte im PDF: liegt der Ausschnitt ganz in der Offline-Karte, kommen die Kacheln aus dem Speicher (/tiles/topo/…), mit deren Quellenangabe
+        png = kachel_png(); lok = []; osm = []
+        def lokal(r): lok.append(r.request.url); r.fulfill(status=200, body=png, content_type="image/png")
+        def netz(r): osm.append(r.request.url); r.fulfill(status=200, body=png, content_type="image/png", headers={"access-control-allow-origin": "*"})
+        pg.route("**/tiles/topo/**", lokal); pg.route("**/tile.openstreetmap.org/**", netz)
+        pdf = "async () => { const t = (await Tours.list()).find(x => x.name === 'Hüttenrunde'), r = await PdfUI.kartenBild(await Tours.points(t.id), 1060, 600, { stop: () => false }); return r ? { q: r.plan.quelle, off: !!r.plan.offline, n: r.plan.kacheln.length } : null; }"
+        pg.evaluate("() => { Offline.gebiete = [{ id: 'b', src: 'topo', have: 5 }]; }")
+        r = pg.evaluate(pdf)
+        assert r and r["off"] and "OpenTopoMap" in r["q"] and len(lok) == r["n"] and not osm, (r, len(lok), osm[:2])
+        pg.unroute("**/tiles/topo/**", lokal); lok.clear()
+        pg.evaluate("MapKit.clearCache()")      # Vorschaubilder der Touren haben Kacheln gemerkt; die nähme das PDF sonst zuerst
+        r = pg.evaluate(pdf)
+        assert r and not r["off"] and r["q"] == "© OpenStreetMap-Mitwirkende" and len(osm) == r["n"], (r, len(osm))
+        pg.unroute("**/tile.openstreetmap.org/**", netz)
+    finally:
+        pg.evaluate("""async () => { window.MTApp.call = window.__offcall0; delete navigator.onLine; window.__netz = true; Offline.gebiete = null; try { localStorage.removeItem('offlineAreas'); } catch (e) {}
+          await Set_.set('offlineWifi', true); await Set_.set('tileMerken', true); await Set_.set('offlineStufe', 'normal'); window.__rec.state = 'idle'; window.__rec.unsent = false;
+          try { sessionStorage.removeItem('offArt'); } catch (e) {} document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""")
+
+
 def neue_funktionen(pg):
     """Funktionen aus „Meine Touren“ (2.0.0): Sicherungs-Erinnerung, Ziele, Bestwerte, Rückblick, Planung, Fitness, Startseite einrichten."""
     DAY = 86400000
@@ -2451,6 +2610,7 @@ def pdf_karte(pg, aus=None):
         elif st["modus"] == "abbruch": r.abort("internetdisconnected")
         else: r.fulfill(status=200, body=png, content_type="image/png", headers={"access-control-allow-origin": "*"})
     pg.route("**/tile.openstreetmap.org/**", kachel)
+    pg.evaluate("MapKit.clearCache()")      # 2.11.0: das PDF nimmt gemerkte Kacheln zuerst – hier soll es wirklich laden
     if not pg.evaluate("!!window.__cache"): pg.evaluate(PDF_FANG)
     pg.evaluate(KACHEL_ZAEHLER)
     vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
@@ -3196,6 +3356,7 @@ def main():
         videos_271(pg)
         videos_290(pg)
         sicherung_2100(pg)
+        offline_2110(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -3217,7 +3378,7 @@ def main():
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
         pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
         lt = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0].id)")
-        bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
+        bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/offline", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
         bad += neue_layout(pg, neu)
         bad += layout_21(pg)
         bad += layout_22(pg)

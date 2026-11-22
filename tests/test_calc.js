@@ -946,6 +946,11 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   // Pfade: nur ganze Zahlen, Quelle aus der Liste, im Raster
   ok(O.pfad('topo', 15, 17403, 11458) === 'topo/15/17403/11458.png' && O.lokal('topo', 15, 17403, 11458) === '/tiles/topo/15/17403/11458.png', 'Pfad');
   ok([['topo', 3, 8, 0], ['topo', -1, 0, 0], ['topo', 1.5, 0, 0], ['../x', 1, 0, 0], ['topo', 1, '0', 0], ['constructor', 1, 0, 0], ['topo', 20, 0, 0]].every(a => O.pfad(...a) === null), 'ungültige Pfade');
+  // Fortschritt und Zusammenfassung eines Laufs der Hülle
+  const fp = O.fortschritt({ done: 69, total: 275 }); ok(fp.text === '69 von 275 Kacheln' && Math.abs(fp.anteil - 69 / 275) < 1e-9, 'Fortschritt');
+  ok(O.fortschritt({ done: 5, total: 0 }).text === 'Wird vorbereitet …' && O.fortschritt({ done: 3000, total: 1500 }).anteil === 1, 'Fortschritt Ränder');
+  ok(O.ergebnis({ name: 'Karwendel', loaded: 1270, skipped: 5, failed: 0 }) === 'Offline-Karte „Karwendel“: 1.275 Kacheln gespeichert (5 waren schon da).', O.ergebnis({ name: 'Karwendel', loaded: 1270, skipped: 5 }));
+  ok(O.ergebnis({ name: 'X', loaded: 10, failed: 2 }) === 'Offline-Karte „X“: 10 Kacheln gespeichert, 2 fehlen.' && O.ergebnis({ cancelled: true }).startsWith('Abgebrochen.') && O.ergebnis({ error: 'Kein WLAN', cancelled: true }) === 'Kein WLAN', 'Ergebnis');
   ok(O.name('  Karwendel\n Runde ') === 'Karwendel Runde' && O.name('', 'X') === 'X' && O.name('x'.repeat(80)).length === 60, 'Namen');
 }
 

@@ -18,13 +18,25 @@ const MapKit = {
   cacheName: 'tiles-v1',
 
   layer() {
-    const id = Set_.get('tiles') || 'osm';
+    let id = Set_.get('tiles') || 'osm';
+    // 2.11.0: ohne Netz die gespeicherte Wanderkarte zeigen, wenn die Straßenkarte gewählt ist (die darf nicht offline gespeichert werden)
+    if (id === 'osm' && typeof Offline !== 'undefined' && Offline.lieberTopo()) id = 'topo';
     let p = MapKit.providers[id] || MapKit.providers.osm;
     let url = p.url;
     if (id === 'custom') url = (Set_.get('tileUrl') || '').replace('{key}', Set_.get('tileKey') || '') || MapKit.providers.osm.url;
     return new MapKit.CachedTiles(url, { maxZoom: p.max, attribution: p.attr, crossOrigin: true });
   },
   _tileLayerClass: null,
+  /** 2.11.0: gesehene Kacheln im Zwischenspeicher der Oberfläche merken (Einstellung, Vorgabe an); höchstens OfflineCalc.MERKEN_MAX, die ältesten fallen heraus. */
+  merken() { return Set_.get('tileMerken') !== false; },
+  _neu: 0,
+  gemerkt() { if (++MapKit._neu % 100 === 0) MapKit.kuerzen().catch(() => {}); },
+  async kuerzen(max) {
+    const lim = max == null ? OfflineCalc.MERKEN_MAX : max, c = await caches.open(MapKit.cacheName), k = await c.keys();
+    for (const r of k.slice(0, Math.max(0, k.length - lim))) await c.delete(r);
+    return Math.max(0, k.length - lim);
+  },
+  LEER: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
   init() {
     if (MapKit.CachedTiles) return;
     MapKit.CachedTiles = L.TileLayer.extend({
@@ -35,13 +47,21 @@ const MapKit = {
         const fin = (err) => done(err, img);
         const useBlob = b => { const u = URL.createObjectURL(b); img.onload = () => { URL.revokeObjectURL(u); fin(null); }; img.onerror = () => fin(null); img.src = u; };
         (async () => {
+          let c = null;
+          try { if (window.caches) c = await caches.open(MapKit.cacheName); } catch (e) { c = null; }
           try {
-            if (!window.caches) throw 0;
-            const c = await caches.open(MapKit.cacheName);
-            let r = await c.match(url);
-            if (!r) { r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw 0; c.put(url, r.clone()).catch(() => {}); }
+            let r = c ? await c.match(url) : null;
+            if (!r) {
+              // In der App liefert die Hülle gespeicherte Offline-Kacheln für diese Adresse selbst aus (X-MT-Offline) – die nicht doppelt merken
+              r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw 0;
+              if (c && MapKit.merken() && !r.headers.get('X-MT-Offline')) c.put(url, r.clone()).then(MapKit.gemerkt, () => {});
+            }
             useBlob(await r.blob());
-          } catch (e) { img.onload = () => fin(null); img.onerror = () => fin(null); img.src = url; }
+          } catch (e) {
+            // Ohne Netz: still eine leere Kachel statt eines zweiten vergeblichen Versuchs (keine Fehlerflut im Protokoll)
+            if (navigator.onLine === false) { img.classList.add('tile-off'); img.onload = img.onerror = () => fin(null); img.src = MapKit.LEER; return; }
+            img.onload = () => fin(null); img.onerror = () => fin(null); img.src = url;
+          }
         })();
         return img;
       },
@@ -53,30 +73,6 @@ const MapKit = {
     MapKit.layer().addTo(m);
     L.control.zoom({ position: 'topright' }).addTo(m);
     return m;
-  },
-  tileXY(lat, lon, z) { const n = 2 ** z; return [Math.floor((lon + 180) / 360 * n), Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n)]; },
-  tileUrls(b, zmin, zmax) {
-    const tpl = MapKit.layer()._url, out = [];
-    for (let z = zmin; z <= zmax; z++) {
-      const [x0, y1] = MapKit.tileXY(b.getSouth(), b.getWest(), z), [x1, y0] = MapKit.tileXY(b.getNorth(), b.getEast(), z);
-      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y));
-    }
-    return out;
-  },
-  async downloadArea(bounds, zmin, zmax, onProgress, signal) {
-    const urls = MapKit.tileUrls(bounds, zmin, zmax);
-    if (urls.length > 6000) throw new Error('Zu viele Kacheln (' + urls.length + '). Bitte kleineren Ausschnitt oder niedrigere Zoomstufe wählen.');
-    const c = await caches.open(MapKit.cacheName);
-    let done = 0;
-    const work = async () => {
-      while (urls.length && !(signal && signal.stop)) {
-        const u = urls.pop();
-        try { if (!(await c.match(u))) { const r = await fetch(u, { mode: 'cors' }); if (r.ok) await c.put(u, r); } } catch (e) { /* Kachel übersprungen */ }
-        done++; if (onProgress && done % 10 === 0) onProgress(done);
-      }
-    };
-    await Promise.all([work(), work(), work(), work()]);
-    return done;
   },
   async cacheCount() { try { return (await (await caches.open(MapKit.cacheName)).keys()).length; } catch (e) { return 0; } },
   async clearCache() { try { await caches.delete(MapKit.cacheName); } catch (e) { /* egal */ } },

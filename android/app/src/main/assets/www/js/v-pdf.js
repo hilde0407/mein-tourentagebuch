@@ -103,6 +103,19 @@ const PdfUI = {
     try { const b = await Promise.race([laden, zeit, abbruch]); ok = true; return b; }
     finally { clearTimeout(tm); if (!ok) { if (ac) ac.abort(); laden.then(b => b && b.close && b.close(), () => {}); } }      // zu spät gekommene Kachel gleich wieder freigeben
   },
+  /** 2.11.0: Kachel ohne Netz, wenn vorhanden – erst die gespeicherte Offline-Kachel (virtueller Server der Hülle, /tiles/…), dann eine gemerkte Kachel
+      aus dem Zwischenspeicher der Karte. Sonst null. src: 'osm' oder 'topo'; t: { z, x, y }. */
+  async kachelVorhanden(src, t) {
+    try {
+      const u = window.MTApp ? OfflineCalc.lokal(src, t.z, t.x, t.y) : null;
+      if (u) { const r = await fetch(u, { cache: 'no-store' }); if (r.ok) return await createImageBitmap(await r.blob()); }
+    } catch (e) { /* weiter */ }
+    try {
+      const q = OfflineCalc.QUELLEN[src];
+      if (q && window.caches) { const r = await (await caches.open(MapKit.cacheName)).match(q.url.replace('{z}', t.z).replace('{x}', t.x).replace('{y}', t.y)); if (r) return await createImageBitmap(await r.blob()); }
+    } catch (e) { /* weiter */ }
+    return null;
+  },
   /** Karte der Strecke als Canvas w × hh: Kacheln, darüber die Strecke (kräftige Farbe, weißer Rand), Start und Ziel, Kästchen für Legende und Quellenangabe.
       Gibt { cv, plan, quelle: { s, x, y, size } } zurück oder null (keine Strecke, Fehler, fehlende Kachel, Abbruch). ctl.stop() wird laufend geprüft. */
   async kartenBild(pts, w, hh, ctl) {
@@ -110,13 +123,20 @@ const PdfUI = {
     if (!plan || typeof createImageBitmap !== 'function') return null;
     const K = PdfUI.KARTE, ks = plan.kacheln, bm = new Array(ks.length);
     let iv, fehler = null, next = 0;
+    // 2.11.0: Liegt der Ausschnitt ganz in einer Offline-Karte (Wanderkarte), kommt die Karte ohne Netz aus dem Speicher – mit deren Quellenangabe
+    if (typeof Offline !== 'undefined' && Offline.bekannt().some(g => g && g.src === 'topo' && g.have > 0) && plan.z <= OfflineCalc.ZMAX) {
+      const tp = await Promise.all(ks.map(t => PdfUI.kachelVorhanden('topo', t)));
+      if (tp.every(Boolean)) { tp.forEach((b, i) => { bm[i] = b; }); plan.quelle = OfflineCalc.QUELLEN.topo.attr; plan.offline = true; }
+      else tp.forEach(b => b && b.close && b.close());
+    }
     const abbruch = new Promise((_, no) => { iv = setInterval(() => { if (ctl.stop()) no(new Error('Abgebrochen')); }, 100); });
     abbruch.catch(() => {});
     const arbeiter = async () => {
       while (!fehler && next < ks.length) {
         if (ctl.stop()) { fehler = 'Abgebrochen'; break; }
         const i = next++;
-        try { bm[i] = await PdfUI.kachel(Karte.url(ks[i]), K.ms, abbruch); } catch (e) { fehler = fehler || (e && e.message) || 'Fehler'; }
+        if (bm[i]) continue;
+        try { bm[i] = (await PdfUI.kachelVorhanden('osm', ks[i])) || await PdfUI.kachel(Karte.url(ks[i]), K.ms, abbruch); } catch (e) { fehler = fehler || (e && e.message) || 'Fehler'; }
       }
     };
     try { await Promise.all(Array.from({ length: Math.min(K.parallel, ks.length) }, arbeiter)); } finally { clearInterval(iv); }

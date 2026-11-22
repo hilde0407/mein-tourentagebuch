@@ -99,6 +99,13 @@ def main():
             go("#/stats/ziele", "#goals .ygoal"); scan("Ziele"); pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.click("#goalsave"); pg.wait_for_timeout(250); scan("Ziele, Blatt"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             go("#/stats/rekorde", "#bestwerte .li"); pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_timeout(300); scan("Bestwerte, beste drei"); pg.click("#bestwerte .seg button:text-is('Beste')"); pg.wait_for_timeout(200)
             go("#/settings", "#homeset"); scan("Einstellungen, Startseite")
+            # 2.11.0: Offline-Karten (Liste mit unvollständiger Karte, Schätzung über der Grenze)
+            pg.evaluate(T.OFF_MOCK)
+            pg.evaluate("""() => { __off.areas = [{ id: 'a1', name: 'Karwendel', src: 'topo', kind: 'rect', zmin: 10, zmax: 15, tiles: 1234, have: 1200, bytes: 29e6, date: Date.now(), complete: false },
+              { id: 'a2', name: 'Hüttenrunde', src: 'topo', kind: 'route', zmin: 10, zmax: 16, tiles: 800, have: 800, bytes: 18e6, date: Date.now(), complete: true }]; __off.bytes = 47e6; }""")
+            go("#/offline", "#off-liste .offli"); scan("Offline-Karten")
+            pg.evaluate("document.querySelector('#off-map').__karte.setZoom(8, { animate: false })"); pg.wait_for_function("() => document.querySelector('#off-est').textContent.includes('Zu groß')"); scan("Offline-Karten, zu groß")
+            pg.evaluate("() => { window.MTApp.call = window.__offcall0; try { localStorage.removeItem('offlineAreas'); } catch (e) {} Offline.gebiete = null; }")
             pg.evaluate("(async () => { await Set_.set('homeShow', {}); await DB.kvSet('lastBackup', Date.now()); })()")
             # 2.1.0: Meine Touren (anmelden mit Hinweis, verbunden, zweiter Schritt, Fortschritt mit „Abbrechen“), Zepp mit Schalter, Doppelte Touren (Paare, Rückfrage, leer), Tourseite mit Zahlen aus Meine Touren
             zu = lambda: (pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_timeout(250))
@@ -169,10 +176,12 @@ def main():
             assert pg.locator("#hero.pic").count() == 0, "ohne Kacheln muss der gezeichnete Aufmacher stehen"
             for item in pg.evaluate(JS): bad.setdefault(("Start gezeichnet", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             # Laufende und pausierte Aufzeichnung (rote Scheibe, große Ziffern, Beenden)
-            pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector(".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime"); pg.wait_for_timeout(500)
+            pg.evaluate("() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); Offline.gebiete = []; }")      # 2.11.0: Hinweis „Keine Karte offline“
+            pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector(".bigstart"); pg.click(".bigstart"); pg.wait_for_selector(".bigtime"); pg.wait_for_selector("#rec-offline:not([hidden])"); pg.wait_for_timeout(500)
             for item in pg.evaluate(JS): bad.setdefault(("Aufzeichnung läuft", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             pg.click("#rpause"); pg.wait_for_timeout(1400)
             for item in pg.evaluate(JS): bad.setdefault(("Aufzeichnung Pause", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            pg.evaluate("() => { delete navigator.onLine; Offline.gebiete = null; }")
             pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#startrec.live"); pg.wait_for_timeout(300)
             for item in pg.evaluate(JS): bad.setdefault(("Start, Aufzeichnung läuft", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             ctx.close()

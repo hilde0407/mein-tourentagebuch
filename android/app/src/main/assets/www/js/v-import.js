@@ -274,8 +274,6 @@ Views['/settings'] = async root => {
     if (st.running) Medien.follow();
   };
   Medien.refresh = showMedien;
-  const cnt = h('small', { class: 'muted' }, '');
-  MapKit.cacheCount().then(n => cnt.textContent = n + ' Kacheln gespeichert');
   const nT = await DB.count('tours'), nP = await DB.count('photos');
   body.append(
     h('h3', null, 'Karte'),
@@ -283,10 +281,10 @@ Views['/settings'] = async root => {
       h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),
     sel('Kartenquelle', 'tiles', Object.entries(MapKit.providers).map(([k, v]) => [k, v.name])),
     inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}'), inp('Schlüssel (für {key})', 'tileKey', ''),
-    h('div', { class: 'row' }, cnt, h('span', { class: 'sp' }), h('button', { class: 'btn sm', onclick: async () => { await MapKit.clearCache(); cnt.textContent = '0 Kacheln gespeichert'; } }, 'Offline-Karten löschen')),
+    UI.list([UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Ausschnitte für unterwegs laden, gesehene Kacheln merken', href: '#/offline', id: 'set-offline' })]),
     h('p', { class: 'muted small' }, 'Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),
     UI.toggle('Karte im PDF (braucht Internet)', Set_.get('pdfKarte') !== false, v => Set_.set('pdfKarte', !!v), { id: 'pdf-karte' }),
-    h('p', { class: 'muted small' }, 'Beim Tour-PDF lädt die App dafür einen Kartenausschnitt von OpenStreetMap (nur zum Zeichnen, nichts wird gespeichert). Ohne Internet oder ausgeschaltet steht die Streckenskizze im PDF.'),
+    h('p', { class: 'muted small' }, 'Beim Tour-PDF lädt die App dafür einen Kartenausschnitt von OpenStreetMap (nur zum Zeichnen, nichts wird gespeichert). Vorhandene Kacheln nimmt sie zuerst: eine Offline-Karte, die den ganzen Ausschnitt enthält, oder gemerkte Kacheln. Fehlt etwas ohne Internet, oder ist der Schalter aus, steht die Streckenskizze im PDF.'),
     h('h3', null, 'Routing'), inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'),
     h('h3', null, 'Fotos'), sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
     h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen'),
@@ -308,7 +306,7 @@ Views['/settings'] = async root => {
     }, { id: 'hs-' + b.id }), b.meta.sub ? h('p', { class: 'muted small' }, b.meta.sub) : null))),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
     h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
-    h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“.'),
+    h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“. Offline-Karten sind auch nicht enthalten – sie lassen sich jederzeit neu laden.'),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toast(e.message, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
     h('div', { class: 'fld' }, 'Erinnern, wenn die letzte Sicherung älter ist als', remind),
     h('p', { class: 'muted small' }, 'Touren und Fotos/Videos werden getrennt gezählt; die Startseite zeigt höchstens eine Zeile.'),

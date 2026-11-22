@@ -56,7 +56,7 @@ async function tileMapImage(t, pts, o) {
     const url = tpl.replace('{z}', z).replace('{x}', ((x % n) + n) % n).replace('{y}', y);
     jobs.push((async () => {
       let r = await c.match(url);
-      if (!r) { r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw 0; c.put(url, r.clone()).catch(() => {}); }
+      if (!r) { r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw 0; if (MapKit.merken() && !r.headers.get('X-MT-Offline')) c.put(url, r.clone()).then(MapKit.gemerkt, () => {}); }
       const bmp = await createImageBitmap(await r.blob());
       g.drawImage(bmp, Math.round(x * T - ox), Math.round(y * T - oy)); if (bmp.close) bmp.close();
     })());

@@ -50,6 +50,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     panoHinweisAus: false,      // 2.8.0: Hinweis vor „Panorama“ (Modus in der Kamera wählen) nicht mehr zeigen
     videoLimit: '120', videoGallery: true, videoAuto: false,      // 2.9.0: längste Video-Aufnahme (Sekunden, '0' = unbegrenzt), Kopie in die Galerie, HEVC automatisch umwandeln
     backupAuto: false,      // 2.10.0: beim Start höchstens einmal am Tag eine .mtl in den Sicherungsordner (SAF)
+    offlineWifi: true, tileMerken: true, offlineStufe: 'normal',      // 2.11.0: Offline-Karten nur über WLAN laden; gesehene Kacheln merken; Detailstufe (bis Zoom 15)
     pdfKarte: true,      // 2.6.0: Karte (OpenStreetMap-Kacheln) im Tour-PDF; aus = Streckenskizze wie in 2.5.0
   },
   async load() { this.v = Object.assign({}, this.defaults, await DB.kvGet('settings', {})); },

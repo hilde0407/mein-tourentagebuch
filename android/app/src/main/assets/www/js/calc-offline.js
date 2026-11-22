@@ -167,7 +167,22 @@
   /** Name eines Ausschnitts: ohne Steuerzeichen, höchstens 60 Zeichen, nie leer. */
   const name = (s, fb) => (String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)) || fb || 'Offline-Karte';
 
-  const api = { QUELLEN, MAX_KACHELN, ZMIN, ZMAX, MAX_GESAMT, RAND_M, ABDECKUNG_Z, ZAEHL_GRENZE, MERKEN_MAX, STUFEN, stufe, zmaxVon, kachelXY, zaehleRechteck, rechteck, stuetzen, korridor, rahmen,
+  /** Fortschritt eines Laufs der Hülle ({ done, total }): { text: „120 von 275 Kacheln“, anteil 0…1 }. */
+  function fortschritt(j) {
+    const t = Math.max(0, +(j && j.total) || 0), d = Math.min(t, Math.max(0, +(j && j.done) || 0));
+    return { text: t ? tausend(d) + ' von ' + tausend(t) + ' Kacheln' : 'Wird vorbereitet …', anteil: t ? d / t : 0 };
+  }
+  /** Zusammenfassung nach dem Lauf ({ name, total, loaded, skipped, failed, cancelled, error, wifiLost }). */
+  function ergebnis(j) {
+    j = j || {};
+    if (j.error) return j.error;
+    if (j.cancelled) return 'Abgebrochen. Bereits geladene Kacheln bleiben; „Aktualisieren“ lädt den Rest.';
+    const da = (+j.loaded || 0) + (+j.skipped || 0), fehlt = +j.failed || 0;
+    return 'Offline-Karte „' + name(j.name) + '“: ' + tausend(da) + (da === 1 ? ' Kachel' : ' Kacheln') + ' gespeichert'
+      + (j.skipped ? ' (' + tausend(j.skipped) + ' waren schon da)' : '') + (fehlt ? ', ' + tausend(fehlt) + ' fehlen' : '') + '.';
+  }
+
+  const api = { fortschritt, ergebnis, QUELLEN, MAX_KACHELN, ZMIN, ZMAX, MAX_GESAMT, RAND_M, ABDECKUNG_Z, ZAEHL_GRENZE, MERKEN_MAX, STUFEN, stufe, zmaxVon, kachelXY, zaehleRechteck, rechteck, stuetzen, korridor, rahmen,
     abdeckung, abgedeckt, schaetzung, mb, tausend, umfang, pruefen, pfad, lokal, name };
   if (node) module.exports = api; else root.OfflineCalc = api;
 })(typeof window !== 'undefined' ? window : globalThis);

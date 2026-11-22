@@ -11,7 +11,7 @@ Views['/map'] = async root => {
   const phBtn = UI.chip('🖼 Fotos zeigen', false, () => { showPhotos = !showPhotos; phBtn.classList.toggle('on', showPhotos); phBtn.setAttribute('aria-pressed', showPhotos ? 'true' : 'false'); draw(); });
   // Die Karte ist die zweite Ansicht der Tourenliste: oben rechts geht es zurück zur Liste
   root.append(topbar('Karte', { actions: h('a', { class: 'btn sm hbtn', id: 'tolist', href: '#/', html: Ico.svg('list') + '<span>Liste</span>' }) }),
-    h('div', { class: 'maptools' }, yearSel, phBtn, h('button', { class: 'chip', onclick: offline }, '⬇ Offline speichern')), mapEl);
+    h('div', { class: 'maptools' }, yearSel, phBtn, h('button', { class: 'chip', id: 'tooffline', onclick: offline }, '⬇ Offline-Karte')), mapEl);
   const map = MapKit.create(mapEl);
   const g = L.layerGroup().addTo(map);            // Fotos
   const linien = L.layerGroup().addTo(map);       // Strecken (nur nah genug und im Ausschnitt)
@@ -129,13 +129,11 @@ Views['/map'] = async root => {
       if (!fitted && !fc && bounds.length) { map.fitBounds(L.latLngBounds(bounds), { padding: [30, 30] }); fitted = true; }
     }
   }
-  async function offline() {
-    const b = map.getBounds(), z = map.getZoom();
-    const zmax = Math.min(16, z + 3);
-    const n = MapKit.tileUrls(b, z, zmax).length;
-    if (!await confirmBox('Karte offline speichern', `Der sichtbare Ausschnitt wird für die Zoomstufen ${z}–${zmax} gespeichert (ca. ${n} Kacheln, etwa ${Math.round(n * 0.02)} MB). Bitte nur im WLAN.`, 'Herunterladen')) return;
-    try { await PhotoSources.progress('Karte laden', async (upd) => { const sig = {}; await MapKit.downloadArea(b, z, zmax, d => upd(Math.min(d, n), n), sig); }); toast('Karte gespeichert'); }
-    catch (e) { toast(e.message, 6000); }
+  /** 2.11.0: sichtbaren Ausschnitt an „Offline-Karten“ übergeben (dort Schätzung, Bestätigung, Laden in der Hülle). */
+  function offline() {
+    const b = map.getBounds();
+    try { sessionStorage.setItem('offBounds', JSON.stringify({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() })); sessionStorage.setItem('offArt', 'karte'); } catch (e) { /* egal */ }
+    Nav.go('/offline');
   }
   await draw();
   return () => { token++; ltoken++; map.remove(); };
