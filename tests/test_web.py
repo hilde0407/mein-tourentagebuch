@@ -541,6 +541,138 @@ def von_aussen(pg):
     print("Von außen geöffnet: Rückfrage gemacht/geplant/abbrechen ok")
 
 
+MD_MOCK = """() => {
+  /* 2.10.0: Medien-Sicherung der Hülle nachgestellt: mediaStatus / mediaFolder / mediaBackup / mediaPickZips / mediaRestore / mediaJob / mediaCancel / autoBackup */
+  const c0 = window.MTApp.call; window.__mdcall0 = c0; const MB = 1048576;
+  window.__md = { calls: [], folder: {}, pickFolder: { tree: 'content://com.android.externalstorage.documents/tree/primary%3ASicherung', name: 'Sicherung', ok: true },
+    status: { anzahl: 8, bytes: 30 * MB, neu: 5, neuBytes: 12 * MB, teile: 2, running: false }, job: { running: false },
+    zips: [{ uri: 'content://x/document/a', name: 'Medien_2026-11-01.zip', size: 1024 * MB }, { uri: 'content://x/document/b', name: 'Medien_2026-11-20.zip', size: 512 * MB }], auto: [] };
+  window.MTApp.call = (id, m, a) => {
+    if (!/^(media|autoBackup)/.test(m)) return c0.call(window.MTApp, id, m, a);
+    const D = window.__md, o = JSON.parse(a || '{}'); D.calls.push([m, o]); let r;
+    if (m === 'mediaStatus') r = Object.assign({}, D.status, D.folder.tree ? { folder: D.folder } : {}, { running: !!D.job.running });
+    else if (m === 'mediaFolder') { if (o.pick) D.folder = D.pickFolder; r = D.folder; }
+    else if (m === 'mediaBackup') { D.job = { running: true, kind: 'backup', phase: 'schreiben', done: 0, total: 2 * D.status.neuBytes, part: 1, parts: D.status.teile, file: 1, files: D.status.neu }; r = { started: true }; }
+    else if (m === 'mediaPickZips') r = D.zips;
+    else if (m === 'mediaRestore') { D.job = { running: true, kind: 'restore', phase: 'lesen', done: 0, total: 100, file: 1, files: (o.uris || []).length }; r = { started: true }; }
+    else if (m === 'mediaJob') r = D.job;
+    else if (m === 'mediaCancel') { D.job = { running: false, kind: D.job.kind, cancelled: true, result: D.job.kind === 'backup' ? { files: 0, parts: 0 } : { restored: 0 } }; r = true; }
+    else if (m === 'autoBackup') { D.auto.push(o); r = { name: o.name, folder: 'Sicherung', deleted: 0 }; }
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+}"""
+
+def sicherung_2100(pg):
+    """2.10.0: Sicherung der Fotos und Videos (Ordner wählen, Sichern mit Fortschritt und Abbrechen, Wiederherstellen aus mehreren ZIPs),
+    eine Erinnerungszeile für Touren und Medien (erscheint, verschwindet, „Später“), Einstellungen (Schwelle, automatisch in Ordner) gespeichert."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    MB = 1048576; DAY = 86400000
+    pg.evaluate(MD_MOCK)
+    calls = lambda m: pg.evaluate("m => __md.calls.filter(c => c[0] === m).map(c => c[1])", m)
+    try:
+        # 1. Einstellungen: Hinweis angepasst, Stand der Medien, noch nie gesichert, noch kein Ordner
+        go(pg, "#/settings", "#md-stand")
+        pg.wait_for_function("() => document.querySelector('#md-stand').textContent.includes('noch nicht gesichert')")
+        assert pg.inner_text("#md-stand") == "8 Dateien · 30 MB · 5 Dateien noch nicht gesichert (12 MB)", pg.inner_text("#md-stand")
+        assert pg.inner_text("#md-last") == "Zuletzt gesichert: noch nie" and "noch keiner gewählt" in pg.inner_text("#md-ordner")
+        assert "Fotos und Videos sichern" in pg.inner_text("#bk-media") and "nicht enthalten" in pg.inner_text("#bk-media")
+        assert pg.inner_text("#md-h") == "Fotos und Videos sichern" and pg.inner_text("#md-save") == "Sichern" and pg.inner_text("#md-restore") == "Wiederherstellen"
+
+        # 2. Sichern: ohne Ordner erst die Ordnerwahl, dann Rückfrage, dann Fortschritt; Abbrechen ruft mediaCancel
+        pg.click("#md-save")
+        pg.wait_for_selector(".sheet[aria-label='Fotos und Videos sichern?']")
+        assert calls("mediaFolder")[-1] == {"pick": True}, calls("mediaFolder")
+        t = pg.inner_text(".sheet[aria-label='Fotos und Videos sichern?']")
+        assert "5 Dateien noch nicht gesichert (12 MB)" in t and "2 ZIP-Dateien" in t and "„Sicherung“" in t, t
+        pg.click(".sheet[aria-label='Fotos und Videos sichern?'] button.btn.pri")
+        pg.wait_for_selector("#md-txt")
+        assert calls("mediaBackup") == [{"tree": "content://com.android.externalstorage.documents/tree/primary%3ASicherung"}], calls("mediaBackup")
+        pg.evaluate("__md.job.done = __md.job.total / 4")
+        pg.wait_for_function("() => document.querySelector('#md-txt').textContent === 'Teil 1 von 2 · 3,0 MB von 12 MB · 25 %'", timeout=10000)
+        pg.wait_for_function("() => document.querySelector('#md-prog i').style.width === '25%'", timeout=10000)
+        leise(); pg.click("#md-stop")
+        assert "Abgebrochen. Es wurde nichts gespeichert." in toast_text(pg, "Abgebrochen")
+        pg.wait_for_selector("#md-txt", state="detached")
+        assert len(calls("mediaCancel")) == 1
+
+        # 3. Zweiter Lauf: Ordner ist gemerkt (keine neue Wahl), fertig → Zusammenfassung, „Zuletzt gesichert“ heute, nichts mehr neu
+        leise(); pg.click("#md-save")
+        pg.wait_for_selector(".sheet[aria-label='Fotos und Videos sichern?']")
+        assert len([c for c in calls("mediaFolder") if c.get("pick")]) == 1, "Ordner nur einmal gewählt"
+        pg.click(".sheet[aria-label='Fotos und Videos sichern?'] button.btn.pri"); pg.wait_for_selector("#md-txt")
+        pg.evaluate("() => { __md.status = Object.assign(__md.status, { neu: 0, neuBytes: 0, teile: 0, last: Date.now() }); __md.job = { running: false, kind: 'backup', result: { files: 5, bytes: 12 * 1048576, parts: 2, folder: 'Sicherung' } }; }")
+        assert "Gesichert: 5 Dateien (12 MB) in 2 Teilen in „Sicherung“" in toast_text(pg, "Gesichert:")
+        heute = pg.evaluate("new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })")
+        pg.wait_for_function("h => document.querySelector('#md-last').textContent === 'Zuletzt gesichert: ' + h", arg=heute, timeout=10000)
+        assert "Keine neuen Dateien seit der letzten Medien-Sicherung" in pg.inner_text("#md-stand") and pg.inner_text("#md-ordner") == "Ordner: Sicherung"
+        leise(); pg.click("#md-save")
+        assert "Alles gesichert" in toast_text(pg, "Alles gesichert"), "nichts Neues: keine Rückfrage"
+        assert pg.locator(".sheet[aria-label='Fotos und Videos sichern?']").count() == 0
+
+        # 4. Wiederherstellen: zwei ZIPs, Rückfrage mit Größe, Aufruf mit beiden Adressen, Fortschritt, Ergebnis
+        leise(); pg.click("#md-restore")
+        pg.wait_for_selector(".sheet[aria-label='Fotos und Videos wiederherstellen?']")
+        t = pg.inner_text(".sheet[aria-label='Fotos und Videos wiederherstellen?']")
+        assert "2 Dateien (1,5 GB)" in t and "bleiben unverändert" in t, t
+        pg.click(".sheet[aria-label='Fotos und Videos wiederherstellen?'] button.btn.pri")
+        pg.wait_for_selector(".sheet[aria-label='Fotos und Videos wiederherstellen'] #md-txt")
+        assert calls("mediaRestore") == [{"uris": ["content://x/document/a", "content://x/document/b"]}], calls("mediaRestore")
+        pg.evaluate("__md.job.done = 50")
+        pg.wait_for_function("() => document.querySelector('#md-txt').textContent === 'Datei 1 von 2 · 50 %'", timeout=10000)
+        pg.evaluate("() => { __md.job = { running: false, kind: 'restore', result: { restored: 3, existing: 1, rejected: 0, thumbs: 2 } }; }")
+        assert "3 Dateien wiederhergestellt · 1 schon vorhanden · 2 Vorschaubilder neu erstellt" in toast_text(pg, "wiederhergestellt")
+        pg.wait_for_selector("#md-txt", state="detached")
+        # Auswahl abgebrochen: nichts passiert
+        pg.evaluate("__md.zips = []"); n0 = len(calls("mediaRestore")); pg.click("#md-restore"); pg.wait_for_timeout(400)
+        assert len(calls("mediaRestore")) == n0 and pg.locator(".sheet[aria-label='Fotos und Videos wiederherstellen?']").count() == 0
+
+        # 5. Einstellungen: Schwelle gespeichert; „Automatisch in Ordner sichern“ schreibt sofort einmal (heute nicht noch einmal)
+        pg.click("#bk-days button:has-text('7 Tage')")
+        pg.wait_for_function("() => DB.kvGet('settings', {}).then(s => s.backupDays === 7)")
+        pg.click("#bk-days button:has-text('14 Tage')")
+        pg.wait_for_function("() => DB.kvGet('settings', {}).then(s => s.backupDays === 14)")
+        pg.evaluate("DB.del('kv', 'autoBackupDay')")
+        assert not pg.is_checked("#bk-auto input")
+        leise(); pg.click("#bk-auto")
+        pg.wait_for_function("() => __md.auto.length === 1", timeout=20000)
+        a = pg.evaluate("__md.auto[0]")
+        assert a["name"] == "Tourentagebuch-Auto-" + pg.evaluate("SicherungCalc.tagKey(Date.now())") + ".mtl" and a["keep"] == 5, {k: v for k, v in a.items() if k != "b64"}
+        assert pg.evaluate("b => Backup.parse(Uint8Array.from(atob(b), c => c.charCodeAt(0))).app", a["b64"]) == "tourentagebuch"
+        assert pg.evaluate("DB.kvGet('settings', {}).then(s => s.backupAuto === true)") and pg.evaluate("Set_.get('backupAuto')") is True
+        pg.wait_for_function("() => DB.kvGet('lastBackup', 0).then(v => Date.now() - v < 30000)")
+        assert pg.evaluate("Backup.auto()") is None and pg.evaluate("__md.auto.length") == 1, "höchstens einmal am Tag"
+        pg.click("#bk-auto"); pg.wait_for_function("() => DB.kvGet('settings', {}).then(s => s.backupAuto === false)")
+        # ohne Ordner und Ordnerwahl abgebrochen: Schalter bleibt aus
+        pg.evaluate("() => { __md.folder = {}; __md.pickFolder = []; }")
+        pg.click("#bk-auto"); pg.wait_for_timeout(500)
+        assert not pg.is_checked("#bk-auto input") and pg.evaluate("Set_.get('backupAuto')") is False
+        pg.evaluate("() => { __md.pickFolder = { tree: 'content://com.android.externalstorage.documents/tree/primary%3ASicherung', name: 'Sicherung', ok: true }; __md.folder = __md.pickFolder; }")
+
+        # 6. Erinnerungszeile auf der Startseite: Medien fällig → eine Zeile mit „Jetzt sichern“ für Medien; „Später“ → Ruhe; unter der Schwelle / nichts Neues → keine
+        def start(): pg.evaluate("() => { if (location.hash === '#/start') Nav.render(); else location.hash = '#/start'; }"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(400)
+        pg.evaluate("async ([d]) => { await DB.kvSet('lastBackup', Date.now()); await DB.kvSet('backupSnooze', 0); await Set_.set('backupDays', 14); __md.status = Object.assign(__md.status, { neu: 5, neuBytes: 12 * 1048576, teile: 1, last: Date.now() - 20 * d }); }", [DAY])
+        start(); pg.wait_for_selector("#backupnote")
+        t = pg.inner_text("#backupnote")
+        assert "Fotos und Videos: letzte Sicherung vor 20 Tagen" in t and "5 neue Dateien seit der letzten Medien-Sicherung (12 MB)" in t, t
+        assert pg.get_attribute("#bk-now", "data-art") == "medien" and pg.locator("#backupnote").count() == 1
+        pg.click("#bk-now"); pg.wait_for_selector(".sheet[aria-label='Fotos und Videos sichern?']")
+        pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet[aria-label='Fotos und Videos sichern?']", state="detached")
+        leise(); pg.click("#bk-later"); pg.wait_for_selector("#backupnote", state="detached")
+        start(); assert pg.locator("#backupnote").count() == 0, "nach „Später“ Ruhe"
+        pg.evaluate("DB.kvSet('backupSnooze', 0)")
+        pg.evaluate("d => { __md.status.last = Date.now() - 5 * d; }", DAY); start(); assert pg.locator("#backupnote").count() == 0, "Medien unter der Schwelle"
+        pg.evaluate("d => { __md.status.last = null; __md.status.neu = 0; }", DAY); start(); assert pg.locator("#backupnote").count() == 0, "nichts Neues zu sichern"
+        # beide fällig: nur eine Zeile, die ältere (Touren 30 Tage, Medien 20 Tage)
+        pg.evaluate("async ([d]) => { await DB.kvSet('lastBackup', Date.now() - 30 * d); __md.status = Object.assign(__md.status, { neu: 2, neuBytes: 1048576, last: Date.now() - 20 * d }); }", [DAY])
+        start(); pg.wait_for_selector("#backupnote")
+        assert "Letzte Sicherung vor 30 Tagen" in pg.inner_text("#backupnote") and pg.get_attribute("#bk-now", "data-art") == "touren" and pg.locator("#backupnote").count() == 1
+        pg.evaluate("async ([d]) => { await DB.kvSet('lastBackup', Date.now() - 15 * d); }", [DAY])
+        start(); pg.wait_for_selector("#backupnote"); assert pg.get_attribute("#bk-now", "data-art") == "medien", "Medien älter"
+        pg.evaluate("Set_.set('backupDays', 0)"); start(); assert pg.locator("#backupnote").count() == 0, "Erinnerung aus"
+    finally:
+        pg.evaluate("async () => { window.MTApp.call = window.__mdcall0; await Set_.set('backupDays', 14); await Set_.set('backupAuto', false); await DB.kvSet('lastBackup', Date.now()); await DB.kvSet('backupSnooze', 0); await DB.del('kv', 'autoBackupDay'); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); }")
+
+
 def neue_funktionen(pg):
     """Funktionen aus „Meine Touren“ (2.0.0): Sicherungs-Erinnerung, Ziele, Bestwerte, Rückblick, Planung, Fitness, Startseite einrichten."""
     DAY = 86400000
@@ -3063,6 +3195,7 @@ def main():
         karte_281(pg)
         videos_271(pg)
         videos_290(pg)
+        sicherung_2100(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
