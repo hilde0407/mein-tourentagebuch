@@ -826,15 +826,17 @@ public class MainActivity extends Activity {
             case "videoJob": return VideoJob.job().toString();
             case "videoJobCancel": VideoJob.cancelJob(); return "true";
             case "playVideo": {                        // 2.9.0: eigener Vollbild-Player (VideoPlayerActivity), Datei direkt aus photos/; Antwort erst beim Schließen
-                final String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
-                File f = new File(Photos.dir(this), vid + ".mp4");
-                if (vid.isEmpty() || !f.isFile()) return new JSONObject().put("ok", false).put("what", -1).put("msg", "Video fehlt").toString();
+                final String vid = a.optString("id").replaceAll("[^A-Za-z0-9]", "");
+                final String vfile = a.has("file") ? VideoExportPlan.fileName(a.getString("file")) : null;      // 2.17.0: fertiges Flug-Video
+                File f = vfile != null ? FlugVideo.result(this, vfile) : new File(Photos.dir(this), vid + ".mp4");
+                if ((vfile == null && vid.isEmpty()) || f == null || !f.isFile()) return new JSONObject().put("ok", false).put("what", -1).put("msg", "Video fehlt").toString();
                 final int[] wh = Photos.videoSize(f);
                 pending.put(REQ_PLAY, id);
                 runOnUiThread(() -> {
                     try {
                         Intent i = new Intent(MainActivity.this, VideoPlayerActivity.class)
                                 .putExtra(VideoPlayerActivity.EXTRA_ID, vid).putExtra(VideoPlayerActivity.EXTRA_W, wh[0]).putExtra(VideoPlayerActivity.EXTRA_H, wh[1]);
+                        if (vfile != null) i.putExtra(VideoPlayerActivity.EXTRA_FILE, vfile);
                         startActivityForResult(i, REQ_PLAY);
                     } catch (Exception e) {
                         pending.remove(REQ_PLAY);
@@ -916,6 +918,39 @@ public class MainActivity extends Activity {
                     else { np++; ph += f.length(); }
                 }
                 return new JSONObject().put("photos", np).put("photoBytes", ph).put("videos", nv).put("videoBytes", vb).put("bytes", ph + vb).put("vids", vids).toString();
+            }
+            /* ---- 2.17.0: 3D-Flug als Video (FlugVideo / VideoExportPlan) ---- */
+            case "flugVideoInfo": return FlugVideo.info(this).toString();
+            case "flugVideoStart": return FlugVideo.start(this, a).toString();
+            case "flugVideoFrame": return FlugVideo.frame(a).toString();
+            case "flugVideoFinish": return FlugVideo.finish(this).toString();
+            case "flugVideoCancel": FlugVideo.cancel(this, a.optString("tmp")); return "true";
+            case "flugVideoSave": return FlugVideo.saveMuxed(this, a).toString();
+            case "flugVideoDienst": {                  // Vordergrund-Dienst mit Wake-Lock und „Bild N von M“; Bildschirm an, solange der Export läuft
+                final boolean an = a.optBoolean("an");
+                String tx = a.optString("text", "");
+                if (a.optBoolean("neu")) ImportService.start(this, "3D-Flug wird zum Video", tx, a.optInt("i"), a.optInt("n"));
+                else if (an) ImportService.update(this, "3D-Flug wird zum Video", tx, a.optInt("i"), a.optInt("n"));
+                else ImportService.stop(this, null);
+                runOnUiThread(() -> {
+                    if (an) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                });
+                return "true";
+            }
+            case "flugVideoShare": {                   // fertiges Flug-Video über das Teilen-Menü
+                final File f = FlugVideo.result(this, a.getString("name"));
+                if (f == null) throw new Exception("Video fehlt");
+                runOnUiThread(() -> {
+                    try {
+                        Uri u = PhotoProvider.uriFor(f);
+                        Intent i = new Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, u);
+                        i.setClipData(android.content.ClipData.newRawUri(f.getName(), u));
+                        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(i, "Video senden mit …"));
+                    } catch (Exception e) { AppLog.log("Flugvideo teilen: " + e); Toast.makeText(MainActivity.this, "Teilen nicht möglich", Toast.LENGTH_LONG).show(); }
+                });
+                return "true";
             }
             default: throw new Exception("unbekannt: " + m);
         }

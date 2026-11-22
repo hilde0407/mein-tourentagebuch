@@ -24,7 +24,7 @@ import java.io.File;
  * Drehung: im Manifest configChanges=orientation|screenSize|keyboardHidden – die Activity wird nicht neu gebaut, die Position bleibt.
  */
 public class VideoPlayerActivity extends Activity {
-    static final String EXTRA_ID = "id", EXTRA_W = "w", EXTRA_H = "h";
+    static final String EXTRA_ID = "id", EXTRA_W = "w", EXTRA_H = "h", EXTRA_FILE = "file";      // 2.17.0: EXTRA_FILE = fertiges Flug-Video (Teilen-Ordner)
     private VideoView vv;
     private int pos = 0;               // Wiedergabeposition (ms), gemerkt in onPause und für den Fall, dass Android die Activity doch neu baut
     private boolean wasPlaying = true; // beim ersten Start sofort abspielen; nach onPause bleibt es pausiert
@@ -36,8 +36,9 @@ public class VideoPlayerActivity extends Activity {
         Intent in = getIntent();
         String id = in == null ? null : in.getStringExtra(EXTRA_ID);
         id = id == null ? "" : id.replaceAll("[^A-Za-z0-9]", "");
-        File f = new File(Photos.dir(this), id + ".mp4");
-        if (id.isEmpty() || !f.isFile()) { fail(-1, 0); return; }
+        String file = in == null ? null : in.getStringExtra(EXTRA_FILE);
+        File f = file != null ? FlugVideo.result(this, file) : new File(Photos.dir(this), id + ".mp4");
+        if (f == null || (file == null && id.isEmpty()) || !f.isFile()) { fail(-1, 0); return; }
         if (b != null) { pos = b.getInt("pos", 0); wasPlaying = b.getBoolean("playing", true); }
 
         // Hochformat- oder Querformat-Video: Bildschirm folgt dem Video (Sensor darf um 180° drehen)
