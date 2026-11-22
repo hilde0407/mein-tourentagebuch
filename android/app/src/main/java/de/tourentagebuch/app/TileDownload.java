@@ -286,7 +286,7 @@ final class TileDownload {
             final File base = dir(c);
             final AtomicInteger next = new AtomicInteger(0), netFails = new AtomicInteger(0), busy = new AtomicInteger(0);
             final long now = System.currentTimeMillis();
-            Runnable worker = () -> {
+            Runnable worker = () -> { try {
                 int i;
                 while (!cancel.get() && (i = next.getAndIncrement()) < keys.length) {
                     int[] t = TilePlan.unkey(keys[i]);
@@ -299,7 +299,7 @@ final class TileDownload {
                     if (wifiOnly && i % 20 == 0 && !onWifi(c)) { synchronized (TileDownload.class) { wifiLost = true; } fail("WLAN getrennt – Laden angehalten. Bereits geladene Kacheln bleiben; „Aktualisieren“ lädt den Rest."); }
                     pause(150);
                 }
-            };
+            } catch (Throwable e) { fail(e.getMessage() == null ? e.toString() : e.getMessage()); AppLog.log("Offline-Karte: " + e); } };
             Thread w2 = new Thread(worker, "Offline-Karte 2");
             w2.start();
             worker.run();
