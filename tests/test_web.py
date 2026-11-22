@@ -3613,7 +3613,7 @@ def notizhoehe_2160(pg):
             pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
             pg.wait_for_timeout(150)
             m = pg.evaluate(NOTIZ_MASS, sel); voll(m, (sch, w, fs))
-            assert m["rechts"] <= m["vw"] + 1 and pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), ("Querrollen", sch, w, fs, m)
+            assert m["rechts"] <= m["vw"] + 1 and pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#view').scrollWidth <= document.querySelector('#view').clientWidth + 1"), ("Querrollen", sch, w, fs, m, pg.evaluate("document.querySelector('#view').scrollWidth"))
             assert m["farbe"] != m["grund"], (sch, m)
     pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.emulate_media(color_scheme="light"); pg.set_viewport_size({"width": 390, "height": 800}); pg.wait_for_timeout(150)
     # Tippen: wächst; Löschen: schrumpft bis auf die Grundhöhe (3 Zeilen)

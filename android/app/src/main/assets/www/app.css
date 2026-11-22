@@ -95,11 +95,11 @@ select{appearance:none;-webkit-appearance:none;padding-right:34px;background-ima
 textarea{resize:vertical;line-height:1.45}
 /* 2.16.0: mitwachsendes Textfeld (UI.autoHoehe): Zwilling ::after mit gleichem Text, gleicher Schrift und gleichen Abständen bestimmt die Höhe.
    Ohne Höchstmaß: die Seite rollt ohnehin, ein Rollfeld im Rollfeld würde die Notiz wieder abschneiden. */
-.ah{display:grid;width:100%}
-.ah>textarea.ah-t,.ah::after{grid-area:1/1/2/2;width:100%;min-height:48px;padding:10px 12px;border:1.5px solid transparent;font:inherit;font-size:1rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;letter-spacing:normal}
+.ah{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+.ah>textarea.ah-t,.ah::after{grid-area:1/1/2/2;width:100%;min-width:0;min-height:48px;padding:10px 12px;border:1.5px solid transparent;font:inherit;font-size:1rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;letter-spacing:normal}
 .ah>textarea.ah-t{resize:none;overflow-y:auto;border-color:var(--edge)}
 .ah>textarea.ah-t:focus-visible{border-color:var(--ink)}
-.ah::after{content:attr(data-wert) " ";visibility:hidden;overflow:hidden;pointer-events:none}
+.ah::after{box-sizing:border-box;content:attr(data-wert) " ";visibility:hidden;overflow:hidden;pointer-events:none}
 input[type=range]{accent-color:var(--acc);min-height:44px}
 .fld{display:block;margin:14px 0;font-size:.84rem;font-weight:500;color:var(--muted)}
 .fld input,.fld select,.fld textarea{margin-top:6px;font-size:1rem;font-weight:400;color:var(--ink)}
