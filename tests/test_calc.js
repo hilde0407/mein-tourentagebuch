@@ -548,6 +548,85 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(Math.abs(J.berechne(viele, 2025, new Date(2030, 0, 1)).monate.reduce((a, g) => a + g.dist, 0) - alt(viele, 2025).dist) < 1e-6 && J.berechne(viele, 2025, new Date(2030, 0, 1)).monate.reduce((a, g) => a + g.n, 0) === alt(viele, 2025).n, 'Monate ergeben zusammen die Gesamtzahlen');
 })();
 
+/* ---------- 2.14.0 Doppelte Fotos (calc-fotodoppelt.js): Abdruck wie MediaPrintCheck.java und die Empfangsseite, Gruppen, Auswahl, Übernahme, Import ---------- */
+(() => {
+  const FD = require(W + 'calc-fotodoppelt.js'), fs = require('fs');
+  const daten = n => { const b = new Uint8Array(n); let r = 12345; for (let i = 0; i < n; i++) { r = (Math.imul(r, 1103515245) + 12345) & 0x7fffffff; b[i] = (r >>> 16) & 255; } return b; };
+  // gleiche erwartete Werte wie tests/android/MediaPrintCheck.java
+  const erw = [[0, 'p1:0:ab3e7c0b0578ab1b'], [1000, 'p1:1000:eef021298246a447'], [196608, 'p1:196608:e863b2d179bd6e61'], [300001, 'p1:300001:9d71ed57e4f9f842']];
+  for (const [n0, w] of erw) ok(FD.abdruckVon(daten(n0)) === w, 'Abdruck ' + n0 + ' B = Java: ' + FD.abdruckVon(daten(n0)));
+  ok(JSON.stringify(FD.abschnitte(300001)) === JSON.stringify([[0, 65536], [117232, 182768], [234465, 300001]]), 'Abschnitte');
+  // dieselbe Rechnung in der Empfangsseite des WLAN-Imports (UploadServer.PAGE, fpr): aus dem Java-Quelltext holen und mit einem nachgebauten File-Objekt laufen lassen
+  const src = fs.readFileSync(W + '../../../java/de/tourentagebuch/app/UploadServer.java', 'utf8'), m = src.match(/"(function fpr\(fl\)\{[^"]*\})"/);
+  ok(!!m, 'fpr in der Empfangsseite');
+  const fpr = new Function(m[1] + '; return fpr;')();
+  const datei = b => ({ size: b.length, slice: (x, y) => ({ arrayBuffer: async () => b.slice(x, y).buffer }) });
+  Promise.all(erw.map(([n0]) => fpr(datei(daten(n0))))).then(r => { r.forEach((v, i) => { if (v !== erw[i][1]) { console.error('fpr ' + erw[i][0] + ': ' + v); process.exit(1); } }); });
+  n += erw.length;
+  // dHash und Abstand
+  const grau = Array.from({ length: 72 }, (_, i) => (i * 37) % 251);
+  const h1 = FD.dhash(grau), g2 = grau.slice(); g2[0] = 255; g2[1] = 0;
+  ok(/^[0-9a-f]{16}$/.test(h1) && FD.abstand(h1, h1) === 0 && FD.abstand(h1, FD.dhash(g2)) <= 2 && FD.abstand(h1, null) === Infinity, 'dHash');
+  ok(FD.abstand('ffffffffffffffff', '0000000000000000') === 64 && FD.abstand('0000000000000001', '0000000000000000') === 1, 'Abstand zählt Bits');
+  // Namen
+  ok(FD.grundName('Urlaub/IMG_0001.JPG') === 'img_0001' && FD.grundName('IMG_0001 (1).jpg') === 'img_0001' && FD.grundName('IMG_0001 - Kopie.jpg') === 'img_0001', 'Grundname');
+  ok(FD.grundName('Kamera.jpg') === '' && FD.grundName('Video.mp4') === '' && FD.grundName('ab12cd.jpg', 'ab12cd') === '', 'allgemeine Namen zählen nicht');
+  // Paare
+  const T = 1700000000000, f = (id, o) => Object.assign({ id, name: 'IMG_' + id + '.JPG', ts: T, w: 2400, h: 1800, video: false }, o);
+  ok(FD.gleich(f('a', { fp: 'p1:1:x' }), f('b', { fp: 'p1:1:x', ts: T + 9e9, name: 'z.jpg' })) === 'datei', 'gleicher Abdruck unabhängig von Zeit und Name');
+  ok(FD.gleich(f('a', { fpd: 'p1:1:y' }), f('b', { fp: 'p1:1:y' })) === 'datei', 'Originaldatei = gespeicherte Datei');
+  ok(FD.gleich(f('a', { name: 'IMG_1.JPG' }), f('b', { name: 'img_1 (1).jpg', ts: T + 1500 })) === 'name', 'gleicher Name, Zeit, Größe');
+  ok(FD.gleich(f('a', { name: 'IMG_1.JPG' }), f('b', { name: 'IMG_1.JPG', ts: T + 3000 })) === null, 'gleicher Name, 3 s daneben: nicht');
+  ok(FD.gleich(f('a', { name: 'IMG_1.JPG' }), f('b', { name: 'IMG_1.JPG', w: 1600, h: 1200 })) === null, 'gleicher Name, andere Größe, ohne Bild: nicht');
+  ok(FD.gleich(f('a', { name: 'Kamera.jpg' }), f('b', { name: 'Kamera.jpg' })) === null, 'zwei Kamera-Fotos derselben Sekunde: nicht');
+  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f1f', w: 1600, h: 1200 })) === 'bild', 'fast gleiches Bild, andere Größe');
+  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', w: 1800, h: 2400 })) === null, 'andere Ausrichtung: nicht');
+  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: 'f0f0f0f0f0f0f0f0' })) === null, 'anderes Bild: nicht');
+  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', ts: T + 2 * 3600000 + 1000 })) === 'bild', 'Zeitzonen-Versatz 2 h mit gleichem Bild');
+  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', ts: T + 2 * 3600000 + 60000 })) === null, '2 h 1 min daneben: nicht');
+  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', ts: T + 15 * 3600000 })) === null, 'mehr als 14 h: nicht');
+  ok(FD.gleich(f('a', { fp: 'p1:1:x' }), f('b', { fp: 'p1:1:x', video: true })) === null, 'Foto und Video: nie');
+  ok(FD.gleich(f('a', { video: true, dur: 5000, dh: '0f0f0f0f0f0f0f0f' }), f('b', { video: true, dur: 9000, dh: '0f0f0f0f0f0f0f0f' })) === null, 'Videos verschiedener Länge: nicht');
+  ok(FD.gleich(f('a', { ts: 0, name: 'x.jpg' }), f('b', { ts: 0, name: 'x.jpg' })) === null, 'ohne Zeit nur über Abdruck');
+  // Gruppen: Kette über drei Fotos, stärkster Grund zählt; Einzelne fallen weg
+  const ps = [f('a', { fp: 'p1:9:q' }), f('b', { fp: 'p1:9:q', ts: T + 5e6 }), f('c', { ts: T + 5e6 + 500, name: 'IMG_b.JPG' }), f('d', { ts: T + 1e7 }), f('e', { ts: T + 2e7, dh: '1111111111111111' }), f('g', { ts: T + 2e7, dh: '1111111111111113', name: 'anders.jpg' })];
+  const gr = FD.gruppen(ps);
+  ok(gr.length === 2 && gr[0].ids.join() === 'a,b,c' && gr[0].grund === 'datei' && gr[1].ids.join() === 'e,g' && gr[1].grund === 'bild', 'Gruppen: ' + JSON.stringify(gr));
+  ok(FD.gruppen([f('a'), f('b', { ts: T + 9e6 })]).length === 0, 'keine Doppelten');
+  ok(JSON.stringify(FD.brauchtBild([f('a', { name: 'x1.jpg' }), f('b', { ts: T + 1000, name: 'x2.jpg' }), f('c', { ts: T + 9e5 }), f('d', { ts: T + 1000, dh: '1111111111111111', name: 'x3.jpg' })])) === '["a","b"]', 'brauchtBild: nur Fotos mit Nachbarn ohne dh');
+  // viele Fotos: Gruppierung bleibt schnell
+  const viel = Array.from({ length: 20000 }, (_, i) => f('v' + i, { ts: T + i * 37000, dh: (i % 7 ? '1' : '2').repeat(16), name: 'IMG_' + i + '.JPG' }));
+  const z0 = Date.now(); FD.gruppen(viel); ok(Date.now() - z0 < 4000, '20000 Fotos in ' + (Date.now() - z0) + ' ms');
+  // Auswahl: Ort > Tour > Titelfoto > Notiz; Gleichstand: größeres Bild, nicht aus dem Browser verkleinert, kleinere Kennung
+  ok(FD.behalten([f('b', { lat: 47 }), f('a', { tour: 't' })]).id === 'b', 'mit Ort bleibt');
+  ok(FD.behalten([f('a'), f('b', { tour: 't' })]).id === 'b', 'mit Tour bleibt');
+  ok(FD.behalten([f('a'), f('b')], { titel: new Set(['b']) }).id === 'b', 'Titelfoto bleibt');
+  ok(FD.behalten([f('a', { w: 1600, h: 1200 }), f('b')]).id === 'b', 'größeres Bild bleibt');
+  ok(FD.behalten([f('a', { src: 'rechner' }), f('b', { src: 'smb' })]).id === 'b' && FD.behalten([f('b'), f('a')]).id === 'a', 'Gleichstand: feste Wahl');
+  const vs = FD.vorschlag([{ ids: ['a', 'b', 'c'], grund: 'datei' }], { a: f('a'), b: f('b', { lat: 1 }), c: f('c') });
+  ok(vs[0].keep === 'b' && vs[0].drop.join() === 'a,c', 'Vorschlag');
+  // Übernahme: nur wo leer; Abdrücke der Gelöschten wandern mit
+  const ue = FD.uebernehmen(f('a', { fp: 'p1:1:a', note: '' }), [f('b', { lat: 47.1, lon: 11.1, pos: 'track', tour: 't1', note: 'Gipfel', fp: 'p1:1:b', fpd: 'p1:1:bd', stars: 4 }), f('c', { lat: 1, lon: 1, note: 'nein' })]);
+  ok(ue.foto.lat === 47.1 && ue.foto.pos === 'track' && ue.foto.tour === 't1' && ue.foto.note === 'Gipfel' && ue.foto.stars === 4 && ue.felder.join() === 'Ort,Tour,Notiz,Bewertung', 'Übernahme: ' + JSON.stringify(ue));
+  ok(ue.foto.fpx.join() === 'p1:1:b,p1:1:bd' && ue.foto.fp === 'p1:1:a', 'Abdrücke der Gelöschten gemerkt');
+  const ue2 = FD.uebernehmen(f('a', { lat: 2, lon: 2, pos: 'exif', tour: 't2', note: 'eigen' }), [f('b', { lat: 47, lon: 11, tour: 't1', note: 'x' })]);
+  ok(ue2.foto.lat === 2 && ue2.foto.tour === 't2' && ue2.foto.note === 'eigen' && !ue2.felder.length, 'eigene Angaben bleiben');
+  // Verweise: Kommentare wandern, Titelfoto zeigt auf das behaltene (gleiche Tour) oder wird neu gewählt
+  const vw = FD.verweise({ id: 'a', tour: 't1' }, ['b', 'c'], { b: [{ ts: 2, text: 'B' }], a: [{ ts: 1, text: 'A' }], x: [{ ts: 0 }] }, { t1: { kind: 'photo', ph: 'b' }, t2: { kind: 'photo', ph: 'c' }, t3: { kind: 'svg', n: 2 } });
+  ok(vw.comments.a.map(c => c.text).join() === 'A,B' && !vw.comments.b && vw.comments.x && vw.tilebg.t1.ph === 'a' && !vw.tilebg.t2 && vw.tilebg.t3.kind === 'svg', 'Verweise: ' + JSON.stringify(vw));
+  // Zusammenfassung
+  ok(FD.summeText(FD.summe([{ drop: ['a', 'b'] }, { drop: ['c'] }, { drop: [] }], { a: 1048576, b: 1048576, c: 524288 })) === '3 Fotos in 2 Gruppen · 2,5 MB frei', 'Summe');
+  ok(FD.summeText(FD.summe([{ drop: ['a'] }], {})) === '1 Foto in 1 Gruppe' && FD.summeText(FD.summe([], {})) === 'Nichts zum Löschen ausgewählt', 'Summe Einzahl/leer');
+  // Import: gleiche Kennung, gleicher Abdruck (auch der gelöschter Kopien), Name+Zeit+Größe; sonst neu
+  const ix = FD.index([f('a', { fp: 'p1:1:a', fpd: 'p1:1:ad', fpx: ['p1:1:old'] }), f('k', { name: 'Kamera.jpg', ts: T + 7e6 })]);
+  ok(FD.bekannt(ix, f('a')) === 'gleich' && FD.bekannt(ix, f('n', { fp: 'p1:1:a', name: 'x.jpg', ts: 5 })) === 'datei' && FD.bekannt(ix, f('n', { fp: 'p1:1:old', name: 'y.jpg' })) === 'datei', 'Import: Kennung/Abdruck');
+  ok(FD.bekannt(ix, f('n', { fp: 'p1:1:a', video: true })) === null, 'Import: Video mit gleichem Foto-Abdruck nicht');
+  ok(FD.bekannt(ix, f('n', { name: 'IMG_a.JPG', ts: T + 900 })) === 'name' && FD.bekannt(ix, f('n', { name: 'IMG_a.JPG', ts: T + 5000 })) === null, 'Import: Name+Zeit+Größe (± 1 s)');
+  ok(FD.bekannt(ix, f('n', { name: 'Kamera.jpg', ts: T + 7e6 })) === null, 'Import: allgemeiner Name nicht');
+  FD.merke(ix, f('n2', { fp: 'p1:1:n2' })); ok(FD.bekannt(ix, f('n3', { fp: 'p1:1:n2', name: 'q.jpg' })) === 'datei', 'Import: innerhalb desselben Imports');
+  ok(FD.importText(3, 2) === '3 Foto(s) hinzugefügt · 2 schon vorhanden, übersprungen' && FD.importText(1, 0, 'empfangen') === '1 Foto(s) empfangen', 'Importtext');
+})();
+
 /* ---------- Wanderführer (2.4.0): Buchtouren lesen, Abgleich „folgt der Tour der Buchstrecke?“, Zwischenspeicher, Blöcke, Anzeige ---------- */
 const Fu = require(W + 'calc-fuehrer.js');
 let fseed = 11; const frnd = () => (fseed = (fseed * 1103515245 + 12345) % 2147483648) / 2147483648;

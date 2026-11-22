@@ -35,6 +35,11 @@ public final class Photos {
      * @param forceTs   feste Aufnahmezeit oder 0
      */
     public static JSONObject importStream(Context c, InputStream in, String name, long fallbackMs, double forceLat, double forceLon, long forceTs, String src) throws Exception {
+        return importStream(c, in, name, fallbackMs, forceLat, forceLon, forceTs, src, null);
+    }
+
+    /** @param origFp 2.14.0: Abdruck der Originaldatei, wenn die ankommenden Bytes nicht das Original sind (im Browser verkleinert); sonst null. */
+    public static JSONObject importStream(Context c, InputStream in, String name, long fallbackMs, double forceLat, double forceLon, long forceTs, String src, String origFp) throws Exception {
         File tmp = File.createTempFile("imp", ".jpg", c.getCacheDir());
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
@@ -46,6 +51,7 @@ public final class Photos {
             StringBuilder sb = new StringBuilder();
             for (byte x : md.digest()) sb.append(String.format(Locale.US, "%02x", x));
             String id = sb.substring(0, 20);
+            String fp = MediaPrint.valid(origFp) ? origFp : MediaPrint.of(tmp);      // 2.14.0: Abdruck des Originals (doppelte Fotos beim Import erkennen)
             ExifInterface ex = new ExifInterface(tmp.getAbsolutePath());
             long ts = 0;
             String dt = ex.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
@@ -121,6 +127,7 @@ public final class Photos {
             }
             JSONObject j = new JSONObject();
             j.put("id", id).put("name", name == null ? id + ".jpg" : name).put("ts", ts).put("w", wh[0]).put("h", wh[1]).put("src", src == null ? "" : src).put("exif", exifTime);
+            j.put("fp", fp).put("fpd", MediaPrint.of(out)).put("size", out.length());      // 2.14.0: Abdruck des Originals und der gespeicherten Datei, Größe
             if (!Double.isNaN(lat)) j.put("lat", lat).put("lon", lon);
             return j;
         } finally {
@@ -159,6 +166,7 @@ public final class Photos {
         long dur = m[2];
         JSONObject j = new JSONObject();
         j.put("id", id).put("name", "Video.mp4").put("ts", ts).put("w", w).put("h", h).put("dur", dur).put("video", true).put("src", "kamera");
+        j.put("fp", MediaPrint.of(src)).put("fpd", MediaPrint.of(out)).put("size", out.length());      // 2.14.0: liest je Datei höchstens 3 × 64 KB
         if (!Double.isNaN(lat)) j.put("lat", lat).put("lon", lon);
         return j;
     }
@@ -213,6 +221,24 @@ public final class Photos {
         } finally {
             try { mr.release(); } catch (Exception e) { /* egal */ }
         }
+    }
+
+    /** 2.14.0: Abdruck und Größe der gespeicherten Dateien (für „Doppelte Fotos suchen“ bei Fotos von vor 2.14.0). Liest je Datei höchstens 3 × 64 KB,
+        auch bei großen Videos. Fehlt eine Datei, steht sie mit missing:true in der Antwort. */
+    public static org.json.JSONArray prints(Context c, org.json.JSONArray ids) throws Exception {
+        org.json.JSONArray out = new org.json.JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            String id = ids.optString(i);
+            if (id == null || !id.matches("[0-9a-f]{6,40}v?")) continue;
+            File f = new File(dir(c), id + (id.endsWith("v") ? ".mp4" : ".jpg"));
+            JSONObject j = new JSONObject().put("id", id);
+            if (!f.isFile()) j.put("missing", true);
+            else {
+                try { j.put("fpd", MediaPrint.of(f)).put("size", f.length()); } catch (Exception e) { j.put("missing", true); AppLog.log("Abdruck " + id + ": " + e); }
+            }
+            out.put(j);
+        }
+        return out;
     }
 
     public static void delete(Context c, String id) {

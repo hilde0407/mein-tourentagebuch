@@ -692,6 +692,7 @@ public class MainActivity extends Activity {
             }
             case "photoFaces": return photoFaces(a.optString("id"));
             case "deletePhoto": Photos.delete(this, a.optString("id")); return "true";
+            case "photoPrints": return Photos.prints(this, a.getJSONArray("ids")).toString();      // 2.14.0: Abdruck und Größe gespeicherter Fotos/Videos
             case "uploadStart": { JSONObject j = UploadServer.start(this); UploadService.start(this); return j.toString(); }
             case "uploadStop": UploadServer.stop(); UploadService.stop(this); return "true";
             case "uploadPoll": return UploadServer.poll().toString();

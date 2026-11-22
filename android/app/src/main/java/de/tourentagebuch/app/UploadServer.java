@@ -201,7 +201,9 @@ public final class UploadServer {
                 long ts = 0;
                 try { ts = Long.parseLong(param(q, "ts")); } catch (Exception e) { ts = 0; }
                 try {
-                    JSONObject j = Photos.importStream(ctx, body, name.isEmpty() ? null : name, mtime, lat, lon, ts, "rechner");
+                    // 2.14.0: Abdruck der Originaldatei, vom Browser vor dem Verkleinern berechnet (MediaPrint, fpr) – damit erkennt die App dasselbe Foto auch,
+                    // wenn es einmal verkleinert vom Rechner und einmal unverändert (SMB, Ordner) kam. Ungültige Werte verwirft Photos (MediaPrint.valid).
+                    JSONObject j = Photos.importStream(ctx, body, name.isEmpty() ? null : name, mtime, lat, lon, ts, "rechner", param(q, "fp"));
                     done.add(j);
                     body.drain();
                     reply(out, 200, "application/json", "{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
@@ -233,6 +235,7 @@ public final class UploadServer {
             + ";d.ondragover=function(e){e.preventDefault();d.className='over'};d.ondragleave=function(){d.className=''};d.ondrop=function(e){e.preventDefault();d.className='';add(e.dataTransfer.files)};f.onchange=function(){add(f.files);"
             + "f.value=''};fd.onchange=function(){add(fd.files);fd.value=''};function add(fs){for(var i=0;i<fs.length;i++){if(/^image\\//.test(fs[i].type)||/\\.(jpe?g|png|heic|webp)$/i.test(fs[i].name)){var li=document.createElement('li');"
             + "li.innerHTML='<span></span><span>wartet</span>';li.firstChild.textContent=fs[i].webkitRelativePath||fs[i].name;l.appendChild(li);q.push([fs[i],li]);n++}}upd();run()}function upd(){sum.textContent=ok+' von '+n+' gesendet'+(bad?', '+bad+' fehlgeschlagen':'')}"
+            + "function fpr(fl){var n=fl.size,C=65536,parts=n<=3*C?[[0,n]]:[[0,C],[Math.floor(n/2)-C/2,Math.floor(n/2)+C/2],[n-C,n]];return Promise.all(parts.map(function(q){return fl.slice(q[0],q[1]).arrayBuffer()})).then(function(bs){var a=0x811c9dc5|0,b=0x050c5d1f,k=0;bs.forEach(function(ab){var u=new Uint8Array(ab);for(var i=0;i<u.length;i++){var c=u[i];a=Math.imul(a^c,16777619);b=Math.imul(b^((c+k)&255),16777619);k++}});function mx(h){h^=h>>>16;h=Math.imul(h,0x85ebca6b);h^=h>>>13;h=Math.imul(h,0xc2b2ae35);h^=h>>>16;return('0000000'+(h>>>0).toString(16)).slice(-8)}return'p1:'+n+':'+mx(a)+mx(b)}).catch(function(){return null})}"
             + "function parseExif(buf){var dv=new DataView(buf);if(dv.byteLength<4||dv.getUint16(0)!==0xFFD8)return null;var off=2,app1=null;while(off+4<=dv.byteLength){var marker=dv.getUint16(off);if((marker&0xFF00)!==0xFF00)break;"
             + "if(marker===0xFFD8||marker===0xFFD9){off+=2;continue}if(off+4>dv.byteLength)break;var size=dv.getUint16(off+2);if(marker===0xFFE1){var segStart=off+4;if(dv.getUint32(segStart)===0x45786966&&dv.getUint16(segStart+4)===0x0000){app1=segStart+6}"
             + "break}if(marker>=0xFFD0&&marker<=0xFFD9){off+=2;continue}off+=2+size}if(app1==null)return null;var tiffStart=app1,little=dv.getUint16(tiffStart)===0x4949;function u16(o){return dv.getUint16(o,little)}"
@@ -246,8 +249,8 @@ public final class UploadServer {
             + "result.lon=lonRef==='W'?-lon:lon}}return result}function prep(fl){if(!/^image\\//.test(fl.type)||fl.type==='image/gif')return Promise.resolve({blob:fl});return fl.slice(0,131072).arrayBuffer().then(function(ab){var meta=null;"
             + "try{meta=parseExif(ab)}catch(e){meta=null}return createImageBitmap(fl).then(function(bm){var w=bm.width,h=bm.height;if(Math.max(w,h)<=MAXPX){if(bm.close)bm.close();return{blob:fl,lat:meta&&meta.lat,lon:meta&&meta.lon,ts:meta&&meta.ts}"
             + "}var sc=MAXPX/Math.max(w,h),cw=Math.round(w*sc),ch=Math.round(h*sc),cv=document.createElement('canvas');cv.width=cw;cv.height=ch;cv.getContext('2d').drawImage(bm,0,0,cw,ch);if(bm.close)bm.close();return new Promise(function(res){cv.toBlob(function(b){res({blob:b||fl,lat:meta&&meta.lat,lon:meta&&meta.lon,ts:meta&&meta.ts}"
-            + ")},'image/jpeg',0.85)})})}).catch(function(){return{blob:fl}})}function run(){if(busy||!q.length)return;busy=true;var it=q.shift(),fl=it[0],li=it[1];li.lastChild.textContent='wird gesendet \\u2026';prep(fl).then(function(p){var url='up?n='+encodeURIComponent(fl.name)+'&m='+fl.lastModified;"
-            + "if(p.lat!=null&&p.lon!=null)url+='&lat='+p.lat+'&lon='+p.lon;if(p.ts)url+='&ts='+p.ts;return fetch(url,{method:'POST',body:p.blob})}).then(function(r){return r.json()}).then(function(j){if(j.ok){ok++;"
+            + ")},'image/jpeg',0.85)})})}).catch(function(){return{blob:fl}})}function run(){if(busy||!q.length)return;busy=true;var it=q.shift(),fl=it[0],li=it[1];li.lastChild.textContent='wird gesendet \\u2026';Promise.all([prep(fl),fpr(fl)]).then(function(rr){var p=rr[0],url='up?n='+encodeURIComponent(fl.name)+'&m='+fl.lastModified;"
+            + "if(p.lat!=null&&p.lon!=null)url+='&lat='+p.lat+'&lon='+p.lon;if(p.ts)url+='&ts='+p.ts;if(rr[1])url+='&fp='+rr[1];return fetch(url,{method:'POST',body:p.blob})}).then(function(r){return r.json()}).then(function(j){if(j.ok){ok++;"
             + "li.lastChild.textContent='\\u2713';li.lastChild.className='ok'}else{bad++;li.lastChild.textContent=j.error||'Fehler';li.lastChild.className='err'}}).catch(function(){bad++;li.lastChild.textContent='Verbindung unterbrochen';"
             + "li.lastChild.className='err'}).then(function(){busy=false;upd();run()})}</script></body></html>";
 }

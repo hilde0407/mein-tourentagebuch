@@ -53,6 +53,8 @@ jobs:
           java -cp /tmp/jc TilePlanCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/PicturePlan.java tests/android/PicturePlanCheck.java
           java -cp /tmp/jc PicturePlanCheck
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/MediaPrint.java tests/android/MediaPrintCheck.java
+          java -cp /tmp/jc MediaPrintCheck
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
