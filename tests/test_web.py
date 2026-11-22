@@ -629,6 +629,81 @@ def rettung_2120(pg):
           try { sessionStorage.removeItem('recAutoSave'); } catch (e) {} if (id) await Tours.remove(id); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", tid)
 
 
+def fotoort_2120(pg):
+    """2.12.0 B: Orte aus der Tour ergänzen – Hinweis an der Tour, Vorschau am Beispielfoto, Uhrzeit-Verschiebung, Toleranz (gespeichert),
+    außerhalb gelistet, Übernahme erst nach Bestätigung, Rückgängig (ein Schritt), Kennzeichnung in den Details, Menüeintrag, Platz bei 360 px."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    t0 = 1700000000000
+    tid = pg.evaluate("Tours.list().then(l => l.find(t => t.name === 'Hüttenrunde').id)")
+    ids = ["fo1aaaaaaa", "fo2aaaaaaa", "fo3aaaaaaa", "fo4aaaaaaa"]
+    sh = ".sheet[aria-label='Orte aus der Tour ergänzen']"
+    try:
+        pg.evaluate("""async ([t0, tid]) => {
+          await DB.put('photos', { id: 'fo1aaaaaaa', name: 'a.jpg', ts: t0 + 10 * 60000, lat: null, lon: null, pos: 'none', tour: tid, src: 'galerie', w: 10, h: 10 });
+          await DB.put('photos', { id: 'fo2aaaaaaa', name: 'b.jpg', ts: t0 - 60 * 60000, lat: null, lon: null, pos: 'none', tour: '', src: 'galerie', w: 10, h: 10 });
+          await DB.put('photos', { id: 'fo3aaaaaaa', name: 'c.jpg', ts: t0 + 5 * 60000, lat: 47.3, lon: 11.3, pos: 'exif', tour: tid, src: 'galerie', w: 10, h: 10 });
+          await DB.put('photos', { id: 'fo4aaaaaaa', name: 'd.jpg', ts: t0 + 3 * 3600000, lat: null, lon: null, pos: 'none', tour: '', src: 'galerie', w: 10, h: 10 }); }""", [t0, tid])
+        # 1. Tourseite: Hinweis „Fotos ohne Ort“ mit Knopf; Menüeintrag
+        go(pg, "#/tour/" + tid, "#fotoort-btn")
+        assert pg.inner_text("#fotoort-hint").startswith("3 Fotos ohne Ort"), pg.inner_text("#fotoort-hint")
+        pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("#fotoort-menu"); zu(pg)
+        # 2. Blatt: ohne Verschiebung liegt Foto 1 (eine Stunde vor dem Start) außerhalb, Foto 2 auf der Spur; Foto mit eigenem Ort fehlt
+        pg.click("#fotoort-btn"); pg.wait_for_selector(sh)
+        assert pg.locator("#fo-list .li").count() == 3 and pg.locator("#fo-list .li[data-id=fo3aaaaaaa]").count() == 0
+        assert "Foto 1 liegt dann außerhalb der Tour (1 h vor dem Start)" in pg.inner_text("#fo-bsp"), pg.inner_text("#fo-bsp")
+        assert pg.inner_text("#fo-sum") == "1 Foto bekommt einen Ort · 2 liegen außerhalb", pg.inner_text("#fo-sum")
+        km2 = pg.evaluate("async ([t0, tid]) => FotoOrtCalc.kmText(FotoOrtCalc.vorschlag([{ id: 'x', ts: t0 + 600000 }], await Tours.points(tid), {}).treffer[0].km)", [t0, tid])
+        pg.click("#fo-list .li[data-id=fo1aaaaaaa]")
+        assert pg.inner_text("#fo-bsp").startswith("Foto 2 liegt dann bei km " + km2), (pg.inner_text("#fo-bsp"), km2)
+        assert "nicht zugeordnet: 2 h 31 min nach dem Ende" in pg.inner_text("#fo-list .li[data-id=fo4aaaaaaa]"), pg.inner_text("#fo-list")
+        # 3. Kamera-Uhr eine Stunde nach: „+ 1 Stunde“ → Foto 1 am Start (km 0,0); Felder zeigen die Verschiebung
+        pg.click("#fo-list .li[data-id=fo2aaaaaaa]"); pg.click("#fo-schnell button:has-text('+ 1 Stunde')")
+        assert pg.inner_text("#fo-bsp").startswith("Foto 1 liegt dann bei km 0,0"), pg.inner_text("#fo-bsp")
+        assert pg.input_value("#fo-std") == "1" and pg.input_value("#fo-min") == "0" and pg.input_value("#fo-vz") == "+"
+        assert "Uhrzeit +1 h" in pg.inner_text("#fo-sum"), pg.inner_text("#fo-sum")
+        # von Hand: 59 Minuten früher als +1 h → +1 min … dann 0 → wie am Anfang
+        pg.fill("#fo-min", "30"); assert "Uhrzeit +1 h 30 min" in pg.inner_text("#fo-sum")
+        pg.fill("#fo-min", "0")
+        # 4. Toleranz 0: Foto 1 genau am Start bleibt; Toleranz wird gespeichert
+        pg.select_option("#fo-tol", "0"); pg.wait_for_function("() => Set_.get('fotoOrtTol') === 0")
+        pg.select_option("#fo-tol", "10"); pg.wait_for_function("() => Set_.get('fotoOrtTol') === 10")
+        # 5. Platz bei 360 px und 130 % Schrift (Blatt oben)
+        pg.evaluate("document.querySelector('.sheet-b').scrollTop = 0")
+        bad = sheet_check_open(pg, "Orte ergänzen")
+        assert not bad, "\n".join(bad)
+        # 6. Übernehmen: erst Rückfrage (Abbrechen ändert nichts), dann übernommen
+        pg.click("#fo-ok"); pg.wait_for_selector(".sheet[aria-label='Orte übernehmen?']")
+        pg.click(".sheet[aria-label='Orte übernehmen?'] button:not(.pri)"); pg.wait_for_selector(".sheet[aria-label='Orte übernehmen?']", state="detached")
+        assert pg.evaluate("DB.get('photos', 'fo2aaaaaaa').then(p => p.lat)") is None, "ohne Bestätigung nichts übernommen"
+        leise(); pg.click("#fo-ok"); pg.wait_for_selector(".sheet[aria-label='Orte übernehmen?']")
+        assert "1 Foto bekommt einen Ort" in pg.inner_text(".sheet[aria-label='Orte übernehmen?']") or "2 Fotos bekommen" in pg.inner_text(".sheet[aria-label='Orte übernehmen?']")
+        pg.click(".sheet[aria-label='Orte übernehmen?'] button.pri")
+        assert "ergänzt" in toast_text(pg, "ergänzt")
+        p2 = pg.evaluate("DB.get('photos', 'fo2aaaaaaa')")
+        start = pg.evaluate("tid => Tours.points(tid).then(p => p[0])", tid)
+        assert p2["pos"] == "zeit" and p2["tour"] == tid and p2["camShift"] == 3600000 and abs(p2["lat"] - start["lat"]) < 1e-9, p2
+        assert pg.evaluate("DB.get('photos', 'fo3aaaaaaa').then(p => p.lat)") == 47.3, "eigener Ort bleibt"
+        pg.wait_for_function("() => document.querySelectorAll('#tphotos .strip .th').length >= 3")
+        # alle Fotos neu zuordnen lässt die Verschiebung gelten (bleibt bei der Tour, Ort bleibt)
+        pg.evaluate("Photos.assignAll(true)"); p2b = pg.evaluate("DB.get('photos', 'fo2aaaaaaa')")
+        assert p2b["tour"] == tid and p2b["lat"] == p2["lat"] and p2b["pos"] == "zeit", p2b
+        # Details: Kennzeichnung
+        pg.evaluate("async () => Lightbox.open([await DB.get('photos', 'fo2aaaaaaa')], 0)"); pg.click(".lb button[aria-label=Details]")
+        pg.wait_for_selector(".sheet[aria-label=Foto]"); assert "aus der Tourzeit ergänzt, Uhrzeit +1 h" in pg.inner_text(".sheet[aria-label=Foto]"), pg.inner_text(".sheet[aria-label=Foto]")
+        zu(pg); pg.evaluate("window.__lightbox && window.__lightbox.close()")
+        # 7. Rückgängig: ein Schritt, alte Werte genau zurück
+        go(pg, "#/tour/" + tid, "#tphotos")
+        pg.click("header.top button[aria-label=Aktionen]"); pg.click("#fotoort-menu"); pg.wait_for_selector(sh + " #fo-undo")
+        leise(); pg.click("#fo-undo"); pg.wait_for_selector(".sheet[aria-label='Rückgängig machen?']"); pg.click(".sheet[aria-label='Rückgängig machen?'] button.pri")
+        assert "Zurückgenommen" in toast_text(pg, "Zurückgenommen")
+        p2c = pg.evaluate("DB.get('photos', 'fo2aaaaaaa')")
+        assert p2c["lat"] is None and p2c["tour"] == "" and p2c["pos"] == "none" and "camShift" not in p2c, p2c
+        assert pg.evaluate("tid => DB.kvGet('fotoOrtUndo:' + tid, null)", tid) is None
+    finally:
+        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); await DB.del('kv', 'fotoOrtUndo:' + tid); await Set_.set('fotoOrtTol', '');
+          window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
+
+
 def sicherung_2100(pg):
     """2.10.0: Sicherung der Fotos und Videos (Ordner wählen, Sichern mit Fortschritt und Abbrechen, Wiederherstellen aus mehreren ZIPs),
     eine Erinnerungszeile für Touren und Medien (erscheint, verschwindet, „Später“), Einstellungen (Schwelle, automatisch in Ordner) gespeichert."""
@@ -3425,6 +3500,7 @@ def main():
         sicherung_2100(pg)
         offline_2110(pg)
         rettung_2120(pg)
+        fotoort_2120(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

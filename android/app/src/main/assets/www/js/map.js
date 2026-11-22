@@ -114,7 +114,7 @@ const MapKit = {
     return k;
   },
   photoMarker(p, onclick) {
-    const m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'pmk', html: `<img src="${Photos.thumb(p.id)}" alt="" loading="lazy" class="${p.pos === 'track' ? 'est' : ''}">`, iconSize: [38, 38], iconAnchor: [19, 19] }) });
+    const m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'pmk', html: `<img src="${Photos.thumb(p.id)}" alt="" loading="lazy" class="${p.pos === 'track' || p.pos === 'zeit' ? 'est' : ''}">`, iconSize: [38, 38], iconAnchor: [19, 19] }) });
     m.on('click', () => onclick(p));
     return m;
   },

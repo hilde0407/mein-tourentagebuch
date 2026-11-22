@@ -244,7 +244,7 @@ const Photos = {
     const tcache = {};
     for (const p of ph) {
       if (!p.ts || (p.tour && !force)) continue;
-      const ts = p.ts + (p.src === 'kamera' ? 0 : cams);     // in der App aufgenommen: Gerätezeit stimmt, kein Kameraversatz
+      const ts = p.camShift != null ? p.ts + p.camShift : p.ts + (p.src === 'kamera' ? 0 : cams);     // in der App aufgenommen: Gerätezeit stimmt, kein Kameraversatz; 2.12.0: eigene Verschiebung („Orte aus der Tour ergänzen“) geht vor
       let t, o = 0;
       const cands = tours.filter(t => ts >= t.start - margin && ts <= t.end + margin);
       if (cands.length) {

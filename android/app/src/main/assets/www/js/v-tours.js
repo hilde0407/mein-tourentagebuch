@@ -222,11 +222,20 @@ Views['/tour'] = async (root, [id]) => {
   const prof = h('canvas', { class: 'prof', 'aria-label': 'Höhenprofil' });
   const profInfo = h('small', { class: 'muted' }, 'Profil berühren, um die Stelle auf der Karte zu sehen.');
   const strip = h('div', { class: 'strip' }), noPhotos = h('p', { class: 'muted' }, 'Noch keine Fotos zu dieser Tour.');
+  const ortBox = h('div', { class: 'row fo-hint', id: 'fotoort-hint', hidden: true });      // 2.12.0: Fotos ohne Ort → „Orte aus der Tour ergänzen“
+  const fotoOrt = () => FotoOrt.open(t, pts, async () => { photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); });
+  const drawOrt = async () => {
+    if (!t.timed || t.status === 'planned') return;
+    const k = await FotoOrt.kandidaten(t).catch(() => []), ohne = k.filter(p => p.lat == null).length;
+    ortBox.innerHTML = ''; ortBox.hidden = !ohne;
+    if (ohne) ortBox.append(h('span', { class: 'muted small grow' }, ohne === 1 ? '1 Foto ohne Ort' : ohne + ' Fotos ohne Ort'), h('button', { class: 'btn sm', id: 'fotoort-btn', onclick: fotoOrt }, 'Orte aus der Tour ergänzen'));
+  };
   const showBtn = h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow');
   const drawStrip = () => {
     strip.innerHTML = '';
     photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': (p.video ? VideoCalc.dauerText(p.dur) : 'Foto') + ' ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), UI.vidMark(p))));
     strip.hidden = showBtn.hidden = !photos.length; noPhotos.hidden = !!photos.length;
+    drawOrt();
   };
   const pinList = () => (t.pins || []).length ? UI.section('Pins', (t.pins || []).map(p => h('div', { class: 'pinrow' }, h('b', null, F.time(p.ts)), h('span', null, p.text || '(ohne Text)'), p.lat != null ? h('button', { class: 'btn sm', onclick: () => { map.setView([p.lat, p.lon], 17); mapEl.scrollIntoView({ block: 'start' }); } }, 'Auf Karte') : null)), { id: 'pins' }) : null;
   const stageBox = h('div');
@@ -254,7 +263,7 @@ Views['/tour'] = async (root, [id]) => {
     ranBy ? h('a', { class: 'banner', id: 'ranby', href: '#/tour/' + ranBy.id }, 'Gelaufen am ' + F.date(ranBy.start) + ': ' + ranBy.name) : null,
     ...helpPlan,
     UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,
-    UI.section('Fotos', [strip, noPhotos], { id: 'tphotos', action: h('div', { class: 'row' }, showBtn, h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos')) }),
+    UI.section('Fotos', [strip, noPhotos, ortBox], { id: 'tphotos', action: h('div', { class: 'row' }, showBtn, h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos')) }),
     pinList(), helpDone, UI.section('Notiz', note)].filter(Boolean));
   title.addEventListener('click', rename);
   drawStrip();
@@ -302,6 +311,7 @@ Views['/tour'] = async (root, [id]) => {
         it('tag', 'Sportart ändern', changeSport),
         t.status !== 'planned' && !t.plan ? it('route', 'Mit Plan vergleichen', () => TourHelp.linkSheet(t)) : null,
         it('bag', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
+        t.timed && t.status !== 'planned' ? UI.row({ icon: 'pin', title: 'Orte der Fotos aus der Tour ergänzen', id: 'fotoort-menu', onclick: () => { s.close(); fotoOrt(); } }) : null,
         it('camera', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); })]),
       grp('Strecke und Höhen', [
         it('peak', t.elevFix ? 'Höhen neu aus Gelände berechnen' : 'Höhen korrigieren (Geländemodell)', fixEle),

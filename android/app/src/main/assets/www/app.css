@@ -555,3 +555,16 @@ button.cd{cursor:pointer;font-weight:700}
 #off-tourbox[hidden]{display:none}
 .rec-off{color:var(--muted);font-size:.9rem;font-weight:500;margin:0 0 6px}.rec-off[hidden]{display:none}
 img.tile-off{visibility:hidden}
+
+/* 2.12.0: Orte aus der Tour ergänzen */
+.fo-vs{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:6px}
+.fo-vs select,.fo-vs input{margin-top:0;font-size:1rem;font-weight:400;color:var(--ink)}
+.fo-n{display:flex;align-items:center;gap:4px;min-width:0}
+.fo-n input{min-width:0}
+.fo-n span{color:var(--muted);font-size:.84rem}
+.fo-bsp{display:flex;align-items:center;gap:10px;margin:12px 0 4px;padding:10px;border-radius:var(--r);background:var(--soft)}
+.fo-bsp p{margin:0;font-weight:600;color:var(--ink)}
+.fo-th{width:56px;height:56px;flex:none;object-fit:cover;border-radius:8px;background:var(--edge)}
+#fo-list .li.on{outline:2px solid var(--ink);outline-offset:-2px}
+.fo-hint{align-items:center;gap:8px;margin-top:8px}
+.fo-hint .grow{flex:1 1 auto}

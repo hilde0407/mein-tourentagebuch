@@ -166,7 +166,7 @@ const Lightbox = {
           h('button', { class: 'btn sm', id: 'lb-dext', onclick: () => { s.close(); extern(); } }, '⤴ In Video-App öffnen'),
           h('button', { class: 'btn sm', id: 'lb-dconv', onclick: () => { s.close(); convertNow(p); } }, 'Umwandeln (HEVC → H.264)')) : null,
         PanoCalc.ist(p) ? h('p', { id: 'lb-panotag' }, h('span', { class: 'tag-pano', html: Ico.svg('pano', 18) + '<span>Panorama</span>' }), ' ' + p.w + ' × ' + p.h + ' Pixel') : null,
-        h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
+        h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'zeit' ? ' (aus der Tourzeit ergänzt' + (p.camShift ? ', Uhrzeit ' + FotoOrtCalc.versatzText(p.camShift) : '') + ')' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
         tour ? h('p', null, '🥾 ', h('a', { href: '#/tour/' + tour.id, onclick: () => { s.close(); close(); } }, tour.name)) : h('p', null, 'Keiner Tour zugeordnet'),
         h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); } } }, 'Tour wählen'),
@@ -319,6 +319,98 @@ const Videos = {
       timer = setInterval(() => Videos.poll(), 1500);      // falls ein Ereignis der Hülle ausbleibt
       Videos.poll();
     });
+  },
+};
+/* 2.12.0: „Orte aus der Tour ergänzen“ – Fotos/Videos ohne eigenen GPS-Ort (oder mit falscher Kamera-Uhr) bekommen den Ort der Tourspur zur
+   Aufnahmezeit. Uhrzeit-Verschiebung mit Vorschau am Beispielfoto, Toleranz um das Zeitfenster (Vorgabe ±10 min, Einstellung „fotoOrtTol“),
+   Übernahme erst nach Bestätigung, ein Schritt zurück (alte Werte in kv „fotoOrtUndo:<Tour>“). Rechnung: js/calc-fotoort.js. */
+const FotoOrt = {
+  undoKey: id => 'fotoOrtUndo:' + id,
+  async kandidaten(t) { return FotoOrtCalc.kandidaten(await DB.all('photos'), t); },
+  async open(t, pts, after) {
+    const fotos = await FotoOrt.kandidaten(t), undo = await DB.kvGet(FotoOrt.undoKey(t.id), null);
+    if (!fotos.length && !undo) { toast('Alle Fotos dieser Tour haben schon einen eigenen Ort.', 5000); return; }
+    const sp = FotoOrtCalc.spur(pts);
+    if (sp.p.length < 2) { toast('Die Spur dieser Tour hat keine Uhrzeiten – Orte lassen sich nicht aus der Zeit berechnen.', 6000); return; }
+    const tol0 = Set_.get('fotoOrtTol'), st = { vz: '+', std: 0, min: 0, tol: tol0 == null || tol0 === '' ? FotoOrtCalc.TOL_VORGABE : +tol0, bsp: 0 };
+    const vz = h('select', { id: 'fo-vz', 'aria-label': 'Richtung der Verschiebung' }, h('option', { value: '+' }, 'später (+)'), h('option', { value: '-' }, 'früher (−)'));
+    const std = h('input', { type: 'number', id: 'fo-std', min: 0, max: 48, step: 1, value: 0, inputmode: 'numeric', 'aria-label': 'Stunden' });
+    const min = h('input', { type: 'number', id: 'fo-min', min: 0, max: 59, step: 1, value: 0, inputmode: 'numeric', 'aria-label': 'Minuten' });
+    const tol = h('select', { id: 'fo-tol' }, FotoOrtCalc.TOLERANZEN.map(m => h('option', { value: m, selected: m === st.tol }, m ? '± ' + m + ' Minuten' : 'genau (ohne Toleranz)')));
+    const bspImg = h('img', { alt: '', class: 'fo-th' }), bspTxt = h('p', { id: 'fo-bsp', role: 'status' }), sum = h('p', { class: 'muted small', id: 'fo-sum' });
+    const list = h('div', { class: 'list', id: 'fo-list' }), raus = h('div', { id: 'fo-raus' });
+    const okB = h('button', { class: 'btn pri', id: 'fo-ok', onclick: () => uebernehmen() }, 'Übernehmen');
+    const undoB = undo ? h('button', { class: 'btn', id: 'fo-undo', onclick: () => rueck() }, 'Rückgängig') : null;
+    const versatz = () => FotoOrtCalc.versatz(st.vz, st.std, st.min);
+    let v = null;
+    const nr = p => fotos.indexOf(p) + 1, art = p => p.video ? 'Video' : 'Foto';
+    const uhr = ms => F.time(ms) + ' Uhr';
+    function rechne() {
+      v = FotoOrtCalc.vorschlag(fotos, sp, { versatz: versatz(), tolMin: st.tol });
+      const byId = Object.fromEntries(v.treffer.map(x => [x.id, x])), aus = Object.fromEntries(v.ausserhalb.map(x => [x.id, x]));
+      const b = fotos[Math.min(st.bsp, fotos.length - 1)];
+      if (b) {
+        bspImg.src = Photos.thumb(b.id);
+        const tr = byId[b.id], a = aus[b.id];
+        bspTxt.textContent = tr ? FotoOrtCalc.beispiel(nr(b), tr.km, b.video) + ' (' + uhr(tr.zeit) + (tr.rand ? (tr.rand === 'vor' ? ', kurz vor dem Start' : ', kurz nach dem Ende') : '') + ')'
+          : a ? art(b) + ' ' + nr(b) + ' liegt dann außerhalb der Tour (' + FotoOrtCalc.abstandText(a) + ')' : art(b) + ' ' + nr(b) + ' hat keine Aufnahmezeit';
+      } else bspTxt.textContent = 'Keine Fotos ohne Ort mehr.';
+      sum.textContent = fotos.length ? FotoOrtCalc.zusammenfassung(v) + (versatz() ? ' · Uhrzeit ' + FotoOrtCalc.versatzText(versatz()) : '') : '';
+      list.innerHTML = '';
+      fotos.forEach((p, i) => {
+        const tr = byId[p.id], a = aus[p.id];
+        list.append(h('button', { class: 'li' + (i === st.bsp ? ' on' : ''), 'aria-pressed': i === st.bsp ? 'true' : 'false', 'data-id': p.id, onclick: () => { st.bsp = i; rechne(); } },
+          h('span', { class: 'li-i cov' }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' })),
+          h('span', { class: 'li-t' }, h('b', null, art(p) + ' ' + (i + 1) + (p.ts ? ' · ' + F.time(p.ts) + ' Uhr' : '')),
+            h('small', null, tr ? 'km ' + FotoOrtCalc.kmText(tr.km) + (p.lat != null ? ' (bisher berechnet)' : '') : a ? 'nicht zugeordnet: ' + FotoOrtCalc.abstandText(a) : 'ohne Aufnahmezeit'))));
+      });
+      okB.disabled = !v.treffer.length;
+    }
+    vz.onchange = () => { st.vz = vz.value; rechne(); };
+    std.oninput = () => { st.std = std.value; rechne(); };
+    min.oninput = () => { st.min = min.value; rechne(); };
+    tol.onchange = async () => { st.tol = +tol.value; await Set_.set('fotoOrtTol', st.tol); rechne(); };
+    const schnell = (txt, d) => h('button', { class: 'chip', onclick: () => {
+      const cur = versatz() + d * 3600000, a = Math.abs(cur);
+      st.vz = cur < 0 ? '-' : '+'; st.std = Math.floor(a / 3600000); st.min = Math.round((a % 3600000) / 60000);
+      vz.value = st.vz; std.value = st.std; min.value = st.min; rechne();
+    } }, txt);
+    const s = sheet('Orte aus der Tour ergänzen', h('div', { class: 'fotoort' },
+      h('p', { class: 'muted small' }, 'Für Fotos und Videos ohne eigenen GPS-Ort berechnet die App den Ort aus der Aufnahmezeit und der Spur dieser Tour. Fotos mit eigenem Ort bleiben, wie sie sind.'),
+      h('div', { class: 'fld' }, 'Uhrzeit-Verschiebung (falls die Kamera-Uhr falsch ging)', h('div', { class: 'fo-vs' }, vz, h('label', { class: 'fo-n' }, std, h('span', null, 'Std.')), h('label', { class: 'fo-n' }, min, h('span', null, 'Min.')))),
+      h('div', { class: 'chips wrap', id: 'fo-schnell' }, schnell('− 1 Stunde', -1), schnell('+ 1 Stunde', 1), h('button', { class: 'chip', onclick: () => { st.vz = '+'; st.std = 0; st.min = 0; vz.value = '+'; std.value = 0; min.value = 0; rechne(); } }, 'Keine')),
+      h('p', { class: 'muted small' }, 'Tipp: Kamera noch auf Winterzeit? Dann „+ 1 Stunde“. Die Vorschau zeigt sofort, wo das Foto landet.'),
+      h('label', { class: 'fld' }, 'Zeitfenster der Tour', tol),
+      h('div', { class: 'fo-bsp' }, bspImg, bspTxt), sum, list, raus,
+      h('p', { class: 'muted small' }, 'Fotos außerhalb des Zeitfensters werden nicht zugeordnet. Antippen wählt das Beispielfoto.'),
+      h('div', { class: 'row end wrap' }, undoB, okB)));
+    rechne();
+    async function uebernehmen() {
+      const n = v.treffer.length;
+      if (!n) return;
+      if (!await confirmBox('Orte übernehmen?', (n === 1 ? '1 Foto bekommt' : n + ' Fotos bekommen') + ' einen Ort aus der Tour' + (versatz() ? ' (Uhrzeit ' + FotoOrtCalc.versatzText(versatz()) + ')' : '') + '. Das lässt sich danach mit „Rückgängig“ in diesem Fenster zurücknehmen.', 'Übernehmen')) return;
+      const byId = Object.fromEntries(fotos.map(p => [p.id, p])), alt = [], neu = [];
+      for (const tr of v.treffer) { const p = await DB.get('photos', tr.id) || byId[tr.id]; alt.push(p); neu.push(FotoOrtCalc.anwenden(p, tr, t.id, versatz())); }
+      await DB.kvSet(FotoOrt.undoKey(t.id), { ts: Date.now(), list: FotoOrtCalc.sichern(alt) });
+      await DB.putMany('photos', neu);
+      s.close();
+      toast((n === 1 ? '1 Ort ergänzt' : n + ' Orte ergänzt') + ' – Rückgängig über „Orte aus der Tour ergänzen“.', 5000);
+      window.dispatchEvent(new Event('photos-changed'));
+      if (after) after();
+    }
+    async function rueck() {
+      const u = await DB.kvGet(FotoOrt.undoKey(t.id), null);
+      if (!u || !u.list) return;
+      if (!await confirmBox('Rückgängig machen?', 'Die ' + (u.list.length === 1 ? 'eine ergänzte Position wird' : u.list.length + ' ergänzten Positionen werden') + ' zurückgenommen; die Fotos haben wieder ihre alten Werte.', 'Rückgängig')) return;
+      const neu = [];
+      for (const a of u.list) { const p = await DB.get('photos', a.id); if (p) neu.push(FotoOrtCalc.zurueck(p, a)); }
+      if (neu.length) await DB.putMany('photos', neu);
+      await DB.del('kv', FotoOrt.undoKey(t.id));
+      s.close();
+      toast('Zurückgenommen.', 4000);
+      window.dispatchEvent(new Event('photos-changed'));
+      if (after) after();
+    }
   },
 };
 async function pickTour() {

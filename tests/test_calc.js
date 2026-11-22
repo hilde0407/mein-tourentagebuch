@@ -970,6 +970,71 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(AU.alter(now - 3 * H, now) === 'vor 3 Stunden' && AU.alter(now - H, now) === 'vor 1 Stunde' && AU.alter(now - 50 * H, now) === 'vor 2 Tagen', 'Alter Stunden/Tage');
 }
 
+/* ---------- 2.12.0 Orte aus der Tour ergänzen (calc-fotoort.js): Interpolation, Pausen, Zeitfenster mit Toleranz, Verschiebung, Zeitzone/Sommerzeit, Rückgängig ---------- */
+{
+  const FO = require(W + 'calc-fotoort.js'), MIN = 60000, H = 3600000;
+  const T0 = Date.UTC(2026, 6, 12, 7, 0);      // 12.07.2026, 09:00 Uhr Ortszeit (Sommerzeit, UTC+2)
+  // Spur: 61 Punkte, alle 60 s, je 0.001° nach Norden (≈ 111 m); nach Punkt 30 eine Pause von 20 min (neuer Abschnitt, gleicher Ort)
+  const pts = [];
+  for (let i = 0; i <= 60; i++) pts.push({ lat: 47 + i * 0.001 - (i > 30 ? 0.001 : 0), lon: 11, t: T0 + i * MIN + (i > 30 ? 20 * MIN : 0), newSeg: i === 31 });
+  const s = FO.spur(pts), tEnd = T0 + 80 * MIN;
+  ok(s.p.length === 61 && s.t0 === T0 && s.t1 === tEnd, 'Spur vorbereitet');
+  ok(Math.abs(s.m[30] - 30 * 111.19) < 5 && Math.abs(s.m[31] - s.m[30]) < 1e-9, 'Strecke kumuliert, Lücke zählt nicht: ' + s.m[30] + ' / ' + s.m[31]);
+  // Interpolation in der Mitte zwischen zwei Punkten
+  const o = FO.ortBei(s, T0 + 10 * MIN + 30000, 0);
+  close(o.lat, 47.0105, 'halbe Strecke zwischen Punkt 10 und 11'); ok(Math.abs(o.m - 10.5 * 111.19) < 5 && o.rand === null, 'km dazwischen');
+  // in der Pause: Ort des letzten Punkts davor, Strecke steht
+  const op = FO.ortBei(s, T0 + 40 * MIN, 0);
+  close(op.lat, 47.030, 'Pause: letzter Punkt davor'); close(op.m, s.m[30], 'Pause: Strecke steht');
+  // Ränder mit Toleranz: vor dem Start → Startpunkt, nach dem Ende → Endpunkt; außerhalb der Toleranz → null
+  ok(FO.ortBei(s, T0 - 9 * MIN, 10 * MIN).rand === 'vor' && FO.ortBei(s, T0 - 9 * MIN, 10 * MIN).m === 0, 'kurz vor dem Start');
+  ok(FO.ortBei(s, tEnd + 10 * MIN, 10 * MIN).rand === 'nach' && FO.ortBei(s, tEnd + 10 * MIN + 1000, 10 * MIN) === null, 'Toleranz genau 10 min');
+  ok(FO.ortBei(s, T0 - 1, 0) === null && FO.ortBei(s, T0, 0).m === 0 && FO.ortBei(FO.spur([]), T0, 0) === null, 'ohne Toleranz, leere Spur');
+  // Verschiebung
+  ok(FO.versatz('+', 1, 30) === 90 * MIN && FO.versatz('-', 0, 45) === -45 * MIN && FO.versatz('+', 0, 0) === 0 && FO.versatz('-', 'x', '') === 0, 'Verschiebung');
+  ok(FO.versatz('+', 99, 99) === (48 * 60 + 59) * MIN, 'Verschiebung begrenzt');
+  ok(FO.versatzText(90 * MIN) === '+1 h 30 min' && FO.versatzText(-45 * MIN) === '−45 min' && FO.versatzText(-2 * H) === '−2 h' && FO.versatzText(0) === 'keine', 'Verschiebung als Text');
+  // Vorschlag: Fotos im Fenster, knapp davor (in der Toleranz), außerhalb, ohne Zeit
+  const fotos = [{ id: 'a', ts: T0 + 20 * MIN }, { id: 'b', ts: T0 - 5 * MIN }, { id: 'c', ts: tEnd + 25 * MIN }, { id: 'd', ts: 0 }, { id: 'e', ts: T0 - 2 * H - 5 * MIN }];
+  let v = FO.vorschlag(fotos, pts, {});
+  ok(v.spur && v.treffer.map(x => x.id).join() === 'a,b' && v.ausserhalb.map(x => x.id).join() === 'c,e' && v.ohneZeit.join() === 'd', 'Vorschlag mit 10 min Toleranz: ' + JSON.stringify(v.treffer.map(x => x.id)));
+  ok(Math.abs(v.treffer[0].km - 20 * 0.11119) < 0.01, 'km des ersten Fotos: ' + v.treffer[0].km);
+  ok(v.ausserhalb[0].min === 25 && v.ausserhalb[0].seite === 'nach' && FO.abstandText(v.ausserhalb[0]) === '25 min nach dem Ende', 'Abstand außerhalb');
+  ok(FO.abstandText(v.ausserhalb[1]) === '2 h 5 min vor dem Start', FO.abstandText(v.ausserhalb[1]));
+  ok(FO.zusammenfassung(v) === '2 Fotos bekommen einen Ort · 3 liegen außerhalb', FO.zusammenfassung(v));
+  // Toleranz 30 min: c kommt dazu (Endpunkt); Toleranz 0: b fällt weg
+  ok(FO.vorschlag(fotos, pts, { tolMin: 30 }).treffer.map(x => x.id).join() === 'a,b,c' && FO.vorschlag(fotos, pts, { tolMin: 0 }).treffer.map(x => x.id).join() === 'a', 'Toleranz einstellbar');
+  // Kamera-Uhr 2 h 5 min nach (Foto e): mit +2 h 5 min liegt es genau am Start
+  v = FO.vorschlag([fotos[4]], pts, { versatz: FO.versatz('+', 2, 5), tolMin: 0 });
+  ok(v.treffer.length === 1 && v.treffer[0].km === 0 && FO.beispiel(1, v.treffer[0].km) === 'Foto 1 liegt dann bei km 0,0', 'Verschiebung bringt das Foto auf die Spur');
+  ok(FO.beispiel(1, 3.24) === 'Foto 1 liegt dann bei km 3,2' && FO.beispiel(2, 12.96, true) === 'Video 2 liegt dann bei km 13,0', 'Beispieltext');
+  // Zeitzone/Sommerzeit: Kamera ohne Zeitzonenangabe, deren Uhr noch auf Winterzeit steht (Ortszeit 10:20 echte Sommerzeit → Kamera zeigt 09:20).
+  // Die Hülle liest „09:20“ in der Zeitzone des Handys (Sommerzeit, UTC+2) → eine Stunde zu früh. Mit +1 h stimmt es wieder.
+  const lokal = (y, mo, d, hh, mm) => new Date(y, mo - 1, d, hh, mm).getTime();      // Node läuft hier mit TZ=Europe/Berlin
+  ok(lokal(2026, 7, 12, 9, 0) === T0, 'Ortszeit 09:00 im Sommer = 07:00 UTC');
+  const winter = { id: 'w', ts: lokal(2026, 7, 12, 9, 20) };      // eigentlich 10:20 Ortszeit, also Spurminute 80 = Ende
+  ok(FO.vorschlag([winter], pts, { tolMin: 0 }).treffer[0].km < FO.vorschlag([winter], pts, { versatz: FO.versatz('+', 1, 0), tolMin: 0 }).treffer[0].km, 'Winterzeit-Kamera: +1 h verschiebt nach hinten');
+  ok(Math.abs(FO.vorschlag([winter], pts, { versatz: H, tolMin: 0 }).treffer[0].km - s.m[60] / 1000) < 1e-9, 'Winterzeit-Kamera: mit +1 h am Ende der Tour');
+  // Tag der Zeitumstellung (25.10.2026, 03:00 → 02:00): ms-Zeiten laufen durch, die Uhrzeit springt – die Zuordnung bleibt richtig
+  const D0 = lokal(2026, 10, 25, 1, 30), pz = [0, 1, 2].map(i => ({ lat: 47 + i * 0.01, lon: 11, t: D0 + i * H }));
+  ok(pz[2].t - pz[0].t === 2 * H && new Date(pz[2].t).getHours() === 2, 'Zeitumstellung: 01:30 + 2 h = 02:30 Winterzeit');
+  close(FO.ortBei(FO.spur(pz), D0 + 90 * MIN, 0).lat, 47.015, 'Zeitumstellung: Mitte zwischen zweitem und drittem Punkt');
+  // Kandidaten: nur ohne eigenen Ort; dieser Tour oder unzugeordnet nahe der Tour
+  const tour = { id: 't1', start: T0, end: tEnd };
+  const alle = [{ id: 'k1', tour: 't1', ts: T0, lat: null, pos: 'none' }, { id: 'k2', tour: 't1', ts: T0, lat: 47, lon: 11, pos: 'exif' }, { id: 'k3', tour: 't1', ts: T0, lat: 47, lon: 11, pos: 'track' },
+    { id: 'k4', tour: '', ts: T0 - 20 * H, lat: null }, { id: 'k5', tour: '', ts: T0 - 30 * H, lat: null }, { id: 'k6', tour: 'x', ts: T0, lat: null }, { id: 'k7', tour: '', ts: T0, lat: 47, lon: 11 }, { id: 'k8', tour: 't1', ts: T0, lat: 47, lon: 11, pos: 'zeit' }];
+  ok(FO.kandidaten(alle, tour).map(p => p.id).join() === 'k4,k1,k3,k8', FO.kandidaten(alle, tour).map(p => p.id).join());
+  ok(!FO.eigenerOrt({ lat: null }) && FO.eigenerOrt({ lat: 1, lon: 2 }) && FO.eigenerOrt({ lat: 1, lon: 2, pos: 'exif' }) && !FO.eigenerOrt({ lat: 1, lon: 2, pos: 'track' }), 'eigener Ort');
+  // Übernehmen und Rückgängig: alte Werte genau zurück (auch „kein Ort“, „keine Tour“, Verschiebung)
+  const vorher = [{ id: 'k1', tour: '', ts: T0, lat: null, lon: null, pos: 'none' }, { id: 'k3', tour: 't1', ts: T0, lat: 47.5, lon: 11.5, pos: 'track', camShift: 5 * MIN }];
+  const undo = FO.sichern(vorher);
+  const nach = vorher.map(p => FO.anwenden(p, { lat: 47.01, lon: 11 }, 't1', H));
+  ok(nach.every(p => p.pos === 'zeit' && p.tour === 't1' && p.camShift === H && p.lat === 47.01) && vorher[0].lat === null, 'Übernahme (Original unverändert)');
+  ok(FO.anwenden(vorher[1], { lat: 1, lon: 2 }, 't1', 0).camShift === undefined, 'ohne Verschiebung kein camShift');
+  const back = nach.map((p, i) => FO.zurueck(p, undo[i]));
+  ok(JSON.stringify(back) === JSON.stringify(vorher), 'Rückgängig stellt alles her: ' + JSON.stringify(back));
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
