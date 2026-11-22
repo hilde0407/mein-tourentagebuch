@@ -1310,6 +1310,86 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(pl3.neu.length === 1 && pl3.neu[0].buch.id === 'id0', 'ohne Kennung: neue Kennung');
 })();
 
+
+/* ---------- 2.16.0 3D-Flug (calc-flug.js): Stufen, pixelRatio, Ausdünnen, Hysterese der Anpassung, Kamera als reine Funktion ---------- */
+{
+  const FC = require(W + 'calc-flug.js');
+  // Stufen: Vorgabe auf Handys „Flüssig“, sonst „Normal“; Unbekanntes → Vorgabe; jede Stufe vollständig
+  ok(FC.stufe('', true) === 'fluessig' && FC.stufe(undefined, false) === 'normal' && FC.stufe('quatsch', true) === 'fluessig' && FC.stufe('schoen', true) === 'schoen', 'Stufe/Vorgabe');
+  for (const k of FC.FOLGE) { const s = FC.STUFEN[k]; ok(['pr', 'dem', 'ueber', 'neig', 'hud', 'spur', 'tol'].every(x => typeof s[x] === 'number') && typeof s.schatten === 'boolean', 'Stufe ' + k + ' vollständig'); }
+  ok(FC.WAHL.map(w => w[0]).join() === 'fluessig,normal,schoen', 'Auswahl in der Reihenfolge Flüssig, Normal, Schön');
+  // Flüssiger = weniger Last: Auflösung, Höhenkacheln, Neigung fallen; Takte werden länger
+  const [a, b, c] = ['fluessig', 'normal', 'schoen'].map(k => FC.STUFEN[k]);
+  ok(a.pr < b.pr && b.pr < c.pr && a.dem <= b.dem && b.dem <= c.dem && a.neig < c.neig && a.hud >= b.hud && b.hud >= c.hud && a.spur > c.spur && a.tol > c.tol && !a.schatten && c.schatten, 'Stufen sind geordnet');
+  // pixelRatio: höchstens das des Geräts und höchstens die Grenze der Stufe
+  A.deepStrictEqual([FC.pixelRatio('fluessig', 3), FC.pixelRatio('normal', 3), FC.pixelRatio('schoen', 3), FC.pixelRatio('schoen', 2), FC.pixelRatio('normal', 1), FC.pixelRatio('fluessig', 0), FC.pixelRatio('x', 2.75)], [1, 1.5, 2.5, 2, 1, 1, 1]); n++;
+  ok(FC.tiefer('schoen') === 'normal' && FC.tiefer('normal') === 'fluessig' && FC.tiefer('fluessig') === null && FC.tiefer('x') === null, 'eine Stufe tiefer');
+  // Ausdünnen: Gerade → 2 Punkte; Zickzack über Toleranz bleibt; lange, gleichmäßig abgetastete Spur deutlich kleiner; Ränder immer dabei
+  const gerade = Array.from({ length: 500 }, (_, i) => [11 + i * 1e-4, 47 + i * 5e-5]);
+  ok(FC.duenneIdx(gerade, 1).join() === '0,499', 'Gerade auf zwei Punkte');
+  const zz = Array.from({ length: 11 }, (_, i) => [11 + i * 1e-3, 47 + (i % 2 ? 1e-3 : 0)]);      // 110 m Zacken
+  ok(FC.duenneIdx(zz, 5).length === 11 && FC.duenneIdx(zz, 500).length === 2, 'Zacken bleiben über der Toleranz, verschwinden darunter');
+  const lang = Array.from({ length: 900 }, (_, i) => { const t = i / 899 * Math.PI * 2; return [11.35 + 0.05 * Math.sin(t) + 0.004 * Math.sin(t * 9), 47.25 + 0.03 * Math.cos(t)]; });
+  for (const [k, min] of [['fluessig', 60], ['normal', 50], ['schoen', 35]]) {
+    const r = FC.duenneIdx(lang, FC.STUFEN[k].tol), pct = Math.round(100 * (1 - r.length / lang.length));
+    ok(pct >= min && r[0] === 0 && r[r.length - 1] === 899 && r.every((x, i) => !i || x > r[i - 1]), 'lange Spur ' + k + ': ' + pct + ' % weniger Punkte (≥ ' + min + ' %)');
+  }
+  // Abweichung der ausgedünnten Linie bleibt unter der Toleranz (Stichprobe: Abstand jedes Originalpunkts zum Polygonzug)
+  (() => {
+    const tol = 3, r = FC.duenneIdx(lang, tol), kx = 111320 * Math.cos(47.25 * Math.PI / 180), ky = 110540; let worst = 0;
+    for (let j = 0; j < r.length - 1; j++) for (let i = r[j]; i <= r[j + 1]; i++) {
+      const [ax, ay] = [lang[r[j]][0] * kx, lang[r[j]][1] * ky], [bx, by] = [lang[r[j + 1]][0] * kx, lang[r[j + 1]][1] * ky], [px, py] = [lang[i][0] * kx, lang[i][1] * ky];
+      const L = (bx - ax) ** 2 + (by - ay) ** 2, t = L ? Math.max(0, Math.min(1, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / L)) : 0;
+      worst = Math.max(worst, Math.hypot(px - ax - t * (bx - ax), py - ay - t * (by - ay)));
+    }
+    ok(worst <= tol + 1e-6, 'größte Abweichung ' + worst.toFixed(2) + ' m ≤ ' + tol + ' m');
+  })();
+  ok(FC.duenneIdx([[1, 1]], 5).join() === '0' && FC.duenneIdx([], 5).length === 0 && FC.duenneIdx([[1, 1], [1, 1], [1, 1]], 5).join() === '0,2', 'Randfälle');
+  ok(FC.faellig(null, 5, 200) && !FC.faellig(100, 299, 200) && FC.faellig(100, 300, 200), 'Drosselung fällig');
+  // Anpassung: 30 Bilder Ø > 40 ms → eine Stufe tiefer; dann Ruhe (60 Bilder) + neues volles Fenster; nie hoch; Ausreißer zählen nicht
+  (() => {
+    const s = FC.adaptiv('schoen'); let wechsel = [];
+    const feed = (k, ms) => { for (let i = 0; i < k; i++) { const r = FC.adaptivSchritt(s, ms); if (r) wechsel.push([r, i]); } };
+    feed(29, 55); ok(!wechsel.length && s.stufe === 'schoen', 'unter einem vollen Fenster keine Änderung');
+    feed(1, 55); ok(wechsel.length === 1 && wechsel[0][0] === 'normal' && s.stufe === 'normal', 'nach 30 langsamen Bildern → Normal');
+    wechsel = []; feed(60 + 29, 55); ok(!wechsel.length && s.stufe === 'normal', 'Hysterese: Ruhezeit und neues Fenster');
+    feed(1, 55); ok(wechsel.length === 1 && s.stufe === 'fluessig', 'danach → Flüssig');
+    wechsel = []; feed(500, 80); ok(!wechsel.length && s.stufe === 'fluessig', 'unter Flüssig geht es nicht');
+    const g = FC.adaptiv('schoen'); for (let i = 0; i < 300; i++) FC.adaptivSchritt(g, i % 2 ? 38 : 41); ok(g.stufe === 'schoen', 'Ø knapp unter der Grenze (39,5 ms): bleibt');
+    const h = FC.adaptiv('normal'); for (let i = 0; i < 300; i++) FC.adaptivSchritt(h, i % 10 ? 16 : 2000); ok(h.stufe === 'normal', 'einzelne sehr lange Abstände (Pause, Hintergrund) zählen nicht');
+    const w = FC.adaptiv('schoen'); for (let i = 0; i < 1000; i++) FC.adaptivSchritt(w, 16); ok(w.stufe === 'schoen', 'schnelle Bilder: nie hochschalten/kein Wechsel');
+  })();
+  // Kamera: reine Funktion der Position – gleiches u → gleiche Kamera, egal in welcher Reihenfolge/wie oft abgefragt (Bild-für-Bild-Export)
+  (() => {
+    const N = 400, S = Array.from({ length: N }, (_, i) => ({ lat: 47 + 0.01 * Math.sin(i / 40), lng: 11 + i * 2e-4 })), P = S.map(s => Object.assign({ trans: false }, s));
+    const B = { S, P, brg: FC.peilungen(S, 8, 4), neig: FC.neigTabelle(N, 4) };
+    const o = { neigung: 'auto', basis: 60, zBase: 14.8, set: false, rec: false };
+    const vor = [0, 0.13, 0.5, 0.77, 1].map(u => JSON.stringify(FC.kamera(u, B, o)));
+    for (let k = 0; k < 2000; k++) FC.kamera(Math.random(), B, o);
+    const nach = [1, 0.77, 0.5, 0.13, 0].map(u => JSON.stringify(FC.kamera(u, B, o))).reverse();
+    ok(vor.join() === nach.join(), 'Kamera hängt nur von u ab');
+    const k0 = FC.kamera(0.5, B, o); ok(k0.zoom === null && k0.pitch === 60 && Math.abs(k0.center[1] - (47 + 0.01 * Math.sin(199.5 / 40))) < 1e-3, 'Einzelflug: Zoom frei, Grundneigung ohne Tabelle');
+    ok(FC.kamera(0.5, B, Object.assign({}, o, { neigung: 'fest' })).pitch === null, 'feste Neigung: Kamera lässt sie stehen');
+    ok(FC.kamera(0.5, B, Object.assign({}, o, { rec: true })).zoom === 14.8 + 0.9, 'Aufnahme etwas näher');
+    // Berg in der Tabelle: Neigung sinkt schon vor der Stelle und steigt danach wieder
+    B.neig.w[50] = 40; const at = i => FC.kamera(i / (N - 1), B, o).pitch;
+    ok(at(186) === 60 && at(190) < 60 && at(190) > 40 && at(194) === 40 && at(200) === 40 && at(206) > 40 && at(212) === 60, 'Berg früh vorweggenommen: ' + [at(186), at(190), at(194), at(200), at(206), at(212)].join('/'));
+    // Blickrichtung ohne Sprung über 0°/360°
+    const ring = Array.from({ length: 100 }, (_, i) => ({ lat: 47 + 0.01 * Math.cos(i / 99 * 2 * Math.PI), lng: 11 + 0.015 * Math.sin(i / 99 * 2 * Math.PI) })), br = FC.peilungen(ring, 3, 2);
+    let maxd = 0; for (let i = 1; i < 97; i++) maxd = Math.max(maxd, Math.abs(((br[i] - br[i - 1] + 540) % 360) - 180));
+    ok(maxd < 15, 'geglättete Blickrichtung ohne Sprung (größter Schritt ' + maxd.toFixed(1) + '°)');
+    ok(Math.abs(FC.winkelLerp(350, 10, 0.5) % 360) < 1e-9 && FC.winkelLerp(10, 350, 0.25) === 5, 'Winkel über 0° interpoliert');
+    // Reiseflug-Übergang: Zoom heraus und flacher in der Mitte
+    const P2 = P.map((p, i) => Object.assign({}, p, i >= 100 && i <= 140 ? { trans: true, tq: (i - 99) / 42 } : {}));
+    const kt = FC.kamera(120 / (N - 1), Object.assign({}, B, { P: P2, neig: null }), Object.assign({}, o, { set: true }));
+    ok(kt.zoom < 14.8 - 3.5 && kt.pitch < 60 - 20, 'Übergang: höher und flacher');
+  })();
+  // freie Sicht: flaches Land → Grundneigung, voll; Berg hinter dem Punkt → flacher; fehlende Höhen → voll = false
+  const flach = FC.freieNeigung(() => 500, 11, 47, 0, 64, 1500), berg = FC.freieNeigung((lng, lat) => (lat < 47 ? 1400 : 0), 11, 47, 0, 64, 1500), leer = FC.freieNeigung(() => null, 11, 47, 0, 64, 1500);
+  ok(flach.th === 28 || flach.voll, 'flach berechnet'); ok(FC.freieNeigung(() => 0, 11, 47, 0, 64, 1500).th === 64, 'ohne Hindernis Grundneigung');
+  ok(berg.th < 64 && berg.voll, 'Berg im Rücken der Kamera → flacher (' + berg.th + '°)'); ok(leer.th === 64 && !leer.voll, 'ohne Höhendaten: Grundneigung, später nachrechnen');
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';

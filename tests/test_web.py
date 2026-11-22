@@ -3506,6 +3506,89 @@ def mt_schalter_2150(pg):
     return bad
 
 
+FLUG_DPR3 = "() => { window.__dpr0 = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio'); Object.defineProperty(window, 'devicePixelRatio', { get: () => 3, configurable: true }); }"
+FLUG_DPR_ZURUECK = "() => { delete window.devicePixelRatio; if (window.__dpr0) Object.defineProperty(window, 'devicePixelRatio', window.__dpr0); window.__dpr0 = null; }"
+FLUG_RP = """() => { if (window.__rp0) return; window.__rp = 0; window.__rp0 = [];
+  for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) if (C) { const o = C.prototype.readPixels; window.__rp0.push([C, o]); C.prototype.readPixels = function () { window.__rp++; return o.apply(this, arguments); }; } }"""
+FLUG_RP_ZURUECK = "() => { (window.__rp0 || []).forEach(([C, o]) => { C.prototype.readPixels = o; }); window.__rp0 = null; }"
+
+
+def flug_2160(pg):
+    """2.16.0: 3D-Flug flüssiger. (a) Stufe in den Einstellungen speicherbar (Gerätewert, Vorgabe „Flüssig“ in der App); (b) pixelRatio begrenzt
+    (gestubbtes devicePixelRatio 3 → 1 / 1,5 / 2,5); (c) Anpassung mit gestubbten Bildzeiten: über die echten Bilder eine Stufe herunter mit
+    leiser Meldung, danach Hysterese; die gespeicherte Wahl bleibt; (d) Kopfzeile und gelbe Linie gedrosselt; (e) lange Spur: Linie ausgedünnt;
+    (f) keine readPixels-Bremse durch Marker; (g) Kamera als reine Funktion der Zeit (stelleZeit). Stubs werden zurückgesetzt."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    vor = pg.evaluate("Set_.get('flugStufe')")
+    # (a) Einstellungen: Auswahl da, Vorgabe in der App „Flüssig“, Wahl gespeichert
+    pg.evaluate("Set_.set('flugStufe', '')")
+    go(pg, "#/settings", "#set-flugstufe")
+    assert pg.evaluate("[...document.querySelectorAll('#set-flugstufe option')].map(o => o.value).join()") == "fluessig,normal,schoen"
+    assert pg.eval_on_selector("#set-flugstufe", "e => e.value") == "fluessig", "Vorgabe auf dem Handy"
+    pg.select_option("#set-flugstufe", "schoen"); pg.wait_for_function("async () => (await DB.kvGet('settings', {})).flugStufe === 'schoen'")
+    assert "flugStufe" in pg.evaluate("Backup.GERAET"), "Gerätewert, wird beim Einspielen nicht übernommen"
+    # lange, glatte Spur (3000 Punkte, Schleife) mit Fotos
+    tid = pg.evaluate("""async () => {
+      const base = Date.UTC(2026, 6, 4, 7), pts = [];
+      for (let k = 0; k < 3000; k++) { const a = k / 3000 * Math.PI * 2; pts.push({ lat: 47.25 + 0.03 * Math.cos(a), lon: 11.35 + 0.05 * Math.sin(a) + 0.004 * Math.sin(a * 5), ele: 1100 + 500 * Math.sin(a), t: base + k * 4000 }); }
+      const r = await Tours.add({ name: 'Langer Flug 2160', sport: 'hike', pts, src: 'file', force: true });
+      for (let i = 0; i < 12; i++) await DB.put('photos', { id: 'fl2160' + String(i).padStart(4, '0'), name: 'f.jpg', ts: base + (i * 250 + 100) * 4000, tour: r.tour.id, w: 10, h: 10, src: 'galerie' });
+      return r.tour.id; }""")
+    pg.evaluate(FLUG_DPR3); pg.evaluate(FLUG_RP); pg.evaluate("Flug.bildzeit = () => 0")      # echte (Software-)Bildzeiten neutralisieren
+    pg.evaluate("id => { location.hash = '#/flug/' + id }", tid)
+    pg.wait_for_function("() => Flug.aktiv && window.__flug && (document.querySelector('.fhud')?.innerText || '').includes('↑')", timeout=60000)
+    # (b) pixelRatio: Schön 2,5 bei Gerät 3; Wechsel im Flug wirkt sofort und wird gespeichert
+    assert pg.evaluate("[Flug.aktiv.stufe(), window.__flug.getPixelRatio()]") == ["schoen", 2.5], pg.evaluate("[Flug.aktiv.stufe(), window.__flug.getPixelRatio()]")
+    for s_, pr in (("fluessig", 1), ("normal", 1.5), ("schoen", 2.5)):
+        pg.select_option("#fst", s_); pg.wait_for_function("([s, pr]) => Flug.aktiv.stufe() === s && window.__flug.getPixelRatio() === pr && Set_.get('flugStufe') === s", arg=[s_, pr], timeout=10000)
+    assert pg.evaluate("!!window.__flug.getLayer('schatten') && window.__flug.getLayoutProperty('schatten', 'visibility') !== 'none'"), "Schön: Geländeschatten"
+    # (e) Linie ausgedünnt (Stufe beim Öffnen: Schön, Toleranz 1,5 m) und Fotos als Kartenebene (keine HTML-Marker)
+    z = pg.evaluate("Flug.aktiv.zahlen()")
+    voll = pg.evaluate("window.__flug.getSource('full')._data.geometry.coordinates.reduce((a, l) => a + l.length, 0)")
+    assert z["punkte"] >= 800 and voll == z["linie"] and z["linie"] <= 0.6 * z["punkte"], (z, voll)
+    assert pg.locator(".flight .fcam").count() == 0 and pg.locator(".flight .maplibregl-marker").count() == 1 and pg.evaluate("window.__flug.getSource('fotos')._data.features.length") == 12
+    # (d) Takt: Kopfzeile und gelbe Linie höchstens im Takt der Stufe (Schön je 100 ms), nie öfter als Bilder
+    pg.wait_for_timeout(4000)
+    z = pg.evaluate("Flug.aktiv.zahlen()")
+    assert z["bilder"] >= 3 and z["hud"] <= z["bilder"] + 1 and z["hud"] <= z["ms"] / 100 + 2 and z["spur"] <= z["ms"] / 100 + 2, z
+    # (f) der Positionspunkt löst keine readPixels-Prüfung mehr aus
+    pg.evaluate("window.__rp = 0"); pg.wait_for_timeout(3000)
+    rp = pg.evaluate("window.__rp"); assert rp <= 3, "readPixels im Flug: %s" % rp
+    # (c) Anpassung über die echten Bilder: gestubbte Bildzeit 55 ms → eine Stufe tiefer, leise Meldung, gespeicherte Wahl bleibt
+    leise(); pg.evaluate("Flug.bildzeit = () => 55")
+    pg.wait_for_function("() => Flug.aktiv.stufe() === 'normal'", timeout=180000)
+    assert "Flug vereinfacht" in toast_text(pg, "vereinfacht")
+    pg.evaluate("Flug.bildzeit = () => 0")
+    assert pg.evaluate("[window.__flug.getPixelRatio(), Set_.get('flugStufe')]") == [1.5, "schoen"]
+    # Hysterese: sofort weitere langsame Bilder ändern nichts (Ruhezeit + neues Fenster), danach eine weitere Stufe, darunter nichts mehr
+    assert pg.evaluate("Flug.aktiv.bildzeiten(Array(30).fill(80))") is None and pg.evaluate("Flug.aktiv.stufe()") == "normal"
+    leise()
+    assert pg.evaluate("Flug.aktiv.bildzeiten(Array(60).fill(80))") == "fluessig" and pg.evaluate("window.__flug.getPixelRatio()") == 1
+    assert pg.evaluate("Flug.aktiv.bildzeiten(Array(300).fill(80))") is None and pg.evaluate("Flug.aktiv.stufe()") == "fluessig"
+    assert pg.evaluate("Flug.aktiv.bildzeiten(Array(300).fill(16))") is None and pg.evaluate("Flug.aktiv.stufe()") == "fluessig", "kein Hochschalten im Flug"
+    leise()
+    # (g) Kamera als Funktion der Zeit: gleiche Zeit → gleiche Kamera, auch nach Hin- und Herspringen; Karte steht dort
+    k1 = pg.evaluate("JSON.stringify(Flug.aktiv.stelleZeit(30))"); pg.evaluate("Flug.aktiv.stelleZeit(80)"); pg.evaluate("Flug.aktiv.stelleZeit(5)")
+    k2 = pg.evaluate("JSON.stringify(Flug.aktiv.stelleZeit(30))")
+    assert k1 == k2, (k1, k2)
+    c = json.loads(k2); mc = pg.evaluate("[window.__flug.getCenter().lng, window.__flug.getCenter().lat, window.__flug.getBearing()]")
+    assert abs(mc[0] - c["center"][0]) < 1e-6 and abs(mc[1] - c["center"][1]) < 1e-6 and abs(((mc[2] - c["bearing"] + 540) % 360) - 180) < 0.01, (mc, c)
+    assert "Weiter" in pg.inner_text("#fp") and pg.evaluate("Flug.aktiv.dauer") == 100
+    # Layout der Steuerleiste bei 360 px / 130 %: kein Querrollen
+    for w, fs in ((360, 130), (390, 100)):
+        pg.set_viewport_size({"width": w, "height": 800}); pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+        pg.dispatch_event(".flight .fm", "pointerdown"); pg.wait_for_timeout(300)
+        assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll('.flight .fctl > *')].every(e => e.getBoundingClientRect().right <= innerWidth + 1)"), (w, fs)
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    # Stubs zurücksetzen
+    pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight') && !Flug.aktiv", timeout=20000)
+    pg.evaluate(FLUG_DPR_ZURUECK); pg.evaluate("Flug.bildzeit = null")
+    pg.evaluate(FLUG_RP_ZURUECK)
+    pg.evaluate("s => Set_.set('flugStufe', s || '')", vor)
+    assert pg.evaluate("window.devicePixelRatio") == 1 and pg.evaluate("Flug.bildzeit") is None
+
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -4130,6 +4213,7 @@ def main():
         pg.wait_for_function("() => window.__saved && /^flug-/.test(window.__saved.path || '')", timeout=30000)
         assert pg.evaluate("window.__saved.name") == "Inselreise.webm" or pg.evaluate("window.__saved.name").endswith((".webm", ".mp4")), pg.evaluate("window.__saved")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
+        flug_2160(pg)
 
         # Zeitzonentolerante Fotozuordnung: tzOff > 0 heißt, die Kamerazeit geht der echten (GPS-)Zeit um tzOff vor (Prüfzeit = ts − tzOff)
         tz = pg.evaluate("""async (t0) => {

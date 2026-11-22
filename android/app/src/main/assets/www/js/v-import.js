@@ -290,6 +290,10 @@ Views['/settings'] = async root => {
     h('p', { class: 'muted small' }, 'Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),
     UI.toggle('Karte im PDF (braucht Internet)', Set_.get('pdfKarte') !== false, v => Set_.set('pdfKarte', !!v), { id: 'pdf-karte' }),
     h('p', { class: 'muted small' }, 'Beim Tour-PDF lädt die App dafür einen Kartenausschnitt von OpenStreetMap (nur zum Zeichnen, nichts wird gespeichert). Vorhandene Kacheln nimmt sie zuerst: eine Offline-Karte, die den ganzen Ausschnitt enthält, oder gemerkte Kacheln. Fehlt etwas ohne Internet, oder ist der Schalter aus, steht die Streckenskizze im PDF.'),
+    // 2.16.0: Darstellung des 3D-Flugs
+    h('label', { class: 'fld' }, '3D-Flug: Darstellung', h('select', { id: 'set-flugstufe', onchange: async e => { await Set_.set('flugStufe', e.target.value); } },
+      FlugCalc.WAHL.map(([v, l]) => h('option', { value: v, selected: FlugCalc.stufe(Set_.get('flugStufe'), Flug.handy()) === v }, l)))),
+    h('p', { class: 'muted small' }, '„Flüssig“ rechnet mit weniger Bildpunkten und einfacherem Gelände, damit der Flug auch auf Handys ruhig läuft. „Schön“ zeichnet schärfer und mit Geländeschatten. Ruckelt der Flug, schaltet die App von selbst eine Stufe herunter.'),
     h('h3', null, 'Routing'), inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'),
     h('h3', null, 'Fotos'), sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
     h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen'),

@@ -1,30 +1,22 @@
 'use strict';
 /* 3D-Flug: die Tour als Kameraflug über das Gelände (MapLibre GL mit Höhendaten). Kamera folgt der Strecke, weicht Bergen aus,
-   Tempo/Neigung/Karte wählbar, Fotos tauchen beim Vorbeifliegen auf. */
+   Tempo/Neigung/Karte wählbar, Fotos tauchen beim Vorbeifliegen auf.
+   2.16.0: Darstellungsstufen (Flüssig/Normal/Schön, js/calc-flug.js), Kamera als reine Funktion der Flugposition (FlugCalc.kamera),
+   gedrosselte Kopfzeile und Linie, Fotos als Kartenebene statt HTML-Marker, Anpassung bei langsamen Bildern, Flug.aktiv.stelleZeit(t). */
 const Flug = {
   loadLib: () => window.maplibregl ? Promise.resolve() : new Promise((ok, no) => {
     const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'vendor/maplibre-gl.css'; document.head.appendChild(l);
     const s = document.createElement('script'); s.src = 'vendor/maplibre-gl.js'; s.onload = ok; s.onerror = () => no(new Error('3D-Bibliothek konnte nicht geladen werden')); document.head.appendChild(s);
   }),
+  /** Handy? (App-Hülle oder Fingerbedienung) – dann ist „Flüssig“ die Vorgabe. */
+  handy: () => !!window.MTApp || !!(window.matchMedia && matchMedia('(pointer: coarse)').matches),
   hav: (a, b) => Geo.dist(a[0], a[1], b[0], b[1]),
   brg(a, b) {
     const r = Math.PI / 180, y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r), x = Math.cos(a[0] * r) * Math.sin(b[0] * r) - Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r);
     return (Math.atan2(y, x) / r + 360) % 360;
   },
-  /** Berge im Weg: steilster Neigungswinkel (≤ base), bei dem die Sicht von der Kamera zum Streckenpunkt frei ist. */
-  clearPitch(elev, lng, lat, bearing, base, D, floor = 28) {
-    const br = bearing * Math.PI / 180, kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110540, aim = 25;
-    for (let th = base; th >= floor; th -= 4) {
-      const a = th * Math.PI / 180, dh = D * Math.sin(a), hz = D * Math.cos(a);
-      let ok = true;
-      for (let k = 1; k <= 14 && ok; k++) {
-        const f = k / 15, e = elev(lng - Math.sin(br) * dh * (1 - f) / kx, lat - Math.cos(br) * dh * (1 - f) / ky);
-        if (e != null && e > aim + (hz - aim) * (1 - f) - 25) ok = false;
-      }
-      if (ok) return th;
-    }
-    return floor;
-  },
+  /** Berge im Weg: steilster Neigungswinkel (≤ base), bei dem die Sicht von der Kamera zum Streckenpunkt frei ist (Rechnung in js/calc-flug.js). */
+  clearPitch: (elev, lng, lat, bearing, base, D, floor = 28) => FlugCalc.freieNeigung(elev, lng, lat, bearing, base, D, floor).th,
   /** Gleichmäßig nach Strecke abtasten, Höhe auffüllen, Kamerapfad glätten. raw = [[lat, lon, ele, t(ms), hr], …] */
   path(raw, cap = 900) {
     const cum = [0];
@@ -78,6 +70,8 @@ Views['/flug'] = async (root, [id]) => {
   tours.sort((a, b) => a.start - b.start);
   if (!tours.length) { root.append(topbar('3D-Flug', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr' })); return; }
   const t = SET ? { name: Flug.title || 'Reiseflug', sport: tours[0].sport } : tours[0];
+  const handy = Flug.handy();
+  let st = FlugCalc.stufe(Set_.get('flugStufe'), handy), S_ = FlugCalc.STUFEN[st];      // 2.16.0: Darstellungsstufe (Einstellungen → Karte, oder hier im Flug)
   const msg = h('div', { class: 'fmsg' }, 'Lädt …');
   const mapEl = h('div', { class: 'fm' });
   const hud = h('div', { class: 'fhud' });
@@ -91,7 +85,9 @@ Views['/flug'] = async (root, [id]) => {
     sel('fc', 'Kamera', [['follow', 'Kamera folgt'], ['free', 'Kamera frei']], 'follow'),
     sel('fz', 'Flughöhe', [[16, 'nah'], [14.8, 'mittel'], [13.4, 'weit']], 14.8),
     sel('fpi', 'Neigung', [['auto', 'automatisch'], [55, 'flach'], [68, 'schräg'], [78, 'sehr schräg']], 'auto'),
-    sel('fb', 'Karte', [['osm', 'Straßenkarte'], ['topo', 'Topografisch'], ['sat', 'Satellit']], style), sel('fq', 'Videoqualität', [[1280, 'Video: Standard'], [1600, 'Video: Hoch'], [1920, 'Video: Sehr hoch']], 1600), recB);
+    sel('fb', 'Karte', [['osm', 'Straßenkarte'], ['topo', 'Topografisch'], ['sat', 'Satellit']], style),
+    sel('fst', 'Darstellung', FlugCalc.WAHL.map(([v, l]) => [v, 'Darstellung: ' + l.replace(/ \(.*\)$/, '')]), st),
+    sel('fq', 'Videoqualität', [[1280, 'Video: Standard'], [1600, 'Video: Hoch'], [1920, 'Video: Sehr hoch']], 1600), recB);
   root.append(h('div', { class: 'flight', id: 'fl' }, mapEl, h('div', { class: 'fbar' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), h('b', { class: 'ft' }, t.name)), hud, ph, ctl, msg));
   const $v = k => root.querySelector('#' + k).value;
   if (!document.createElement('canvas').getContext('webgl') && !document.createElement('canvas').getContext('experimental-webgl')) { msg.textContent = 'Dieses Gerät unterstützt kein WebGL, die 3D-Ansicht ist nicht möglich.'; return; }
@@ -111,43 +107,75 @@ Views['/flug'] = async (root, [id]) => {
   }
   photos.sort((a, b) => a.u - b.u);
   const Ttot = SET ? Math.min(240, 60 + 25 * segs.length) : 100;
+  // Kamera-Bahn: Blickrichtung je Punkt einmal vorab (statt Glättung je Bild), Neigung aus einer Tabelle, die sich beim Fliegen füllt
+  const look = Math.max(6, Math.round(N / 60)), bahn = { S, P, brg: FlugCalc.peilungen(S, look, Math.max(3, Math.round(N / 100))), neig: null };
+  const neuTabelle = () => { bahn.neig = FlugCalc.neigTabelle(N, Math.max(1, Math.round(N / 120))); };
+  neuTabelle();
+  // Linie ausdünnen (je zusammenhängendem Stück ohne Überflug); behalten werden Indizes in P
+  const keep = [];
+  for (let a = 0; a < N;) {
+    while (a < N && P[a].trans) a++;
+    let b = a; while (b < N && !P[b].trans) b++;
+    if (b - a >= 2) FlugCalc.duenneIdx(P.slice(a, b).map(ll), S_.tol).forEach(k => keep.push(a + k));
+    a = b;
+  }
+  const line = upto => {                                // Linie bis Punkt upto (einschließlich, mit genauem Endpunkt); Übergänge werden nicht gezeichnet
+    const parts = []; let cur = [], prev = -2;
+    for (let j = 0; j < keep.length && keep[j] <= upto; j++) { const k = keep[j]; if (k !== prev + 1 && P.slice(prev + 1, k).some(p => p.trans)) { if (cur.length > 1) parts.push(cur); cur = []; } cur.push(ll(P[k])); prev = k; }
+    if (upto < N && !P[upto].trans && prev !== upto && prev >= 0) cur.push(ll(P[upto]));
+    if (cur.length > 1) parts.push(cur);
+    return { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: parts.length ? parts : [[ll(P[0]), ll(P[1])]] } };
+  };
   const ras = (u, max, attr) => ({ type: 'raster', tiles: [u], tileSize: 256, maxzoom: max, attribution: attr });
   const SRC = { osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', topo: 'https://tile.opentopomap.org/{z}/{x}/{y}.png', sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' };
+  const DEM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', demSrc = mz => ({ type: 'raster-dem', tiles: [DEM], tileSize: 256, maxzoom: mz, encoding: 'terrarium', attribution: 'Höhendaten: Mapzen/AWS Terrain Tiles' });
+  const dpr = () => window.devicePixelRatio || 1;
+  const cam0 = FlugCalc.kamera(0, bahn, { neigung: 'auto', basis: S_.neig, zBase: 14.8, set: SET, rec: false });
   const m = new maplibregl.Map({
-    container: mapEl, pitch: 68, bearing: Flug.brg([P[0].lat, P[0].lng], [S[Math.min(10, N - 1)].lat, S[Math.min(10, N - 1)].lng]), center: ll(P[0]), zoom: 14.8, maxPitch: 85,
-    attributionControl: { compact: true }, fadeDuration: 0,
+    container: mapEl, pitch: S_.neig, bearing: cam0.bearing, center: cam0.center, zoom: 14.8, maxPitch: 85,
+    attributionControl: { compact: true }, fadeDuration: 0, antialias: false, refreshExpiredTiles: false, maxTileCacheSize: 400,
+    pixelRatio: FlugCalc.pixelRatio(st, dpr()),
     style: { version: 8, sources: {
-      osm: ras(SRC.osm, 19, '© OpenStreetMap'), topo: ras(SRC.topo, 17, '© OpenTopoMap, © OpenStreetMap'), sat: ras(SRC.sat, 19, 'Esri, Maxar, Earthstar Geographics'),
-      dem: { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 15, encoding: 'terrarium', attribution: 'Höhendaten: Mapzen/AWS Terrain Tiles' } },
+      osm: ras(SRC.osm, 19, '© OpenStreetMap'), topo: ras(SRC.topo, 17, '© OpenTopoMap, © OpenStreetMap'), sat: ras(SRC.sat, 19, 'Esri, Maxar, Earthstar Geographics'), dem: demSrc(S_.dem) },
     layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#cfd8d3' } }, ...['osm', 'topo', 'sat'].map(k => ({ id: k, type: 'raster', source: k, layout: { visibility: k === style ? 'visible' : 'none' } }))] },
   });
   window.__flug = m;
   const dot = h('div', { class: 'fdot' });
-  const mk = new maplibregl.Marker({ element: dot }).setLngLat(ll(P[0])).addTo(m);
-  const line = (a, b) => {                              // Übergänge werden nicht als Linie gezeichnet
-    const parts = []; let cur = [];
-    P.slice(a, b).forEach(p => { if (p.trans) { if (cur.length > 1) parts.push(cur); cur = []; } else cur.push(ll(p)); });
-    if (cur.length > 1) parts.push(cur);
-    return { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: parts.length ? parts : [[ll(P[0]), ll(P[1])]] } };
-  };
+  const mk = new maplibregl.Marker({ element: dot }).setLngLat(ll(P[0]));
+  // MapLibre prüft bei Gelände für jeden HTML-Marker alle 100 ms per gl.readPixels, ob er verdeckt ist – das hält die Grafik jedes Mal an.
+  // Der Punkt liegt immer vor der Kamera, die Prüfung bringt nichts: abschalten (Fotos sind ab 2.16.0 eine Kartenebene, keine Marker).
+  if (typeof mk._updateOpacity === 'function') mk._updateOpacity = () => { dot.style.opacity = '1'; };
+  mk.addTo(m);
   const col = MapKit.routeColor(t.sport, '#f2c230');
-  let u = 0, playing = true, bear = m.getBearing(), last = 0, follow = true, lastDone = -1, pitchNow = 68, pitchAt = 0, pitchWant = 68, zBase = 14.8, ready = false, stopped = false, rec = null;
-  m.once('style.load', () => {
-    m.setTerrain({ source: 'dem', exaggeration: 1.5 });
-    m.addSource('full', { type: 'geojson', data: line(0, N) }); m.addSource('done', { type: 'geojson', data: line(0, 2) });
+  let u = 0, playing = false, last = 0, lastDraw = 0, follow = true, lastDone = -1, zBase = 14.8, stopped = false, rec = null, speed = 1, pitchMode = 'auto', blend = null;
+  let hudAt = null, hudTxt = '', spurAt = null, neigAt = 0, ad = FlugCalc.adaptiv(st);
+  const zahl = { bilder: 0, hud: 0, spur: 0, neig: 0, start: 0 };
+  const schatten = () => {
+    if (!S_.schatten || m.getLayer('schatten')) { if (m.getLayer('schatten')) m.setLayoutProperty('schatten', 'visibility', S_.schatten ? 'visible' : 'none'); return; }
+    if (!m.getSource('demh')) m.addSource('demh', demSrc(Math.min(S_.dem, 13)));
+    m.addLayer({ id: 'schatten', type: 'hillshade', source: 'demh', paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#28403c' } }, 'full-c');
+  };
+  m.once('style.load', async () => {
+    m.setTerrain({ source: 'dem', exaggeration: S_.ueber });
+    m.addSource('full', { type: 'geojson', data: line(N - 1) }); m.addSource('done', { type: 'geojson', data: line(1) });
+    m.addSource('fotos', { type: 'geojson', data: { type: 'FeatureCollection', features: photos.map(p => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: ll(P[p.gi]) } })) } });
     m.addLayer({ id: 'full-c', type: 'line', source: 'full', paint: { 'line-color': '#fff', 'line-width': 7, 'line-opacity': 0.55 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
     m.addLayer({ id: 'full', type: 'line', source: 'full', paint: { 'line-color': col, 'line-width': 4 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
     m.addLayer({ id: 'done', type: 'line', source: 'done', paint: { 'line-color': '#f2c230', 'line-width': 5 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
-    msg.style.display = 'none'; ready = true; last = performance.now(); requestAnimationFrame(tick);
+    m.addLayer({ id: 'fotos', type: 'circle', source: 'fotos', paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#1e88e5', 'circle-stroke-width': 3 } });
+    schatten();
+    // Vorlauf: erst die Kacheln am Startpunkt laden (höchstens 4 s), dann losfliegen – sonst ruckeln die ersten Sekunden beim Nachladen
+    msg.textContent = 'Karte wird geladen …';
+    await new Promise(ok => { let done = false; const fin = () => { if (!done) { done = true; ok(); } }; m.once('idle', fin); setTimeout(fin, 4000); m.triggerRepaint(); });
+    if (stopped || !mapEl.isConnected) return;
+    msg.style.display = 'none'; playing = true; last = lastDraw = performance.now(); zahl.start = last; draw(last, true); requestAnimationFrame(tick);
   });
-  const at = (A, f, key) => { const i = Math.min(N - 2, Math.floor(f)), r = f - i; return A[i][key] + (A[i + 1][key] - A[i][key]) * r; };
-  photos.forEach(p => { const k = P[p.gi]; new maplibregl.Marker({ element: h('div', { class: 'fcam', title: 'Foto' }) }).setLngLat([k.lng, k.lat]).addTo(m); });
   let phUntil = 0, prevU = 0;
   const showPh = p => { ph.style.top = (hud.offsetTop + hud.offsetHeight + 8) + 'px'; phi.src = Photos.thumb(p.id); phc.textContent = F.time(p.ts) + ' Uhr'; ph.classList.add('on'); phUntil = performance.now() + 4500; };
   const hrZ = typeof MapKit.hrMax === 'function' ? MapKit.hrMax() : 190;
-  const hudText = (p, f) => {
+  const hudText = p => {
     const sg = segs[p.seg] || segs[0], nm = SET ? (p.trans ? 'Weiterflug …' : sg.t.name) + ' · ' : '';
-    return `${nm}<b>${F.km(p.d)}</b> / ${F.km(total)} · <b>${Math.round(p.alt)} m</b> · ↑ ${Math.round(p.up)} m`;
+    return `${nm}<b>${F.km(p.d)}</b> / ${F.km(total)} · <b>${Math.round(p.alt)} m</b> · ↑ ${Math.round(p.up)} m` + (p.hr ? ` · <span style="color:${MapKit.hrColor[Tours.hrZone(p.hr, hrZ)]}">♥ ${p.hr}</span>` : '');
   };
   // Video-Aufnahme: Karte + Kopfzeile + Fotos auf eine Zeichenfläche, per MediaRecorder; gespeichert wird in Stücken über die App
   const compose = () => {
@@ -181,9 +209,8 @@ Views['/flug'] = async (root, [id]) => {
     msg.classList.add('prog');
     for (let k = 0; k <= steps && !stopped; k++) {
       if (performance.now() - t0 > 60000 || mapErr - e0 >= 4) break;     // bei schlechter oder fehlender Verbindung nicht ewig warten
-      const f = k / steps * (N - 1), i = Math.min(N - 1, Math.round(f)), p = P[i], lk = S[Math.min(N - 1, i + Math.max(6, Math.round(N / 60)))];
-      const tr = SET && p.trans ? Math.sin(Math.PI * p.tq) : 0;
-      m.jumpTo({ center: [at(S, f, 'lng'), at(S, f, 'lat')], bearing: Flug.brg([at(S, f, 'lat'), at(S, f, 'lng')], [lk.lat, lk.lng]), pitch: 62, zoom: zoom - 4 * tr });
+      const c = FlugCalc.kamera(k / steps, bahn, { neigung: 'fest', basis: S_.neig, zBase: zoom, set: SET, rec: false });
+      m.jumpTo({ center: c.center, bearing: c.bearing, pitch: 62, zoom: c.zoom != null ? c.zoom : zoom });
       msg.textContent = 'Karte wird geladen … ' + Math.round(k / steps * 100) + ' %'; msg.style.display = '';
       await new Promise(ok => { let done = false; const fin = () => { if (!done) { done = true; ok(); } }; m.once('idle', fin); setTimeout(fin, 3000); m.triggerRepaint(); });
     }
@@ -196,7 +223,7 @@ Views['/flug'] = async (root, [id]) => {
     const mime = window.MediaRecorder && ['video/mp4;codecs=avc1.42E01E', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(x => MediaRecorder.isTypeSupported(x));
     if (!mime) return toast('Dieses Gerät kann keine Videos aufnehmen.');
     preparing = true; recB.disabled = true; playing = false; follow = false;
-    const zRec = zBase + 0.9, want = +$v('fq'), css = mapEl.clientWidth || 400, oldPR = m.getPixelRatio ? m.getPixelRatio() : window.devicePixelRatio;
+    const zRec = zBase + 0.9, want = +$v('fq'), css = mapEl.clientWidth || 400;
     try {
       try { m.setPixelRatio(Math.min(3.5, Math.max(1, want / css))); } catch (e) { /* alte Auflösung */ }
       await prewarm(zRec);
@@ -205,48 +232,92 @@ Views['/flug'] = async (root, [id]) => {
     const c = m.getCanvas(), W = Math.min(c.width, want), oc = document.createElement('canvas'); oc.width = W; oc.height = Math.round(W * c.height / c.width);
     const mr = new MediaRecorder(oc.captureStream(30), { mimeType: mime, videoBitsPerSecond: want >= 1920 ? 12e6 : want >= 1600 ? 9e6 : 6e6 }), chunks = [];
     mr.ondataavailable = e => e.data.size && chunks.push(e.data);
-    mr.onstop = () => { try { m.setPixelRatio(oldPR); } catch (e) { /* egal */ } saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern fehlgeschlagen: ' + e.message, 7000)); };
+    mr.onstop = () => { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern fehlgeschlagen: ' + e.message, 7000)); };
     rec = { c: oc, x: oc.getContext('2d'), mr, ending: false, stall: 0 };
-    u = 0; prevU = 0; playing = true; follow = true; root.querySelector('#fc').value = 'follow'; bear = m.getBearing(); last = performance.now(); pp.textContent = '❚❚ Pause';
+    u = 0; prevU = 0; playing = true; follow = true; blend = null; root.querySelector('#fc').value = 'follow'; last = performance.now(); pp.textContent = '❚❚ Pause';
     mr.start(500); recB.textContent = '⏹ Aufnahme beenden';
   };
   window.__flugRec = () => rec;
+  /** Neigungstabelle ein Stück vor der Kamera füllen (eine Stützstelle je Aufruf; jede wird nur einmal gerechnet, sobald Höhendaten da sind). */
+  const fuelleNeig = (f, alle) => {
+    const T = bahn.neig, k0 = Math.floor(f / T.schritt), k1 = alle ? T.w.length - 1 : Math.min(T.w.length - 1, k0 + 6);
+    for (let k = k0; k <= k1; k++) {
+      if (T.w[k] != null) continue;
+      const i = Math.min(N - 1, k * T.schritt), s = S[i];
+      try {
+        const z = SET || rec ? zBase : m.getZoom(), pm = 512 * 2 ** z / (40075016.686 * Math.cos(s.lat * Math.PI / 180)), D = m.transform.cameraToCenterDistance / pm;
+        if (!(isFinite(D) && D > 0)) return;
+        const r = FlugCalc.freieNeigung((a, b) => m.queryTerrainElevation([a, b]), s.lng, s.lat, bahn.brg[i], S_.neig, D);
+        zahl.neig++;
+        if (r.voll) T.w[k] = r.th;
+      } catch (e) { return; }
+      if (!alle) return;
+    }
+  };
+  /** Ein Bild: Kamera, Punkt, Linie, Kopfzeile. force = sofort alles (stelleZeit, Start). */
+  const draw = (now, force) => {
+    const f = u * (N - 1), i = Math.min(N - 1, Math.round(f)), p = P[i];
+    const a = Math.min(N - 2, Math.floor(f)), r = f - a;
+    mk.setLngLat([P[a].lng + (P[a + 1].lng - P[a].lng) * r, P[a].lat + (P[a + 1].lat - P[a].lat) * r]);
+    if (i !== lastDone && (force || FlugCalc.faellig(spurAt, now, S_.spur)) && m.getSource('done')) { lastDone = i; spurAt = now; zahl.spur++; m.getSource('done').setData(line(Math.max(1, i))); }
+    if (force || FlugCalc.faellig(hudAt, now, S_.hud)) {
+      hudAt = now; const tx = hudText(p);
+      if (tx !== hudTxt) { hudTxt = tx; hud.innerHTML = tx; zahl.hud++; }
+      const sv = String(Math.round(u * 1000)); if (slider.value !== sv) slider.value = sv;
+    }
+    if (follow) {
+      if (pitchMode === 'auto' && (force || now - neigAt > 100)) { neigAt = now; fuelleNeig(f, false); }
+      const c = FlugCalc.kamera(u, bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec });
+      const o = { center: c.center, bearing: c.bearing };
+      if (c.pitch != null) o.pitch = c.pitch;
+      if (c.zoom != null) o.zoom = c.zoom;
+      if (blend) {                                       // nach „Kamera frei“ sanft zurück auf die Bahn (nur Anzeige, die Bahn selbst bleibt unverändert)
+        const q = Math.min(1, (now - blend.t) / 800), e = q * q * (3 - 2 * q), A = blend.c;
+        o.center = [A.center[0] + (o.center[0] - A.center[0]) * e, A.center[1] + (o.center[1] - A.center[1]) * e];
+        o.bearing = FlugCalc.winkelLerp(A.bearing, o.bearing, e);
+        if (o.pitch != null) o.pitch = A.pitch + (o.pitch - A.pitch) * e;
+        if (o.zoom != null) o.zoom = A.zoom + (o.zoom - A.zoom) * e;
+        if (q >= 1) blend = null;
+      }
+      m.jumpTo(o);
+    }
+  };
+  /** Stufe wechseln: Auflösung, Überhöhung, Schattierung, Takte, Grundneigung sofort; die Höhenkacheln (Zoomstufe) ab dem nächsten Flug. */
+  const setStufe = (neu, auto) => {
+    st = neu; S_ = FlugCalc.STUFEN[st];
+    if (!rec && !preparing) { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } }
+    try { m.setTerrain({ source: 'dem', exaggeration: S_.ueber }); schatten(); } catch (e) { /* Karte noch nicht fertig */ }
+    neuTabelle();
+    const s = root.querySelector('#fst'); if (s) s.value = st;
+    if (!auto) { ad = FlugCalc.adaptiv(st); Set_.set('flugStufe', st); }
+  };
   const tick = now => {
-    if (stopped || !mapEl.isConnected) { stopped = true; if (rec) stopRec(); try { m.remove(); } catch (e) { /* egal */ } window.__flug = null; return; }
+    if (stopped || !mapEl.isConnected) { stopped = true; if (rec) stopRec(); try { m.remove(); } catch (e) { /* egal */ } window.__flug = null; Flug.aktiv = null; return; }
+    requestAnimationFrame(tick);
+    if (now - lastDraw < FlugCalc.BILD_MIN_MS) return;   // 120/144-Hz-Bildschirm: nur jedes zweite Bild zeichnen
+    const frame = now - lastDraw; lastDraw = now; zahl.bilder++;
     let dt = Math.max(0, Math.min(100, now - last)); last = now;
     if (rec && !rec.ending && !m.areTilesLoaded() && rec.stall < 1500) { rec.stall += dt; dt = 0; } else if (rec && m.areTilesLoaded()) rec.stall = 0;   // bei der Aufnahme kurz warten, bis die Kacheln da sind
     if (playing) {
-      u += dt / 1000 / Ttot * +$v('fv');
+      u += dt / 1000 / Ttot * speed;
       if (u >= 1) { u = 1; playing = false; pp.textContent = '↻ Nochmal'; }
-      slider.value = Math.round(u * 1000);
+      if (!rec && !preparing) { const neu = FlugCalc.adaptivSchritt(ad, typeof Flug.bildzeit === 'function' ? Flug.bildzeit(frame) : frame); /* Flug.bildzeit: Prüfhaken für Tests */ if (neu) { setStufe(neu, true); toast('Flug vereinfacht', 4000); } }
     }
-    const f = u * (N - 1), lat = at(S, f, 'lat'), lng = at(S, f, 'lng'), cur = [at(P, f, 'lng'), at(P, f, 'lat')];
-    mk.setLngLat(cur);
-    const i = Math.min(N - 1, Math.round(f));
-    if (i !== lastDone && m.getSource('done')) { lastDone = i; m.getSource('done').setData(line(0, Math.max(2, i + 1))); }
-    const lk = S[Math.min(N - 1, i + Math.max(6, Math.round(N / 60)))], tgt = Flug.brg([lat, lng], [lk.lat, lk.lng]);
-    const p = P[i];
-    hud.innerHTML = hudText(p, f) + (p.hr ? ` · <span style="color:${MapKit.hrColor[Tours.hrZone(p.hr, hrZ)]}">♥ ${p.hr}</span>` : '');
+    draw(now, false);
     if (playing) photos.forEach(q => { if (prevU < q.u && u >= q.u) showPh(q); });
     prevU = u;
-    if (ph.classList.contains('on') && performance.now() > phUntil) ph.classList.remove('on');
+    if (ph.classList.contains('on') && now > phUntil) ph.classList.remove('on');
     if (rec && u >= 1 && !rec.ending) { rec.ending = true; setTimeout(stopRec, 1800); }
-    if (follow) {
-      const d = (tgt - bear + 540) % 360 - 180; bear = (bear + d * Math.min(1, dt / 600) + 360) % 360;
-      const o = { center: [lng, lat], bearing: bear };
-      if ($v('fpi') === 'auto') {
-        if (now - pitchAt > 130) {
-          pitchAt = now;
-          try { const pm = 512 * 2 ** m.getZoom() / (40075016.686 * Math.cos(lat * Math.PI / 180)), D = m.transform.cameraToCenterDistance / pm; pitchWant = isFinite(D) && D > 0 ? Flug.clearPitch((a, b) => m.queryTerrainElevation([a, b]), lng, lat, bear, 68, D) : 68; } catch (e) { pitchWant = 68; }
-        }
-        if (SET && p.trans) pitchWant = Math.min(pitchWant, 68 - 22 * Math.sin(Math.PI * p.tq));
-        pitchNow += (pitchWant - pitchNow) * Math.min(1, dt / 700) * (pitchWant < pitchNow ? 1 : 0.35);
-        o.pitch = pitchNow;
-      }
-      if (SET || rec) o.zoom = zBase + (rec ? 0.9 : 0) - (SET && p.trans ? 4 * Math.sin(Math.PI * p.tq) : 0);   // Aufnahme etwas näher; im Übergang aufsteigen (herauszoomen) und danach wieder absinken
-      m.jumpTo(o);
-    }
-    requestAnimationFrame(tick);
+  };
+  /* Schnittstelle für Tests und den späteren Video-Export (Bild für Bild): Zeit t (Sekunden bei Tempo 1×) → Position → Kamera. */
+  Flug.aktiv = {
+    dauer: Ttot,
+    stelleZeit(sec) { playing = false; pp.textContent = '▶ Weiter'; u = Math.max(0, Math.min(1, sec / Ttot)); prevU = u; blend = null; draw(performance.now(), true); return FlugCalc.kamera(u, bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec }); },
+    kameraBei: sec => FlugCalc.kamera(Math.max(0, Math.min(1, sec / Ttot)), bahn, { neigung: pitchMode, basis: S_.neig, zBase, set: SET, rec: !!rec }),
+    fuelleNeigung() { fuelleNeig(0, true); return bahn.neig.w.filter(x => x == null).length; },
+    stufe: () => st,
+    bildzeiten(l) { let r = null; l.forEach(ms => { const n = FlugCalc.adaptivSchritt(ad, ms); if (n) { r = n; setStufe(n, true); toast('Flug vereinfacht', 4000); } }); return r; },
+    zahlen: () => Object.assign({ ms: performance.now() - zahl.start, linie: keep.length, punkte: N }, zahl),
   };
   pp.onclick = () => { if (u >= 1) { u = 0; playing = true; } else playing = !playing; pp.textContent = playing ? '❚❚ Pause' : '▶ Weiter'; if (playing) last = performance.now(); };
   slider.oninput = () => { u = +slider.value / 1000; };
@@ -259,10 +330,12 @@ Views['/flug'] = async (root, [id]) => {
   ['pointerdown', 'pointermove', 'wheel', 'keydown'].forEach(ev => fl.addEventListener(ev, wake, { passive: true, capture: true }));
   wake();
   function apply(k) {
-    if (k === 'fc') { follow = $v('fc') === 'follow'; if (follow) bear = m.getBearing(); }
-    else if (k === 'fz') { zBase = +$v('fz'); m.setZoom(zBase); }
-    else if (k === 'fpi') { if ($v('fpi') === 'auto') pitchNow = m.getPitch(); else m.setPitch(+$v('fpi')); }
+    if (k === 'fv') speed = +$v('fv');
+    else if (k === 'fc') { follow = $v('fc') === 'follow'; if (follow) blend = { t: performance.now(), c: { center: m.getCenter().toArray(), bearing: m.getBearing(), pitch: m.getPitch(), zoom: m.getZoom() } }; }
+    else if (k === 'fz') { zBase = +$v('fz'); m.setZoom(zBase); neuTabelle(); }
+    else if (k === 'fpi') { pitchMode = $v('fpi') === 'auto' ? 'auto' : 'fest'; if (pitchMode !== 'auto') m.setPitch(+$v('fpi')); else blend = { t: performance.now(), c: { center: m.getCenter().toArray(), bearing: m.getBearing(), pitch: m.getPitch(), zoom: m.getZoom() } }; }
     else if (k === 'fb') { ['osm', 'topo', 'sat'].forEach(x => m.setLayoutProperty(x, 'visibility', x === $v('fb') ? 'visible' : 'none')); Set_.set('style3d', $v('fb')); }
+    else if (k === 'fst') setStufe(FlugCalc.stufe($v('fst'), handy), false);
   }
   try { m.touchZoomRotate.enable(); m.touchZoomRotate.enableRotation(); m.touchPitch.enable(); m.dragRotate.enable(); } catch (e) { /* egal */ }
   ['dragstart', 'rotatestart', 'pitchstart', 'zoomstart'].forEach(n => m.on(n, ev => { if (follow && ev && ev.originalEvent) { follow = false; root.querySelector('#fc').value = 'free'; } }));
