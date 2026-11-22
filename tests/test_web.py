@@ -633,11 +633,13 @@ def fotoort_2120(pg):
     """2.12.0 B: Orte aus der Tour ergänzen – Hinweis an der Tour, Vorschau am Beispielfoto, Uhrzeit-Verschiebung, Toleranz (gespeichert),
     außerhalb gelistet, Übernahme erst nach Bestätigung, Rückgängig (ein Schritt), Kennzeichnung in den Details, Menüeintrag, Platz bei 360 px."""
     leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
-    t0 = 1700000000000
-    tid = pg.evaluate("Tours.list().then(l => l.find(t => t.name === 'Hüttenrunde').id)")
+    t0 = 1560000000000      # eigene Tour weit weg von den übrigen Testdaten (Juni 2019), damit keine fremden Fotos mitspielen
     ids = ["fo1aaaaaaa", "fo2aaaaaaa", "fo3aaaaaaa", "fo4aaaaaaa"]
     sh = ".sheet[aria-label='Orte aus der Tour ergänzen']"
+    tid = None
     try:
+        tid = pg.evaluate("""async t0 => (await Tours.add({ name: 'Ortetest', sport: 'hike', src: 'file', force: true,
+          pts: Array.from({ length: 60 }, (_, i) => ({ lat: 47 + i * 0.0005, lon: 11 + i * 0.0004, ele: 800 + i * 3, t: t0 + i * 30000 })) })).tour.id""", t0)
         pg.evaluate("""async ([t0, tid]) => {
           await DB.put('photos', { id: 'fo1aaaaaaa', name: 'a.jpg', ts: t0 + 10 * 60000, lat: null, lon: null, pos: 'none', tour: tid, src: 'galerie', w: 10, h: 10 });
           await DB.put('photos', { id: 'fo2aaaaaaa', name: 'b.jpg', ts: t0 - 60 * 60000, lat: null, lon: null, pos: 'none', tour: '', src: 'galerie', w: 10, h: 10 });
@@ -700,7 +702,7 @@ def fotoort_2120(pg):
         assert p2c["lat"] is None and p2c["tour"] == "" and p2c["pos"] == "none" and "camShift" not in p2c, p2c
         assert pg.evaluate("tid => DB.kvGet('fotoOrtUndo:' + tid, null)", tid) is None
     finally:
-        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); await DB.del('kv', 'fotoOrtUndo:' + tid); await Set_.set('fotoOrtTol', '');
+        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) { await DB.del('kv', 'fotoOrtUndo:' + tid); await Tours.remove(tid); } await Set_.set('fotoOrtTol', '');
           window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
