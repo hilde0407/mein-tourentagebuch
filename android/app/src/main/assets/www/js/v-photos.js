@@ -270,7 +270,7 @@ const Videos = {
     for (const d of done) {
       if (!d.ok) continue;
       const p = await DB.get('photos', d.id);
-      if (p) { if (d.w) p.w = d.w; if (d.h) p.h = d.h; if (d.dur) p.dur = d.dur; p.h264 = true; await DB.put('photos', p); }
+      if (p) { if (d.w) p.w = d.w; if (d.h) p.h = d.h; if (d.dur) p.dur = d.dur; p.h264 = true; delete p.fpd; delete p.size; delete p.gr; await DB.put('photos', p); }      // 2.14.0: Datei ist neu – Abdruck und Größe bei der nächsten Suche neu
     }
     if (done.length) {
       window.dispatchEvent(new CustomEvent('video-converted', { detail: done }));
