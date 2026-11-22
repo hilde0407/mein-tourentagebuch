@@ -179,6 +179,16 @@ def main():
             pg.evaluate("() => { window.__pick = [{ name: 'f.json', url: URL.createObjectURL(new Blob([JSON.stringify({ format: 'tourentagebuch-wanderfuehrer', version: 1, buecher: [{ id: 'kx1', name: 'Kontrastbuch', touren: [{ title: 'A', km: 3, pts: { la: [4700000, 10, 10], lo: [1100000, 10, 10] } }] }] })])) }]; }")
             pg.click("#fu-import"); pg.wait_for_selector("#fu-im-sum"); pg.wait_for_timeout(250); scan("Wanderführer importieren")
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close()); window.__pick = [];"); pg.wait_for_timeout(250)
+            # 2.14.0: Doppelte Fotos – Gruppen, Rückfrage, leer; Schalter in „Fotos hinzufügen“
+            pg.evaluate("""async tid => { for (const [id, src, lat] of [['kfd111111a', 'smb', 47.1], ['kfd222222b', 'rechner', null], ['kfd333333v', 'kamera', null], ['kfd444444v', 'kamera', null]])
+              await DB.put('photos', { id, name: id.endsWith('v') ? 'Video.mp4' : 'IMG_7.JPG', ts: 1700000400000, lat, lon: lat, pos: lat ? 'exif' : 'none', tour: tid, src, w: 40, h: 30, note: src === 'rechner' ? 'Notiz' : '', video: id.endsWith('v'), dur: id.endsWith('v') ? 4000 : 0, fp: id.endsWith('v') ? 'p1:9:vv' : 'p1:9:ff', size: 2000000 }); }""", tid)
+            go("#/fotodoppelt", ".fd-g"); pg.wait_for_function("() => !Nav._busy"); scan("Doppelte Fotos, Gruppen")
+            pg.click("#fd-go"); pg.wait_for_selector(".sheet[aria-label='Doppelte Fotos löschen?']"); pg.wait_for_timeout(250); scan("Doppelte Fotos, Rückfrage")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("PhotoSources.sheet(null, null)"); pg.wait_for_selector("#ps-skipdup"); pg.wait_for_timeout(250); scan("Fotos hinzufügen, Schalter")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("async () => { for (const id of ['kfd111111a', 'kfd222222b', 'kfd333333v', 'kfd444444v']) await DB.del('photos', id); }")
+            go("#/fotodoppelt", ".empty"); pg.wait_for_function("() => !Nav._busy"); scan("Doppelte Fotos, leer")
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)

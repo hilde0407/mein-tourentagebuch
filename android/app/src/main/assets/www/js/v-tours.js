@@ -318,6 +318,7 @@ Views['/tour'] = async (root, [id]) => {
         t.status !== 'planned' && !t.plan ? it('route', 'Mit Plan vergleichen', () => TourHelp.linkSheet(t)) : null,
         it('bag', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
         t.timed && t.status !== 'planned' ? UI.row({ icon: 'pin', title: 'Orte der Fotos aus der Tour ergänzen', id: 'fotoort-menu', onclick: () => { s.close(); fotoOrt(); } }) : null,
+        photos.length > 1 ? UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', id: 'fd-menu', onclick: () => { s.close(); Nav.go('/fotodoppelt/' + id); } }) : null,
         it('camera', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); })]),
       grp('Strecke und Höhen', [
         it('peak', t.elevFix ? 'Höhen neu aus Gelände berechnen' : 'Höhen korrigieren (Geländemodell)', fixEle),

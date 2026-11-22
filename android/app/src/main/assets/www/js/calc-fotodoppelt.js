@@ -4,13 +4,13 @@
      „datei“: gleicher Abdruck – dieselbe Originaldatei (fp, beim Import berechnet) oder dieselbe gespeicherte Datei (fpd, auch nachträglich aus photos/).
               Abdruck = Größe + zwei Prüfwerte über Anfang, Mitte und Ende (je 64 KB), siehe MediaPrint.java; hier dieselbe Rechnung (abdruck).
      „name“:  gleicher Dateiname (ohne Endung, ohne „ (1)“ / „ - Kopie“), gleiche Aufnahmezeit (± 2 s) und gleiche Bildgröße.
-     „bild“:  fast gleiches Vorschaubild (Unterschiedswert dHash, höchstens 5 von 64 Bits), gleiches Seitenverhältnis und gleiche Aufnahmezeit
+     „bild“:  fast gleiches Vorschaubild (Grauraster 8 × 8, mittlere Abweichung höchstens 6 von 255), gleiches Seitenverhältnis und gleiche Aufnahmezeit
               (± 2 s oder um ganze halbe Stunden versetzt, bis 14 h – Zeitzone einer Quelle). Fängt neu gespeicherte oder anders verkleinerte Kopien.
    Nicht erkannt: bearbeitete oder zugeschnittene Fotos, Fotos ohne Aufnahmezeit, die nicht byte-gleich sind, Serienbilder mit sichtbar anderem Bild.
    Entschieden wird nie von selbst: Die Funktionen liefern Vorschläge; gelöscht wird erst nach Rückfrage in js/v-fotodoppelt.js.
    Läuft im Browser (globales `FotoDoppeltCalc`) und in Node. */
 (function (root) {
-  const SEK = 2000, HALB = 1800000, H14 = 14 * 3600000, BILD_MAX = 5, C = 65536;
+  const SEK = 2000, HALB = 1800000, H14 = 14 * 3600000, BILD_MAX = 6, C = 65536;
   const RANG = { datei: 3, name: 2, bild: 1 };
 
   /* ---------- Abdruck (gleiche Rechnung wie MediaPrint.java und die Empfangsseite des WLAN-Imports) ---------- */
@@ -25,23 +25,18 @@
   }
   const abdruckVon = bytes => abdruck(abschnitte(bytes.length).map(([x, y]) => bytes.subarray(x, y)), bytes.length);
 
-  /* ---------- Vorschaubild-Vergleich (dHash) ---------- */
-  /** dHash aus 9 × 8 Grauwerten (zeilenweise): je Zeile 8 Vergleiche „links heller als rechts“ → 64 Bit als 16 Hex-Zeichen. */
-  function dhash(grau) {
-    let s = '';
-    for (let y = 0; y < 8; y++) {
-      let v = 0;
-      for (let x = 0; x < 8; x++) v = (v << 1) | (grau[y * 9 + x] > grau[y * 9 + x + 1] ? 1 : 0);
-      s += ('0' + v.toString(16)).slice(-2);
-    }
-    return s;
-  }
-  /** Zahl der unterschiedlichen Bits zweier dHashes; Infinity, wenn einer fehlt. */
-  function abstand(h1, h2) {
-    if (!h1 || !h2 || h1.length !== 16 || h2.length !== 16) return Infinity;
-    let n = 0;
-    for (let i = 0; i < 16; i += 4) { let x = parseInt(h1.substr(i, 4), 16) ^ parseInt(h2.substr(i, 4), 16); while (x) { n += x & 1; x >>>= 1; } }
-    return n;
+  /* ---------- Vorschaubild-Vergleich (Grauraster) ---------- */
+  /** Grauraster aus 8 × 8 Grauwerten (0…255, zeilenweise) als 128 Hex-Zeichen. */
+  function raster(grau) { let s = ''; for (let i = 0; i < 64; i++) s += ('0' + Math.max(0, Math.min(255, Math.round(grau[i] || 0))).toString(16)).slice(-2); return s; }
+  /** Unterschied zweier Grauraster: mittlere Abweichung je Feld (0…255), nachdem jedes Raster um seine mittlere Helligkeit bereinigt ist. Infinity, wenn eines fehlt.
+      Neu gespeicherte oder anders verkleinerte Kopien liegen meist unter 3, verschiedene Motive weit über 10. */
+  function abstand(r1, r2) {
+    if (!r1 || !r2 || r1.length !== 128 || r2.length !== 128) return Infinity;
+    const a = [], b = [];
+    for (let i = 0; i < 128; i += 2) { a.push(parseInt(r1.substr(i, 2), 16)); b.push(parseInt(r2.substr(i, 2), 16)); }
+    const ma = a.reduce((x, y) => x + y, 0) / 64, mb_ = b.reduce((x, y) => x + y, 0) / 64;
+    let d = 0; for (let i = 0; i < 64; i++) d += Math.abs((a[i] - ma) - (b[i] - mb_));
+    return Math.round(d / 64 * 10) / 10;
   }
 
   /* ---------- Paare ---------- */
@@ -72,7 +67,7 @@
     const d = Math.abs(a.ts - b.ts);
     if (!dauerGleich(a, b)) return null;
     if (d <= SEK) { const n = grundName(a.name, a.id); if (n && n === grundName(b.name, b.id) && groesseGleich(a, b)) return 'name'; }
-    if ((d <= SEK || zeitVersetzt(d)) && formGleich(a, b) && abstand(a.dh, b.dh) <= BILD_MAX) return 'bild';
+    if ((d <= SEK || zeitVersetzt(d)) && formGleich(a, b) && abstand(a.gr, b.gr) <= BILD_MAX) return 'bild';
     return null;
   }
 
@@ -97,7 +92,7 @@
       for (let j = i + 1; j < z.length; j++) {
         const b = z[j], d = b.ts - a.ts;
         if (d > H14) break;
-        if (d > SEK && (!a.dh || !b.dh || !zeitVersetzt(d))) continue;
+        if (d > SEK && (!a.gr || !b.gr || !zeitVersetzt(d))) continue;
         const g = gleich(a, b);
         if (g) verbinde(a.id, b.id, g);
       }
@@ -110,13 +105,13 @@
     }).sort((a, b) => (byId.get(a.ids[0]).ts || 0) - (byId.get(b.ids[0]).ts || 0));
   }
 
-  /** Welche Fotos brauchen einen Bildvergleich (dh fehlt), weil ein anderes zur selben Zeit (± 2 s oder Zeitzonen-Versatz) mit gleichem Seitenverhältnis da ist? */
+  /** Welche Fotos brauchen einen Bildvergleich (gr fehlt), weil ein anderes zur selben Zeit (± 2 s oder Zeitzonen-Versatz) mit gleichem Seitenverhältnis da ist? */
   function brauchtBild(photos) {
     const z = (photos || []).filter(p => p && p.id && hatZeit(p)).sort((a, b) => a.ts - b.ts), need = new Set();
     for (let i = 0; i < z.length; i++) for (let j = i + 1; j < z.length; j++) {
       const a = z[i], b = z[j], d = b.ts - a.ts;
       if (d > H14) break;
-      if ((d <= SEK || zeitVersetzt(d)) && istVideo(a) === istVideo(b) && formGleich(a, b) && dauerGleich(a, b)) { if (!a.dh) need.add(a.id); if (!b.dh) need.add(b.id); }
+      if ((d <= SEK || zeitVersetzt(d)) && istVideo(a) === istVideo(b) && formGleich(a, b) && dauerGleich(a, b)) { if (!a.gr) need.add(a.id); if (!b.gr) need.add(b.id); }
     }
     return z.filter(p => need.has(p.id)).map(p => p.id);
   }
@@ -201,6 +196,6 @@
     return n + ' Foto(s) ' + (wort || 'hinzugefügt') + (skip ? ' · ' + skip + ' schon vorhanden, übersprungen' : '');
   }
 
-  const api = { SEK, HALB, H14, BILD_MAX, GRUND, abschnitte, abdruck, abdruckVon, dhash, abstand, grundName, gleich, gruppen, brauchtBild, wert, behalten, vorschlag, uebernehmen, verweise, summe, summeText, mb, index, merke, bekannt, importText };
+  const api = { SEK, HALB, H14, BILD_MAX, GRUND, abschnitte, abdruck, abdruckVon, raster, abstand, grundName, gleich, gruppen, brauchtBild, wert, behalten, vorschlag, uebernehmen, verweise, summe, summeText, mb, index, merke, bekannt, importText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FotoDoppeltCalc = api;
 })(typeof window !== 'undefined' ? window : globalThis);

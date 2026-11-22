@@ -612,15 +612,18 @@ const PhotoSources = {
     return n;
   },
   sheet(tour, done) {
-    const run = async fn => { s.close(); try { const n = await fn(); if (n != null) toast(n + ' Foto(s) hinzugefügt', 4000); window.dispatchEvent(new Event('photos-changed')); if (done) await done(); } catch (e) { toast(e.message, 6000); } };
+    const run = async fn => { s.close(); try { const s0 = Photos.skipCount, n = await fn(); if (n != null) toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0), 4000); window.dispatchEvent(new Event('photos-changed')); if (done) await done(); } catch (e) { toast(e.message, 6000); } };
     const it = (ico, t, sub, fn) => h('button', { class: 'li', onclick: () => run(fn) }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, t), h('small', null, sub)));
-    const s = sheet('Fotos hinzufügen', h('div', { class: 'list menu' },
+    const s = sheet('Fotos hinzufügen', h('div', null, h('div', { class: 'list menu' },
       it('🖼️', 'Aus der Galerie wählen', 'Einzelne Fotos auswählen', async () => { const m = await Native.json('pickPhotos'); return Photos.addMeta(m); }),
       tour ? it('✨', 'Passende Fotos automatisch finden', 'Galerie nach Aufnahmezeit dieser Tour durchsuchen', () => PhotoSources.galleryForTours([tour])) : it('✨', 'Passende Fotos zu allen Touren finden', 'Galerie nach Aufnahmezeit durchsuchen', async () => PhotoSources.galleryForTours((await Tours.list()).filter(t => t.status !== 'planned' && t.timed))),
       it('📁', 'Ordner auf dem Handy', 'z. B. Kamera-Ordner, Syncthing, Cloud-Ordner', () => PhotoSources.folder()),
       it('💻', 'Vom Rechner im WLAN', 'Mac oder PC: Adresse im Browser öffnen, Fotos hineinziehen', () => { PhotoSources.receive(done); return null; }),
       it('🖧', 'Netzwerkfreigabe (SMB)', 'NAS, Fritz!Box, Windows-Freigabe', () => { PhotoSources.smb(); return null; }),
-      it('☁️', 'Nextcloud / WebDAV', 'Fotos von deinem Server', () => { PhotoSources.webdav(); return null; })));
+      it('☁️', 'Nextcloud / WebDAV', 'Fotos von deinem Server', () => { PhotoSources.webdav(); return null; })),
+      // 2.14.0: gilt für alle Wege oben; gleiche Kennung (byte-gleiche Datei) wird immer übersprungen
+      h('div', { class: 'ps-dup' }, UI.toggle('Schon vorhandene Fotos überspringen', Set_.get('fotoSkipDup') !== false, v => Set_.set('fotoSkipDup', !!v), { id: 'ps-skipdup' }),
+        h('p', { class: 'muted small' }, 'Erkennt dieselbe Datei – auch von einem anderen Rechner oder Weg – und dasselbe Foto mit gleichem Namen, gleicher Aufnahmezeit und Größe.'))));
   },
   async folder() {
     const f = await Native.json('pickFolder');
@@ -650,10 +653,11 @@ const PhotoSources = {
   /* ---- Vom Rechner empfangen: das Handy zeigt eine Adresse, der Rechner schickt Fotos über eine Webseite ---- */
   async receive(done) {
     let timer = null, total = 0, closed = false;
+    const s0 = Photos.skipCount, skip = () => Photos.skipCount - s0;
     const cnt = h('p', { class: 'recvcnt' }, ''), box = h('div', null, h('p', { class: 'muted' }, 'Starte …'));
     const s = sheet('Vom Rechner empfangen', box, { onclose: async () => {
       closed = true; clearInterval(timer); try { await Native.json('uploadStop'); } catch (e) { /* egal */ }
-      if (total) { toast(total + ' Foto(s) hinzugefügt', 4000); window.dispatchEvent(new Event('photos-changed')); }
+      if (total || skip()) { toast(FotoDoppeltCalc.importText(total, skip()), 4000); window.dispatchEvent(new Event('photos-changed')); }
       if (done) { try { await done(); } catch (e) { /* egal */ } }
     } });
     let info;
@@ -671,7 +675,7 @@ const PhotoSources = {
       try {
         const r = await Native.json('uploadPoll');
         if (r.photos && r.photos.length) { total += await Photos.addMeta(r.photos); window.dispatchEvent(new Event('photos-changed')); }
-        cnt.textContent = total ? total + ' Foto(s) empfangen' + (r.failed ? ' · ' + r.failed + ' nicht lesbar' : '') : (r.failed ? r.failed + ' Datei(en) nicht lesbar' : 'Wartet auf Fotos …');
+        cnt.textContent = total || skip() ? FotoDoppeltCalc.importText(total, skip(), 'empfangen') + (r.failed ? ' · ' + r.failed + ' nicht lesbar' : '') : (r.failed ? r.failed + ' Datei(en) nicht lesbar' : 'Wartet auf Fotos …');
       } catch (e) { /* nächster Versuch */ }
     }, 1500);
   },
@@ -753,7 +757,7 @@ const PhotoSources = {
     function allHere() { $$('input[type=checkbox]', list).forEach(c => { if (!c.checked) c.click(); }); }
     async function importSel() {
       const files = Array.from(sel); if (!files.length) { toast('Bitte Fotos ankreuzen'); return; }
-      s.close(); let n = 0;
+      s.close(); let n = 0; const s0 = Photos.skipCount;
       try {
         await PhotoSources.progress('Fotos laden', async (upd) => {
           for (let i = 0; i < files.length; i += (st.kind === 'smb' ? 4 : 1)) {
@@ -768,7 +772,7 @@ const PhotoSources = {
             n += await Photos.addMeta(metas);
           }
         });
-        toast(n + ' Foto(s) hinzugefügt', 4000); window.dispatchEvent(new Event('photos-changed'));
+        toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0), 4000); window.dispatchEvent(new Event('photos-changed'));
       } catch (e) { toast(e.message, 6000); }
     }
     load(st.path || '');
@@ -822,7 +826,8 @@ Views['/sources'] = async root => {
   body.append(h('p', { class: 'muted' }, 'Fotos werden verkleinert (max. 2400 Pixel) in den privaten Speicher der App kopiert. Originale bleiben unverändert.'),
     h('div', { class: 'list' },
       h('button', { class: 'li', onclick: () => PhotoSources.sheet(null, null) }, h('span', { class: 'li-i' }, '＋'), h('span', { class: 'li-t' }, h('b', null, 'Fotos hinzufügen'), h('small', null, 'Galerie, Ordner, SMB, Nextcloud'))),
-      h('button', { class: 'li', onclick: async () => { try { toast((await PhotoSources.scanFolders()) + ' neue Foto(s)'); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt einlesen'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
+      h('button', { class: 'li', onclick: async () => { try { const s0 = Photos.skipCount, n = await PhotoSources.scanFolders(), sk = Photos.skipCount - s0; toast(n + ' neue Foto(s)' + (sk ? ' · ' + sk + ' schon vorhanden, übersprungen' : '')); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt einlesen'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
+      h('a', { class: 'li', id: 'src-dup', href: '#/fotodoppelt' }, h('span', { class: 'li-i', html: Ico.svg('swap', 20) }), h('span', { class: 'li-t' }, h('b', null, 'Doppelte Fotos suchen'), h('small', null, 'Gleiche Fotos und Videos finden und aufräumen'))),
       window.MTApp ? h('button', { class: 'li', id: 'src-vconv', onclick: () => Videos.alle() }, h('span', { class: 'li-i' }, '🎬'), h('span', { class: 'li-t' }, h('b', null, 'Vorhandene Videos umwandeln'), h('small', null, 'HEVC-Videos in H.264, damit sie hier abspielen'))) : null));
   // 2.9.0: Speicher getrennt nach Fotos und Videos; darunter die Videos einzeln (antippen = ansehen, Papierkorb = löschen)
   const sto = VideoCalc.speicher(await Native.json('storage').catch(() => null));

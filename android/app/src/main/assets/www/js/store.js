@@ -222,13 +222,26 @@ const Photos = {
   async all() { return (await DB.all('photos')).sort((a, b) => (a.ts || 0) - (b.ts || 0)); },
   url: id => '/photo/' + id + (/v$/.test(id) ? '.mp4' : '.jpg'),
   thumb: id => '/thumb/' + id + '.jpg',
-  /** Meta-Daten aus der Hülle speichern und zuordnen (Zeit + Position). */
+  /** 2.14.0: Zähler der beim Import übersprungenen, schon vorhandenen Fotos (Meldungen rechnen den Zuwachs eines Imports aus). */
+  skipCount: 0,
+  /** Meta-Daten aus der Hülle speichern und zuordnen (Zeit + Position).
+      2.14.0: Schon vorhandene Fotos (gleiche Kennung; mit „Schon vorhandene Fotos überspringen“ auch gleicher Abdruck oder gleicher Name + Zeit + Größe,
+      siehe FotoDoppeltCalc.bekannt) werden übersprungen und gezählt; die eben angelegte zweite Kopie löscht die Hülle wieder. */
   async addMeta(list) {
     let n = 0;
-    for (const m of list) {
+    const pruefen = Set_.get('fotoSkipDup') !== false, ix = pruefen ? FotoDoppeltCalc.index(await DB.all('photos')) : null;
+    for (const m of list || []) {
       const old = await DB.get('photos', m.id);
-      if (old) continue;
-      await DB.put('photos', { id: m.id, name: m.name, ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: m.src || '', video: !!m.video, dur: m.dur || 0, tour: '', pos: m.lat != null ? (m.pos || 'exif') : 'none', note: '' });      // 2.8.0: pos 'start' = Standort beim Kamera-Start (Panorama ohne Aufnahmezeit)
+      if (old) {
+        Photos.skipCount++;
+        if (m.fp && !old.fp) { old.fp = m.fp; if (m.fpd) old.fpd = m.fpd; if (m.size) old.size = m.size; await DB.put('photos', old); }      // Abdruck nachtragen
+        continue;
+      }
+      if (ix && FotoDoppeltCalc.bekannt(ix, m)) { Photos.skipCount++; try { await Native.call('deletePhoto', { id: m.id }); } catch (e) { /* ohne Hülle */ } continue; }
+      const p = { id: m.id, name: m.name, ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: m.src || '', video: !!m.video, dur: m.dur || 0, tour: '', pos: m.lat != null ? (m.pos || 'exif') : 'none', note: '' };      // 2.8.0: pos 'start' = Standort beim Kamera-Start (Panorama ohne Aufnahmezeit)
+      if (m.fp) p.fp = m.fp; if (m.fpd) p.fpd = m.fpd; if (m.size) p.size = m.size;      // 2.14.0: Abdruck des Originals und der gespeicherten Datei, Größe in Bytes
+      await DB.put('photos', p);
+      if (ix) FotoDoppeltCalc.merke(ix, p);
       n++;
     }
     await Photos.assignAll();

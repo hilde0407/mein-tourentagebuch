@@ -7,9 +7,9 @@ const Nav = {
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufnehmen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
-    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr', '/offline': '/mehr' },
+    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/fotodoppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr', '/offline': '/mehr' },
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
-  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan', '/offline'],
+  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/fotodoppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan', '/offline'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go(Nav.home[Nav.cur] || '/start'); },
   depth: 0,
@@ -147,7 +147,7 @@ async function handleShared() {
     }
     if (photos.length) {
       const m = await Native.json('importFiles', { paths: photos.map(f => f.path), src: 'geteilt' });
-      const n = await Photos.addMeta(m); toast(n + ' Foto(s) übernommen', 4000);
+      const s0 = Photos.skipCount, n = await Photos.addMeta(m); toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0, 'übernommen'), 4000);
     }
   } catch (e) { toast('Teilen: ' + e.message); }
 }

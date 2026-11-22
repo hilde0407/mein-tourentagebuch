@@ -563,15 +563,17 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   const datei = b => ({ size: b.length, slice: (x, y) => ({ arrayBuffer: async () => b.slice(x, y).buffer }) });
   Promise.all(erw.map(([n0]) => fpr(datei(daten(n0))))).then(r => { r.forEach((v, i) => { if (v !== erw[i][1]) { console.error('fpr ' + erw[i][0] + ': ' + v); process.exit(1); } }); });
   n += erw.length;
-  // dHash und Abstand
-  const grau = Array.from({ length: 72 }, (_, i) => (i * 37) % 251);
-  const h1 = FD.dhash(grau), g2 = grau.slice(); g2[0] = 255; g2[1] = 0;
-  ok(/^[0-9a-f]{16}$/.test(h1) && FD.abstand(h1, h1) === 0 && FD.abstand(h1, FD.dhash(g2)) <= 2 && FD.abstand(h1, null) === Infinity, 'dHash');
-  ok(FD.abstand('ffffffffffffffff', '0000000000000000') === 64 && FD.abstand('0000000000000001', '0000000000000000') === 1, 'Abstand zählt Bits');
+  // Grauraster und Abstand (Helligkeit bereinigt)
+  const grau = Array.from({ length: 64 }, (_, i) => (i * 37) % 251), r1 = FD.raster(grau);
+  ok(/^[0-9a-f]{128}$/.test(r1) && FD.abstand(r1, r1) === 0 && FD.abstand(r1, null) === Infinity, 'Raster');
+  ok(FD.abstand(r1, FD.raster(grau.map(v => v + 3))) === 0, 'heller: gleich');
+  ok(FD.abstand(r1, FD.raster(grau.map((v, i) => v + (i % 2 ? 4 : -4)))) <= 6, 'Rauschen ± 4: fast gleich');
+  ok(FD.abstand(r1, FD.raster(grau.slice().reverse())) > 30, 'anderes Bild: weit weg');
   // Namen
   ok(FD.grundName('Urlaub/IMG_0001.JPG') === 'img_0001' && FD.grundName('IMG_0001 (1).jpg') === 'img_0001' && FD.grundName('IMG_0001 - Kopie.jpg') === 'img_0001', 'Grundname');
   ok(FD.grundName('Kamera.jpg') === '' && FD.grundName('Video.mp4') === '' && FD.grundName('ab12cd.jpg', 'ab12cd') === '', 'allgemeine Namen zählen nicht');
-  // Paare
+  // Paare (A0/A1: fast gleiches Raster, A2: anderes Motiv)
+  const A0 = FD.raster(grau), A1 = FD.raster(grau.map((v, i) => v + (i === 5 ? 20 : 0))), A2 = FD.raster(grau.slice().reverse());
   const T = 1700000000000, f = (id, o) => Object.assign({ id, name: 'IMG_' + id + '.JPG', ts: T, w: 2400, h: 1800, video: false }, o);
   ok(FD.gleich(f('a', { fp: 'p1:1:x' }), f('b', { fp: 'p1:1:x', ts: T + 9e9, name: 'z.jpg' })) === 'datei', 'gleicher Abdruck unabhängig von Zeit und Name');
   ok(FD.gleich(f('a', { fpd: 'p1:1:y' }), f('b', { fp: 'p1:1:y' })) === 'datei', 'Originaldatei = gespeicherte Datei');
@@ -579,23 +581,23 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(FD.gleich(f('a', { name: 'IMG_1.JPG' }), f('b', { name: 'IMG_1.JPG', ts: T + 3000 })) === null, 'gleicher Name, 3 s daneben: nicht');
   ok(FD.gleich(f('a', { name: 'IMG_1.JPG' }), f('b', { name: 'IMG_1.JPG', w: 1600, h: 1200 })) === null, 'gleicher Name, andere Größe, ohne Bild: nicht');
   ok(FD.gleich(f('a', { name: 'Kamera.jpg' }), f('b', { name: 'Kamera.jpg' })) === null, 'zwei Kamera-Fotos derselben Sekunde: nicht');
-  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f1f', w: 1600, h: 1200 })) === 'bild', 'fast gleiches Bild, andere Größe');
-  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', w: 1800, h: 2400 })) === null, 'andere Ausrichtung: nicht');
-  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: 'f0f0f0f0f0f0f0f0' })) === null, 'anderes Bild: nicht');
-  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', ts: T + 2 * 3600000 + 1000 })) === 'bild', 'Zeitzonen-Versatz 2 h mit gleichem Bild');
-  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', ts: T + 2 * 3600000 + 60000 })) === null, '2 h 1 min daneben: nicht');
-  ok(FD.gleich(f('a', { dh: '0f0f0f0f0f0f0f0f' }), f('b', { dh: '0f0f0f0f0f0f0f0f', ts: T + 15 * 3600000 })) === null, 'mehr als 14 h: nicht');
+  ok(FD.gleich(f('a', { gr: A0 }), f('b', { gr: A1, w: 1600, h: 1200 })) === 'bild', 'fast gleiches Bild, andere Größe');
+  ok(FD.gleich(f('a', { gr: A0 }), f('b', { gr: A0, w: 1800, h: 2400 })) === null, 'andere Ausrichtung: nicht');
+  ok(FD.gleich(f('a', { gr: A0 }), f('b', { gr: A2 })) === null, 'anderes Bild: nicht');
+  ok(FD.gleich(f('a', { gr: A0 }), f('b', { gr: A0, ts: T + 2 * 3600000 + 1000 })) === 'bild', 'Zeitzonen-Versatz 2 h mit gleichem Bild');
+  ok(FD.gleich(f('a', { gr: A0 }), f('b', { gr: A0, ts: T + 2 * 3600000 + 60000 })) === null, '2 h 1 min daneben: nicht');
+  ok(FD.gleich(f('a', { gr: A0 }), f('b', { gr: A0, ts: T + 15 * 3600000 })) === null, 'mehr als 14 h: nicht');
   ok(FD.gleich(f('a', { fp: 'p1:1:x' }), f('b', { fp: 'p1:1:x', video: true })) === null, 'Foto und Video: nie');
-  ok(FD.gleich(f('a', { video: true, dur: 5000, dh: '0f0f0f0f0f0f0f0f' }), f('b', { video: true, dur: 9000, dh: '0f0f0f0f0f0f0f0f' })) === null, 'Videos verschiedener Länge: nicht');
+  ok(FD.gleich(f('a', { video: true, dur: 5000, gr: A0 }), f('b', { video: true, dur: 9000, gr: A0 })) === null, 'Videos verschiedener Länge: nicht');
   ok(FD.gleich(f('a', { ts: 0, name: 'x.jpg' }), f('b', { ts: 0, name: 'x.jpg' })) === null, 'ohne Zeit nur über Abdruck');
   // Gruppen: Kette über drei Fotos, stärkster Grund zählt; Einzelne fallen weg
-  const ps = [f('a', { fp: 'p1:9:q' }), f('b', { fp: 'p1:9:q', ts: T + 5e6 }), f('c', { ts: T + 5e6 + 500, name: 'IMG_b.JPG' }), f('d', { ts: T + 1e7 }), f('e', { ts: T + 2e7, dh: '1111111111111111' }), f('g', { ts: T + 2e7, dh: '1111111111111113', name: 'anders.jpg' })];
+  const ps = [f('a', { fp: 'p1:9:q' }), f('b', { fp: 'p1:9:q', ts: T + 5e6 }), f('c', { ts: T + 5e6 + 500, name: 'IMG_b.JPG' }), f('d', { ts: T + 1e7 }), f('e', { ts: T + 2e7, gr: A0 }), f('g', { ts: T + 2e7, gr: A1, name: 'anders.jpg' })];
   const gr = FD.gruppen(ps);
   ok(gr.length === 2 && gr[0].ids.join() === 'a,b,c' && gr[0].grund === 'datei' && gr[1].ids.join() === 'e,g' && gr[1].grund === 'bild', 'Gruppen: ' + JSON.stringify(gr));
   ok(FD.gruppen([f('a'), f('b', { ts: T + 9e6 })]).length === 0, 'keine Doppelten');
-  ok(JSON.stringify(FD.brauchtBild([f('a', { name: 'x1.jpg' }), f('b', { ts: T + 1000, name: 'x2.jpg' }), f('c', { ts: T + 9e5 }), f('d', { ts: T + 1000, dh: '1111111111111111', name: 'x3.jpg' })])) === '["a","b"]', 'brauchtBild: nur Fotos mit Nachbarn ohne dh');
+  ok(JSON.stringify(FD.brauchtBild([f('a', { name: 'x1.jpg' }), f('b', { ts: T + 1000, name: 'x2.jpg' }), f('c', { ts: T + 9e5 }), f('d', { ts: T + 1000, gr: A0, name: 'x3.jpg' })])) === '["a","b"]', 'brauchtBild: nur Fotos mit Nachbarn ohne gr');
   // viele Fotos: Gruppierung bleibt schnell
-  const viel = Array.from({ length: 20000 }, (_, i) => f('v' + i, { ts: T + i * 37000, dh: (i % 7 ? '1' : '2').repeat(16), name: 'IMG_' + i + '.JPG' }));
+  const viel = Array.from({ length: 20000 }, (_, i) => f('v' + i, { ts: T + i * 37000, gr: i % 7 ? A0 : A2, name: 'IMG_' + i + '.JPG' }));
   const z0 = Date.now(); FD.gruppen(viel); ok(Date.now() - z0 < 4000, '20000 Fotos in ' + (Date.now() - z0) + ' ms');
   // Auswahl: Ort > Tour > Titelfoto > Notiz; Gleichstand: größeres Bild, nicht aus dem Browser verkleinert, kleinere Kennung
   ok(FD.behalten([f('b', { lat: 47 }), f('a', { tour: 't' })]).id === 'b', 'mit Ort bleibt');

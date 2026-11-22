@@ -3152,33 +3152,51 @@ def fuehrer_2130(pg):
         pg.evaluate("""async () => { for (const id of ['fxbuch001', 'fxbuch002']) await Buecher.entferne(id); window.__pick = []; window.__saved = null; document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""")
 
 
-def dp_jpg(farbe, muster=0, w=96, h=72):
-    """Kleines Testbild: Farbverlauf mit Muster – gleiches Muster = gleiches Motiv (auch in anderer Größe), anderes Muster = anderes Motiv."""
+def dp_jpg(farbe, muster=0, w=96, h=72, q=90):
+    """Kleines Testbild: Fläche mit Rechtecken – gleiches Muster = gleiches Motiv; w/h ≠ 96×72 verkleinert/vergrößert dasselbe Motiv (neu gespeichert)."""
     import io as _io
     from PIL import Image as _Im, ImageDraw as _Dr
-    im = _Im.new("RGB", (w, h), farbe); d = _Dr.Draw(im)
+    im = _Im.new("RGB", (96, 72), farbe); d = _Dr.Draw(im)
     for k in range(6):
-        x = (k * 37 + muster * 53) % w; y = (k * 23 + muster * 31) % h
-        d.rectangle([x, y, x + w // 4, y + h // 5], fill=(255 - 40 * k % 255, (muster * 70 + 30 * k) % 255, 60 * k % 255))
-    b = _io.BytesIO(); im.save(b, "JPEG", quality=90); return b.getvalue()
+        x = (k * 37 + muster * 53) % 96; y = (k * 23 + muster * 31) % 72
+        d.rectangle([x, y, x + 24, y + 14], fill=(255 - 40 * k % 255, (muster * 70 + 30 * k) % 255, 60 * k % 255))
+    if (w, h) != (96, 72): im = im.resize((w, h), _Im.LANCZOS)
+    b = _io.BytesIO(); im.save(b, "JPEG", quality=q); return b.getvalue()
+
+DP_MOCK = """() => {
+  /* 2.14.0: Hülle für doppelte Fotos nachgestellt: photoPrints (Abdruck und Größe gespeicherter Dateien), deletePhoto mitschreiben */
+  const c0 = window.MTApp.call; window.__dpcall0 = c0;
+  window.__dp = { del: [], prints: {}, calls: 0 };
+  window.MTApp.call = (id, m, a) => {
+    const D = window.__dp, o = JSON.parse(a || '{}');
+    if (m === 'deletePhoto') D.del.push(o.id);
+    if (m !== 'photoPrints' && m !== 'deletePhoto') return c0.call(window.MTApp, id, m, a);
+    let r = true;
+    if (m === 'photoPrints') { D.calls++; r = (o.ids || []).map(x => ({ id: x, fpd: D.prints[x] || ('p1:2048:' + (x + '0000000000000000').slice(0, 16).replace(/[^0-9a-f]/g, '0')), size: 1048576 })); }
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+}"""
 
 def doppelt_2140(pg):
-    """2.14.0: doppelte Fotos – Fotoleiste nach dem Löschen richtig neu gezeichnet; Import überspringt Bekanntes; Suche zeigt Gruppen; Löschen mit Übernahme."""
+    """2.14.0: doppelte Fotos – Fotoleiste nach dem Löschen richtig neu gezeichnet; Import überspringt Bekanntes (Schalter);
+    Suche (je Tour) zeigt Gruppen mit Vorauswahl, Auswahl änderbar; Löschen mit Übernahme von Notiz, Kommentar und Titelfoto; Videos; Platz bei 360–430 px."""
     leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
     t0 = 1580000000000      # eigene Tour im Januar 2020, weit weg von den übrigen Testdaten
-    bilder = {"dpa": dp_jpg((40, 120, 90), 1), "dpb": dp_jpg((40, 120, 90), 1), "dpc": dp_jpg((200, 80, 40), 2)}
+    bilder = {"dpa": dp_jpg((40, 120, 90), 1), "dpb": dp_jpg((40, 120, 90), 1), "dpd": dp_jpg((40, 120, 90), 1), "dpc": dp_jpg((200, 80, 40), 2),
+              "dpe": dp_jpg((200, 80, 40), 2, 120, 90, 70), "dpv": dp_jpg((90, 90, 200), 3)}
     def bild(r):
         k = r.request.url.split("/")[-1][:3]
         r.fulfill(status=200, body=bilder.get(k, bilder["dpc"]), content_type="image/jpeg")
     pg.route("**/thumb/dp*", bild); pg.route("**/photo/dp*", bild)
-    ids = ["dpa1111111", "dpb2222222", "dpc3333333"]
-    tid = None
+    pg.evaluate(DP_MOCK)
+    ids = ["dpa1111111", "dpb2222222", "dpc3333333", "dpd4444444", "dpe5555555", "dpv111111v", "dpv222222v", "dpn1111111", "dpn2222222", "dpn3333333", "dpn4444444"]
+    tid = None; bad = []
     try:
         tid = pg.evaluate("""async t0 => (await Tours.add({ name: 'Doppeltest', sport: 'hike', src: 'file', force: true,
           pts: Array.from({ length: 60 }, (_, i) => ({ lat: 47.6 + i * 0.0005, lon: 11.6 + i * 0.0004, ele: 800 + i * 3, t: t0 + i * 30000 })) })).tour.id""", t0)
         pg.evaluate("""async ([t0, tid]) => {
           await DB.put('photos', { id: 'dpa1111111', name: 'IMG_0001.JPG', ts: t0 + 300000, lat: 47.61, lon: 11.61, pos: 'exif', tour: tid, src: 'smb', w: 96, h: 72, note: '' });
-          await DB.put('photos', { id: 'dpb2222222', name: 'IMG_0001.JPG', ts: t0 + 300000, lat: null, lon: null, pos: 'none', tour: tid, src: 'rechner', w: 96, h: 72, note: 'Gipfelblick' });
+          await DB.put('photos', { id: 'dpb2222222', name: 'IMG_0001.JPG', ts: t0 + 300000, lat: null, lon: null, pos: 'none', tour: tid, src: 'rechner', w: 96, h: 72, note: 'Gipfelblick', fp: 'p1:5000:b0b0b0b0b0b0b0b0' });
           await DB.put('photos', { id: 'dpc3333333', name: 'IMG_0002.JPG', ts: t0 + 600000, lat: 47.62, lon: 11.62, pos: 'exif', tour: tid, src: 'smb', w: 96, h: 72, note: '' }); }""", [t0, tid])
         # 1. Fotoleiste: ein Foto in der Lightbox löschen → Leiste zeigt danach genau die übrigen, und jedes Vorschaubild öffnet sein eigenes Foto
         go(pg, "#/tour/" + tid, "#tphotos .strip .th")
@@ -3195,10 +3213,90 @@ def doppelt_2140(pg):
         assert "dpc3333333" in pg.get_attribute(".lb .lb-img", "src"), pg.get_attribute(".lb .lb-img", "src")
         assert pg.inner_text(".lb .lb-cnt") == "2 / 2", pg.inner_text(".lb .lb-cnt")
         pg.evaluate("window.__lightbox && window.__lightbox.close()")
-        return []
+        # 2. Import: gleicher Abdruck (andere Kennung, z. B. im Browser verkleinert) und gleicher Name + Zeit + Größe werden übersprungen und gezählt;
+        #    die zweite Kopie löscht die Hülle wieder. Schalter (Vorgabe an) in „Fotos hinzufügen“; aus = wird übernommen.
+        assert pg.evaluate("window.__dp.del") == ["dpa1111111"], "Lightbox löscht über die Hülle"
+        pg.evaluate("""t0 => { window.__dp.del = []; window.__pickPh = [
+          { id: 'dpn1111111', name: 'IMG_0001.JPG', ts: t0 + 300000 + 3600000, w: 96, h: 72, src: 'galerie', fp: 'p1:5000:b0b0b0b0b0b0b0b0', fpd: 'p1:4000:1111111111111111' },
+          { id: 'dpn2222222', name: 'img_0002 (1).jpg', ts: t0 + 600400, w: 96, h: 72, src: 'galerie', fp: 'p1:6000:2222222222222222' },
+          { id: 'dpn3333333', name: 'IMG_0003.JPG', ts: t0 + 900000, w: 96, h: 72, src: 'galerie', fp: 'p1:7000:3333333333333333' }]; }""", t0)
+        pg.evaluate("PhotoSources.sheet(null, null)"); pg.wait_for_selector("#ps-skipdup")
+        assert pg.is_checked("#ps-skipdup input"), "Vorgabe: schon vorhandene überspringen"
+        bad += sheet_check_open(pg, "Fotos hinzufügen")
+        leise(); pg.get_by_text("Aus der Galerie wählen").click()
+        tx = toast_text(pg, "hinzugefügt"); assert tx == "1 Foto(s) hinzugefügt · 2 schon vorhanden, übersprungen", tx
+        assert pg.evaluate("window.__dp.del.slice().sort().join()") == "dpn1111111,dpn2222222", pg.evaluate("window.__dp.del")
+        assert pg.evaluate("Promise.all(['dpn1111111', 'dpn2222222', 'dpn3333333'].map(id => DB.get('photos', id))).then(l => l.map(p => !!p).join())") == "false,false,true"
+        assert pg.evaluate("DB.get('photos', 'dpn3333333').then(p => p.fp)") == "p1:7000:3333333333333333", "Abdruck gespeichert"
+        pg.evaluate("PhotoSources.sheet(null, null)"); pg.wait_for_selector("#ps-skipdup"); pg.click("#ps-skipdup"); pg.wait_for_function("() => Set_.get('fotoSkipDup') === false")
+        pg.evaluate("""t0 => { window.__pickPh = [{ id: 'dpn4444444', name: 'x.jpg', ts: t0 + 5e6, w: 96, h: 72, src: 'galerie', fp: 'p1:5000:b0b0b0b0b0b0b0b0' }]; }""", t0)
+        leise(); pg.get_by_text("Aus der Galerie wählen").click()
+        assert toast_text(pg, "hinzugefügt") == "1 Foto(s) hinzugefügt", "Schalter aus: wird übernommen"
+        pg.evaluate("async () => { await Set_.set('fotoSkipDup', true); for (const id of ['dpn3333333', 'dpn4444444']) await DB.del('photos', id); window.__dp.del = []; delete window.__pickPh; }")
+        # 3. Suche je Tour (Tourmenü): gleiche Datei (Abdruck der gespeicherten Datei aus der Hülle), fast gleiches Bild in anderer Größe, zwei gleiche Videos
+        pg.evaluate("""async ([t0, tid]) => {
+          await DB.put('photos', { id: 'dpd4444444', name: 'IMG_0001.JPG', ts: t0 + 300000, lat: 47.615, lon: 11.615, pos: 'exif', tour: tid, src: 'smb', w: 96, h: 72, note: '' });
+          await DB.put('photos', { id: 'dpe5555555', name: 'P1010002.JPG', ts: t0 + 601000, lat: null, lon: null, pos: 'none', tour: tid, src: 'rechner', w: 120, h: 90, note: '' });
+          await DB.put('photos', { id: 'dpv111111v', name: 'Video.mp4', ts: t0 + 1200000, video: true, dur: 5000, lat: null, lon: null, pos: 'none', tour: tid, src: 'kamera', w: 64, h: 36, fp: 'p1:9:v0v0', fpd: 'p1:9:vd' });
+          await DB.put('photos', { id: 'dpv222222v', name: 'Video.mp4', ts: t0 + 1200000, video: true, dur: 5000, lat: null, lon: null, pos: 'none', tour: tid, src: 'kamera', w: 64, h: 36, fp: 'p1:9:v0v0', fpd: 'p1:9:vd' });
+          window.__dp.prints = { dpb2222222: 'p1:4096:dddddddddddddddd', dpd4444444: 'p1:4096:dddddddddddddddd' };
+          await Comments.add('dpb2222222', 'Schöne Sicht');
+          const bg = await DB.kvGet('tilebg', {}); bg[tid] = { kind: 'photo', ph: 'dpb2222222' }; await DB.kvSet('tilebg', bg); }""", [t0, tid])
+        go(pg, "#/tour/" + tid, "#tphotos .strip .th")
+        pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("#fd-menu"); pg.click("#fd-menu")
+        pg.wait_for_function("() => document.querySelectorAll('.fd-g').length > 0 && !Nav._busy", timeout=30000)
+        assert pg.evaluate("location.hash") == "#/fotodoppelt/" + tid
+        assert pg.locator(".fd-g").count() == 3, pg.inner_text("#view")
+        assert pg.inner_text("#fd-sum") == "3 Gruppen mit 6 Fotos. Zum Löschen gewählt: 3 Fotos in 3 Gruppen · 3 MB frei.", pg.inner_text("#fd-sum")
+        g1 = ".fd-g[data-key=dpb2222222]"
+        assert "Gleiche Datei" in pg.inner_text(g1) and pg.locator(g1 + " .fd-e").count() == 2, pg.inner_text(g1)
+        assert pg.inner_text(g1 + " .fd-e[data-id=dpd4444444] .fd-st") == "Bleibt" and pg.inner_text(g1 + " .fd-e[data-id=dpb2222222] .fd-st") == "Wird gelöscht", "Vorauswahl: das mit Ort bleibt"
+        assert "mit Notiz" in pg.inner_text(g1 + " .fd-e[data-id=dpb2222222]") and "Titelfoto" in pg.inner_text(g1 + " .fd-e[data-id=dpb2222222]") and "1024 KB · 96 × 72" in pg.inner_text(g1 + " .fd-e[data-id=dpb2222222]")
+        g2 = ".fd-g[data-key=dpc3333333]"
+        assert "fast gleiches Bild" in pg.inner_text(g2) and pg.inner_text(g2 + " .fd-e[data-id=dpe5555555] .fd-st") == "Wird gelöscht", pg.inner_text(g2)
+        g3 = ".fd-g[data-key=dpv111111v]"
+        assert "2 Videos" in pg.inner_text(g3), pg.inner_text(g3)
+        assert pg.evaluate("window.__dp.calls") >= 1 and pg.evaluate("DB.get('photos', 'dpd4444444').then(p => p.fpd + '|' + p.size + '|' + (p.gr || '').length)") == "p1:4096:dddddddddddddddd|1048576|128", "Abdruck und Grauraster gespeichert"
+        # Auswahl ändern: alle löschen geht nicht (eines bleibt); im Videopaar nichts löschen
+        leise(); pg.click(g1 + " .fd-e[data-id=dpd4444444] .fd-cb"); assert "Mindestens ein Foto" in toast_text(pg, "Mindestens")
+        assert pg.inner_text(g1 + " .fd-e[data-id=dpd4444444] .fd-st") == "Bleibt"
+        vdrop = pg.evaluate("[...document.querySelectorAll('.fd-g[data-key=dpv111111v] .fd-e.weg')].map(e => e.dataset.id)")
+        assert len(vdrop) == 1, vdrop
+        pg.click(g3 + f" .fd-e[data-id={vdrop[0]}] .fd-cb")
+        assert pg.inner_text("#fd-sum").endswith("2 Fotos in 2 Gruppen · 2 MB frei."), pg.inner_text("#fd-sum")
+        assert pg.inner_text("#fd-go") == "2 Fotos löschen"
+        # Vorschaubild öffnet die Gruppe in der Lightbox
+        pg.click(g2 + " .fd-e[data-id=dpe5555555] .fd-th"); pg.wait_for_selector(".lb"); assert pg.inner_text(".lb .lb-cnt") == "2 / 2"; pg.evaluate("window.__lightbox.close()")
+        # 4. Löschen: Rückfrage (Abbrechen ändert nichts), dann Übernahme und Löschen
+        pg.click("#fd-go"); pg.wait_for_selector(".sheet[aria-label='Doppelte Fotos löschen?']")
+        assert "2 Fotos in 2 Gruppen" in pg.inner_text(".sheet[aria-label='Doppelte Fotos löschen?']")
+        pg.click(".sheet[aria-label='Doppelte Fotos löschen?'] button:not(.pri)"); pg.wait_for_selector(".sheet[aria-label='Doppelte Fotos löschen?']", state="detached")
+        assert pg.evaluate("DB.get('photos', 'dpb2222222').then(p => !!p)"), "ohne Bestätigung nichts gelöscht"
+        leise(); pg.click("#fd-go"); pg.wait_for_selector(".sheet[aria-label='Doppelte Fotos löschen?']"); pg.click(".sheet[aria-label='Doppelte Fotos löschen?'] button.pri")
+        tx = toast_text(pg, "gelöscht"); assert tx == "2 Fotos gelöscht · 2 MB frei · Angaben übernommen", tx
+        r = pg.evaluate("""async tid => { const g = id => DB.get('photos', id); const d = await g('dpd4444444'), c = await g('dpc3333333');
+          return { weg: [!(await g('dpb2222222')), !(await g('dpe5555555'))], note: d.note, lat: d.lat, fpx: d.fpx, cnote: c.note, vids: [!!(await g('dpv111111v')), !!(await g('dpv222222v'))],
+            com: ((await DB.kvGet('comments', {}))['dpd4444444'] || []).map(x => x.text), comAlt: !!(await DB.kvGet('comments', {}))['dpb2222222'], bg: ((await DB.kvGet('tilebg', {}))[tid] || {}).ph, del: window.__dp.del.slice().sort() }; }""", tid)
+        assert r["weg"] == [True, True] and r["note"] == "Gipfelblick" and r["lat"] == 47.615 and r["vids"] == [True, True], r
+        assert "p1:5000:b0b0b0b0b0b0b0b0" in r["fpx"] and "p1:4096:dddddddddddddddd" not in (r["fpx"] or []), r
+        assert r["com"] == ["Schöne Sicht"] and not r["comAlt"] and r["bg"] == "dpd4444444" and r["del"] == ["dpb2222222", "dpe5555555"], r
+        pg.wait_for_function("() => !Nav._busy && document.querySelectorAll('.fd-g').length === 1", timeout=30000); assert pg.locator(".fd-g").count() == 1 and pg.inner_text("#fd-sum").startswith("1 Gruppe mit 2 Fotos"), pg.inner_text("#view")
+        # Platz bei 360–430 px und 130 % Schrift
+        bad += layout_check(pg, ["#/fotodoppelt/" + tid])
+        # 5. Tourseite danach: Leiste zeigt genau die verbliebenen Fotos in Zeitfolge
+        go(pg, "#/tour/" + tid, "#tphotos .strip .th")
+        srcs = pg.eval_on_selector_all("#tphotos .strip .th img", "l => l.map(i => i.getAttribute('src'))")
+        assert srcs == ["/thumb/dpd4444444.jpg", "/thumb/dpc3333333.jpg", "/thumb/dpv111111v.jpg", "/thumb/dpv222222v.jpg"], srcs
+        # 6. Eingänge: Foto-Quellen und Import → Aufräumen; ohne Doppelte der leere Zustand
+        go(pg, "#/sources", "#src-dup"); go(pg, "#/import", "#imp-fotodup")
+        pg.evaluate("DB.del('photos', 'dpv222222v')")
+        go(pg, "#/fotodoppelt/" + tid, ".empty"); assert "Keine doppelten Fotos gefunden" in pg.inner_text("#view")
+        return bad
     finally:
         pg.unroute("**/thumb/dp*"); pg.unroute("**/photo/dp*")
-        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) await Tours.remove(tid);
+        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) { await Tours.remove(tid); const bg = await DB.kvGet('tilebg', {}); delete bg[tid]; await DB.kvSet('tilebg', bg); }
+          const cm = await DB.kvGet('comments', {}); ids.forEach(id => delete cm[id]); await DB.kvSet('comments', cm); await Set_.set('fotoSkipDup', true); delete window.__pickPh;
+          if (window.__dpcall0) { window.MTApp.call = window.__dpcall0; window.__dpcall0 = null; }
           window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
@@ -3861,6 +3959,7 @@ def main():
         tb_bad = teilen_2130(pg)
         st_bad = statistik_2130(pg)
         fx_bad = fuehrer_2130(pg)
+        dp_bad = doppelt_2140(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -3891,6 +3990,7 @@ def main():
         bad += tb_bad
         bad += st_bad
         bad += fx_bad
+        bad += dp_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

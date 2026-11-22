@@ -58,7 +58,7 @@ Views['/import'] = async root => {
       card('bike', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
       card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
       card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)),
-    UI.section('Aufräumen', UI.list([UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus zwei Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' })])));
+    UI.section('Aufräumen', UI.list([UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus zwei Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' }), UI.row({ icon: 'photo', title: 'Doppelte Fotos suchen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
 
   /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
   async function mt() {
