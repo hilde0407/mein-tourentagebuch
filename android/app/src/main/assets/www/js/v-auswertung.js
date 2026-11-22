@@ -24,7 +24,7 @@ const Ausw = {
       else if (n === 1) list.append(UI.list(groups.map(([lab, rows]) => UI.row({ icon: 'trophy', title: lab + ': ' + rows[0].title, sub: rows[0].sub, href: rows[0].href }))));
       else groups.forEach(([lab, rows]) => list.append(h('h3', { class: 'sub' }, lab), UI.list(rows.map((r, i) => UI.row({ icon: 'trophy', title: (i + 1) + '. ' + r.title, sub: r.sub, href: r.href })))));
       box.innerHTML = '';
-      box.append(UI.section('Bestwerte', [UI.seg([[1, 'Beste'], [3, 'Beste drei']], n, async k => { await Set_.set('bestN', k); draw(); }, { label: 'Anzahl' }), list]));
+      box.append(UI.section('Bestwerte', [UI.seg([[1, 'Beste'], [3, 'Beste drei']], n, async k => { await Set_.set('bestN', k); draw(); document.dispatchEvent(new Event('mt-bestN')); }, { label: 'Anzahl' }), list]));
     };
     draw();
     return box;
@@ -56,16 +56,101 @@ const Ausw = {
             row('trophy', 'Meiste Touren in einem Jahr', y1.n, y1.k + ' · ' + F.km(y1.dist)),
       row('trophy', 'Stärkstes Jahr', F.km(y2.dist), y2.k + ' · ' + y2.n + ' Touren · ' + F.m(y2.up) + ' Aufstieg'),
       row('flame', 'Längste Serie', bestRun + (bestRun === 1 ? ' Tag' : ' Tage') + ' in Folge', 'bis ' + F.date(runEnd * 86400000))));
-    const sports = [...new Set(real.map(t => t.sport))];
-    const per = [];
-    sports.forEach(s => {
-      const a = real.filter(t => t.sport === s); if (a.length < 2) return;
-      const top = (lab, f, fm) => { const b = a.slice().sort((x, y) => f(y) - f(x))[0]; return f(b) > 0 ? Ausw.link(b, lab + ': ' + fm(b), b.name + ' · ' + F.dshort(b.start)) : null; };
-      per.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s) + ' · ' + a.length + ' Touren'), h('div', { class: 'list' },
-        top('Längste', t => t.dist, t => F.km(t.dist)), top('Größter Aufstieg', t => t.up, t => F.m(t.up)), top('Höchster Punkt', t => t.maxAlt, t => F.m(t.maxAlt)),
-        top('Schnellste', t => t.moving > 600 ? t.dist / t.moving : 0, t => F.speed(t.dist, t.moving)), top('Längste Dauer', t => t.dur, t => F.dur(t.dur))));
+    body.append(Ausw.jeSportart(real));
+  },
+
+  /** 2.13.0: „Bestwerte je Sportart“ als Rangliste (Rechnung: Bestwerte.jeSportart in calc-ziele.js). Folgt der Wahl „Beste / Beste drei“ oben;
+      bei „Beste drei“ stehen Platz 2 und 3 leise unter dem Bestwert. Tempo nur, wo es sinnvoll ist (Zeit in Bewegung, nicht bei Ski alpin). */
+  jeSportart(real) {
+    const box = h('div', { id: 'bw-sport' });
+    const neu = () => { if (!box.isConnected) { document.removeEventListener('mt-bestN', neu); return; } box.innerHTML = ''; Ausw.jeSportartFuellen(box, real); };
+    document.addEventListener('mt-bestN', neu);
+    Ausw.jeSportartFuellen(box, real);
+    return box;
+  },
+  jeSportartFuellen(box, real) {
+    const n = +Set_.get('bestN') === 3 ? 3 : 1, groups = Bestwerte.jeSportart(real, n);
+    if (!groups.length) return box;
+    const M = [['strecke', 'Längste', t => F.km(t.dist)], ['aufstieg', 'Größter Aufstieg', t => F.m(t.up)], ['dauer', 'Längste Dauer', t => F.dur(t.dur)],
+      ['hoehe', 'Höchster Punkt', t => F.m(t.maxAlt)], ['tempo', 'Schnellste', t => F.speed(t.dist, t.moving)]];
+    const kids = [];
+    groups.forEach(g => {
+      const rows = M.filter(([k]) => g[k].length).map(([k, lab, fm]) => {
+        const [b, ...weitere] = g[k], mehr = weitere.map((t, i) => (i + 2) + '. ' + fm(t)).join(' · ');
+        return h('a', { class: 'li', href: '#/tour/' + b.id, 'data-m': k }, h('span', { class: 'li-i', html: Ico.svg('trophy', 22) }),
+          h('span', { class: 'li-t' }, h('b', null, lab + ': ' + fm(b)), h('small', null, b.name + ' · ' + F.dshort(b.start)), mehr ? h('small', { class: 'bw-mehr' }, mehr) : null));
+      });
+      kids.push(h('h3', { class: 'sub', 'data-sport': g.sport }, Sports.icon(g.sport) + ' ' + Sports.label(g.sport) + ' · ' + g.n + ' Touren'), h('div', { class: 'list' }, rows));
     });
-    if (per.length) body.append(...Ausw.sec('Je Sportart'), ...per);
+    box.append(...Ausw.sec('Bestwerte je Sportart', n === 3 ? 'Je Sportart der Bestwert, darunter Platz 2 und 3. Tempo aus der Zeit in Bewegung.' : 'Je Sportart der Bestwert (oben „Beste drei“ zeigt auch Platz 2 und 3). Tempo aus der Zeit in Bewegung.'), ...kids);
+    return box;
+  },
+
+  /* ---------- 2.13.0 Jahresvergleich ---------- */
+  vgl: { a: null, b: null, m: 'dist' },
+  /** Wert einer Kennzahl als Text. */
+  vfmt: (k, v) => (k === 'dist' ? F.km(v) : k === 'up' ? F.m(v) : k === 'zeit' ? F.dur(v) : (v === 1 ? '1 Tour' : Math.round(v) + ' Touren')),
+  /** „+12 % Strecke“ und darunter die beiden Summen. */
+  vergleich(body, ts, ctx) {
+    const now = new Date(), sportFn = s => Sports.passt(ctx.sport, s), years = Vergleich.jahre(ctx.all, now), S = Ausw.vgl;      // Jahresauswahl ohne Sportart-Filter: der Filter soll die gewählten Jahre nicht verstellen
+    const def = Vergleich.vorgabe(now);
+    if (S.a == null || !years.includes(S.a)) S.a = def.a;
+    if (S.b == null || !years.concat([S.a - 1]).includes(S.b)) S.b = years.includes(def.b) ? def.b : (years.find(y => y < S.a) || S.a - 1);
+    const wrap = h('div', { id: 'vgl' }); body.append(wrap);
+    const opts = (sel, extra) => [...new Set(years.concat(extra))].sort((a, b) => b - a).map(y => h('option', { value: y, selected: y === sel }, String(y)));
+    const draw = () => {
+      wrap.innerHTML = '';
+      const r = Vergleich.berechne(ctx.all, S.a, S.b, now, sportFn), k = S.m, lab = Vergleich.METRIKEN.find(x => x[0] === k)[1];
+      const selA = h('select', { id: 'vgl-a', onchange: e => { S.a = +e.target.value; draw(); } }, opts(S.a, [])), selB = h('select', { id: 'vgl-b', onchange: e => { S.b = +e.target.value; draw(); } }, opts(S.b, [S.a - 1]));
+      wrap.append(h('div', { class: 'row vgl-jahre' }, h('label', { class: 'vgl-l' }, h('span', null, 'Jahr'), selA), h('label', { class: 'vgl-l' }, h('span', null, 'gegen'), selB)));
+      wrap.append(UI.seg(Vergleich.METRIKEN, k, m => { S.m = m; draw(); }, { label: 'Kennzahl wählen' }));
+      if (r.a.leer && r.b.leer) { wrap.append(UI.empty({ icon: 'chart', title: 'Keine Touren in ' + S.a + ' und ' + S.b, text: ctx.sport ? 'Wähle oben eine andere Sportart oder andere Jahre.' : 'Wähle andere Jahre.' })); return; }
+      const bis = r.stichtag ? ' bis ' + r.stichtag.tag + '.' + (r.stichtag.monat + 1) + '.' : '';
+      // Differenz-Zeile: die gewählte Kennzahl groß, alle vier leise darunter
+      const d = r.diff[k], pt = Vergleich.pctText(d);
+      const haupt = r.gleich ? 'Gleiches Jahr gewählt' : pt == null ? 'In beiden Jahren nichts' : pt === 'neu' ? lab + ': neu in ' + S.a : pt + ' ' + lab;
+      wrap.append(h('div', { class: 'vgl-diff', id: 'vgl-diff' }, h('b', null, haupt), h('small', { class: 'muted' }, S.a + bis + ': ' + Ausw.vfmt(k, d.a) + ' · ' + S.b + bis + ': ' + Ausw.vfmt(k, d.b))));
+      wrap.append(UI.facts(Vergleich.METRIKEN.map(([m, l]) => { const x = r.diff[m], p = Vergleich.pctText(x); return [l, (x.abs > 0 ? '+' : x.abs < 0 ? '−' : '±') + Ausw.vfmt(m, Math.abs(x.abs)) + (p && p !== 'neu' ? ' (' + p + ')' : '')]; })));
+      wrap.append(Ausw.vChart(r, k, lab));
+      if (r.bisHeute) wrap.append(h('p', { class: 'muted small' }, 'Das laufende Jahr zählt bis heute; das andere Jahr wird bis zum gleichen Kalendertag verglichen. Die Linien zeigen das ganze Jahr, soweit es vergangen ist.'));
+      const mrow = i => h('tr', null, h('th', { scope: 'row' }, Jahr.MONATE[i]), h('td', null, r.a.kum[k][i] == null ? '–' : Ausw.vfmt(k, r.a.kum[k][i])), h('td', null, r.b.kum[k][i] == null ? '–' : Ausw.vfmt(k, r.b.kum[k][i])));
+      wrap.append(h('details', { class: 'jdet', id: 'vgl-tabelle' }, h('summary', null, 'Zahlen je Monat (aufsummiert)'),
+        h('table', { class: 'jmon' }, h('thead', null, h('tr', null, h('th', null, 'Monat'), h('th', null, String(S.a)), h('th', null, String(S.b)))), h('tbody', null, Array.from({ length: 12 }, (_, i) => mrow(i))))));
+    };
+    draw();
+  },
+  /** Liniendiagramm: zwei Jahre, Monat für Monat aufsummiert. Eine y-Achse mit runden Teilstrichen, Jahr A durchgezogen (Akzent), Jahr B gestrichelt (gedämpft),
+      Beschriftung am Linienende und in der Legende (nie nur Farbe). Antippen eines Monats zeigt beide Werte. Farben aus den Variablen der App (hell und dunkel). */
+  vChart(r, k, lab) {
+    const W = 340, H = 206, L = 46, R = 40, T = 24, B = 26, pw = W - L - R, ph = H - T - B;
+    const vals = r.a.kum[k].concat(r.b.kum[k]).filter(v => v != null), mx0 = Math.max(1, ...vals);
+    const step = (() => { const raw = mx0 / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; })();
+    const mx = Math.ceil(mx0 / step) * step, X = i => L + i * pw / 11, Y = v => T + ph - v / mx * ph;
+    const tick = v => (k === 'dist' ? Math.round(v / 1000).toLocaleString('de-DE') : k === 'zeit' ? Math.round(v / 3600).toLocaleString('de-DE') : Math.round(v).toLocaleString('de-DE'));
+    const unit = k === 'dist' ? 'km' : k === 'up' ? 'm' : k === 'zeit' ? 'h' : '';
+    let g = '';
+    for (let v = 0; v <= mx + 1e-9; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="vt">${tick(v)}</text>`;
+    g += `<text x="${L - 6}" y="${T - 12}" text-anchor="end" class="vt">${unit}</text>`;
+    Vergleich.KURZ.forEach((m, i) => { if (i % 2 === 0) g += `<text x="${X(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" class="vt">${m}</text>`; });
+    g += `<line x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}" stroke="var(--edge)" stroke-width="1"/>`;
+    const line = (arr, cls) => { const p = arr.map((v, i) => (v == null ? null : [X(i), Y(v)])).filter(Boolean); if (!p.length) return ''; return `<polyline class="${cls}" fill="none" points="${p.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}"/>`; };
+    const ende = (arr, y, cls) => { let i = -1; arr.forEach((v, j) => { if (v != null) i = j; }); if (i < 0) return ''; return `<circle class="${cls}" cx="${X(i).toFixed(1)}" cy="${Y(arr[i]).toFixed(1)}" r="4"/><text x="${(X(i) + 7).toFixed(1)}" y="${(Y(arr[i]) + 4).toFixed(1)}" class="vy">${y}</text>`; };
+    // Beschriftung am Ende: liegen beide Enden dicht beieinander, rückt das untere Etikett nach unten
+    let lb = ende(r.b.kum[k], r.b.year, 'vb-e'), la = ende(r.a.kum[k], r.a.year, 'va-e');
+    const ia = r.a.kum[k].filter(v => v != null).length - 1, ib = r.b.kum[k].filter(v => v != null).length - 1;
+    if (ia === ib && ia >= 0 && Math.abs(Y(r.a.kum[k][ia]) - Y(r.b.kum[k][ib])) < 14) { const lower = Y(r.a.kum[k][ia]) >= Y(r.b.kum[k][ib]) ? 'a' : 'b'; const fix = s => s.replace(/(<text x="[\d.]+" y=")([\d.]+)/, (m0, a, y) => a + (+y + 12).toFixed(1)); if (lower === 'a') la = fix(la); else lb = fix(lb); }
+    const hits = Vergleich.KURZ.map((m, i) => `<rect class="vh" data-i="${i}" x="${(X(i) - pw / 22).toFixed(1)}" y="${T}" width="${(pw / 11).toFixed(1)}" height="${ph}" fill="transparent"/>`).join('');
+    const fmt = v => (v == null ? 'noch offen' : Ausw.vfmt(k, v));
+    const text = lab + ' aufsummiert je Monat. ' + r.a.year + ': ' + Jahr.MONATE.map((m, i) => r.a.kum[k][i] == null ? null : m + ' ' + fmt(r.a.kum[k][i])).filter(Boolean).join(', ') + '. ' + r.b.year + ': ' + Jahr.MONATE.map((m, i) => r.b.kum[k][i] == null ? null : m + ' ' + fmt(r.b.kum[k][i])).filter(Boolean).join(', ') + '.';
+    const svg = `<svg class="vchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(text)}">${g}${line(r.b.kum[k], 'vb')}${line(r.a.kum[k], 'va')}${lb}${la}<line class="vcur" x1="0" x2="0" y1="${T}" y2="${T + ph}" visibility="hidden"/>${hits}</svg>`;
+    const legend = h('div', { class: 'vleg', 'aria-hidden': 'true' }, h('span', null, h('i', { class: 'va-s' }), String(r.a.year)), h('span', null, h('i', { class: 'vb-s' }), String(r.b.year)));
+    const read = h('p', { class: 'small vread', id: 'vgl-wert', 'aria-live': 'polite' }, 'Monat antippen für die Werte.');
+    const box = h('div', { class: 'vcw', id: 'vgl-chart' }, legend, h('div', { html: svg }), read);
+    const cur = () => box.querySelector('.vcur');
+    const zeige = i => { const c = cur(); c.setAttribute('x1', X(i)); c.setAttribute('x2', X(i)); c.setAttribute('visibility', 'visible');
+      read.textContent = Jahr.MONATE[i] + ': ' + r.a.year + ' ' + fmt(r.a.kum[k][i]) + ' · ' + r.b.year + ' ' + fmt(r.b.kum[k][i]); };
+    box.querySelectorAll('.vh').forEach(el => { el.addEventListener('click', () => zeige(+el.dataset.i)); el.addEventListener('mouseenter', () => zeige(+el.dataset.i)); });
+    return box;
   },
 
   /* ---------- Kalender ---------- */

@@ -2,16 +2,17 @@
 Views['/stats'] = async (root, [tab0]) => {
   const all = (await Tours.list()).filter(Jahr.zaehlt);      // gleiche Filterregel und Kennzahlen wie der Jahresrückblick (calc-jahr.js)
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
-  let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'kalender', 'auswertung', 'ziele', 'fitness'].includes(tab0) ? tab0 : tab0 === 'bestwerte' ? 'rekorde' : 'ueber';
+  let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'vergleich', 'kalender', 'auswertung', 'ziele', 'fitness'].includes(tab0) ? tab0 : tab0 === 'bestwerte' ? 'rekorde' : 'ueber';
   const body = h('div', { class: 'pad' });
   root.append(topbar('Statistik', { back: true }), body);
   const draw = () => {
     body.innerHTML = '';
     const sel = h('select', { 'aria-label': 'Zeitraum', onchange: e => { year = e.target.value === 'all' ? 'all' : +e.target.value; draw(); } }, h('option', { value: 'all', selected: year === 'all' }, 'Gesamt'), years.map(y => h('option', { value: y, selected: y === year }, y)));
     const ss = h('select', { 'aria-label': 'Sportart', onchange: e => { sport = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Sportarten'), h('option', { value: 'grp:ski', selected: sport === 'grp:ski' }, 'Ski (alle Arten)'), Sports.list.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
-    if (tab !== 'ziele' && tab !== 'fitness') body.append(h('div', { class: 'row' }, sel, ss));      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
+    if (tab === 'vergleich') body.append(h('div', { class: 'row' }, ss));      // 2.13.0: der Vergleich wählt seine zwei Jahre selbst; die Sportart gilt
+    else if (tab !== 'ziele' && tab !== 'fitness') body.append(h('div', { class: 'row' }, sel, ss));      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && Sports.passt(sport, t.sport));
-    body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Bestwerte'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele'], ['fitness', 'Fitness']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
+    body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Bestwerte'], ['vergleich', 'Vergleich'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele'], ['fitness', 'Fitness']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
     const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
     if (tab !== 'ueber') { const r = Ausw[tab](body, ts, { all, year, sport }); return r; }
     if (!ts.length) { body.append(UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' })); return; }

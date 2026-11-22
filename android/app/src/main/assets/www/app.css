@@ -586,3 +586,26 @@ img.tile-off{visibility:hidden}
 .tb-vor img:not([src]){visibility:hidden}
 .tb-ctl{display:flex;flex-direction:column;gap:8px;margin:8px 0}
 .tb-btns{margin-top:8px}
+
+/* ---------- 2.13.0 Statistik: Jahresvergleich und Bestwerte je Sportart ---------- */
+.vgl-jahre{gap:12px;margin:4px 0 10px}
+.vgl-l{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;font-size:.84rem;color:var(--muted);font-weight:500}
+.vgl-l select{width:100%}
+.vgl-diff{display:flex;flex-direction:column;margin:14px 0 6px}
+.vgl-diff b{font-family:var(--d);font-size:1.6rem;line-height:1.15;color:var(--ink)}
+.vcw{margin:12px 0 4px}
+.vchart{display:block;width:100%;height:auto;overflow:visible}
+.vchart .vt{font:500 11px var(--b);fill:var(--muted)}
+.vchart .vy{font:600 11px var(--b);fill:var(--ink)}
+.vchart .va{stroke:var(--acc);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.vchart .vb{stroke:var(--mark);stroke-width:2;stroke-dasharray:5 4;stroke-linejoin:round}
+.vchart .va-e{fill:var(--acc);stroke:var(--card);stroke-width:2}
+.vchart .vb-e{fill:var(--mark);stroke:var(--card);stroke-width:2}
+.vchart .vcur{stroke:var(--edge);stroke-width:1}
+.vchart .vh{cursor:pointer}
+.vleg{display:flex;gap:16px;flex-wrap:wrap;font-size:.84rem;color:var(--ink);font-weight:500}
+.vleg span{display:inline-flex;align-items:center;gap:6px}
+.vleg i{display:inline-block;width:22px;height:0;border-top:3px solid var(--acc)}
+.vleg i.vb-s{border-top:2px dashed var(--mark)}
+.vread{color:var(--ink);min-height:1.5em;margin:6px 0 0}
+.bw-mehr{color:var(--muted)}

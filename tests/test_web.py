@@ -3051,6 +3051,51 @@ def teilen_2130(pg):
           document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
+def statistik_2130(pg):
+    """2.13.0 B: Statistik → Vergleich (zwei Jahre wählbar, Kennzahl, Differenz-Zeile, Linien aufsummiert mit Legende, Achse und Beschriftung für Screenreader,
+    Tabelle, Sportart-Filter, Leerzustand) und „Bestwerte je Sportart“ als Rangliste (Beste / Beste drei, Tempo). Platz bei 360–430 px und 130 % Schrift."""
+    ids = ["vg1", "vg2", "vg3", "vg4", "vg5", "vg6"]
+    try:
+        pg.evaluate("""async () => { const d = (y, m, dd) => new Date(y, m - 1, dd, 10).getTime();
+          const T = [['vg1', 'hike', d(2016, 1, 10), 10000, 300, 7200, 6000, 1200], ['vg2', 'hike', d(2016, 3, 5), 20000, 900, 21600, 18000, 2400], ['vg3', 'bike', d(2016, 5, 1), 30000, 400, 7200, 6000, 800],
+            ['vg4', 'hike', d(2015, 2, 2), 25000, 1200, 28800, 25000, 2100], ['vg5', 'bike', d(2015, 6, 2), 50000, 600, 9000, 8000, 700], ['vg6', 'hike', d(2015, 8, 2), 5000, 100, 3600, 3000, 900]];
+          for (const [id, sport, start, dist, up, dur, moving, maxAlt] of T) await DB.put('tours', { id, name: 'Vergleich ' + id, sport, start, end: start + dur * 1000, dist, up, down: up, dur, moving, maxAlt, src: 'file', status: 'done' });
+          Tours.invalidate(); await Set_.set('bestN', 1); Ausw.vgl = { a: 2016, b: 2015, m: 'dist' }; }""")
+        go(pg, "#/stats", ".chips")
+        pg.click(".chips .chip:has-text('Vergleich')"); pg.wait_for_selector("#vgl-diff")
+        assert pg.locator("select[aria-label=Zeitraum]").count() == 0 and pg.locator("select[aria-label=Sportart]").count() == 1, "eigene Jahre, Sportart bleibt"
+        assert pg.input_value("#vgl-a") == "2016" and pg.input_value("#vgl-b") == "2015"
+        d = pg.inner_text("#vgl-diff"); assert d.startswith("−25 % Strecke") and "2016: 60,0 km" in d and "2015: 80,0 km" in d, d
+        f = pg.inner_text("#vgl .facts"); assert "Touren" in f and "±0 Touren" in f and "Aufstieg" in f and "−300 m (−16 %)" in f, f
+        lab = pg.get_attribute("#vgl-chart svg", "aria-label"); assert lab.startswith("Strecke aufsummiert je Monat. 2016: Januar 10,0 km, Februar 10,0 km, März 30,0 km") and "Dezember 60,0 km" in lab and "2015: Januar 0 m" in lab, lab
+        assert pg.locator("#vgl-chart polyline.va").count() == 1 and pg.locator("#vgl-chart polyline.vb").count() == 1 and "2016" in pg.inner_text("#vgl-chart .vleg") and "2015" in pg.inner_text("#vgl-chart .vleg")
+        yt = pg.evaluate("[...document.querySelectorAll('#vgl-chart text.vy')].map(e => e.textContent)"); assert yt == ["2015", "2016"], yt
+        pg.locator("#vgl-chart rect.vh").nth(2).click(); assert pg.inner_text("#vgl-wert") == "März: 2016 30,0 km · 2015 25,0 km", pg.inner_text("#vgl-wert")
+        pg.click("#vgl-tabelle summary"); assert pg.locator("#vgl-tabelle tbody tr").count() == 12 and "30,0 km" in pg.inner_text("#vgl-tabelle tbody tr:nth-child(3)")
+        # Kennzahl wechseln, Sportart-Filter
+        pg.click("#vgl .seg button:has-text('Zeit')"); d = pg.inner_text("#vgl-diff"); assert d.startswith("−17 % Zeit") and "2016: 8:20 h" in d, d
+        pg.click("#vgl .seg button:has-text('Touren')"); assert pg.inner_text("#vgl-diff").startswith("±0 % Touren")
+        pg.click("#vgl .seg button:has-text('Strecke')")
+        pg.select_option("select[aria-label=Sportart]", "hike"); pg.wait_for_selector("#vgl-diff"); d = pg.inner_text("#vgl-diff"); assert d.startswith("±0 % Strecke") and "2016: 30,0 km" in d, d
+        pg.select_option("select[aria-label=Sportart]", "run"); pg.wait_for_selector("#vgl .empty"); assert "Keine Touren in 2016 und 2015" in pg.inner_text("#vgl .empty")
+        pg.select_option("select[aria-label=Sportart]", "")
+        # Jahr wählen: 2015 gegen 2014 (2014 ohne Touren) → „neu“
+        pg.wait_for_selector("#vgl-a"); pg.select_option("#vgl-a", "2015"); pg.select_option("#vgl-b", "2014"); d = pg.inner_text("#vgl-diff"); assert d.startswith("Strecke: neu in 2015"), d
+        pg.select_option("#vgl-a", "2016"); pg.select_option("#vgl-b", "2015")
+        bad = layout_check(pg, ["#/stats/vergleich"])
+        # Bestwerte je Sportart: Beste / Beste drei, Tempo
+        go(pg, "#/stats/rekorde", "#bw-sport")
+        pg.select_option("select[aria-label=Zeitraum]", "all"); pg.wait_for_selector("#bw-sport")
+        hs = pg.locator("#bw-sport h3.sub[data-sport]").all_inner_texts(); assert any("Wandern" in x for x in hs) and any("Tourenrad" in x for x in hs), hs
+        assert pg.locator("#bw-sport .bw-mehr").count() == 0 and pg.locator("#bw-sport a[data-m=tempo]").count() >= 1
+        pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_selector("#bw-sport .bw-mehr")
+        assert "Platz 2 und 3" in pg.inner_text("#bw-sport")
+        bad += layout_check(pg, ["#/stats/rekorde"], widths=((360, 100), (360, 130)))
+        return bad
+    finally:
+        pg.evaluate("""async ids => { for (const id of ids) await DB.del('tours', id); Tours.invalidate(); await Set_.set('bestN', 1); Ausw.vgl = { a: null, b: null, m: 'dist' }; }""", ids)
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -3708,6 +3753,7 @@ def main():
         fotoort_2120(pg)
         video_2120(pg)
         tb_bad = teilen_2130(pg)
+        st_bad = statistik_2130(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -3736,6 +3782,7 @@ def main():
         bad += jahr_bad
         bad += fu_bad
         bad += tb_bad
+        bad += st_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
