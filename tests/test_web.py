@@ -562,6 +562,73 @@ MD_MOCK = """() => {
   };
 }"""
 
+def rettung_2120(pg):
+    """2.12.0 A: unterbrochene Aufzeichnung (Hülle meldet interrupted) – Hinweis auf Start und im Aufnahme-Reiter, Fortsetzen (bis 12 h),
+    Dienst kommt doch zurück, Als Tour speichern, Verwerfen mit Rückfrage; Akku-Hinweis in den Einstellungen."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    t0 = 1763790000000
+    unterbrochen = """([alt, kann]) => { const now = Date.now(); Object.assign(window.__rec, { state: 'recording', interrupted: true, can_resume: kann, start: now - alt - 3600000,
+      last_ts: now - alt, count: 1234, dist_m: 12345, active_s: 3600, lat: 47.5, lon: 11.2, fix_age_s: -1, unsent: false }); }"""
+    pg.evaluate("""() => { window.__akkuFrei = false; window.__akkuAuf = 0; window.__bat0 = MTApp.openBatterySettings;
+      MTApp.openBatterySettings = () => { window.__akkuAuf++; }; MTApp.batteryUnrestricted = () => window.__akkuFrei;
+      MTApp.resumeInterrupted = () => { if (!window.__rec.can_resume) return false; window.__rec.interrupted = false; window.__rec.fix_age_s = 1; window.__resumed = (window.__resumed || 0) + 1; return true; }; }""")
+    tid = None
+    try:
+        # 1. Startseite: deutlicher Hinweis mit Datum, Punkten, Strecke; drei Knöpfe
+        pg.evaluate(unterbrochen, [25 * 60000, True])
+        go(pg, "#/start", "#recrescue")
+        txt = pg.inner_text("#rr-txt")
+        assert txt.startswith("Aufnahme vom ") and "wurde unterbrochen (1.234 Punkte, 12,3 km)" in txt, txt
+        assert "vor 25 Minuten" in pg.inner_text("#rr-sub") and "die Lücke markiert" in pg.inner_text("#rr-sub"), pg.inner_text("#rr-sub")
+        assert pg.is_visible("#rr-weiter") and pg.is_visible("#rr-save") and pg.is_visible("#rr-drop")
+        assert "läuft" not in pg.inner_text("#startrec"), "unterbrochen ist keine laufende Aufnahme"
+        bad = layout_check(pg, ["#/start", "#/rec"], widths=((360, 100), (390, 100), (360, 130)))
+        assert not bad, "\n".join(bad)
+        go(pg, "#/start", "#recrescue")
+        # 2. Fortsetzen → Aufnahme läuft wieder (Hülle setzt fort)
+        leise(); pg.click("#rr-weiter")
+        pg.wait_for_function("location.hash === '#/rec'"); pg.wait_for_selector(".bigtime")
+        assert pg.evaluate("window.__resumed") == 1 and "Lücke ist markiert" in toast_text(pg, "Lücke")
+        # 3. Im Aufnahme-Reiter: läuft der Dienst nicht mehr, wechselt die Anzeige zum Hinweis; kommt er zurück (Neustart durch Android), wieder normal
+        pg.evaluate(unterbrochen, [3 * 3600000, True])
+        pg.wait_for_selector("#recrescue", timeout=10000)
+        assert pg.inner_text("header.top h1") == "Aufnahme unterbrochen" and "vor 3 Stunden" in pg.inner_text("#rr-sub")
+        assert "Akku" in pg.inner_text("#rr-why") and "eingeschränkt" in pg.inner_text("#rec-akku"), pg.inner_text("#rec-akku")
+        pg.click("#rec-akku"); assert pg.evaluate("window.__akkuAuf") == 1, "Akku-Einstellungen öffnen"
+        pg.evaluate("() => { window.__rec.interrupted = false; window.__rec.fix_age_s = 1; }")
+        pg.wait_for_selector(".bigtime", timeout=10000)
+        # 4. Älter als 12 Stunden: kein Fortsetzen, ehrlicher Satz
+        pg.evaluate(unterbrochen, [13 * 3600000, False])
+        go(pg, "#/start", "#recrescue")
+        assert pg.locator("#rr-weiter").count() == 0 and "nur bis 12 Stunden" in pg.inner_text("#rr-sub"), pg.inner_text("#rr-sub")
+        # 5. Verwerfen: erst Rückfrage (Abbrechen lässt alles), dann verwerfen
+        leise(); pg.click("#rr-drop"); pg.wait_for_selector(".sheet[aria-label='Unterbrochene Aufnahme verwerfen?']")
+        assert "Sicherungskopie" in pg.inner_text(".sheet[aria-label='Unterbrochene Aufnahme verwerfen?']")
+        pg.get_by_role("button", name="Abbrechen", exact=True).click(); pg.wait_for_selector(".sheet", state="detached")
+        assert pg.evaluate("__rec.state") == "recording" and pg.is_visible("#recrescue")
+        pg.click("#rr-drop"); pg.wait_for_selector(".sheet[aria-label='Unterbrochene Aufnahme verwerfen?']")
+        pg.click(".sheet[aria-label='Unterbrochene Aufnahme verwerfen?'] button.pri")
+        assert "verworfen" in toast_text(pg, "verworfen") and pg.evaluate("__rec.state") == "idle"
+        pg.wait_for_selector("#recrescue", state="detached")
+        # 6. Als Tour speichern (aus dem Aufnahme-Reiter): beendet in der Hülle und speichert gleich als Tour
+        pg.evaluate(unterbrochen, [40 * 60000, True])
+        pg.evaluate("g => { window.__gpx = g }", gpx(t0, n=30, lat=46.6, name=""))
+        go(pg, "#/rec", "#recrescue"); leise(); pg.click("#rr-save")
+        pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); tid = pg.evaluate("location.hash.split('/')[2]")
+        assert "Tour gespeichert" in toast_text(pg, "gespeichert") and pg.evaluate("__rec.state") == "idle"
+        assert pg.evaluate("sessionStorage.getItem('recAutoSave')") is None
+        # 7. Einstellungen: Abschnitt Aufzeichnung mit ehrlichem Satz, Stand und Knopf
+        go(pg, "#/settings", "#set-akku")
+        assert "kann das nicht selbst einstellen" in pg.inner_text("#set-akku-txt") and "eingeschränkt" in pg.inner_text("#set-akku-stand")
+        pg.click("#set-akku"); assert pg.evaluate("window.__akkuAuf") == 2
+        pg.evaluate("window.__akkuFrei = true; window.dispatchEvent(new Event('mtresume'))")
+        pg.wait_for_function("() => document.querySelector('#set-akku-stand').textContent.includes('nicht eingeschränkt ✓')")
+    finally:
+        pg.evaluate("""async id => { MTApp.openBatterySettings = window.__bat0; delete MTApp.batteryUnrestricted; delete MTApp.resumeInterrupted;
+          Object.assign(window.__rec, { state: 'idle', unsent: false, interrupted: false, can_resume: false }); delete window.__rec.last_ts; window.__gpx = '';
+          try { sessionStorage.removeItem('recAutoSave'); } catch (e) {} if (id) await Tours.remove(id); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", tid)
+
+
 def sicherung_2100(pg):
     """2.10.0: Sicherung der Fotos und Videos (Ordner wählen, Sichern mit Fortschritt und Abbrechen, Wiederherstellen aus mehreren ZIPs),
     eine Erinnerungszeile für Touren und Medien (erscheint, verschwindet, „Später“), Einstellungen (Schwelle, automatisch in Ordner) gespeichert."""
@@ -3357,6 +3424,7 @@ def main():
         videos_290(pg)
         sicherung_2100(pg)
         offline_2110(pg)
+        rettung_2120(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

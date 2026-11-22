@@ -954,6 +954,22 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(O.name('  Karwendel\n Runde ') === 'Karwendel Runde' && O.name('', 'X') === 'X' && O.name('x'.repeat(80)).length === 60, 'Namen');
 }
 
+/* ---------- 2.12.0 Unterbrochene Aufzeichnung (calc-aufnahme.js): gleiche 12-Stunden-Regel wie RecoveryPlanCheck.java, Hinweistext ---------- */
+{
+  const AU = require(W + 'calc-aufnahme.js'), H = 3600000, now = day(2026, 11, 22, 18);
+  ok(AU.FORTSETZEN_MAX_MS === 12 * H && AU.UHR_SPIEL_MS === 10 * 60000, 'Grenzen wie in der Hülle');
+  ok(AU.fortsetzenErlaubt(now - 5 * 60000, now) && AU.fortsetzenErlaubt(now - (12 * H - 60000), now), 'bis knapp 12 h');
+  ok(!AU.fortsetzenErlaubt(now - 12 * H, now) && !AU.fortsetzenErlaubt(now - 30 * H, now), 'ab 12 h nicht mehr');
+  ok(AU.fortsetzenErlaubt(now + 5 * 60000, now) && !AU.fortsetzenErlaubt(now + H, now) && !AU.fortsetzenErlaubt(0, now) && !AU.fortsetzenErlaubt(null, now), 'Uhr zurück, ohne Zeit');
+  ok(AU.unterbrochen({ state: 'recording', interrupted: true }) && !AU.unterbrochen({ state: 'recording', interrupted: false }) && !AU.unterbrochen({ state: 'recording' }), 'unterbrochen nur mit Meldung der Hülle');
+  ok(!AU.unterbrochen({ state: 'paused', interrupted: true }) && !AU.unterbrochen(null) && !AU.unterbrochen({ state: 'idle' }), 'Pause/nichts ist nicht unterbrochen');
+  const z = AU.zeile({ start: day(2026, 11, 22, 9) + 14 * 60000, count: 1234, dist_m: 12345 });
+  ok(z === 'Aufnahme vom 22.11.2026, 09:14 Uhr wurde unterbrochen (1.234 Punkte, 12,3 km)', z);
+  ok(AU.zeile({ start: day(2026, 3, 29, 3), count: 1, dist_m: 40 }) === 'Aufnahme vom 29.03.2026, 03:00 Uhr wurde unterbrochen (1 Punkt, 0,0 km)', 'Sommerzeit-Tag, ein Punkt');
+  ok(AU.alter(now - 20000, now) === 'gerade eben' && AU.alter(now - 60000, now) === 'vor 1 Minute' && AU.alter(now - 25 * 60000, now) === 'vor 25 Minuten', 'Alter Minuten');
+  ok(AU.alter(now - 3 * H, now) === 'vor 3 Stunden' && AU.alter(now - H, now) === 'vor 1 Stunde' && AU.alter(now - 50 * H, now) === 'vor 2 Tagen', 'Alter Stunden/Tage');
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';

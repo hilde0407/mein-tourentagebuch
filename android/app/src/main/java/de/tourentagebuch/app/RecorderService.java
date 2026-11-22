@@ -28,6 +28,11 @@ public class RecorderService extends Service implements LocationListener {
     private static final String CHANNEL = "rec";
     private static final int NID = 42;
 
+    /** 2.12.0: hört dieser Prozess gerade auf GPS (Dienst läuft und Standort-Abfrage ist an)? Grundlage für „unterbrochen“. */
+    static volatile boolean alive = false;
+    /** 2.12.0: gibt es in diesem Prozess gerade eine Instanz des Dienstes (auch ohne Standort-Abfrage)? */
+    static volatile boolean running = false;
+
     private LocationManager lm;
     private PowerManager.WakeLock wl;
     private long lastNotify = 0;
@@ -36,6 +41,12 @@ public class RecorderService extends Service implements LocationListener {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        running = true;
     }
 
     @Override
@@ -101,6 +112,7 @@ public class RecorderService extends Service implements LocationListener {
         try {
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, r.minTimeMs(), r.minDistM(), this, Looper.getMainLooper());
             listening = true;
+            alive = true;
         } catch (SecurityException e) {
             AppLog.log("Keine Standort-Berechtigung");
             stopSelf();
@@ -121,6 +133,7 @@ public class RecorderService extends Service implements LocationListener {
             try { lm.removeUpdates(this); } catch (SecurityException e) { /* nichts zu tun */ }
         }
         listening = false;
+        alive = false;
         if (wl != null && wl.isHeld()) wl.release();
         wl = null;
     }
@@ -128,6 +141,7 @@ public class RecorderService extends Service implements LocationListener {
     @Override
     public void onDestroy() {
         unlisten();
+        running = false;
         Navi.shutdown();
         super.onDestroy();
     }

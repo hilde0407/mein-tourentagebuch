@@ -296,6 +296,11 @@ Views['/settings'] = async root => {
     h('p', { class: 'muted small' }, 'Ab Android 10 im Ordner „Movies/Tourentagebuch“, ohne zusätzliche Berechtigung. Auf älteren Handys wird keine Kopie angelegt. Das Video bleibt in jedem Fall auch in der App.'),
     UI.toggle('HEVC-Videos beim Aufnehmen automatisch umwandeln', !!Set_.get('videoAuto'), async v => { await Set_.set('videoAuto', !!v); Videos.prefs(); }, { id: 'set-vauto' }),
     h('p', { class: 'muted small' }, 'Aus: Videos bleiben, wie die Kamera sie speichert; der Player der App spielt sie ab. Umwandeln in H.264 geht jederzeit unter Foto-Quellen oder in den Details eines Videos.'),
+    // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
+    h('h3', { id: 'set-rec-h' }, 'Aufzeichnung'),
+    h('p', { class: 'muted small', id: 'set-akku-txt' }, 'Manche Handys beenden Apps im Hintergrund, um Akku zu sparen – dann bricht eine lange Aufnahme ab. Öffne die Akku-Einstellungen, suche „Tourentagebuch“ und wähle „Nicht eingeschränkt“ (je nach Handy auch „Nicht optimieren“). Die App kann das nicht selbst einstellen. Bricht eine Aufnahme trotzdem ab, sind die Punkte bis dahin gesichert, und die App bietet beim nächsten Öffnen Fortsetzen oder Speichern an.'),
+    window.MTApp ? h('p', { class: 'muted small', id: 'set-akku-stand' }, RecRescue.akkuZeile()) : null,
+    window.MTApp ? h('button', { class: 'btn', id: 'set-akku', onclick: () => MTApp.openBatterySettings() }, 'Akku-Einstellungen öffnen') : h('p', { class: 'muted small' }, 'Nur in der Android-App.'),
     h('h3', null, 'Heimatort'), homeBox(),
     h('h3', null, 'Puls'), inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
     h('p', { class: 'muted small' }, 'Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),

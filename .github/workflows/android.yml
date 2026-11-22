@@ -30,13 +30,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Tests (Parser, Aufzeichnungslogik, Wegansagen, Video-Umwandlung, Foto-Größen, Medien-Sicherung, Offline-Karten)
+      - name: Tests (Parser, Aufzeichnungslogik, Wiederherstellung, Wegansagen, Video-Umwandlung, Foto-Größen, Medien-Sicherung, Offline-Karten)
         run: |
           node tests/test_parse.js
           node tests/test_calc.js
           mkdir -p /tmp/jc
-          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/TrackStore.java tests/android/TrackStoreCheck.java
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/TrackStore.java android/app/src/main/java/de/tourentagebuch/app/RecoveryPlan.java tests/android/TrackStoreCheck.java
           java -cp /tmp/jc TrackStoreCheck
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/TrackStore.java android/app/src/main/java/de/tourentagebuch/app/RecoveryPlan.java tests/android/RecoveryPlanCheck.java
+          java -cp /tmp/jc RecoveryPlanCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/Guide.java tests/android/GuideCheck.java
           java -cp /tmp/jc GuideCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/UploadRoute.java tests/android/UploadServerCheck.java

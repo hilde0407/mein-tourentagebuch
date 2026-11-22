@@ -52,6 +52,51 @@ const RecRoute = {
   },
 };
 
+/** 2.12.0: Unterbrochene Aufzeichnung (App abgestürzt, vom System beendet, Akku leer, Handy neu gestartet). Die Hülle hat die Punkte laufend
+    gesichert (rec_current.csv + rec_meta.txt) und meldet „interrupted“, wenn sie aufzeichnen soll, der Dienst aber nicht läuft.
+    Hinweis auf der Startseite und im Aufnahme-Reiter: Fortsetzen (bis 12 h, Lücke wird markiert) / Als Tour speichern / Verwerfen (mit Rückfrage).
+    Nichts wird automatisch gelöscht. */
+const RecRescue = {
+  status() { try { return window.MTApp ? JSON.parse(MTApp.status()) : null; } catch (e) { return null; } },
+  aktiv(st) { return AufnahmeCalc.unterbrochen(st || RecRescue.status()); },
+  box(st) {
+    const kann = !!st.can_resume && !!(window.MTApp && MTApp.resumeInterrupted);
+    const sub = 'Letzter Punkt ' + AufnahmeCalc.alter(+st.last_ts || +st.start || Date.now(), Date.now()) + '. Alles bis dahin ist gesichert.'
+      + (kann ? ' Beim Fortsetzen wird die Lücke markiert.' : ' Fortsetzen geht nur bis 12 Stunden danach – speichere sie als Tour.');
+    return UI.banner([h('b', { id: 'rr-txt' }, AufnahmeCalc.zeile(st)), h('div', { class: 'muted small', id: 'rr-sub' }, sub)], [
+      kann ? h('button', { class: 'btn sm pri', id: 'rr-weiter', onclick: RecRescue.weiter }, 'Fortsetzen') : null,
+      h('button', { class: 'btn sm', id: 'rr-save', onclick: RecRescue.speichern }, 'Als Tour speichern'),
+      h('button', { class: 'btn sm danger', id: 'rr-drop', onclick: () => RecRescue.verwerfen(st) }, 'Verwerfen')], { id: 'recrescue' });
+  },
+  /** Akku-Optimierung: Stand, soweit die Hülle ihn kennt (ab 2.12.0), sonst nur der Rat. */
+  akkuZeile() {
+    let frei = null;
+    try { if (window.MTApp && MTApp.batteryUnrestricted) frei = !!MTApp.batteryUnrestricted(); } catch (e) { frei = null; }
+    return frei === true ? 'Akkunutzung für diese App: nicht eingeschränkt ✓' : frei === false ? 'Akkunutzung ist eingeschränkt – für lange Touren „Nicht eingeschränkt“ wählen' : 'Für lange Touren die Akku-Optimierung dieser App ausschalten';
+  },
+  weiter() {
+    if (!window.MTApp.hasPermission()) { MTApp.requestPermission(); return; }
+    let ok = false;
+    try { ok = MTApp.resumeInterrupted(); } catch (e) { ok = false; }
+    if (!ok) { toast('Fortsetzen ist nicht mehr möglich. Speichere die Aufnahme als Tour.', 6000); Nav.render(); return; }
+    toast('Aufnahme läuft weiter – die Lücke ist markiert.', 4000);
+    if (Nav.cur === '/rec') setTimeout(() => Nav.render(), 400); else Nav.go('/rec');
+  },
+  speichern() {
+    const st = RecRescue.status() || {};
+    try { sessionStorage.setItem('recAutoSave', '1'); } catch (e) { /* egal */ }
+    MTApp.stopRecording(st.name || '');
+    if (Nav.cur === '/rec') Nav.render(); else Nav.go('/rec');
+  },
+  async verwerfen(st) {
+    if (!await confirmBox('Unterbrochene Aufnahme verwerfen?', 'Die Aufnahme wird gelöscht. Eine Sicherungskopie bleibt unter „Gesicherte Aufzeichnungen“ (die letzten zehn).', 'Verwerfen')) return;
+    await RecRoute.done(st.start);
+    MTApp.discardRecording();
+    toast('Aufnahme verworfen – die Sicherungskopie bleibt.', 4000);
+    Nav.render();
+  },
+};
+
 /** Kurzes Rückmelde-Ruckeln (Hülle; ohne Berechtigung, über die Ansicht). Im Browser: nichts. */
 function recHaptic() { try { if (window.MTApp && MTApp.haptic) MTApp.haptic(); } catch (e) { /* egal */ } }
 
@@ -144,6 +189,7 @@ Views['/rec'] = async root => {
 
   async function idle(st) {
     stop_(); box.innerHTML = '';
+    if (st.state === 'finished' && sessionStorage.getItem('recAutoSave')) { sessionStorage.removeItem('recAutoSave'); return saveFinished(); }      // 2.12.0: „Als Tour speichern“ aus dem Hinweis
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) return unsaved(st);
     let sport = sessionStorage.getItem('recSport') || 'hike';
     const name = h('input', { type: 'text', placeholder: 'z. B. Hüttenrunde', value: sessionStorage.getItem('recName') || '' });
@@ -204,7 +250,7 @@ Views['/rec'] = async root => {
       UI.section('Außerdem', UI.list([
         UI.row({ icon: 'route', title: 'Tour planen', sub: 'Route zeichnen und mit Ansagen nachgehen', href: '#/plan', id: 'goplan' }),
         UI.row({ icon: 'save', title: 'Gesicherte Aufzeichnungen', sub: 'Die letzten zehn Aufzeichnungen zurückholen', onclick: backups, id: 'baks' }),
-        UI.row({ icon: 'battery', title: 'Akku-Einstellungen', sub: 'Für lange Touren die Akku-Optimierung dieser App ausschalten', onclick: () => MTApp.openBatterySettings() })]))));
+        UI.row({ icon: 'battery', title: 'Akku-Einstellungen', sub: RecRescue.akkuZeile(), onclick: () => MTApp.openBatterySettings(), id: 'rec-akku' })]))));
   }
 
   /** Die letzten Aufzeichnungen liegen als Sicherung auf dem Handy – hier lassen sie sich als Tour zurückholen. */
@@ -321,6 +367,7 @@ Views['/rec'] = async root => {
     async function tick() {
       const s = stat();
       if (s.state === 'idle') return Nav.render();
+      if (AufnahmeCalc.unterbrochen(s)) return Nav.render();      // 2.12.0: Dienst läuft nicht mehr → Hinweis statt Anzeige
       if (s.state === 'finished') return Nav.render();
       st = s;
       big.textContent = F.clock(s.active_s);
@@ -402,7 +449,19 @@ Views['/rec'] = async root => {
       h('button', { class: 'btn danger', onclick: async () => { if (await confirmBox('Aufzeichnung verwerfen?', 'Sie wird gelöscht (eine Sicherungskopie bleibt auf dem Handy).', 'Verwerfen')) { await RecRoute.done(st.start); MTApp.discardRecording(); Nav.render(); } } }, 'Verwerfen')] })));
   }
 
+  /** 2.12.0: unterbrochen – Hinweis mit Fortsetzen / Speichern / Verwerfen; kommt der Dienst doch noch (Neustart durch Android), geht es normal weiter. */
+  function rescue(st) {
+    stop_(); box.innerHTML = '';
+    head.querySelector('h1').textContent = 'Aufnahme unterbrochen';
+    box.append(h('div', { class: 'pad' }, RecRescue.box(st),
+      h('p', { class: 'muted small', id: 'rr-why' }, 'Das passiert, wenn Android die App beendet (oft zum Akkusparen), der Akku leer war oder das Handy neu gestartet wurde. '
+        + 'Damit es seltener vorkommt: unten „Akku-Einstellungen“ öffnen und für diese App „Nicht eingeschränkt“ wählen.'),
+      UI.list([UI.row({ icon: 'battery', title: 'Akku-Einstellungen', sub: RecRescue.akkuZeile(), onclick: () => MTApp.openBatterySettings(), id: 'rec-akku' })])));
+    timer = setInterval(() => { const s = stat(); if (!AufnahmeCalc.unterbrochen(s)) Nav.render(); }, 2000);
+  }
+
   const st = stat();
-  if (st.state === 'recording' || st.state === 'paused') await active(st); else await idle(st);
+  if (AufnahmeCalc.unterbrochen(st)) rescue(st);
+  else if (st.state === 'recording' || st.state === 'paused') await active(st); else await idle(st);
   return stop_;
 };

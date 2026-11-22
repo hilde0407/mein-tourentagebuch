@@ -3,7 +3,6 @@ package de.tourentagebuch.app;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -33,6 +32,10 @@ public class TrackStore {
     private double refAlt = Double.NaN;
     private double a1 = Double.NaN, a2 = Double.NaN;   // gleitender Mittelwert über 3 Höhenwerte
     private long activeMs = 0;                          // reine Bewegungszeit ohne Pausen
+    private boolean replay = false;                     // 2.12.0: beim Laden nichts erneut in die Datei schreiben
+    private int unsynced = 0;                           // Punkte seit dem letzten Erzwingen auf den Datenträger
+    /** 2.12.0: alle so viele Punkte wird die Datei auf den Datenträger gezwungen (fsync) – schützt auch bei leerem Akku. */
+    public static final int SYNC_EVERY = 10;
 
     public TrackStore(File file) {
         this.file = file;
@@ -66,7 +69,7 @@ public class TrackStore {
         Pt p = new Pt(t, lat, lon, alt, seg || last == null);
         pts.add(p);
         nextNewSeg = false;
-        append(p);
+        if (!replay) append(p);
         return true;
     }
 
@@ -133,29 +136,43 @@ public class TrackStore {
     private void append(Pt p) {
         if (file == null) return;
         try {
-            FileWriter w = new FileWriter(file, true);
+            java.io.FileOutputStream o = new java.io.FileOutputStream(file, true);
             try {
-                w.write(String.format(Locale.US, "%d,%.6f,%.6f,%s,%d\n", p.t, p.lat, p.lon,
-                        Double.isNaN(p.alt) ? "" : String.format(Locale.US, "%.1f", p.alt), p.newSeg ? 1 : 0));
+                o.write(line(p).getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                if (++unsynced >= SYNC_EVERY) {
+                    unsynced = 0;
+                    try { o.getFD().sync(); } catch (IOException e) { /* nicht überall möglich */ }
+                }
             } finally {
-                w.close();
+                o.close();
             }
         } catch (IOException e) {
             // Speichern ist Zusatz – die Aufzeichnung im Speicher läuft weiter
         }
     }
 
-    /** Punkte aus der Datei wiederherstellen (nach Absturz oder Neustart der App). Nach dem Laden beginnt ein neues Segment. */
+    /** Eine Zeile der Datei: „t,lat,lon,alt,seg“ mit Zeilenende (das Zeilenende zeigt: Zeile vollständig). */
+    public static String line(Pt p) {
+        return String.format(Locale.US, "%d,%.6f,%.6f,%s,%d\n", p.t, p.lat, p.lon,
+                Double.isNaN(p.alt) ? "" : String.format(Locale.US, "%.1f", p.alt), p.newSeg ? 1 : 0);
+    }
+
+    /**
+     * Punkte aus der Datei wiederherstellen (nach Absturz oder Neustart der App). Nach dem Laden beginnt ein neues Segment.
+     * 2.12.0: Die Datei bleibt dabei unangetastet (bis 2.11.0 wurde sie gelöscht und neu geschrieben – ein Prozessende genau dann
+     * hätte Punkte gekostet). Nur ein abgerissenes Ende (Zeile ohne Zeilenumbruch) wird abgeschnitten; kaputte Zeilen werden übergangen.
+     */
     public synchronized void load() {
         pts.clear();
         dist = up = down = 0;
         activeMs = 0;
         refAlt = Double.NaN; a1 = Double.NaN; a2 = Double.NaN;
+        nextNewSeg = true;
         if (file == null || !file.exists()) return;
-        File keep = file;
+        RecoveryPlan.repairTail(file);
         List<String[]> rows = new ArrayList<String[]>();
         try {
-            BufferedReader r = new BufferedReader(new FileReader(keep));
+            BufferedReader r = new BufferedReader(new FileReader(file));
             try {
                 String line;
                 while ((line = r.readLine()) != null) {
@@ -168,16 +185,19 @@ public class TrackStore {
         } catch (IOException e) {
             return;
         }
-        // Datei neu schreiben, indem add() die Punkte erneut verarbeitet (stellt Strecke und Aufstieg wieder her)
-        keep.delete();
-        for (String[] f : rows) {
-            try {
-                if ("1".equals(f[4])) nextNewSeg = true;
-                double alt = f[3].length() == 0 ? Double.NaN : Double.parseDouble(f[3]);
-                add(Long.parseLong(f[0]), Double.parseDouble(f[1]), Double.parseDouble(f[2]), alt, 0f);
-            } catch (NumberFormatException e) {
-                // beschädigte Zeile überspringen
+        replay = true;
+        try {
+            for (String[] f : rows) {
+                try {
+                    if ("1".equals(f[4])) nextNewSeg = true;
+                    double alt = f[3].length() == 0 ? Double.NaN : Double.parseDouble(f[3]);
+                    add(Long.parseLong(f[0]), Double.parseDouble(f[1]), Double.parseDouble(f[2]), alt, 0f);
+                } catch (NumberFormatException e) {
+                    // beschädigte Zeile überspringen
+                }
             }
+        } finally {
+            replay = false;
         }
         nextNewSeg = true;
     }

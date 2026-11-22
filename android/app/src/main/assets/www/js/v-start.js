@@ -12,7 +12,7 @@ const Home = {
   shown(b) { if (!b.meta) return true; const v = (Set_.get('homeShow') || {})[b.id]; return v == null ? !!b.meta.def : !!v; },
 
   /** Läuft gerade eine Aufzeichnung (oder ist sie pausiert)? */
-  live() { try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; return st.state === 'recording' || st.state === 'paused'; } catch (e) { return false; } },
+  live() { try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; return (st.state === 'recording' || st.state === 'paused') && !AufnahmeCalc.unterbrochen(st); } catch (e) { return false; } },
   /** Höhenprofil als Fläche (für den Aufmacher ohne Foto und Karte). */
   eleSvg(pts) {
     const src = pts.filter(p => p.ele != null && !isNaN(p.ele));
@@ -60,6 +60,12 @@ Home.add('hero', 0, async ({ all }) => {
       h('h2', null, t.name),
       h('span', { class: 'hero-k' }, UI.num(F.km(t.dist)), UI.num('↑ ' + F.m(t.up)), t.dur ? UI.num(F.dur(t.dur)) : null)));
   return hero;
+});
+
+/* ---- 2.12.0: Unterbrochene Aufzeichnung – deutlicher Hinweis gleich unter dem Aufmacher (Fortsetzen / Als Tour speichern / Verwerfen) ---- */
+Home.add('recrescue', 5, async () => {
+  const st = RecRescue.status();
+  return st && AufnahmeCalc.unterbrochen(st) ? RecRescue.box(st) : null;
 });
 
 /* ---- Die drei Hauptaktionen ---- */

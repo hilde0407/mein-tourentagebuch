@@ -109,6 +109,7 @@ async function boot() {
   window.addEventListener('mtphoto', handlePhotoQueue);
   window.addEventListener('mtvideo', () => Videos.poll());      // 2.7.1: Video-Umwandlung im Hintergrund meldet sich
   window.addEventListener('mtresume', () => Pano.check());      // 2.8.0: zurück aus der Kamera-App – Panorama übernehmen?
+  window.addEventListener('mtresume', () => { const e = $('#set-akku-stand'), r = $('#rec-akku small'); if (e) e.textContent = RecRescue.akkuZeile(); if (r) r.textContent = RecRescue.akkuZeile(); });      // 2.12.0: zurück aus den Akku-Einstellungen
   await Nav.render();
   setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
   setTimeout(autoAbgleich, 6000);
@@ -171,6 +172,7 @@ async function checkUnsaved() {
   try {
     const st = JSON.parse(MTApp.status());
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) { if (Nav.cur !== '/rec') { toast('Es gibt eine noch nicht gespeicherte Aufzeichnung.', 6000); Nav.go('/rec'); } }
+    else if (AufnahmeCalc.unterbrochen(st)) { if (Nav.cur !== '/rec' && Nav.cur !== '/start') toast('Eine Aufnahme wurde unterbrochen – Hinweis auf der Startseite.', 6000); }      // 2.12.0: nicht wegspringen; Startseite und Aufnahme zeigen den Hinweis
     else if (st.state === 'recording' || st.state === 'paused') { if (Nav.cur !== '/rec') Nav.go('/rec'); }
   } catch (e) { /* ignorieren */ }
 }

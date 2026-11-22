@@ -232,6 +232,7 @@ public class MainActivity extends Activity {
                     try (InputStream in = new FileInputStream(f)) {
                         JSONObject m = Photos.importStream(getApplicationContext(), in, "Kamera.jpg", ts, la, lo, ts, "kamera");
                         queue("photoq", m);
+                        Recorder.get(this).noteMedia(m.optString("id"), ts);      // 2.12.0: Verweis in der Wiederherstellungsdatei
                         js("window.dispatchEvent(new Event('mtphoto'))");
                     } catch (Exception e) { AppLog.log("Kamera-Foto: " + e); }
                     f.delete();
@@ -251,6 +252,7 @@ public class MainActivity extends Activity {
                     try {
                         JSONObject m = Photos.importVideo(getApplicationContext(), f, ts, la, lo);
                         queue("photoq", m);
+                        Recorder.get(this).noteMedia(m.optString("id"), ts);      // 2.12.0: Verweis in der Wiederherstellungsdatei
                         js("window.dispatchEvent(new Event('mtphoto'))");
                         String vid = m.getString("id");
                         File vf = new File(Photos.dir(this), vid + ".mp4");
@@ -447,6 +449,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void pauseRecording() { Recorder.get(MainActivity.this).pause(); }
         @JavascriptInterface public void resumeRecording() { Recorder.get(MainActivity.this).resume(); }
         @JavascriptInterface public void stopRecording(String name) { Recorder.get(MainActivity.this).stop(name); }
+        /** 2.12.0: unterbrochene Aufzeichnung fortsetzen (Lücke wird markiert); false, wenn nicht unterbrochen oder älter als 12 Stunden. */
+        @JavascriptInterface public boolean resumeInterrupted() { return Recorder.get(MainActivity.this).resumeInterrupted(); }
+        /** 2.12.0: Ist die Akku-Optimierung für diese App aus („nicht eingeschränkt“)? Nur Abfrage, keine Berechtigung nötig. */
+        @JavascriptInterface public boolean batteryUnrestricted() {
+            try { return ((android.os.PowerManager) getSystemService(POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()); } catch (Exception e) { return false; }
+        }
         @JavascriptInterface public String status() { return Recorder.get(MainActivity.this).statusJson(); }
         @JavascriptInterface public String points(int max) { return Recorder.get(MainActivity.this).store().pointsJson(max); }
         @JavascriptInterface public String takeFinished() { return Recorder.get(MainActivity.this).finishedGpx(); }
