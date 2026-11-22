@@ -28,6 +28,16 @@ public class ImportService extends Service {
         } catch (Exception e) { AppLog.log("Import-Dienst: " + e); }
     }
 
+    /** 2.10.0: Fortschritt in der laufenden Benachrichtigung ändern, ohne den Dienst neu zu starten
+     *  (ein erneuter startForegroundService aus dem Hintergrund ist ab Android 12 nicht erlaubt). */
+    public static void update(Context c, String title, String text, int i, int n) {
+        try {
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            ensure(nm, c);
+            nm.notify(NID, base(c, title, text, i, n, true).build());
+        } catch (Exception e) { AppLog.log("Import-Dienst: " + e); }
+    }
+
     public static void stop(Context c, String doneText) {
         c.stopService(new Intent(c, ImportService.class));
         if (doneText != null && !doneText.isEmpty()) {

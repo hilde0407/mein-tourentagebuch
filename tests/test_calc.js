@@ -762,6 +762,63 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(V.speicher(null) === null && V.speicher('x') === null, 'ohne Angabe');
 }
 
+/* ---------- 2.10.0 Sicherung (calc-sicherung.js): Tage seit, eine Erinnerungszeile für Touren und Medien, Texte, Fortschritt, „einmal am Tag“ ---------- */
+{
+  const S = require(W + 'calc-sicherung.js'), D = 86400000, now = day(2026, 11, 22, 10);
+  ok(S.tageSeit(null, now) === null && S.tageSeit(0, now) === null && S.tageSeit(now - 3.9 * D, now) === 3 && S.tageSeit(now + 5000, now) === 0, 'Tage seit');
+  ok(S.groesse(0) === '0,0 MB' && S.groesse(419430) === '0,4 MB' && S.groesse(12.4 * 1048576) === '12 MB' && S.groesse(1.6 * 1073741824) === '1,6 GB', 'Größe ' + S.groesse(419430));
+  ok(S.neuZeile(5, 12 * 1048576, now - D) === '5 neue Dateien seit der letzten Medien-Sicherung (12 MB)', S.neuZeile(5, 12 * 1048576, now - D));
+  ok(S.neuZeile(1, 1048576, now - D) === '1 neue Datei seit der letzten Medien-Sicherung (1,0 MB)' && S.neuZeile(0, 0, now - D) === 'Keine neuen Dateien seit der letzten Medien-Sicherung', 'Einzahl / nichts neu');
+  ok(S.neuZeile(3, 3 * 1048576, null) === '3 Dateien noch nicht gesichert (3,0 MB)' && S.neuZeile(0, 0, null) === 'Keine Fotos oder Videos vorhanden', 'nie gesichert');
+  const E = o => S.erinnerung(Object.assign({ touren: 5, letzteTouren: now, medienNeu: 0, medienBytes: 0, letzteMedien: null, jetzt: now, tage: 14, spaeter: 0 }, o));
+  ok(!E({}).zeigen, 'alles frisch, keine neuen Medien: nichts');
+  // nur Touren (wie bis 2.9.1, gleiche Texte)
+  ok(E({ letzteTouren: null }).text === 'Noch keine Sicherung gemacht' && E({ letzteTouren: null }).art === 'touren', 'Touren nie gesichert');
+  ok(E({ letzteTouren: now - 23 * D }).text === 'Letzte Sicherung vor 23 Tagen' && !E({ letzteTouren: now - 14 * D }).zeigen && E({ letzteTouren: now - 14 * D - 60000 }).zeigen, 'Touren: Schwelle 14');
+  ok(!E({ touren: 0, letzteTouren: null }).zeigen, 'ohne Touren keine Touren-Zeile');
+  ok(E({ letzteTouren: now - 1.5 * D, tage: 1 }).text === 'Letzte Sicherung vor 1 Tag', 'Einzahl Tag');
+  // Gleiche Ergebnisse wie die alte Regel (calc-ziele.js) für alle Touren-Fälle
+  for (const [nT, last, tg, sn] of [[5, null, 14, 0], [0, null, 14, 0], [5, now - 14 * D, 14, 0], [5, now - 23 * D, 14, 0], [5, now - 8 * D, 7, 0], [5, now - 99 * D, 0, 0], [5, now - 30 * D, 14, now + 1000], [5, now - 30 * D, '14', 0], [5, now - 30 * D, '', 0]]) {
+    const a = Z.sicherungHinweis(nT, last, now, tg, sn), b = S.erinnerung({ touren: nT, letzteTouren: last, jetzt: now, tage: tg, spaeter: sn });
+    ok(a.zeigen === b.zeigen && (!a.zeigen || a.text === b.text), 'wie bisher: ' + JSON.stringify([nT, last && (now - last) / D, tg, !!sn]));
+  }
+  // nur Medien
+  const m1 = E({ medienNeu: 5, medienBytes: 12 * 1048576 });
+  ok(m1.zeigen && m1.art === 'medien' && m1.text === 'Fotos und Videos noch nie gesichert' && m1.sub.startsWith('5 Dateien noch nicht gesichert (12 MB)'), 'Medien nie gesichert: ' + JSON.stringify(m1));
+  const m2 = E({ medienNeu: 2, medienBytes: 2097152, letzteMedien: now - 20 * D });
+  ok(m2.art === 'medien' && m2.text === 'Fotos und Videos: letzte Sicherung vor 20 Tagen' && m2.sub.startsWith('2 neue Dateien seit der letzten Medien-Sicherung (2,0 MB)'), 'Medien 20 Tage: ' + m2.text);
+  ok(!E({ medienNeu: 0, letzteMedien: now - 99 * D }).zeigen, 'alte Medien-Sicherung, aber nichts Neues: nichts');
+  ok(!E({ medienNeu: 3, letzteMedien: now - 10 * D }).zeigen, 'Medien unter der Schwelle');
+  // beide fällig: die ältere; Gleichstand und „nie“ beider: Touren
+  ok(E({ letzteTouren: now - 30 * D, medienNeu: 1, letzteMedien: now - 20 * D }).art === 'touren', 'Touren älter');
+  ok(E({ letzteTouren: now - 20 * D, medienNeu: 1, letzteMedien: now - 30 * D }).art === 'medien', 'Medien älter');
+  ok(E({ letzteTouren: now - 20 * D, medienNeu: 1, letzteMedien: null }).art === 'medien', 'Medien nie: älter als jede Touren-Sicherung');
+  ok(E({ letzteTouren: null, medienNeu: 1, letzteMedien: null }).art === 'touren' && E({ letzteTouren: now - 20 * D, medienNeu: 1, letzteMedien: now - 20 * D }).art === 'touren', 'Gleichstand: Touren');
+  // Aus und „Später“ gelten für beide
+  ok(!E({ tage: 0, letzteTouren: null, medienNeu: 9 }).zeigen && !E({ tage: '', medienNeu: 9 }).zeigen, 'Erinnerung aus');
+  ok(!E({ spaeter: now + 1, medienNeu: 9 }).zeigen && E({ spaeter: now - 1, medienNeu: 9 }).zeigen, '„Später“ für beide');
+  ok(E({ tage: '7', medienNeu: 1, letzteMedien: now - 8 * D }).zeigen && !E({ tage: 30, medienNeu: 1, letzteMedien: now - 8 * D }).zeigen, 'Schwelle 7 / 30');
+  // einmal am Tag automatisch
+  ok(S.tagKey(day(2026, 1, 5, 0)) === '2026-01-05' && S.tagKey(day(2026, 12, 31, 23)) === '2026-12-31', 'örtliches Datum');
+  ok(S.autoName(now) === 'Tourentagebuch-Auto-2026-11-22.mtl', 'Name ' + S.autoName(now));
+  ok(S.autoFaellig(true, true, '', now) && S.autoFaellig(true, true, '2026-11-21', now) && !S.autoFaellig(true, true, '2026-11-22', now), 'einmal am Tag');
+  ok(!S.autoFaellig(false, true, '', now) && !S.autoFaellig(true, false, '', now) && !S.autoFaellig(true, '', '', now), 'aus / ohne Ordner nie');
+  ok(S.autoFaellig(true, true, '2026-11-22', day(2026, 11, 23, 0) + 60000), 'nach Mitternacht wieder');
+  // Fortschritt und Ergebnis
+  const MB = 1048576;
+  const f1 = S.fortschritt({ kind: 'backup', running: true, done: 300 * MB, total: 1200 * MB, part: 1, parts: 2 });
+  ok(Math.abs(f1.anteil - 0.25) < 1e-9 && f1.text === 'Teil 1 von 2 · 150 MB von 600 MB · 25 %', f1.text);
+  ok(S.fortschritt({ kind: 'backup', done: 0, total: 0, parts: 1 }).text === '0,0 MB von 0,0 MB · 0 %' && S.fortschritt(null).anteil === 0, 'Anfang');
+  ok(S.fortschritt({ kind: 'restore', done: 50, total: 200, file: 2, files: 3 }).text === 'Datei 2 von 3 · 25 %' && S.fortschritt({ kind: 'restore', done: 5, total: 2 }).anteil === 1, 'Wiederherstellen');
+  ok(S.fortschritt({ kind: 'restore', phase: 'vorschau' }).text === 'Vorschaubilder werden geprüft …', 'Vorschaubilder');
+  ok(S.ergebnis({ kind: 'backup', result: { files: 12, bytes: 40 * MB, parts: 1, folder: 'Documents/Sicherung' } }) === 'Gesichert: 12 Dateien (40 MB) in „Documents/Sicherung“', 'Ergebnis Sichern');
+  ok(S.ergebnis({ kind: 'backup', result: { files: 3, bytes: 3 * MB, parts: 2 } }) === 'Gesichert: 3 Dateien (3,0 MB) in 2 Teilen', 'in Teilen');
+  ok(S.ergebnis({ kind: 'backup', cancelled: true }) === 'Abgebrochen. Es wurde nichts gespeichert.' && S.ergebnis({ kind: 'backup', error: 'voll' }) === 'Sichern nicht möglich: voll', 'Abbruch / Fehler');
+  ok(S.ergebnis({ kind: 'restore', result: { restored: 3, existing: 1, rejected: 2, thumbs: 1, bad: 1 } }) === '3 Dateien wiederhergestellt · 1 schon vorhanden · 2 abgelehnt (unsichere Namen) · 1 Sicherung nicht lesbar · 1 Vorschaubild neu erstellt', 'Ergebnis Wiederherstellen');
+  ok(S.ergebnis({ kind: 'restore', cancelled: true, result: { restored: 2, cancelled: true } }) === 'Abgebrochen · 2 Dateien wiederhergestellt', 'Wiederherstellen abgebrochen');
+  ok(S.ergebnis({ kind: 'backup', cancelled: true, result: { files: 4, parts: 1 } }) === 'Abgebrochen. Fertige Teile bleiben gültig.', 'Sichern nach einem Teil abgebrochen');
+}
+
 /* ---------- 2.8.1 Tourenkarte (calc-kartenpunkte.js): Startpunkte, Raster-Gruppen, Jahresfilter, Linien-Zoom, Ausschnitt ---------- */
 {
   const K = require(W + 'calc-kartenpunkte.js');

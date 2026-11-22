@@ -260,6 +260,20 @@ Views['/settings'] = async root => {
   const drawRemind = () => { remind.innerHTML = ''; remind.append(UI.chips([[7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage'], [0, 'Aus']].map(([d, l]) => UI.chip(l, +Set_.get('backupDays') === d, async () => { await Set_.set('backupDays', d); drawRemind(); })), { id: 'bk-days' })); };
   drawRemind();
   const showLast = async () => { const t = await DB.kvGet('lastBackup', null); if (lastEl()) lastEl().textContent = 'Letzte Sicherung: ' + (t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'noch nie'); };
+  // 2.10.0: Sicherung der Foto- und Videodateien (Medien) und automatische Tagessicherung in einen Ordner
+  const fmtTag = t => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const mdStand = h('p', { class: 'muted small', id: 'md-stand' }, window.MTApp ? 'Wird gezählt …' : 'Nur in der Android-App.');
+  const mdLast = h('p', { class: 'muted small', id: 'md-last' }, 'Zuletzt gesichert: –'), mdOrdner = h('p', { class: 'muted small', id: 'md-ordner' }, '');
+  const showMedien = async () => {
+    const st = await Medien.status();
+    if (!mdStand.isConnected && Medien.refresh === showMedien) Medien.refresh = null;
+    if (!st) { mdStand.textContent = window.MTApp ? 'Diese App-Version kann Fotos und Videos noch nicht sichern.' : 'Nur in der Android-App.'; return; }
+    mdStand.textContent = (st.anzahl === 1 ? '1 Datei' : st.anzahl + ' Dateien') + ' · ' + SicherungCalc.groesse(st.bytes) + (st.anzahl ? ' · ' + SicherungCalc.neuZeile(st.neu, st.neuBytes, st.last) : '');
+    mdLast.textContent = 'Zuletzt gesichert: ' + (st.last ? fmtTag(st.last) : 'noch nie');
+    mdOrdner.textContent = st.folder ? 'Ordner: ' + st.folder.name + (st.folder.ok ? '' : ' (kein Zugriff mehr – bitte neu wählen)') : 'Ordner: noch keiner gewählt (wird beim ersten Sichern gefragt)';
+    if (st.running) Medien.follow();
+  };
+  Medien.refresh = showMedien;
   const cnt = h('small', { class: 'muted' }, '');
   MapKit.cacheCount().then(n => cnt.textContent = n + ' Kacheln gespeichert');
   const nT = await DB.count('tours'), nP = await DB.count('photos');
@@ -294,14 +308,31 @@ Views['/settings'] = async root => {
     }, { id: 'hs-' + b.id }), b.meta.sub ? h('p', { class: 'muted small' }, b.meta.sub) : null))),
     h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
     h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
-    h('p', { class: 'muted small', id: 'bk-media' }, 'Fotos und Videos sind nicht enthalten: Die Sicherung enthält nur ihre Einträge (Zeit, Ort, Tour), nicht die Dateien. Sichere sie getrennt, zum Beispiel über die Galerie.'),
+    h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“.'),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toast(e.message, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
     h('div', { class: 'fld' }, 'Erinnern, wenn die letzte Sicherung älter ist als', remind),
+    h('p', { class: 'muted small' }, 'Touren und Fotos/Videos werden getrennt gezählt; die Startseite zeigt höchstens eine Zeile.'),
+    UI.toggle('Automatisch in Ordner sichern', !!Set_.get('backupAuto'), async (on, e) => {
+      if (!on) { await Set_.set('backupAuto', false); return; }
+      const f = await Medien.ordner(false);
+      if (!f) { e.target.checked = false; return; }
+      await Set_.set('backupAuto', true); showMedien();
+      toast('Ab jetzt einmal am Tag beim Start in „' + f.name + '“', 5000);
+      Backup.auto().then(r => { if (r) showLast(); });
+    }, { id: 'bk-auto' }),
+    h('p', { class: 'muted small' }, 'Beim Öffnen der App höchstens einmal am Tag eine neue Sicherung (.mtl, ohne Foto- und Videodateien) in den Sicherungsordner. Die letzten 5 bleiben, ältere löscht die App. Fotos und Videos werden nur auf Knopfdruck gesichert.'),
+    h('h3', { id: 'md-h' }, 'Fotos und Videos sichern'),
+    h('p', { class: 'muted small' }, 'Die App speichert die Dateien als ZIP in einen Ordner deiner Wahl, am besten auf einer Speicherkarte, einem USB-Stick oder in einem Ordner, den du danach auf den Computer kopierst. Beim nächsten Mal kommt nur Neues in eine weitere Datei „Medien_<Datum>.zip“ – bewahre alle auf. Große Sicherungen werden in Teile zu höchstens 1,5 GB geteilt.'),
+    mdStand, mdLast, mdOrdner,
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'md-save', onclick: async () => { await Medien.sichern(); showMedien(); } }, 'Sichern'),
+      h('button', { class: 'btn', id: 'md-restore', onclick: async () => { await Medien.wiederherstellen(); showMedien(); } }, 'Wiederherstellen'),
+      h('button', { class: 'btn', id: 'md-folder', onclick: async () => { const f = await Medien.ordner(true); if (f) toast('Sicherungsordner: ' + f.name, 4000); showMedien(); } }, 'Ordner ändern')),
+    h('p', { class: 'muted small' }, 'Wiederherstellen: eine oder mehrere Medien-Sicherungen wählen. Fotos und Videos, die schon auf dem Handy sind, bleiben unverändert.'),
     h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
     h('div', { class: 'row wrap' }, window.MTApp ? h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll') : null,
       h('button', { class: 'btn sm danger', onclick: wipe }, 'Alle Daten löschen')));
 
-  showLast();
+  showLast(); showMedien();
   async function wipe() {
     if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht.', 'Alles löschen')) return;
     for (const s of ['tours', 'tracks', 'photos']) await DB.clear(s);

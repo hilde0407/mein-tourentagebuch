@@ -90,11 +90,18 @@ Home.add('calcnote', 11, async () => {
 });
 
 /* ---- Sicherungs-Erinnerung: ruhiger Hinweis, wenn es Touren gibt und die letzte Sicherung zu alt ist (Schwelle in den Einstellungen) ---- */
+/* 2.10.0: Touren (.mtl) und Fotos/Videos (Medien-Sicherung der Hülle) getrennt gezählt; gezeigt wird nur eine Zeile, die ältere (SicherungCalc.erinnerung). */
 Home.add('backup', 12, async ({ all, now }) => {
-  const r = Sicherung.hinweis(all.length, await DB.kvGet('lastBackup', null), now.getTime(), Set_.get('backupDays'), await DB.kvGet('backupSnooze', 0));
+  const tage = Set_.get('backupDays');
+  const m = +tage > 0 ? await Medien.status() : null;
+  const r = SicherungCalc.erinnerung({ touren: all.length, letzteTouren: await DB.kvGet('lastBackup', null), medienNeu: m ? m.neu : 0, medienBytes: m ? m.neuBytes : 0,
+    letzteMedien: m ? m.last : null, jetzt: now.getTime(), tage, spaeter: await DB.kvGet('backupSnooze', 0) });
   if (!r.zeigen) return null;
-  const box = UI.banner([h('b', null, r.text), h('div', { class: 'muted small' }, 'Deine Touren liegen nur auf diesem Handy.')], [
-    h('button', { class: 'btn sm', id: 'bk-now', onclick: async () => { try { await Backup.save(); Nav.render(); } catch (e) { toast(e.message, 7000); } } }, 'Jetzt sichern'),
+  const jetzt = r.art === 'medien'
+    ? async () => { const j = await Medien.sichern(); if (j && !j.error) Nav.render(); }
+    : async () => { try { await Backup.save(); Nav.render(); } catch (e) { toast(e.message, 7000); } };
+  const box = UI.banner([h('b', null, r.text), h('div', { class: 'muted small' }, r.sub)], [
+    h('button', { class: 'btn sm', id: 'bk-now', 'data-art': r.art, onclick: jetzt }, 'Jetzt sichern'),
     h('button', { class: 'btn sm', id: 'bk-later', onclick: async () => { await DB.kvSet('backupSnooze', Date.now() + 7 * 86400000); box.remove(); toast('Ich erinnere dich in 7 Tagen wieder.'); } }, 'Später')], { id: 'backupnote' });
   return box;
 });

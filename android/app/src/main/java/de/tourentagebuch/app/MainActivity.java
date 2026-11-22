@@ -59,7 +59,7 @@ import okhttp3.Response;
  */
 public class MainActivity extends Activity {
     static final String HOST = "app.local";
-    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16, REQ_VIDEO = 17, REQ_PLAY = 18;
+    private static final int REQ_PERM = 11, REQ_PICK = 12, REQ_PHOTO = 13, REQ_TREE = 14, REQ_PERM2 = 15, REQ_ZEPP = 16, REQ_VIDEO = 17, REQ_PLAY = 18, REQ_BTREE = 19, REQ_MZIP = 20;
     private WebView web;
     private SharedPreferences prefs;
     private GeolocationPermissions.Callback geoCb;
@@ -279,6 +279,29 @@ public class MainActivity extends Activity {
             return;
         }
         if (res != RESULT_OK || data == null) { reply(id, true, "[]"); return; }
+        if (req == REQ_BTREE) {                         // 2.10.0: Sicherungsordner (Lesen + Schreiben, dauerhaft)
+            final Uri t = data.getData();
+            pool.execute(() -> {
+                try { reply(id, true, t == null ? "{}" : MediaBackup.setFolder(this, t).toString()); } catch (Exception e) { reply(id, false, String.valueOf(e.getMessage())); }
+            });
+            return;
+        }
+        if (req == REQ_MZIP) {                          // 2.10.0: Medien-Sicherungen zum Wiederherstellen – nur Adressen, nichts kopieren (Dateien können GB groß sein)
+            final ArrayList<Uri> zs = new ArrayList<>();
+            if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) zs.add(data.getClipData().getItemAt(i).getUri());
+            else if (data.getData() != null) zs.add(data.getData());
+            pool.execute(() -> {
+                try {
+                    JSONArray out = new JSONArray();
+                    for (Uri u : zs) {
+                        try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception e) { /* gilt dann für diese Sitzung */ }
+                        out.put(MediaBackup.describe(this, u));
+                    }
+                    reply(id, true, out.toString());
+                } catch (Exception e) { reply(id, false, String.valueOf(e.getMessage())); }
+            });
+            return;
+        }
         if (req == REQ_TREE) {
             Uri t = data.getData();
             try {
@@ -804,6 +827,43 @@ public class MainActivity extends Activity {
                 File[] fs = new File(getCacheDir(), "imp").listFiles();
                 if (fs != null) for (File f : fs) f.delete();
                 return "true";
+            }
+            /* ---- 2.10.0: Sicherung der Foto- und Videodateien (MediaBackup / MediaZip) ---- */
+            case "mediaStatus": return MediaBackup.status(this).toString();
+            case "mediaFolder": {                      // {pick:true}: Ordner wählen (SAF-Baum, dauerhaft); sonst den gemerkten melden
+                if (!a.optBoolean("pick")) return MediaBackup.folder(this).toString();
+                pending.put(REQ_BTREE, id);
+                runOnUiThread(() -> {
+                    try {
+                        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), REQ_BTREE);
+                    } catch (Exception e) { pending.remove(REQ_BTREE); reply(id, false, "Kein Ordner-Dialog"); }
+                });
+                return null;
+            }
+            case "mediaBackup": return new JSONObject().put("started", MediaBackup.startBackup(this, a.optString("tree"), appVersion())).toString();
+            case "mediaPickZips": {
+                pending.put(REQ_MZIP, id);
+                runOnUiThread(() -> {
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+                    i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed", "application/octet-stream"});
+                    i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    try { startActivityForResult(i, REQ_MZIP); } catch (Exception e) { pending.remove(REQ_MZIP); reply(id, false, "Kein Dateiauswahl-Dialog"); }
+                });
+                return null;
+            }
+            case "mediaRestore": {
+                JSONArray ua = a.getJSONArray("uris");
+                ArrayList<Uri> l = new ArrayList<>();
+                for (int i = 0; i < ua.length(); i++) l.add(Uri.parse(ua.getString(i)));
+                if (l.isEmpty()) throw new Exception("Keine Datei gewählt");
+                return new JSONObject().put("started", MediaBackup.startRestore(this, l)).toString();
+            }
+            case "mediaJob": return MediaBackup.job().toString();
+            case "mediaCancel": MediaBackup.cancel(); return "true";
+            case "autoBackup": {                       // .mtl der Oberfläche in den Sicherungsordner; die neuesten keep automatischen bleiben
+                byte[] d = android.util.Base64.decode(a.getString("b64"), android.util.Base64.DEFAULT);
+                return MediaBackup.autoSave(this, a.getString("name"), d, a.optInt("keep", 5)).toString();
             }
             case "storage": {                          // 2.9.0: Fotos und Videos getrennt (bytes = zusammen, wie bisher); vids: Größe je Video
                 long ph = 0, vb = 0;
