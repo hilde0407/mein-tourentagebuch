@@ -3389,6 +3389,7 @@ def mt_schalter_2150(pg):
     a1 = tour("A"); assert a1["zMt"] == 1 and a1["upMt"] == 999 and a1["distMt"] == 12345 and a1["starsMt"] == 4 and a1.get("upSrc") != "mt", a1      # Werte bleiben gespeichert
     assert pg.evaluate("DB.kvGet('mt', null).then(a => a && a.token)") == "SITZUNG-2150", "die Sitzung bleibt"
     assert not pg.is_checked("#set-mt input")
+    pg.wait_for_function("() => !Import.Alles.busy && !Senden._busy"); pg.evaluate("window.__netlog.length = 0")      # ab hier zählt jeder Aufruf (ein Lauf von vor dem Ausschalten ist vorbei)
     leise()
 
     # (a) jede Ansicht ohne Meine Touren

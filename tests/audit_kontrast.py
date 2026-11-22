@@ -183,7 +183,7 @@ def main():
             pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go"); pg.wait_for_timeout(250); scan("Wanderführer aus Meine Touren, Blatt")
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250); pg.evaluate("DB.del('kv', 'mt')")
             pg.evaluate("Set_.set('mtWahl', 'offen')"); go("#/start", "#mt-frage"); scan("Start, Frage Meine Touren")
-            pg.evaluate("async () => { Set_.v.mtAktiv = false; await Set_.set('mtWahl', 'nein'); }"); go("#/settings", "#set-mt"); scan("Einstellungen, Meine Touren aus"); pg.evaluate(T.MT_AN)
+            pg.evaluate("async () => { Set_.v.mtAktiv = false; await Set_.set('mtWahl', 'nein'); }"); go("#/settings", "#set-mt"); scan("Einstellungen, Meine Touren aus"); pg.evaluate(T.MT_AN); go("#/fuehrer", "#fu-xfer")
             pg.click("#fu-export"); pg.wait_for_selector("#fu-ex-go"); pg.wait_for_timeout(250); scan("Wanderführer exportieren")
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             pg.evaluate("() => { window.__pick = [{ name: 'f.json', url: URL.createObjectURL(new Blob([JSON.stringify({ format: 'tourentagebuch-wanderfuehrer', version: 1, buecher: [{ id: 'kx1', name: 'Kontrastbuch', touren: [{ title: 'A', km: 3, pts: { la: [4700000, 10, 10], lo: [1100000, 10, 10] } }] }] })])) }]; }")
