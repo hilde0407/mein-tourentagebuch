@@ -702,6 +702,8 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("name", f.getName()).put("url", "/cache/imp/" + f.getName()).put("size", f.length()).toString();
             }
             case "saveFile": return saveFile(a);
+            case "imageGallery": return new JSONObject().put("supported", PicturePlan.supported(Build.VERSION.SDK_INT)).toString();      // 2.13.0
+            case "saveImage": return saveImage(a);      // 2.13.0: Bild aus dem Zwischenspeicher in die Galerie (Pictures/Tourentagebuch)
             case "appendCache": {                      // große Dateien (Video) stückweise im Zwischenspeicher ablegen
                 File d = new File(getCacheDir(), "rec"); d.mkdirs();
                 File f = new File(d, new File(a.getString("name")).getName().replaceAll("[^A-Za-z0-9._-]", "_"));
@@ -1060,6 +1062,44 @@ public class MainActivity extends Activity {
         byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
         f.delete();
         return b;
+    }
+
+    /**
+     * 2.13.0: „Tour als Bild“ in die Galerie: Datei aus dem Zwischenspeicher (appendCache) nach Pictures/Tourentagebuch. Nur ab Android 10 (API 29),
+     * dort braucht MediaStore keine Berechtigung (wie die Galerie-Kopie der Videos seit 2.9.0). Darunter: Fehler, die Oberfläche bietet nur Teilen an.
+     */
+    private String saveImage(JSONObject a) throws Exception {
+        if (!PicturePlan.supported(Build.VERSION.SDK_INT)) throw new Exception("Erst ab Android 10 möglich – bitte „Teilen“ nutzen");
+        String mime = PicturePlan.mime(a.optString("mime", "image/jpeg"));
+        if (mime == null) throw new Exception("Dateityp nicht erlaubt");
+        String name = PicturePlan.fileName(a.getString("name"), mime);
+        byte[] data = readCacheRec(a.getString("name"));
+        return JSONObject.quote(saveImageQ(data, name, mime));
+    }
+
+    @TargetApi(29)
+    private String saveImageQ(byte[] data, String name, String mime) throws Exception {
+        android.content.ContentResolver cr = getContentResolver();
+        android.content.ContentValues v = new android.content.ContentValues();
+        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+        v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/" + PicturePlan.SUBDIR);
+        v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        Uri u = cr.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
+        if (u == null) throw new Exception("Speichern nicht möglich");
+        try {
+            try (OutputStream o = cr.openOutputStream(u)) {
+                if (o == null) throw new Exception("kein Ausgabestrom");
+                o.write(data);
+            }
+            android.content.ContentValues fin = new android.content.ContentValues();
+            fin.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            cr.update(u, fin, null, null);
+        } catch (Exception e) {
+            try { cr.delete(u, null, null); } catch (Exception e2) { /* egal */ }
+            throw e;
+        }
+        return PicturePlan.shownPath(name);
     }
 
     private String saveFile(JSONObject a) throws Exception {

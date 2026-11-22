@@ -302,6 +302,7 @@ Views['/tour'] = async (root, [id]) => {
         photos.some(p => !p.video) ? it('film', 'Diashow teilen', () => Show.share(t, pts, photos)) : null,
         it('link', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
         it('compass', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
+        UI.row({ icon: 'photo', title: 'Als Bild teilen', id: 'tb-menu', onclick: () => { s.close(); TourBild.dialog(t); } }),
         it('file', 'Als PDF', () => PdfUI.tour(t)),
         it('share', 'Als GPX speichern', exportGpx),
         SendenCalc.sichtbar(t, mtAcc) ? UI.row({ icon: 'server', title: 'An Meine Touren senden', id: 'mt-senden-tour', onclick: () => { s.close(); Senden.dialog(t, () => Nav.render()); } }) : null]),
