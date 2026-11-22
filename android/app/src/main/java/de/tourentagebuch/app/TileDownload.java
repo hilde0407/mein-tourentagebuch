@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,7 +56,11 @@ final class TileDownload {
 
     static boolean isRunning() { return running; }
 
-    static File dir(Context c) { return new File(c.getFilesDir(), "tiles"); }
+    private static volatile File base;
+    /** Ordner der Kacheln (einmal ermittelt; getFilesDir nimmt jedes Mal eine Sperre). */
+    static File dir(Context c) { File b = base; if (b == null) base = b = new File(c.getFilesDir(), "tiles"); return b; }
+    /** 2.16.0: Kachel-Ordner, die es (gerade) nicht gibt, mit Zeitpunkt – spart beim 3D-Flug die Dateisuche je Anfrage (TilePlan.folderOf). */
+    private static final ConcurrentHashMap<String, Long> missing = new ConcurrentHashMap<>();
     private static File areasFile(Context c) { return new File(dir(c), "gebiete.json"); }
     private static File listFile(Context c, String id) { return new File(new File(dir(c), "gebiete"), id + ".txt"); }
 
@@ -64,8 +69,17 @@ final class TileDownload {
     /** Gespeicherte Kachel zu einem relativen Pfad (aus TilePlan, nur Ziffern) oder null. */
     static File file(Context c, String rel) {
         if (rel == null) return null;
+        String folder = TilePlan.folderOf(rel);
+        long now = System.currentTimeMillis();
+        if (folder != null) { Long t = missing.get(folder); if (t != null && TilePlan.missingValid(t, now)) return null; }
         File f = new File(dir(c), rel);
-        return f.isFile() && f.length() > 0 ? f : null;
+        if (f.isFile() && f.length() > 0) return f;
+        File d = f.getParentFile();
+        if (folder != null && d != null && !d.isDirectory()) {
+            if (missing.size() >= TilePlan.MISSING_MAX) missing.clear();
+            missing.put(folder, now);
+        }
+        return null;
     }
 
     /** Antwort mit einer gespeicherten Kachel; CORS offen, damit fetch() der Karte sie lesen kann; X-MT-Offline sagt der Oberfläche,
@@ -336,6 +350,7 @@ final class TileDownload {
                         if (b == null || !TilePlan.looksLikeImage(b)) return 2;
                         File d = f.getParentFile();
                         if (d != null) d.mkdirs();
+                        missing.clear();                      // neuer Ordner: Merker „fehlt“ gilt nicht mehr
                         File tmp = new File(d, f.getName() + ".tmp");
                         try (FileOutputStream o = new FileOutputStream(tmp)) { o.write(b); }
                         if (!tmp.renameTo(f)) { tmp.delete(); return 2; }

@@ -87,6 +87,22 @@ public final class TilePlan {
         return relPath(src, Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)));
     }
 
+    /* ---------- 2.16.0: Merker „Ordner fehlt“ beim Abfangen von Kachel-Adressen ----------
+       Der 3D-Flug fragt in kurzer Zeit viele Kacheln an; die meisten liegen nicht in einer Offline-Karte. Statt für jede Anfrage im
+       Dateisystem nachzusehen, merkt sich die Hülle kurz, welche Kachel-Ordner (quelle/z/x) es nicht gibt. */
+    public static final int MISSING_MAX = 4096;               // so viele Ordner höchstens merken, dann von vorn
+    public static final long MISSING_MS = 10_000;             // so lange gilt „fehlt“ (zusätzlich gelöscht, sobald die Hülle Kacheln speichert)
+
+    /** Ordner einer Kachel ("topo/15/17403/11458.png" → "topo/15/17403") oder null. */
+    public static String folderOf(String rel) {
+        if (rel == null) return null;
+        int i = rel.lastIndexOf('/');
+        return i > 0 ? rel.substring(0, i) : null;
+    }
+
+    /** Gilt ein Eintrag „fehlt“ von since noch zur Zeit now? (Uhr zurückgestellt → nicht mehr.) */
+    public static boolean missingValid(long since, long now) { return now >= since && now - since < MISSING_MS; }
+
     /** Ausschnitt-Kennung: nur Kleinbuchstaben und Ziffern, 1 bis 24 Zeichen. */
     public static boolean validId(String id) { return id != null && id.matches("^[a-z0-9]{1,24}$"); }
 

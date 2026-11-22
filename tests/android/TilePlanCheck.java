@@ -92,5 +92,12 @@ public class TilePlanCheck {
         check(TilePlan.looksLikeImage(new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10}) && TilePlan.looksLikeImage(new byte[]{(byte) 0xFF, (byte) 0xD8, 0, 0, 0, 0, 0, 0}), "PNG/JPEG");
         check(!TilePlan.looksLikeImage("<html>Fehler</html>".getBytes()) && !TilePlan.looksLikeImage(new byte[3]), "Fehlerseite nicht");
         System.out.println("TilePlanCheck OK");
+        // 2.16.0: Merker „Ordner fehlt“ beim Abfangen
+        check("topo/15/17403".equals(TilePlan.folderOf("topo/15/17403/11458.png")), "Ordner einer Kachel");
+        check(TilePlan.folderOf(null) == null && TilePlan.folderOf("x.png") == null && TilePlan.folderOf("/x") == null, "kein Ordner");
+        check(TilePlan.folderOf(TilePlan.remotePath("tile.openstreetmap.org", "/14/8701/5729.png")).equals("osm/14/8701"), "Ordner aus Kachel-Adresse");
+        check(TilePlan.missingValid(1000, 1000) && TilePlan.missingValid(1000, 1000 + TilePlan.MISSING_MS - 1), "Merker gilt");
+        check(!TilePlan.missingValid(1000, 1000 + TilePlan.MISSING_MS) && !TilePlan.missingValid(1000, 999), "Merker abgelaufen / Uhr zurück");
+        check(TilePlan.MISSING_MAX >= 1024 && TilePlan.MISSING_MS <= 60_000, "Grenzen des Merkers");
     }
 }
