@@ -164,7 +164,8 @@ const Lightbox = {
         V && native ? h('div', { class: 'row wrap', id: 'lb-vwege' },
           h('button', { class: 'btn sm', id: 'lb-dplay', onclick: () => { s.close(); playNative(); } }, '▶ Abspielen'),
           h('button', { class: 'btn sm', id: 'lb-dext', onclick: () => { s.close(); extern(); } }, '⤴ In Video-App öffnen'),
-          h('button', { class: 'btn sm', id: 'lb-dconv', onclick: () => { s.close(); convertNow(p); } }, 'Umwandeln (HEVC → H.264)')) : null,
+          h('button', { class: 'btn sm', id: 'lb-dconv', onclick: () => { s.close(); convertNow(p); } }, 'Umwandeln (HEVC → H.264)'),
+          h('button', { class: 'btn sm', id: 'lb-dtrim', onclick: () => { s.close(); VideoTrim.open(p, nachSchnitt); } }, '✂ Zuschneiden')) : null,
         PanoCalc.ist(p) ? h('p', { id: 'lb-panotag' }, h('span', { class: 'tag-pano', html: Ico.svg('pano', 18) + '<span>Panorama</span>' }), ' ' + p.w + ' × ' + p.h + ' Pixel') : null,
         h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'zeit' ? ' (aus der Tourzeit ergänzt' + (p.camShift ? ', Uhrzeit ' + FotoOrtCalc.versatzText(p.camShift) : '') + ')' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
         tour ? h('p', null, '🥾 ', h('a', { href: '#/tour/' + tour.id, onclick: () => { s.close(); close(); } }, tour.name)) : h('p', null, 'Keiner Tour zugeordnet'),
@@ -172,6 +173,14 @@ const Lightbox = {
           h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); } } }, 'Tour wählen'),
           p.lat != null ? h('button', { class: 'btn sm', onclick: () => { s.close(); close(); sessionStorage.setItem('mapFocus', JSON.stringify([p.lat, p.lon])); Nav.go('/map'); } }, 'Auf Karte') : null,
           h('button', { class: 'btn sm danger', id: 'lb-del', onclick: async () => { if (await (V ? confirmBox('Video löschen?', 'Das Video wird aus dem Tourentagebuch gelöscht: Datei, Vorschaubild und Eintrag. Eine Kopie in der Galerie bleibt, falls es eine gibt.', 'Löschen') : confirmBox('Foto löschen?', 'Das Foto wird aus dem Tourentagebuch entfernt (das Original bleibt unberührt).', 'Löschen'))) { await Photos.remove(p.id); list.splice(i, 1); s.close(); if (!list.length) close(); else { i = Math.min(i, list.length - 1); show(); } window.dispatchEvent(new Event('photos-changed')); } } }, 'Löschen'))));
+    }
+    /** 2.12.0: nach dem Zuschneiden – neues Video gleich dahinter zeigen bzw. das ersetzte neu laden */
+    function nachSchnitt(r, neu) {
+      if (!el.isConnected) return;
+      if (neu) { list.splice(i + 1, 0, neu); i++; show(); return; }
+      const p = list[i]; if (!p || p.id !== r.id) return;
+      Object.assign(p, { w: r.w || p.w, h: r.h || p.h, dur: r.dur || p.dur, ts: r.ts || p.ts });
+      show(); vpImg.src = Photos.thumb(p.id) + '?c=' + Date.now();
     }
     document.body.append(el); window.__lightbox = { close }; show();
   },
@@ -321,6 +330,142 @@ const Videos = {
     });
   },
 };
+/* 2.12.0: Arbeiten an vorhandenen Videos in der Hülle (VideoJob: Zuschneiden, Galerie-Kopie) – Fortschrittsblatt, bis der Lauf fertig ist. */
+const VideoJobUI = {
+  /** Folgt dem Lauf (Native 'videoJob') in einem Blatt mit Balken und „Abbrechen“; gibt den Endstand zurück. text(j) → Zeile. Schließen bricht nicht ab. */
+  follow(title, text) {
+    const bar = h('div', { class: 'prog' }, h('i')), txt = h('p', { id: 'vj-txt' }, 'Wird gestartet …');
+    const stop = h('button', { class: 'btn', id: 'vj-stop', onclick: async e => { e.currentTarget.disabled = true; e.currentTarget.textContent = 'Wird abgebrochen …'; try { await Native.call('videoJobCancel'); } catch (x) { /* egal */ } } }, 'Abbrechen');
+    return new Promise(res => {
+      let fertig = false, timer = null, offen = true;
+      const s = sheet(title, h('div', null, txt, bar, h('p', { class: 'muted small' }, 'Läuft im Hintergrund weiter, auch wenn du die App verlässt (siehe Benachrichtigung). Schließen bricht nicht ab.'),
+        h('div', { class: 'row end' }, stop)), { onclose: () => { offen = false; } });
+      const tick = async () => {
+        let j;
+        try { j = await Native.json('videoJob'); } catch (e) { j = null; }
+        if (fertig) return;
+        if (!j || !j.running) { fertig = true; clearInterval(timer); if (offen) s.close(); res(j || { error: 'Kein Stand von der App' }); return; }
+        txt.textContent = text(j);
+        bar.firstChild.style.width = Math.max(0, Math.min(100, +j.pct || 0)) + '%';
+      };
+      timer = setInterval(tick, 700); tick();
+    });
+  },
+  belegt: 'Es läuft gerade schon eine andere längere Arbeit (Medien-Sicherung, Offline-Karte oder ein Video). Bitte danach noch einmal.',
+};
+
+/* 2.12.0: Video zuschneiden ohne Neu-Kodierung. Anfang immer an einem Schlüsselbild (ehrlich angezeigt), Ende genau; als neues Video (Vorgabe)
+   oder anstelle des Originals (mit Rückfrage). Vorschau: Bild am wirklichen Schnitt und am Ende (Hülle: 'videoFrame'). Rechnung: VideoCalc. */
+const VideoTrim = {
+  async open(p, onDone) {
+    if (!window.MTApp) { toast('Zuschneiden geht nur in der Android-App.'); return; }
+    let k;
+    try { k = await Native.json('videoKeys', { id: p.id }); } catch (e) { toast('Das Video lässt sich nicht lesen (' + e.message + ').', 6000); return; }
+    const dur = +k.dur || +p.dur || 0, keys = (k.keys || []).map(Number).sort((a, b) => a - b);
+    if (dur < 2000) { toast('Das Video ist zu kurz zum Zuschneiden.', 5000); return; }
+    const st = { a: 0, e: dur, ersetzen: false };
+    const rA = h('input', { type: 'range', id: 'vt-a', min: 0, max: dur, step: 100, value: 0, 'aria-label': 'Anfang' });
+    const rE = h('input', { type: 'range', id: 'vt-e', min: 0, max: dur, step: 100, value: dur, 'aria-label': 'Ende' });
+    const tA = h('input', { type: 'text', id: 'vt-at', inputmode: 'decimal', autocapitalize: 'off', value: VideoCalc.zeitText(0) });
+    const tE = h('input', { type: 'text', id: 'vt-et', inputmode: 'decimal', autocapitalize: 'off', value: VideoCalc.zeitText(dur) });
+    const fA = h('img', { alt: 'Bild am Schnitt', class: 'vt-f', id: 'vt-fa' }), fE = h('img', { alt: 'Bild am Ende', class: 'vt-f', id: 'vt-fe' });
+    const info = h('p', { id: 'vt-info', role: 'status' }), warn = h('p', { class: 'err', id: 'vt-warn' });
+    const art = h('div', { class: 'chips', id: 'vt-art' });
+    const go = h('button', { class: 'btn pri', id: 'vt-go', onclick: () => los() }, 'Zuschneiden');
+    let frameT = null;
+    // Auswahl bleibt dieselben zwei Knöpfe (ein Neuaufbau während eines Tipps – z. B. durch „change“ beim Verlassen eines Zeitfelds – verschluckte sonst den Tipp)
+    const cNeu = UI.chip('Als neues Video', true, () => { st.ersetzen = false; setArt(); }, { id: 'vt-neu' }), cErs = UI.chip('Original ersetzen', false, () => { st.ersetzen = true; setArt(); }, { id: 'vt-ers' });
+    art.append(cNeu, cErs);
+    function setArt() {
+      cNeu.classList.toggle('on', !st.ersetzen); cNeu.setAttribute('aria-pressed', String(!st.ersetzen));
+      cErs.classList.toggle('on', st.ersetzen); cErs.setAttribute('aria-pressed', String(st.ersetzen));
+      go.textContent = st.ersetzen ? 'Zuschneiden und ersetzen' : 'Zuschneiden als neues Video';
+    }
+    const snapA = () => VideoCalc.schnittStart(keys, st.a), endE = () => VideoCalc.schnittEnde(dur, st.e);
+    function bild(img, ms, exact) {
+      Native.json('videoFrame', { id: p.id, ms, exact }).then(r => { if (r && r.url) img.src = r.url; }, () => { img.removeAttribute('src'); });
+    }
+    function zeichne(quelle) {
+      const a = snapA(), e = endE(), okS = VideoCalc.schnittOk(a, e, dur);
+      if (quelle !== 'a') tA.value = VideoCalc.zeitText(st.a);
+      if (quelle !== 'e') tE.value = VideoCalc.zeitText(st.e);
+      rA.value = st.a; rE.value = st.e;
+      info.textContent = 'Schnitt bei ' + VideoCalc.zeitText(a) + (a !== st.a ? ' (nächstes Schlüsselbild davor)' : a ? ' (Schlüsselbild)' : ' (Anfang)') + ' · Ende bei ' + VideoCalc.zeitText(e) + ' · neue Länge ' + VideoCalc.zeitText(Math.max(0, e - a));
+      warn.textContent = okS ? '' : e - a < VideoCalc.SCHNITT_MIN_MS || e <= a ? 'Der Ausschnitt muss mindestens 1 Sekunde lang sein.' : 'Nichts weggeschnitten – Anfang oder Ende verschieben.';
+      go.disabled = !okS;
+      setArt();
+      clearTimeout(frameT);
+      frameT = setTimeout(() => { bild(fA, a, false); bild(fE, Math.max(0, e - 50), true); }, 250);      // nicht bei jeder Reglerbewegung ein Bild holen
+    }
+    rA.oninput = () => { st.a = Math.min(+rA.value, dur); zeichne(); };
+    rE.oninput = () => { st.e = Math.min(+rE.value, dur); zeichne(); };
+    tA.onchange = () => { const v = VideoCalc.zeitLesen(tA.value); if (v == null) { toast('Zeit bitte als Minuten:Sekunden, z. B. 0:03,2'); tA.value = VideoCalc.zeitText(st.a); return; } st.a = Math.min(v, dur); zeichne(); };
+    tE.onchange = () => { const v = VideoCalc.zeitLesen(tE.value); if (v == null) { toast('Zeit bitte als Minuten:Sekunden, z. B. 0:12,0'); tE.value = VideoCalc.zeitText(st.e); return; } st.e = Math.min(v, dur); zeichne(); };
+    const s = sheet('Video zuschneiden', h('div', { class: 'vtrim' },
+      h('div', { class: 'vt-fs' }, h('figure', null, fA, h('figcaption', null, 'Anfang')), h('figure', null, fE, h('figcaption', null, 'Ende'))),
+      h('label', { class: 'fld' }, 'Anfang', rA), h('label', { class: 'fld' }, 'Ende', rE),
+      h('div', { class: 'vt-ts' }, h('label', { class: 'fld' }, 'Anfang (m:ss,z)', tA), h('label', { class: 'fld' }, 'Ende (m:ss,z)', tE)),
+      info, warn,
+      h('p', { class: 'muted small' }, 'Ohne Neu-Kodierung: Bild und Ton bleiben in der Qualität des Originals, und es geht schnell. Dafür kann der Anfang nur an einem Schlüsselbild liegen (bei Handy-Videos meist alle ein bis zwei Sekunden) – die App nimmt das letzte davor. Das Ende ist genau.'),
+      art, h('div', { class: 'row end wrap' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), go)));
+    zeichne();
+    async function los() {
+      const a = snapA(), e = endE();
+      if (!VideoCalc.schnittOk(a, e, dur)) return;
+      if (st.ersetzen && !await confirmBox('Original ersetzen?', 'Das Video wird durch den Ausschnitt ' + VideoCalc.zeitText(a) + '–' + VideoCalc.zeitText(e) + ' ersetzt. Der Rest ist danach weg (eine Kopie in der Galerie bleibt, falls es eine gibt).', 'Ersetzen')) return;
+      let r;
+      try { r = await Native.json('videoTrim', { id: p.id, startMs: a, endMs: e, replace: st.ersetzen }); }
+      catch (x) { toast('Zuschneiden nicht möglich: ' + x.message, 7000); return; }
+      if (!r || !r.started) { toast(VideoJobUI.belegt, 6000); return; }
+      s.close();
+      const j = await VideoJobUI.follow('Video zuschneiden', q => 'Wird zugeschnitten … ' + (+q.pct || 0) + ' %');
+      const res = j && j.result;
+      if (j && j.cancelled) { toast('Zuschneiden abgebrochen – das Original ist unverändert.', 5000); return; }
+      if (!res || !res.ok) { toast('Zuschneiden hat nicht geklappt (' + ((j && j.error) || 'Fehler') + '). Das Original ist unverändert.', 7000); return; }
+      const orig = await DB.get('photos', p.id) || p;
+      if (res.replaced) {
+        Object.assign(orig, { w: res.w || orig.w, h: res.h || orig.h, dur: res.dur || orig.dur, ts: orig.ts ? orig.ts + (+res.startMs || 0) : orig.ts, trimmed: true });
+        await DB.put('photos', orig);
+        toast('Zugeschnitten ✓ – das Original ist ersetzt.', 4000);
+        window.dispatchEvent(new Event('photos-changed'));
+        if (onDone) onDone(Object.assign({}, res, { ts: orig.ts }));
+        return;
+      }
+      if (await DB.get('photos', res.id)) { toast('Diesen Ausschnitt gibt es schon.', 5000); return; }
+      const neu = Object.assign({}, orig, { id: res.id, name: 'Video (zugeschnitten).mp4', ts: orig.ts ? orig.ts + (+res.startMs || 0) : 0, w: res.w || orig.w, h: res.h || orig.h, dur: res.dur || 0, trimOf: p.id, note: '' });
+      await DB.put('photos', neu);
+      toast('Zugeschnitten ✓ – als neues Video gespeichert, das Original bleibt.', 5000);
+      window.dispatchEvent(new Event('photos-changed'));
+      if (onDone) onDone(res, neu);
+    }
+  },
+};
+
+/* 2.12.0: Vorhandene Videos in die Galerie kopieren (Movies/Tourentagebuch, wie seit 2.9.0 bei neuen Aufnahmen; jedes nur einmal – Merkliste der Hülle). */
+const VideoGalerie = {
+  async stand() { try { return await Native.json('videoGalleryScan'); } catch (e) { return null; } },
+  zeile(sc) {
+    if (!sc) return 'Diese App-Version kann das noch nicht.';
+    if (!sc.supported) return 'Erst ab Android 10 möglich.';
+    if (!sc.all) return 'Keine Videos vorhanden.';
+    return sc.n ? (sc.n === 1 ? '1 Video noch nicht in der Galerie' : sc.n + ' Videos noch nicht in der Galerie') : 'Alle Videos sind schon in der Galerie.';
+  },
+  async kopieren(after) {
+    const sc = await VideoGalerie.stand();
+    if (!sc || !sc.supported || !sc.n) { toast(VideoGalerie.zeile(sc), 5000); return; }
+    if (!await confirmBox('Videos in die Galerie kopieren?', (sc.n === 1 ? '1 Video wird' : sc.n + ' Videos werden') + ' in den Ordner „Movies/Tourentagebuch“ kopiert. Sie bleiben auch in der App. Schon kopierte werden übersprungen. Das braucht Speicherplatz in der Größe der Videos.', 'Kopieren')) return;
+    const items = [];
+    for (const id of sc.ids) { const p = await DB.get('photos', id).catch(() => null); items.push({ id, ts: p && p.ts ? p.ts : 0 }); }
+    let r;
+    try { r = await Native.json('videoGalleryCopy', { items }); } catch (e) { toast(e.message, 6000); return; }
+    if (!r || !r.started) { toast(VideoJobUI.belegt, 6000); return; }
+    const j = await VideoJobUI.follow('Videos in die Galerie', q => Math.min(q.total, (q.done || 0) + 1) + ' von ' + q.total);
+    const res = (j && j.result) || {}, ok = +res.ok || 0, bad = +res.bad || 0;
+    toast((ok === 1 ? '1 Video in die Galerie kopiert' : ok + ' Videos in die Galerie kopiert') + (bad ? ' · ' + bad + ' nicht möglich (' + (res.msg || 'Fehler') + ')' : '') + (j && (j.cancelled || res.cancelled) ? ' · abgebrochen' : '') + (j && j.error ? ' · ' + j.error : ''), 6000);
+    if (after) after();
+  },
+};
+
 /* 2.12.0: „Orte aus der Tour ergänzen“ – Fotos/Videos ohne eigenen GPS-Ort (oder mit falscher Kamera-Uhr) bekommen den Ort der Tourspur zur
    Aufnahmezeit. Uhrzeit-Verschiebung mit Vorschau am Beispielfoto, Toleranz um das Zeitfenster (Vorgabe ±10 min, Einstellung „fotoOrtTol“),
    Übernahme erst nach Bestätigung, ein Schritt zurück (alte Werte in kv „fotoOrtUndo:<Tour>“). Rechnung: js/calc-fotoort.js. */

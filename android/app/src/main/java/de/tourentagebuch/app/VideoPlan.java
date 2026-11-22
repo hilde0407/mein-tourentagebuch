@@ -98,4 +98,54 @@ public final class VideoPlan {
         if (k.length() > 6) k = k.substring(0, 6);
         return "Tourentagebuch_" + f.format(new java.util.Date(ts > 0 ? ts : System.currentTimeMillis())) + (k.isEmpty() ? "" : "_" + k) + ".mp4";
     }
+    /* ---------- 2.12.0: Zuschneiden ohne Neu-Kodierung, Galerie-Kopie für vorhandene Videos (gleiche Regeln in js/calc-video.js) ---------- */
+
+    /** Kürzeste Länge eines zugeschnittenen Videos (ms). */
+    public static final long TRIM_MIN_MS = 1000;
+
+    /**
+     * Wo der Schnitt wirklich beginnt (µs): Ohne Neu-Kodierung kann ein Video nur an einem Schlüsselbild beginnen. Genommen wird das letzte
+     * Schlüsselbild bei oder vor dem gewünschten Start (also eher etwas mehr als zu wenig). keysUs: Zeiten der Schlüsselbilder, aufsteigend.
+     * Keine Schlüsselbilder bekannt: 0 (Anfang).
+     */
+    public static long trimStartUs(long[] keysUs, long wantUs) {
+        if (keysUs == null || keysUs.length == 0) return 0;
+        long best = keysUs[0];
+        for (long k : keysUs) { if (k <= wantUs) best = k; else break; }
+        return Math.max(0, best);
+    }
+
+    /** Wo der Schnitt endet (µs): genau wie gewünscht (das Ende braucht kein Schlüsselbild), höchstens die Länge des Videos. */
+    public static long trimEndUs(long durUs, long wantUs) {
+        if (durUs > 0 && (wantUs <= 0 || wantUs > durUs)) return durUs;
+        return Math.max(0, wantUs);
+    }
+
+    /** Ist der Schnitt sinnvoll? Mindestens 1 s lang, beginnt vor dem Ende und nicht ganz das ganze Video. */
+    public static boolean trimOk(long startUs, long endUs, long durUs) {
+        if (startUs < 0 || endUs <= startUs || endUs - startUs < TRIM_MIN_MS * 1000) return false;
+        if (durUs > 0 && (startUs >= durUs || (startUs == 0 && endUs >= durUs))) return false;
+        return true;
+    }
+
+    /** Zeit als „0:03,2“ (Minuten:Sekunden,Zehntel), ab einer Stunde „1:02:03,4“. Abgerundet auf Zehntel. */
+    public static String timeLabel(long ms) {
+        if (ms < 0) ms = 0;
+        long z = ms / 100, t = z / 10, d = z % 10, h = t / 3600, m = (t % 3600) / 60, s = t % 60;
+        String ss = (s < 10 ? "0" : "") + s + "," + d;
+        return h > 0 ? h + ":" + (m < 10 ? "0" : "") + m + ":" + ss : m + ":" + ss;
+    }
+
+    /** Videos (Kennungen), die noch nicht in der Galerie sind (Merkliste „gal_vids“); Reihenfolge bleibt, doppelte Kennungen nur einmal. */
+    public static java.util.List<String> galleryTodo(java.util.List<String> ids, java.util.Set<String> done) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (ids == null) return out;
+        for (String id : ids) {
+            if (id == null || id.isEmpty() || !seen.add(id)) continue;
+            if (done != null && done.contains(id)) continue;
+            out.add(id);
+        }
+        return out;
+    }
 }

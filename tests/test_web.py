@@ -704,6 +704,119 @@ def fotoort_2120(pg):
           window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
+VJOB_MOCK = """() => {
+  /* 2.12.0: VideoJob der Hülle nachgestellt: videoKeys / videoFrame / videoTrim / videoGalleryScan / videoGalleryCopy / videoJob / videoJobCancel */
+  const c0 = window.MTApp.call; window.__vjcall0 = c0;
+  window.__vj = { calls: [], job: { running: false }, keys: { dur: 10000, keys: [0, 2000, 4000, 6000, 8000], rot: 90, mime: 'video/hevc', audio: true },
+    scan: { supported: true, all: 3, n: 2, ids: ['g1b2c3d4e5f6a7b8c9dv', 'g2b2c3d4e5f6a7b8c9dv'] }, startOk: true };
+  window.MTApp.call = (id, m, a) => {
+    const V = window.__vj;
+    if (!['videoKeys', 'videoFrame', 'videoTrim', 'videoGalleryScan', 'videoGalleryCopy', 'videoJob', 'videoJobCancel'].includes(m)) return c0.call(window.MTApp, id, m, a);
+    const o = JSON.parse(a || '{}'); V.calls.push([m, o]); let r;
+    if (m === 'videoKeys') r = V.keys;
+    else if (m === 'videoFrame') r = { url: '/cache/frames/' + o.id + '_' + o.ms + '.jpg', ms: o.ms };
+    else if (m === 'videoTrim') { r = { started: V.startOk }; if (V.startOk) V.job = { running: true, kind: 'trim', done: 0, total: 1, pct: 0 }; }
+    else if (m === 'videoGalleryScan') r = V.scan;
+    else if (m === 'videoGalleryCopy') { r = { started: true }; V.job = { running: true, kind: 'gallery', done: 0, total: o.items.length, pct: 0 }; }
+    else if (m === 'videoJob') r = V.job;
+    else if (m === 'videoJobCancel') { V.cancelAsked = true; r = true; }
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+  window.__vjEnde = (res, extra) => { window.__vj.job = Object.assign({ running: false, kind: window.__vj.job.kind, done: 1, total: 1, pct: 100, cancelled: false }, res ? { result: res } : {}, extra || {}); };
+}"""
+
+def video_2120(pg):
+    """2.12.0 C: Video zuschneiden (Schlüsselbild ehrlich angezeigt, Zeitfelder und Regler, Vorschaubilder, neues Video oder Original ersetzen mit Rückfrage,
+    Fortschritt, Abbrechen, Fehler, belegt) und vorhandene Videos in die Galerie kopieren (Zählung, Rückfrage, Fortschritt, Ergebnis, Android unter 10)."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    pg.evaluate(VJOB_MOCK)
+    vid, neu_id = "e1b2c3d4e5f6a7b8c9dv", "f1b2c3d4e5f6a7b8c9dv"
+    t0 = 1700000300000
+    calls = lambda m: pg.evaluate("m => __vj.calls.filter(c => c[0] === m).map(c => c[1])", m)
+    sh = ".sheet[aria-label='Video zuschneiden']"
+    def oeffne():
+        pg.evaluate("async id => { window.__lightbox && window.__lightbox.close(); Lightbox.open([await DB.get('photos', id)], 0); }", vid)
+        pg.click(".lb button[aria-label=Details]"); pg.wait_for_selector("#lb-dtrim"); pg.click("#lb-dtrim"); pg.wait_for_selector(sh)
+    try:
+        tid = pg.evaluate("Tours.list().then(l => l.find(t => t.name === 'Hüttenrunde').id)")
+        pg.evaluate("async ([id, ts, tid]) => DB.put('photos', { id, name: 'Video.mp4', ts, w: 1920, h: 1080, dur: 10000, video: true, src: 'kamera', tour: tid, lat: 47.01, lon: 11.01, pos: 'exif', note: 'Gipfel' })", [vid, t0, tid])
+        # 1. Blatt öffnen: ganzes Video gewählt → nichts zu schneiden
+        oeffne()
+        assert pg.inner_text("#vt-info") == "Schnitt bei 0:00,0 (Anfang) · Ende bei 0:10,0 · neue Länge 0:10,0", pg.inner_text("#vt-info")
+        assert pg.is_disabled("#vt-go") and "Nichts weggeschnitten" in pg.inner_text("#vt-warn")
+        # 2. Anfang 0:03,2 → Schnitt am Schlüsselbild 0:02,0 (ehrlich angezeigt), Regler folgt; Ende über den Regler
+        pg.fill("#vt-at", "0:03,2"); pg.dispatch_event("#vt-at", "change")
+        assert pg.inner_text("#vt-info").startswith("Schnitt bei 0:02,0 (nächstes Schlüsselbild davor)"), pg.inner_text("#vt-info")
+        assert pg.input_value("#vt-a") == "3200"
+        pg.evaluate("() => { const r = document.querySelector('#vt-e'); r.value = 7300; r.dispatchEvent(new Event('input')); }")
+        assert "Ende bei 0:07,3 · neue Länge 0:05,3" in pg.inner_text("#vt-info") and pg.input_value("#vt-et") == "0:07,3"
+        assert not pg.is_disabled("#vt-go") and pg.inner_text("#vt-go") == "Zuschneiden als neues Video" and pg.inner_text("#vt-warn") == ""
+        # Vorschaubilder: am wirklichen Schnitt (Schlüsselbild) und genau am Ende
+        pg.wait_for_function("() => (document.querySelector('#vt-fa').getAttribute('src') || '').endsWith('_2000.jpg')", timeout=5000)
+        fr = calls("videoFrame"); assert any(c["ms"] == 2000 and not c["exact"] for c in fr) and any(c["ms"] == 7250 and c["exact"] for c in fr), fr
+        # unlesbare Zeit: Hinweis, Feld zurück; zu kurz: Hinweis
+        leise(); pg.fill("#vt-et", "abc"); pg.dispatch_event("#vt-et", "change")
+        assert "Minuten:Sekunden" in toast_text(pg, "Minuten") and pg.input_value("#vt-et") == "0:07,3"
+        pg.fill("#vt-et", "0:02,5"); pg.dispatch_event("#vt-et", "change")
+        assert pg.is_disabled("#vt-go") and "mindestens 1 Sekunde" in pg.inner_text("#vt-warn")
+        pg.fill("#vt-et", "7,3"); pg.dispatch_event("#vt-et", "change"); assert not pg.is_disabled("#vt-go")
+        # Platz bei 360 px / 130 %
+        pg.evaluate("document.querySelector('.sheet-b').scrollTop = 0"); bad = sheet_check_open(pg, "Video zuschneiden"); assert not bad, "\n".join(bad)
+        # 3. Als neues Video: Auftrag an die Hülle, Fortschritt, fertig → neuer Eintrag (Zeit + Schnitt, gleiche Tour und Ort), Vollbild zeigt ihn
+        pg.click("#vt-go"); pg.wait_for_selector("#vj-txt")
+        assert calls("videoTrim")[-1] == {"id": vid, "startMs": 2000, "endMs": 7300, "replace": False}, calls("videoTrim")
+        pg.evaluate("__vj.job.pct = 40"); pg.wait_for_function("() => document.querySelector('#vj-txt').textContent === 'Wird zugeschnitten … 40 %'")
+        leise(); pg.evaluate("r => __vjEnde(r)", {"ok": True, "src": vid, "id": neu_id, "w": 1920, "h": 1080, "dur": 5300, "startMs": 2000, "endMs": 7300, "replaced": False})
+        assert "als neues Video gespeichert" in toast_text(pg, "neues Video")
+        n = pg.evaluate("id => DB.get('photos', id)", neu_id)
+        assert n and n["ts"] == t0 + 2000 and n["dur"] == 5300 and n["tour"] == tid and n["lat"] == 47.01 and n["video"] and n["trimOf"] == vid and n["note"] == "", n
+        assert pg.evaluate("id => DB.get('photos', id).then(p => p.dur)", vid) == 10000, "Original bleibt"
+        pg.wait_for_function("() => document.querySelector('.lb .lb-cnt').textContent === '2 / 2'")
+        # 4. Original ersetzen: Rückfrage (Abbrechen = nichts), dann ersetzt → Länge und Zeit des Originals neu
+        oeffne(); pg.fill("#vt-at", "4"); pg.dispatch_event("#vt-at", "change"); pg.click("#vt-ers")
+        assert pg.inner_text("#vt-go") == "Zuschneiden und ersetzen" and pg.get_attribute("#vt-ers", "aria-pressed") == "true", pg.inner_text("#vt-go")
+        pg.click("#vt-go"); pg.wait_for_selector(".sheet[aria-label='Original ersetzen?']")
+        assert "0:04,0–0:10,0" in pg.inner_text(".sheet[aria-label='Original ersetzen?']")
+        pg.click(".sheet[aria-label='Original ersetzen?'] button:not(.pri)"); pg.wait_for_selector(".sheet[aria-label='Original ersetzen?']", state="detached")
+        assert len(calls("videoTrim")) == 1, "ohne Bestätigung kein Auftrag"
+        pg.click("#vt-go"); pg.wait_for_selector(".sheet[aria-label='Original ersetzen?']"); pg.click(".sheet[aria-label='Original ersetzen?'] button.pri")
+        pg.wait_for_selector("#vj-txt"); assert calls("videoTrim")[-1]["replace"] is True and calls("videoTrim")[-1]["startMs"] == 4000
+        leise(); pg.evaluate("r => __vjEnde(r)", {"ok": True, "src": vid, "id": vid, "w": 1920, "h": 1080, "dur": 6000, "startMs": 4000, "endMs": 10000, "replaced": True})
+        assert "Original ist ersetzt" in toast_text(pg, "ersetzt")
+        o = pg.evaluate("id => DB.get('photos', id)", vid); assert o["dur"] == 6000 and o["ts"] == t0 + 4000 and o["trimmed"], o
+        # 5. Fehler, Abbrechen, belegt: Meldungen, Original unverändert
+        oeffne(); pg.fill("#vt-at", "2"); pg.dispatch_event("#vt-at", "change"); pg.click("#vt-go"); pg.wait_for_selector("#vj-txt")
+        leise(); pg.evaluate("__vjEnde(null, { error: 'Muxer lehnt das Tonformat ab' })")
+        assert "nicht geklappt (Muxer lehnt das Tonformat ab). Das Original ist unverändert." in toast_text(pg, "nicht geklappt")
+        oeffne(); pg.fill("#vt-at", "2"); pg.dispatch_event("#vt-at", "change"); pg.click("#vt-go"); pg.wait_for_selector("#vj-stop")
+        pg.click("#vj-stop"); pg.wait_for_function("() => __vj.cancelAsked === true")
+        leise(); pg.evaluate("__vjEnde(null, { cancelled: true })")
+        assert "abgebrochen" in toast_text(pg, "abgebrochen")
+        pg.evaluate("__vj.startOk = false")
+        oeffne(); pg.fill("#vt-at", "2"); pg.dispatch_event("#vt-at", "change"); leise(); pg.click("#vt-go")
+        assert "andere längere Arbeit" in toast_text(pg, "andere längere")
+        pg.evaluate("__vj.startOk = true"); zu(pg); pg.evaluate("window.__lightbox && window.__lightbox.close()")
+        assert pg.evaluate("id => DB.get('photos', id).then(p => p.dur)", vid) == 6000
+        # 6. Vorhandene Videos in die Galerie: Zählung, Rückfrage, Fortschritt „1 von 2“, Ergebnis, neue Zählung
+        pg.evaluate("async () => { await DB.put('photos', { id: 'g1b2c3d4e5f6a7b8c9dv', name: 'Video.mp4', ts: 1700000400000, video: true, dur: 3000, tour: '' }); }")
+        go(pg, "#/settings", "#set-vgalcopy"); pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === '2 Videos noch nicht in der Galerie'")
+        pg.click("#set-vgalcopy"); pg.wait_for_selector(".sheet[aria-label='Videos in die Galerie kopieren?']")
+        assert "2 Videos werden" in pg.inner_text(".sheet[aria-label='Videos in die Galerie kopieren?']") and "Movies/Tourentagebuch" in pg.inner_text(".sheet[aria-label='Videos in die Galerie kopieren?']")
+        pg.click(".sheet[aria-label='Videos in die Galerie kopieren?'] button.pri"); pg.wait_for_selector("#vj-txt")
+        it = calls("videoGalleryCopy")[-1]["items"]
+        assert it == [{"id": "g1b2c3d4e5f6a7b8c9dv", "ts": 1700000400000}, {"id": "g2b2c3d4e5f6a7b8c9dv", "ts": 0}], it
+        pg.wait_for_function("() => document.querySelector('#vj-txt').textContent === '1 von 2'")
+        pg.evaluate("() => { __vj.job.done = 1; __vj.job.pct = 50; }"); pg.wait_for_function("() => document.querySelector('#vj-txt').textContent === '2 von 2'")
+        leise(); pg.evaluate("() => { __vj.scan = { supported: true, all: 3, n: 0, ids: [] }; __vjEnde({ ok: 1, bad: 1, msg: 'Speicher voll', cancelled: false }); }")
+        assert toast_text(pg, "Galerie kopiert") == "1 Video in die Galerie kopiert · 1 nicht möglich (Speicher voll)", pg.inner_text("#toast")
+        pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === 'Alle Videos sind schon in der Galerie.' && document.querySelector('#set-vgalcopy').disabled")
+        pg.evaluate("__vj.scan = { supported: false, all: 3, n: 3, ids: [] }"); go(pg, "#/settings", "#set-vgalcopy")
+        pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === 'Erst ab Android 10 möglich.' && document.querySelector('#set-vgalcopy').disabled")
+    finally:
+        pg.evaluate("""async ids => { window.MTApp.call = window.__vjcall0; for (const id of ids) await DB.del('photos', id); window.__lightbox && window.__lightbox.close();
+          document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [vid, neu_id, "g1b2c3d4e5f6a7b8c9dv"])
+
+
 def sicherung_2100(pg):
     """2.10.0: Sicherung der Fotos und Videos (Ordner wählen, Sichern mit Fortschritt und Abbrechen, Wiederherstellen aus mehreren ZIPs),
     eine Erinnerungszeile für Touren und Medien (erscheint, verschwindet, „Später“), Einstellungen (Schwelle, automatisch in Ordner) gespeichert."""
@@ -3501,6 +3614,7 @@ def main():
         offline_2110(pg)
         rettung_2120(pg)
         fotoort_2120(pg)
+        video_2120(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

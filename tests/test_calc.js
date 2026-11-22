@@ -1035,6 +1035,21 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(JSON.stringify(back) === JSON.stringify(vorher), 'Rückgängig stellt alles her: ' + JSON.stringify(back));
 }
 
+/* ---------- 2.12.0 Video zuschneiden (calc-video.js): gleiche Zahlen wie VideoPlanCheck.java; Zeitfelder; Galerie-Auswahl ---------- */
+{
+  const V = require(W + 'calc-video.js'), keys = [0, 2000, 4000, 6000, 8000];
+  ok(V.schnittStart(keys, 3200) === 2000 && V.schnittStart(keys, 4000) === 4000 && V.schnittStart(keys, 0) === 0 && V.schnittStart(keys, 99000) === 8000, 'Start aufs Schlüsselbild davor');
+  ok(V.schnittStart([500, 3000], 200) === 500 && V.schnittStart(null, 3000) === 0 && V.schnittStart([], 3000) === 0, 'vor dem ersten / ohne Schlüsselbilder');
+  ok(V.schnittEnde(10000, 7300) === 7300 && V.schnittEnde(10000, 12000) === 10000 && V.schnittEnde(10000, 0) === 10000, 'Ende genau, höchstens Länge');
+  ok(V.schnittOk(2000, 7300, 10000) && V.schnittOk(2000, 3000, 10000) && !V.schnittOk(2000, 2900, 10000), 'mindestens 1 s');
+  ok(!V.schnittOk(0, 10000, 10000) && !V.schnittOk(10000, 12000, 10000) && !V.schnittOk(5000, 4000, 10000), 'ganzes Video / hinter dem Ende / verkehrt');
+  ok(V.zeitText(3249) === '0:03,2' && V.zeitText(0) === '0:00,0' && V.zeitText(125000) === '2:05,0' && V.zeitText(3723400) === '1:02:03,4' && V.zeitText(-5) === '0:00,0', 'Zeit als Text');
+  ok(V.zeitLesen('0:03,2') === 3200 && V.zeitLesen('1:05.5') === 65500 && V.zeitLesen('12,3') === 12300 && V.zeitLesen(' 7 ') === 7000 && V.zeitLesen('1:02:03,4') === 3723400, 'Zeit lesen');
+  ok(V.zeitLesen('') === null && V.zeitLesen('abc') === null && V.zeitLesen('1:75') === null && V.zeitLesen('-3') === null && V.zeitLesen('1:2:3:4') === null, 'Unlesbares');
+  ok(V.zeitLesen(V.zeitText(65400)) === 65400, 'hin und zurück');
+  ok(JSON.stringify(V.galerieOffen(['av', 'bv', 'av', 'cv', '', null], ['bv'])) === '["av","cv"]' && V.galerieOffen(null, null).length === 0, 'Galerie: noch nicht kopierte');
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';

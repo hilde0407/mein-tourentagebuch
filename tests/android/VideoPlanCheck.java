@@ -73,6 +73,25 @@ public class VideoPlanCheck {
         check(gn.equals("Tourentagebuch_20231114_221320_a1b2c3.mp4"), "Galerie-Name: " + gn);
         check(VideoPlan.galleryName("../x", 1_700_000_000_000L, java.util.TimeZone.getTimeZone("UTC")).equals("Tourentagebuch_20231114_221320_x.mp4"), "Name ohne Pfadzeichen");
 
+        // 2.12.0: Zuschneiden ohne Neu-Kodierung (gleiche Zahlen in tests/test_calc.js für calc-video.js)
+        long[] keys = {0, 2_000_000L, 4_000_000L, 6_000_000L, 8_000_000L};
+        check(VideoPlan.trimStartUs(keys, 3_200_000L) == 2_000_000L, "Start auf das Schlüsselbild davor");
+        check(VideoPlan.trimStartUs(keys, 4_000_000L) == 4_000_000L, "Start genau auf einem Schlüsselbild");
+        check(VideoPlan.trimStartUs(keys, 0) == 0 && VideoPlan.trimStartUs(keys, 99_000_000L) == 8_000_000L, "Anfang/hinter dem letzten");
+        check(VideoPlan.trimStartUs(new long[]{500_000L, 3_000_000L}, 200_000L) == 500_000L, "vor dem ersten Schlüsselbild: das erste");
+        check(VideoPlan.trimStartUs(null, 3_000_000L) == 0 && VideoPlan.trimStartUs(new long[0], 3_000_000L) == 0, "ohne Schlüsselbilder: Anfang");
+        check(VideoPlan.trimEndUs(10_000_000L, 7_300_000L) == 7_300_000L && VideoPlan.trimEndUs(10_000_000L, 12_000_000L) == 10_000_000L && VideoPlan.trimEndUs(10_000_000L, 0) == 10_000_000L, "Ende genau, höchstens Länge");
+        check(VideoPlan.trimOk(2_000_000L, 7_300_000L, 10_000_000L), "gültiger Schnitt");
+        check(!VideoPlan.trimOk(2_000_000L, 2_900_000L, 10_000_000L), "unter 1 s");
+        check(VideoPlan.trimOk(2_000_000L, 3_000_000L, 10_000_000L), "genau 1 s");
+        check(!VideoPlan.trimOk(0, 10_000_000L, 10_000_000L), "ganzes Video: kein Schnitt");
+        check(!VideoPlan.trimOk(10_000_000L, 12_000_000L, 10_000_000L) && !VideoPlan.trimOk(5_000_000L, 4_000_000L, 10_000_000L), "hinter dem Ende/verkehrt");
+        check(VideoPlan.timeLabel(3_249).equals("0:03,2") && VideoPlan.timeLabel(0).equals("0:00,0") && VideoPlan.timeLabel(125_000).equals("2:05,0"), "Zeit: " + VideoPlan.timeLabel(3_249));
+        check(VideoPlan.timeLabel(3_723_400).equals("1:02:03,4") && VideoPlan.timeLabel(-5).equals("0:00,0"), "Zeit ab einer Stunde: " + VideoPlan.timeLabel(3_723_400));
+        java.util.List<String> todo = VideoPlan.galleryTodo(java.util.Arrays.asList("av", "bv", "av", "cv", "", null), new java.util.HashSet<>(java.util.Arrays.asList("bv")));
+        check(todo.equals(java.util.Arrays.asList("av", "cv")), "Galerie: nur noch nicht kopierte, nicht doppelt: " + todo);
+        check(VideoPlan.galleryTodo(null, null).isEmpty() && VideoPlan.galleryTodo(java.util.Arrays.asList("xv"), null).size() == 1, "Galerie: leer/ohne Merkliste");
+
         System.out.println("VideoPlanCheck OK");
     }
 }

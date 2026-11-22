@@ -274,6 +274,9 @@ Views['/settings'] = async root => {
     if (st.running) Medien.follow();
   };
   Medien.refresh = showMedien;
+  // 2.12.0: vorhandene Videos in die Galerie kopieren – Zählung „N Videos noch nicht in der Galerie“
+  const vgStand = h('p', { class: 'muted small', id: 'set-vgal-n' }, 'Wird gezählt …');
+  const zeigeVg = async () => { const sc = await VideoGalerie.stand(); vgStand.textContent = VideoGalerie.zeile(sc); const b = $('#set-vgalcopy'); if (b) b.disabled = !(sc && sc.supported && sc.n); };
   const nT = await DB.count('tours'), nP = await DB.count('photos');
   body.append(
     h('h3', null, 'Karte'),
@@ -294,6 +297,7 @@ Views['/settings'] = async root => {
       VideoCalc.LIMITS.map(([v, l]) => h('option', { value: v, selected: String(Set_.get('videoLimit')) === v }, l)))),
     UI.toggle('Aufgenommene Videos auch in der Galerie speichern', Set_.get('videoGallery') !== false, async v => { await Set_.set('videoGallery', !!v); Videos.prefs(); }, { id: 'set-vgal' }),
     h('p', { class: 'muted small' }, 'Ab Android 10 im Ordner „Movies/Tourentagebuch“, ohne zusätzliche Berechtigung. Auf älteren Handys wird keine Kopie angelegt. Das Video bleibt in jedem Fall auch in der App.'),
+    window.MTApp ? h('div', { class: 'vg-box' }, vgStand, h('button', { class: 'btn', id: 'set-vgalcopy', onclick: () => VideoGalerie.kopieren(zeigeVg) }, 'Vorhandene Videos in die Galerie kopieren')) : null,
     UI.toggle('HEVC-Videos beim Aufnehmen automatisch umwandeln', !!Set_.get('videoAuto'), async v => { await Set_.set('videoAuto', !!v); Videos.prefs(); }, { id: 'set-vauto' }),
     h('p', { class: 'muted small' }, 'Aus: Videos bleiben, wie die Kamera sie speichert; der Player der App spielt sie ab. Umwandeln in H.264 geht jederzeit unter Foto-Quellen oder in den Details eines Videos.'),
     // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
@@ -335,7 +339,7 @@ Views['/settings'] = async root => {
     h('div', { class: 'row wrap' }, window.MTApp ? h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll') : null,
       h('button', { class: 'btn sm danger', onclick: wipe }, 'Alle Daten löschen')));
 
-  showLast(); showMedien();
+  showLast(); showMedien(); if (window.MTApp) zeigeVg();
   async function wipe() {
     if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht.', 'Alles löschen')) return;
     for (const s of ['tours', 'tracks', 'photos']) await DB.clear(s);

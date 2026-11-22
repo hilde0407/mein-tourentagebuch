@@ -802,6 +802,26 @@ public class MainActivity extends Activity {
                 return o.toString();
             }
             case "videoStatus": return VideoService.status(this).toString();
+            /* ---- 2.12.0: Zuschneiden ohne Neu-Kodierung, vorhandene Videos in die Galerie (VideoJob) ---- */
+            case "videoKeys": {
+                String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
+                return VideoJob.keyframes(new File(Photos.dir(this), vid + ".mp4")).toString();
+            }
+            case "videoFrame": {
+                String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
+                File f = new File(Photos.dir(this), vid + ".mp4");
+                if (vid.isEmpty() || !f.isFile()) throw new Exception("Video fehlt");
+                return VideoJob.frame(this, vid, f, Math.max(0, a.optLong("ms")), a.optBoolean("exact")).toString();
+            }
+            case "videoTrim": {
+                String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
+                if (vid.isEmpty()) throw new Exception("Video fehlt");
+                return new JSONObject().put("started", VideoJob.startTrim(this, vid, a.optLong("startMs"), a.optLong("endMs"), a.optBoolean("replace"))).toString();
+            }
+            case "videoGalleryScan": return VideoJob.galleryScan(this).toString();
+            case "videoGalleryCopy": return new JSONObject().put("started", VideoJob.startGallery(this, a.getJSONArray("items"))).toString();
+            case "videoJob": return VideoJob.job().toString();
+            case "videoJobCancel": VideoJob.cancelJob(); return "true";
             case "playVideo": {                        // 2.9.0: eigener Vollbild-Player (VideoPlayerActivity), Datei direkt aus photos/; Antwort erst beim Schließen
                 final String vid = a.getString("id").replaceAll("[^A-Za-z0-9]", "");
                 File f = new File(Photos.dir(this), vid + ".mp4");
@@ -901,40 +921,11 @@ public class MainActivity extends Activity {
     /**
      * 2.9.0: Kopie eines aufgenommenen Videos in die Galerie (Movies/Tourentagebuch). Nur ab Android 10 (API 29): dort braucht das Einfügen
      * in MediaStore keine Berechtigung. Unter Android 10 wird übersprungen. Jede Kennung nur einmal (gemerkt in „gal_vids“). Fehler nur ins Protokoll.
+     * 2.12.0: gemeinsam mit „Vorhandene Videos in die Galerie kopieren“ in VideoJob.
      */
     private void copyToGallery(File src, String vid, long ts) {
-        if (Build.VERSION.SDK_INT < 29) return;
-        java.util.Set<String> done = new java.util.HashSet<>(prefs.getStringSet("gal_vids", new java.util.HashSet<>()));
-        if (done.contains(vid) || !src.isFile()) return;
-        try { copyToGalleryQ(src, vid, ts); done.add(vid); prefs.edit().putStringSet("gal_vids", done).apply(); }
+        try { VideoJob.copyToGallery(this, src, vid, ts); }
         catch (Exception e) { AppLog.log("Galerie-Kopie " + vid + ": " + e); }
-    }
-
-    @TargetApi(29)
-    private void copyToGalleryQ(File src, String vid, long ts) throws Exception {
-        android.content.ContentResolver cr = getContentResolver();
-        android.content.ContentValues v = new android.content.ContentValues();
-        v.put(MediaStore.MediaColumns.DISPLAY_NAME, VideoPlan.galleryName(vid, ts, null));
-        v.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
-        v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Tourentagebuch");
-        v.put(MediaStore.MediaColumns.IS_PENDING, 1);
-        if (ts > 0) v.put(MediaStore.Video.VideoColumns.DATE_TAKEN, ts);
-        Uri u = cr.insert(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
-        if (u == null) throw new Exception("MediaStore lehnt ab");
-        try {
-            try (InputStream in = new FileInputStream(src); OutputStream o = cr.openOutputStream(u)) {
-                if (o == null) throw new Exception("kein Ausgabestrom");
-                byte[] b = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(b)) > 0) o.write(b, 0, n);
-            }
-            android.content.ContentValues done = new android.content.ContentValues();
-            done.put(MediaStore.MediaColumns.IS_PENDING, 0);
-            cr.update(u, done, null, null);
-        } catch (Exception e) {
-            try { cr.delete(u, null, null); } catch (Exception e2) { /* egal */ }
-            throw e;
-        }
     }
 
     /** Echter Vollbildmodus: Status- und Navigationsleiste weg, per Wischen kurz wieder sichtbar. Nur auf dem UI-Thread aufrufen. */
