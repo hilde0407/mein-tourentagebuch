@@ -50,7 +50,7 @@ const Nav = {
   syncRec() {
     const a = $('#tabs a.rec'); if (!a) return;
     let live = false;
-    try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; live = st.state === 'recording' || st.state === 'paused'; } catch (e) { /* ohne Hülle */ }
+    try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; live = (st.state === 'recording' || st.state === 'paused') && !AufnahmeCalc.unterbrochen(st); } catch (e) { /* ohne Hülle */ }      // 2.12.0: unterbrochen ist keine laufende Aufnahme
     a.classList.toggle('live', live);
     a.setAttribute('aria-label', live ? 'Aufnehmen – Aufzeichnung läuft' : 'Aufnehmen');
   },

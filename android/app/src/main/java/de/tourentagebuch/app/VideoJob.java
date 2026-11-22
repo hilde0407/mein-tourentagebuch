@@ -259,7 +259,7 @@ final class VideoJob {
             ex.seekTo(sUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             mux.start();
             started = true;
-            boolean vDone = false, aDone = ma < 0;
+            boolean vDone = false, aDone = ma < 0, vStarted = false;
             long span = Math.max(1, eUs - sUs);
             int lastP = -1;
             while (!(vDone && aDone)) {
@@ -273,11 +273,13 @@ final class VideoJob {
                     if (!ex.advance()) break;
                     continue;
                 }
-                if (t >= sUs && ((isV && !vDone) || (!isV && ti == at && ma >= 0 && !aDone))) {
+                boolean sync = (ex.getSampleFlags() & MediaExtractor.SAMPLE_FLAG_SYNC) != 0;
+                if (isV && !vStarted && t >= sUs) vStarted = sync;          // das Video muss mit einem Schlüsselbild beginnen
+                if (t >= sUs && ((isV && vStarted && !vDone) || (!isV && ti == at && ma >= 0 && !aDone))) {
                     buf.clear();
                     int n = ex.readSampleData(buf, 0);
                     if (n < 0) break;
-                    int fl = (ex.getSampleFlags() & MediaExtractor.SAMPLE_FLAG_SYNC) != 0 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+                    int fl = sync ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
                     info.set(0, n, t - sUs, fl);
                     mux.writeSampleData(isV ? mv : ma, buf, info);
                     if (isV) {

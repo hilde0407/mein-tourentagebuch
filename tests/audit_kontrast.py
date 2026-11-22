@@ -151,6 +151,23 @@ def main():
             pg.evaluate("window.__rec.state = 'paused'"); pg.wait_for_timeout(1300); scan("Aufnahme pausiert")
             pg.evaluate("async id => { window.__rec.state = 'idle'; window.__rec.unsent = false; window.__routeName = ''; await Tours.remove(id); await DB.kvSet('recRoute', { kind: 'tour', id, name: 'Route K', ts: Date.now() }); }", pid)
             go("#/rec", "#rroutegone"); scan("Aufnahme, Route nicht mehr vorhanden"); pg.evaluate("DB.kvSet('recRoute', null)")
+            # 2.12.0: unterbrochene Aufnahme (Start und Aufnahme), Orte aus der Tour ergänzen, Video zuschneiden, Galerie-Kopie in den Einstellungen
+            pg.evaluate("() => { const now = Date.now(); MTApp.resumeInterrupted = () => true; MTApp.batteryUnrestricted = () => false; Object.assign(window.__rec, { state: 'recording', interrupted: true, can_resume: true, start: now - 7200000, last_ts: now - 1800000, count: 321, dist_m: 4321 }); }")
+            go("#/start", "#recrescue"); scan("Start, Aufnahme unterbrochen")
+            go("#/rec", "#recrescue"); scan("Aufnahme unterbrochen")
+            go("#/settings", "#set-akku"); scan("Einstellungen, Aufzeichnung")
+            pg.evaluate("() => { delete MTApp.resumeInterrupted; delete MTApp.batteryUnrestricted; Object.assign(window.__rec, { state: 'idle', interrupted: false, can_resume: false }); }")
+            pg.evaluate("async tid => { const t = await DB.get('tours', tid); for (let i = 0; i < 3; i++) await DB.put('photos', { id: 'kfo' + i + 'aaaaaa', name: 'k.jpg', ts: t.start + i * 600000 - (i === 2 ? 7200000 : 0), lat: null, lon: null, pos: 'none', tour: i === 2 ? '' : tid, w: 10, h: 10 }); }", tid)
+            go("#/tour/" + tid, "#fotoort-btn"); scan("Tour, Fotos ohne Ort")
+            pg.click("#fotoort-btn"); pg.wait_for_selector("#fo-bsp"); pg.wait_for_timeout(300); scan("Orte aus der Tour ergänzen")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate(T.VJOB_MOCK)
+            pg.evaluate("async () => { await DB.put('photos', { id: 'kvid0aaaaaaaaaaaaaav', name: 'Video.mp4', ts: 1700000300000, video: true, dur: 10000, w: 1920, h: 1080, tour: '' }); Lightbox.open([await DB.get('photos', 'kvid0aaaaaaaaaaaaaav')], 0); }")
+            pg.click(".lb button[aria-label=Details]"); pg.wait_for_selector("#lb-dtrim"); pg.click("#lb-dtrim"); pg.wait_for_selector("#vt-info")
+            pg.fill("#vt-et", "0:01,5"); pg.dispatch_event("#vt-et", "change"); pg.wait_for_timeout(300); scan("Video zuschneiden (mit Hinweis)")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.evaluate("window.__lightbox && window.__lightbox.close()"); pg.wait_for_timeout(250)
+            go("#/settings", "#set-vgalcopy"); pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent.includes('Galerie')"); scan("Einstellungen, Videos in die Galerie")
+            pg.evaluate("async () => { window.MTApp.call = window.__vjcall0; for (const id of ['kfo0aaaaaa', 'kfo1aaaaaa', 'kfo2aaaaaa', 'kvid0aaaaaaaaaaaaaav']) await DB.del('photos', id); }")
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
