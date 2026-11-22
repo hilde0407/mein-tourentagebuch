@@ -64,7 +64,7 @@ const Backup = {
         if (e.k === 'settings' && e.v && typeof e.v === 'object') {
           let ch = 0;
           for (const k of Object.keys(e.v)) {
-            if (!(k in Set_.defaults)) continue;
+            if (!(k in Set_.defaults) || k === 'backupAuto') continue;      // 2.10.0: automatische Sicherung braucht den Ordner dieses Geräts – nicht mitnehmen
             if (JSON.stringify(Set_.v[k]) === JSON.stringify(Set_.defaults[k]) && JSON.stringify(e.v[k]) !== JSON.stringify(Set_.defaults[k])) { Set_.v[k] = e.v[k]; ch++; }
           }
           if (ch) { await DB.kvSet('settings', Set_.v); n++; }
