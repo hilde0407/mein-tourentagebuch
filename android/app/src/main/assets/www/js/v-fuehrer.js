@@ -261,6 +261,38 @@ const Buecher = {
     let d;
     try { d = FuehrerDatei.lies(new TextDecoder('utf-8').decode(await Import.fetchBuf(files[0].url))); }
     catch (e) { toast(e.message, 7000); return; }
+    return Buecher.zeigePlan(d, 'Wanderführer importieren', fertig);
+  },
+  /** 2.15.0: „Aus Meine Touren holen“ – nur bei „Mit Meine Touren zusammenarbeiten“ und bestehender Verbindung. Gleicher Netzweg wie „Aus Meine Touren holen“
+      bei den Touren (Import.MT.get mit der Sitzung, auch ein Betrachter-Konto genügt): GET /api/guides/export (Meine Touren ab 3.56.0), Titelbilder nur auf Wunsch (?cover=1).
+      Danach dieselbe Rückfrage mit Zusammenfassung und Unterschieden wie beim Dateiimport; erst „Übernehmen“ ändert etwas. */
+  async ausMt(fertig) {
+    const acc = await MT.konto();
+    if (!acc) { toast('Es besteht keine Verbindung zu Meine Touren.'); return; }
+    let mitCover = false;
+    const go = h('button', { class: 'btn pri', id: 'fu-mt-go', onclick: async () => {
+      go.disabled = true;
+      let d;
+      try { d = await Buecher.holeMt(acc, mitCover); }
+      catch (e) { go.disabled = false; s.close(); toast(e.message, 7000); if (e.relogin) Nav.render(); return; }      // Sitzung abgelaufen: der Knopf verschwindet, bis man sich unter „Touren importieren“ neu anmeldet
+      s.close();
+      return Buecher.zeigePlan(d, 'Aus Meine Touren holen', fertig);
+    } }, 'Holen');
+    const s = sheet('Aus Meine Touren holen', h('div', { id: 'fu-mt-blatt' },
+      h('p', null, 'Holt deine Wanderführer (Bücher mit Buchtouren) von deinem Server „Meine Touren“. Vor dem Übernehmen siehst du, was dazukommt.'),
+      UI.toggle('Titelbilder mitholen (größere Datenmenge)', false, v => { mitCover = !!v; }, { id: 'fu-mt-cover' }),
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), go)));
+    return s;
+  },
+  /** Wanderführer vom Server laden und prüfen (FuehrerDatei.lies). Wirft mit verständlicher Meldung; 401 → Anmeldung abgelaufen (e.relogin). */
+  async holeMt(acc, mitCover) {
+    if (!MT.aktiv()) throw new Error('Die Zusammenarbeit mit Meine Touren ist ausgeschaltet.');      // Sicherung: kein Netzaufruf bei Aus
+    const r = await Import.MT.get(acc, MTCalc.fuehrerPfad(mitCover));      // 401: Sitzung vergessen, Meldung „Anmeldung abgelaufen“ (wie bei den Touren)
+    if (r.status !== 200) throw new Error(MTCalc.fuehrerFehler(r.status));
+    return FuehrerDatei.lies(r.body);
+  },
+  /** Rückfrage mit Zusammenfassung und Unterschieden, dann zusammenführen (nichts wird überschrieben). d: Ergebnis von FuehrerDatei.lies. */
+  async zeigePlan(d, titel, fertig) {
     const lokal = await Buecher.liste(), hat = {};
     for (const b of lokal) if (b.cover) hat[b.id] = true;
     const pl = FuehrerDatei.plane(lokal, d, hat, () => uid().slice(-9));
@@ -269,7 +301,7 @@ const Buecher = {
       try { await Buecher.zusammenfuehren(pl); s.close(); toast('Übernommen: ' + FuehrerDatei.zusammenfassung(pl), 6000); if (fertig) fertig(); }
       catch (e) { ok.disabled = false; toast('Das hat nicht geklappt: ' + (e && e.message || e), 6000); }
     } }, 'Übernehmen');
-    const s = sheet('Wanderführer importieren', h('div', { id: 'fu-im' },
+    const s = sheet(titel, h('div', { id: 'fu-im' },
       h('p', { id: 'fu-im-sum' }, FuehrerDatei.zusammenfassung(pl) + '.'),
       d.defekt ? h('p', { class: 'muted small', id: 'fu-im-defekt' }, d.defekt + (d.defekt === 1 ? ' Eintrag ist' : ' Einträge sind') + ' nicht lesbar und bleiben draußen.') : null,
       pl.konflikte.length ? h('div', { id: 'fu-im-konf' }, h('h3', { class: 'sub' }, pl.konflikte.length === 1 ? '1 Unterschied' : pl.konflikte.length + ' Unterschiede'), h('ul', { class: 'fu-konf' }, pl.konflikte.slice(0, 30).map(k => h('li', null, k))),
@@ -407,10 +439,12 @@ Views['/fuehrer'] = async root => {
     if (st.fehlendePaare) { prog = 0; drawSync(); } else prog = null;
     Buecher.sync(hoerer).catch(e => { console.error('Wanderführer-Abgleich', e); if (!gone) { prog = null; drawSync(); toast('Der Abgleich hat nicht geklappt: ' + e.message, 5000); } });
   }
-  // 2.13.0: Übertragen als Datei (zwischen Geräten; „Meine Touren“ bietet dafür noch keine Schnittstelle für Betrachter-Konten)
-  const xfer = UI.section('Übertragen', [h('p', { class: 'muted small' }, 'Bücher als Datei sichern oder auf ein anderes Gerät holen. Beim Importieren bleibt Vorhandenes unverändert.'),
+  // 2.13.0: Übertragen als Datei (zwischen Geräten). 2.15.0: „Aus Meine Touren holen“ nur bei „Mit Meine Touren zusammenarbeiten“ und bestehender Verbindung
+  const mtKonto = await MT.konto();
+  const xfer = UI.section('Übertragen', [h('p', { class: 'muted small' }, 'Bücher als Datei sichern oder auf ein anderes Gerät holen' + (mtKonto ? ', oder aus Meine Touren holen' : '') + '. Beim Importieren bleibt Vorhandenes unverändert.'),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'fu-export', onclick: () => Buecher.exportBlatt() }, 'Wanderführer exportieren'),
-      h('button', { class: 'btn', id: 'fu-import', onclick: () => Buecher.importieren(reload) }, 'Wanderführer importieren'))], { id: 'fu-xfer' });
+      h('button', { class: 'btn', id: 'fu-import', onclick: () => Buecher.importieren(reload) }, 'Wanderführer importieren'),
+      mtKonto ? h('button', { class: 'btn', id: 'fu-mt', onclick: () => Buecher.ausMt(reload) }, 'Aus Meine Touren holen') : null)], { id: 'fu-xfer' });
   body.append(sum, sync, ctl, list, xfer);
   drawAll(); start();
   return () => { gone = true; Buecher._hoerer.delete(hoerer); };

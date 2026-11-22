@@ -81,14 +81,17 @@ Home.add('actions', 10, async () => {
       h('small', { class: 'muted', id: 'lastsync' }, Abgleich.zeile(last) || 'Noch nicht abgeglichen')) : null);
 });
 
+/* ---- 2.15.0: ruhige Frage „Nutzt du auch Meine Touren?“ – solange nicht entschieden (keine Blockade, jederzeit änderbar) ---- */
+Home.add('mtfrage', 8, async () => MT.frageBox());
+
 /* ---- Einmaliger Hinweis nach der Neuberechnung (Version 2.0.1) ---- */
 Home.add('calcnote', 11, async () => {
   const n = await DB.kvGet('calcNote', null);
   if (!n) return null;
   const parts = [];
-  if (n.up) parts.push('Aufstieg neu berechnet – gleiche Rechnung wie in Meine Touren. ' + n.up + (n.up === 1 ? ' Tour' : ' Touren') + ' geändert.');
+  if (n.up) parts.push(MTCalc.aufstiegNeu(n.up, MT.aktiv()));      // 2.15.0: bei Aus ohne Nennung von Meine Touren
   if (n.sport) parts.push(n.sport + (n.sport === 1 ? ' Zepp-Tour' : ' Zepp-Touren') + ' „Spazieren“ zählt jetzt als Wandern.');
-  if (n.ski) parts.push(n.ski + (n.ski === 1 ? ' Ski-Tour steht' : ' Ski-Touren stehen') + ' jetzt als „Ski (allgemein)“: Ski alpin, Skitour und Langlauf sind getrennte Sportarten. Beim nächsten Abgleich mit Meine Touren bekommen sie ihre genaue Art; Schneeschuh-Touren werden dabei zu Wandern.');
+  if (n.ski) parts.push(MTCalc.skiNeu(n.ski, MT.aktiv()));
   if (n.pos) parts.push(n.pos + (n.pos === 1 ? ' Tour' : ' Touren') + ' aus FIT-Dateien: Lage der Spur berichtigt (westliche Länge), Strecke neu berechnet.');
   if (!parts.length) return null;
   const box = UI.banner(parts.map(x => h('div', null, x)), [h('button', { class: 'btn sm', id: 'calc-ok', onclick: async () => { await DB.kvSet('calcNote', null); box.remove(); } }, 'Verstanden')], { id: 'calcnote' });
@@ -183,7 +186,7 @@ Home.add('memo', 50, async ({ all, now, year }) => {
 Views['/start'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   if (!all.length) {      // noch nichts im Tagebuch: sagen, wie es losgeht
-    root.append(topbar('Tourentagebuch', { logo: true }), h('div', { class: 'pad' }, welcomeHero()));
+    root.append(topbar('Tourentagebuch', { logo: true }), h('div', { class: 'pad' }, welcomeHero(), MT.frageBox()));      // 2.15.0: beim Erststart die Frage unter dem Willkommen
     return;
   }
   const body = h('div', { class: 'home' });

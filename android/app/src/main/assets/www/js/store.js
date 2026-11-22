@@ -56,13 +56,15 @@ const Tours = {
       1. Wert aus „Meine Touren“ (upMt/downMt/distMt), solange die Tour angeglichen ist (zMt = 1; setzt der Abgleich, löscht eine Korrektur der Spur von Hand),
       2. die eigene Rechnung (wie „Meine Touren“), sofern die Spur mehr als 5 Höhenpunkte hat,
       3. ersatzweise der aufbewahrte Komoot-Wert (upSrc 'komoot'), sonst die (leere) eigene Rechnung.
-      st = Geo.stats(Punkte). Die Strecke setzt der Aufrufer aus st.dist; hier wird sie nur durch den Wert aus Meine Touren ersetzt. */
+      st = Geo.stats(Punkte). Die Strecke setzt der Aufrufer aus st.dist; hier wird sie nur durch den Wert aus Meine Touren ersetzt.
+      2.15.0: Punkt 1 nur, solange „Mit Meine Touren zusammenarbeiten“ an ist; beim Umschalten rechnet MT.zahlen() die angeglichenen Touren neu. */
   applyHoehe(t, st) {
-    if (t.zMt && t.upMt != null) { t.up = t.upMt; t.down = t.downMt != null ? t.downMt : st.down; t.upSrc = 'mt'; }
+    const mt = MTCalc.zahlenGelten(t, MT.aktiv());      // 2.15.0: bei „Mit Meine Touren zusammenarbeiten“ = aus gilt die eigene Rechnung (die Werte bleiben gespeichert)
+    if (mt && t.upMt != null) { t.up = t.upMt; t.down = t.downMt != null ? t.downMt : st.down; t.upSrc = 'mt'; }
     else if (Hoehe.brauchbar(st.nEle)) { t.up = st.up; t.down = st.down; delete t.upSrc; }
     else if (t.upKomoot != null) { t.up = t.upKomoot; t.down = t.downKomoot != null ? t.downKomoot : st.down; t.upSrc = 'komoot'; }
     else { t.up = st.up; t.down = st.down; delete t.upSrc; }
-    if (t.zMt && t.distMt) t.dist = t.distMt;
+    if (mt && t.distMt) t.dist = t.distMt;
     return t;
   },
   /** Einmalige Neuberechnung bestehender Touren (Aufstieg wie in Meine Touren; Zepp „Spazieren“ → Wandern). In kleinen Portionen, wiederaufnehmbar

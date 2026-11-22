@@ -164,7 +164,7 @@ Views['/tour'] = async (root, [id]) => {
   const t = await DB.get('tours', id);
   if (!t) { root.append(topbar('Tour', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr', actions: [h('a', { class: 'btn', href: '#/' }, 'Zur Tourenliste')] })); return; }
   const pts = await Tours.points(id);
-  const mtAcc = await DB.kvGet('mt', null);      // 2.5.0: „An Meine Touren senden“ nur bei bestehender Verbindung
+  const mtAn = MT.aktiv(), mtAcc = mtAn ? await DB.kvGet('mt', null) : null;      // 2.5.0: „An Meine Touren senden“ nur bei bestehender Verbindung; 2.15.0: und nur bei „Mit Meine Touren zusammenarbeiten“
   let photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts);
   const mapEl = h('div', { class: 'map tmap under' });
   const body = h('div', { class: 'tourp' });
@@ -191,7 +191,7 @@ Views['/tour'] = async (root, [id]) => {
 
   /** Zahlen aus „Meine Touren“ (2.1.0), als leiser Satz unter den Angaben: Sind sie maßgeblich, steht die eigene Rechnung aus der Spur daneben – sonst nur, was Meine Touren nennt. */
   function mtInfo() {
-    if (t.upMt == null && t.distMt == null) return null;
+    if (!mtAn || (t.upMt == null && t.distMt == null)) return null;      // 2.15.0: bei Aus gilt die eigene Rechnung, kein Hinweis
     const z = (up, dist) => [dist ? F.km(dist) : null, up != null ? '↑ ' + F.m(up) : null].filter(Boolean).join(' · ');
     const st = t.zMt ? Geo.stats(pts) : null, o = [];
     if (t.zMt) o.push('Strecke und Aufstieg stammen aus Meine Touren. Eigene Rechnung aus der Spur: ' + (z(Hoehe.brauchbar(st.nEle) ? st.up : null, st.dist) || '–') + '.');
@@ -207,7 +207,7 @@ Views['/tour'] = async (root, [id]) => {
       wrap.innerHTML = '';
       for (let i = 1; i <= 5; i++) wrap.append(h('button', { class: 'star' + (i <= n ? ' on' : ''), role: 'radio', 'aria-checked': i === n ? 'true' : 'false', 'aria-label': i + (i === 1 ? ' Stern' : ' Sterne'), 'data-n': i,
         html: Ico.svg(i <= n ? 'star' : 'staro', 26), onclick: async () => { Abgleich.sterneSetzen(t, i); await Tours.save(t); draw(); } }));
-      cap.textContent = n ? n + ' von 5' + (!t.starsMan && t.starsMt ? ' · aus Meine Touren' : '') : 'Noch nicht bewertet';
+      cap.textContent = n ? n + ' von 5' + MTCalc.sterneZusatz(t, mtAn) : 'Noch nicht bewertet';
       wrap.append(cap);
     };
     draw();
@@ -254,8 +254,8 @@ Views['/tour'] = async (root, [id]) => {
   const pmeta = planned ? await PlanMeta.get(t.id) : null;
   const helpPlan = planned ? [await TourHelp.passt(t, done, pmeta), TourHelp.notizen(t, pmeta)] : [];
   body.append(...[title,
-    h('div', { class: 'sub' }, F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport) + (src ? ' · ' + src : '')),
-    t.mtSent && t.src !== 'mt' ? h('div', { class: 'sub muted small', id: 'mtsent' }, 'An Meine Touren gesendet am ' + F.date(t.mtSent)) : null,
+    h('div', { class: 'sub' }, F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport), src ? h('span', { id: 'tsrc' }, ' · ' + src) : null),      // Quelle (ehrliche Herkunft, auch „Meine Touren“ bei Aus – ohne Verweis-Knöpfe)
+    mtAn && t.mtSent && t.src !== 'mt' ? h('div', { class: 'sub muted small', id: 'mtsent' }, 'An Meine Touren gesendet am ' + F.date(t.mtSent)) : null,
     stageBox,
     Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,

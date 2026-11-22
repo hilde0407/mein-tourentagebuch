@@ -47,6 +47,10 @@ def main():
             png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
             pg.route("**/tile.openstreetmap.org/**", lambda r: r.fulfill(status=200, body=png, content_type="image/png", headers={"access-control-allow-origin": "*"}))
             pg.goto(f"http://127.0.0.1:{port}/index.html"); pg.wait_for_selector("#tabs a")
+            # 2.15.0: Erststart mit der Frage „Nutzt du auch Meine Touren?“, danach mit Meine Touren weiter (die Szenen unten brauchen die Knöpfe)
+            pg.wait_for_selector("#mt-frage"); pg.wait_for_timeout(300)
+            for item in pg.evaluate(JS): bad.setdefault(("Erststart, Frage Meine Touren", item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
+            pg.evaluate(T.MT_AN)
             t0 = 1700000000000
             pg.evaluate("""async ([a,b]) => { const e=s=>new TextEncoder().encode(s); await Import.fromData('a.gpx',e(a),'file'); await Import.fromData('b.gpx',e(b),'file'); }""",
                         [T.gpx(t0, name="Hüttenrunde"), T.gpx(t0 + 86400000 * 40, lat=47.2, name="Zweite Tour")])
@@ -174,6 +178,12 @@ def main():
             pg.evaluate("tid => DB.get('tours', tid).then(t => TourBild.dialog(t))", tid); pg.wait_for_selector("#tb-bild[src]"); pg.wait_for_function("() => document.querySelector('#tb-vor').getAttribute('aria-busy') === 'false'", timeout=60000); scan("Als Bild teilen")
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             go("#/fuehrer", "#fu-xfer"); scan("Wanderführer, Übertragen")
+            # 2.15.0: „Aus Meine Touren holen“ (Knopf und Blatt), Frage auf der Startseite mit Touren, Einstellung ganz oben (aus)
+            pg.evaluate("DB.kvSet('mt', { base: 'https://mt.test', name: 'V', role: 'viewer', token: 'x' })"); go("#/fuehrer", "#fu-mt"); scan("Wanderführer, Aus Meine Touren holen")
+            pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go"); pg.wait_for_timeout(250); scan("Wanderführer aus Meine Touren, Blatt")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250); pg.evaluate("DB.del('kv', 'mt')")
+            pg.evaluate("Set_.set('mtWahl', 'offen')"); go("#/start", "#mt-frage"); scan("Start, Frage Meine Touren")
+            pg.evaluate("async () => { Set_.v.mtAktiv = false; await Set_.set('mtWahl', 'nein'); }"); go("#/settings", "#set-mt"); scan("Einstellungen, Meine Touren aus"); pg.evaluate(T.MT_AN)
             pg.click("#fu-export"); pg.wait_for_selector("#fu-ex-go"); pg.wait_for_timeout(250); scan("Wanderführer exportieren")
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             pg.evaluate("() => { window.__pick = [{ name: 'f.json', url: URL.createObjectURL(new Blob([JSON.stringify({ format: 'tourentagebuch-wanderfuehrer', version: 1, buecher: [{ id: 'kx1', name: 'Kontrastbuch', touren: [{ title: 'A', km: 3, pts: { la: [4700000, 10, 10], lo: [1100000, 10, 10] } }] }] })])) }]; }")

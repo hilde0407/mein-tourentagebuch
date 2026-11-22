@@ -5,7 +5,7 @@ const AllesUI = {
   async start(after) {
     if (Import.Alles.busy) { toast('Ein Abgleich läuft schon.'); return; }
     const qs = await Import.Alles.quellen();
-    if (!qs.length) { toast('Es ist noch keine Quelle verbunden. Unter „Touren importieren“ lässt sich Meine Touren, Komoot oder Zepp verbinden.', 6000); return; }
+    if (!qs.length) { toast(MTCalc.keineQuelle(MT.aktiv()), 6000); return; }
     let halt = false, r = null, err = null;
     try {
       r = await PhotoSources.progress('Alles abgleichen', upd => Import.Alles.run({ stop: () => halt, onProgress: (text, frac) => upd(frac, 1, null, text) }), { cancel: () => { halt = true; } });
@@ -51,7 +51,7 @@ Views['/import'] = async root => {
   body.append(allBox, h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
     h('div', { class: 'list' },
       card('file', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
-      card('server', 'Meine Touren', 'Touren, Namen und Zahlen vom eigenen Server holen', mt, 'imp-mt'),
+      MT.aktiv() ? card('server', 'Meine Touren', 'Touren, Namen und Zahlen vom eigenen Server holen', mt, 'imp-mt') : null,      // 2.15.0: nur bei „Mit Meine Touren zusammenarbeiten“
       card('route', 'Komoot', 'Alle aufgezeichneten (und geplanten) Touren', komoot),
       card('run', 'Strava', 'Aktivitäten über die Strava-Schnittstelle', strava),
       card('watch', 'Zepp / Amazfit', 'Aktivitäten mit GPS direkt aus der Zepp-Cloud', zepp),
@@ -62,6 +62,7 @@ Views['/import'] = async root => {
 
   /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
   async function mt() {
+    if (!MT.aktiv()) return;
     const M = Import.MT, c = await DB.kvGet('mt', null), on = !!(c && (c.token || c.open));
     const zahlen = UI.toggle('Zahlen aus Meine Touren übernehmen (Aufstieg, Strecke)', Set_.get('mtZahlen') !== false, v => Set_.set('mtZahlen', !!v), { id: 'mt-zahlen' });
     const zHint = h('p', { class: 'muted small' }, 'Dann zeigen beide Apps für dieselbe Tour dieselben Zahlen. Korrigierst du eine Strecke in der App, gilt dort die eigene Rechnung – bis zum nächsten Abgleich.');
@@ -279,6 +280,7 @@ Views['/settings'] = async root => {
   const zeigeVg = async () => { const sc = await VideoGalerie.stand(); vgStand.textContent = VideoGalerie.zeile(sc); const b = $('#set-vgalcopy'); if (b) b.disabled = !(sc && sc.supported && sc.n); };
   const nT = await DB.count('tours'), nP = await DB.count('photos');
   body.append(
+    MT.einstellung(),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
     h('h3', null, 'Karte'),
     h('div', { class: 'fld' }, 'Streckenfarbe', h('div', { class: 'chips wrap', id: 'rc' }, [['', 'Nach Sportart'], ['#e53935', 'Rot'], ['#fb8c00', 'Orange'], ['#fdd835', 'Gelb'], ['#43a047', 'Grün'], ['#1e88e5', 'Blau'], ['#8e24aa', 'Violett'], ['#d81b60', 'Pink'], ['#212121', 'Schwarz']].map(([c, n]) =>
       h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),

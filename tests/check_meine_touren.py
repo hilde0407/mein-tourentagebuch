@@ -207,6 +207,7 @@ def main():
             png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
             pg.route("**/tile.openstreetmap.org/**", lambda r: r.fulfill(status=200, body=png, content_type="image/png"))
             pg.goto(f"http://127.0.0.1:{web.server_address[1]}/index.html"); pg.wait_for_selector("#tabs a")
+            pg.evaluate(T.MT_AN)      # 2.15.0: „Mit Meine Touren zusammenarbeiten“ einschalten
             by = {t["id"]: t for t in srv}
             # Vorhandene Touren in der App: g2 als Datei mit selbst erzeugtem Namen, g4 als Datei mit eigenem Namen, die Komoot-Tour (andere Spur, gleiche Komoot-Nummer)
             otok = login_direct(url, "Volker")

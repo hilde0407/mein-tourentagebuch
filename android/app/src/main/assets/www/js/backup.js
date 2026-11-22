@@ -10,6 +10,9 @@ const Backup = {
   /** Diese Einträge werden beim Einspielen zurückgeholt, wenn es sie auf dem Gerät noch nicht gibt (Planung und Notizen einer Tour: die Sicherung gilt). */
   RESTORE_KEYS: ['goals', 'goals2', 'comments', 'places', 'tripHidden', 'tripNames', 'tripPeriod', 'tripRegion', 'tripSet', 'dupIgnore'],
   RESTORE_PREFIX: ['plan:', 'pn:'],
+  /** Einstellungen, die zum Gerät gehören und beim Einspielen nie übernommen werden: automatische Sicherung (braucht den Ordner dieses Geräts, 2.10.0)
+      und die Entscheidung „Mit Meine Touren zusammenarbeiten“ (2.15.0: ein frisches Gerät fragt selbst; eine eigene Entscheidung bleibt). */
+  GERAET: ['backupAuto', 'mtAktiv', 'mtWahl'],
 
   /** Inhalt der Sicherung (reines Objekt, noch nicht gepackt). */
   async collect() {
@@ -64,7 +67,7 @@ const Backup = {
         if (e.k === 'settings' && e.v && typeof e.v === 'object') {
           let ch = 0;
           for (const k of Object.keys(e.v)) {
-            if (!(k in Set_.defaults) || k === 'backupAuto') continue;      // 2.10.0: automatische Sicherung braucht den Ordner dieses Geräts – nicht mitnehmen
+            if (!(k in Set_.defaults) || Backup.GERAET.includes(k)) continue;      // 2.10.0/2.15.0: Entscheidungen dieses Geräts – nicht mitnehmen
             if (JSON.stringify(Set_.v[k]) === JSON.stringify(Set_.defaults[k]) && JSON.stringify(e.v[k]) !== JSON.stringify(Set_.defaults[k])) { Set_.v[k] = e.v[k]; ch++; }
           }
           if (ch) { await DB.kvSet('settings', Set_.v); n++; }

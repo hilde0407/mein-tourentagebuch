@@ -79,7 +79,7 @@ Views['/mehr'] = async root => {
       UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Rekorde, Kalender, Ziele', href: '#/stats', id: 'm-stats' }),
       UI.row({ icon: 'calendar', title: 'Jahresrückblick', sub: 'Dein Jahr in Zahlen, Höhepunkte, Bild zum Teilen', href: '#/jahr', id: 'm-jahr' })])),
     UI.section('Daten', UI.list([
-      UI.row({ icon: 'download', title: 'Touren importieren', sub: 'Dateien, Meine Touren, Komoot, Strava, Zepp, Garmin', href: '#/import', id: 'm-import' }),
+      UI.row({ icon: 'download', title: 'Touren importieren', sub: MTCalc.importSub(MT.aktiv()), href: '#/import', id: 'm-import' }),
       UI.row({ icon: 'photo', title: 'Foto-Quellen', sub: 'Galerie, Ordner, Netzwerkfreigabe, Nextcloud', href: '#/sources', id: 'm-sources' }),
       UI.row({ icon: 'gear', title: 'Einstellungen & Sicherung', sub: 'Karte, Routing, Heimatort, Puls, Datensicherung', href: '#/settings', id: 'm-settings' })])),
     h('p', { class: 'muted small', style: { marginTop: '20px' } }, `${nT} ${nT === 1 ? 'Tour' : 'Touren'} · ${nP} ${nP === 1 ? 'Foto' : 'Fotos'} · alles nur auf diesem Handy`)));
@@ -100,6 +100,7 @@ async function boot() {
   } catch (e) {
     document.body.innerHTML = '<div class="empty"><h2>Die Daten lassen sich nicht öffnen</h2><p>' + esc(e.message) + '</p><p>Bitte die App schließen und neu starten.</p></div>'; return;
   }
+  try { await MT.start(); } catch (e) { console.error('Meine Touren: Entscheidung', e); }      // 2.15.0: Bestandsnutzer einschalten, sonst die Frage vormerken
   const tabs = $('#tabs');
   Nav.tabs.forEach(([p, t, i]) => tabs.append(h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '', onclick: () => { if (location.hash === '#' + p) $('#view').scrollTop = 0; } },      // Tippen auf den schon offenen Reiter: zurück nach oben
      h('span', { class: 'ti', html: Ico.svg(i, 23) }), h('span', null, t))));

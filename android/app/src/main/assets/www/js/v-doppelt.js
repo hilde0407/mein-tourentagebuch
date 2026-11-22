@@ -18,7 +18,7 @@ const Dup = {
       try { await Tours.fillHr(keepId, await Tours.points(dropId), keep.start - Math.round((keep.start - drop.start) / 1800000) * 1800000); } catch (e) { /* ohne Puls weiter */ }
       keep = await DB.get('tours', keepId);
     }
-    const t = Doppelt.zusammen(keep, drop, { handKeep: Dup.hand(keep), handDrop: Dup.hand(drop) });
+    const t = Doppelt.zusammen(keep, drop, { handKeep: Dup.hand(keep), handDrop: Dup.hand(drop), mt: MT.aktiv() });
     const ph = await DB.byIndex('photos', 'tour', dropId);
     ph.forEach(p => { p.tour = keepId; });
     if (ph.length) await DB.putMany('photos', ph);
@@ -47,7 +47,7 @@ Views['/doppelt'] = async root => {
   const eintrag = (t, rolle) => {
     const quelle = Tours.QUELLE[t.src] || t.src || 'Datei', was = Doppelt.hat(t, { fotos: fotos[t.id] || 0, hand: Dup.hand(t) });
     return h('div', { class: 'dup-e' }, UI.tourRow(t, { year: true, photos: fotos[t.id] || 0 }),
-      h('p', { class: 'dup-m small' }, h('b', null, rolle), ' · Quelle ' + quelle + (was.length ? ' · ' + was.join(', ') : ' · keine weiteren Angaben')));
+      h('p', { class: 'dup-m small' }, h('b', null, rolle), ' · ', h('span', { class: 'quelle' }, 'Quelle ' + quelle), (was.length ? ' · ' + was.join(', ') : ' · keine weiteren Angaben')));
   };
   pairs.forEach(p => {
     let keep = p.keep, drop = p.drop;

@@ -3300,6 +3300,211 @@ def doppelt_2140(pg):
           window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
+MT_AN = "async () => { Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); }"      # 2.15.0: Testhelfer – „Mit Meine Touren zusammenarbeiten“ an (die älteren Tests erwarten die Knöpfe)
+
+MT_SPUREN_JS = """(extra) => {
+  /* 2.15.0: Sucht auf der sichtbaren Seite und in offenen Blättern nach Berührungspunkten mit Meine Touren (Text, Beschriftungen, Knopf-Kennungen).
+     Ausnahmen: die Einstellung selbst (#set-mt-box), die Quellenangabe einer Tour aus Meine Touren (#tsrc) und was der Aufrufer nennt. */
+  const RX = /meine[\\s-]*touren|betrachter|tailscale|ts\\.net/i, out = [];
+  const IDS = ['imp-mt', 'mt-senden-tour', 'mt-auto', 'mtsent', 'mtinfo', 'mt-zahlen', 'mt-senden', 'mt-go', 'mt-url', 'mt-off', 'mt-state', 'mt-viewer', 'fu-mt', 'fu-mt-go', 'mt-frage', 'send-zu-mt'];
+  const weg = '#tsrc, .quelle, #set-mt-box' + (extra ? ', ' + extra : '');
+  for (const r of [document.querySelector('#view'), ...document.querySelectorAll('.sheet')]) {
+    if (!r) continue;
+    const c = r.cloneNode(true); c.querySelectorAll(weg).forEach(e => e.remove());
+    const tx = c.textContent, m = tx.match(RX);
+    if (m) out.push('Text „' + m[0] + '“: …' + tx.slice(Math.max(0, m.index - 50), m.index + 40).replace(/\\s+/g, ' ') + '…');
+    c.querySelectorAll('*').forEach(e => { for (const a of ['aria-label', 'title', 'placeholder', 'value', 'href']) { const v = e.getAttribute(a); if (v && RX.test(v)) out.push(a + ' „' + v + '“'); }
+      if (e.id && IDS.includes(e.id)) out.push('Kennung #' + e.id); });
+  }
+  return out;
+}"""
+
+def mt_spuren(pg, extra=""):
+    return pg.evaluate(MT_SPUREN_JS, extra)
+
+def erststart_2150(pg):
+    """2.15.0: Erststart – ruhige Frage unter dem Willkommen (keine Blockade), sonst nichts von Meine Touren; „Nein“ wird gemerkt. Danach für die älteren Tests: an."""
+    pg.wait_for_selector("#mt-frage")
+    assert pg.evaluate("[Set_.get('mtAktiv'), Set_.get('mtWahl')]") == [False, "offen"], pg.evaluate("[Set_.get('mtAktiv'), Set_.get('mtWahl')]")
+    assert "Nutzt du auch" in pg.inner_text("#mt-frage") and pg.locator("#mt-frage-nein").count() == 1 and pg.locator("#mt-frage-ja").count() == 1
+    assert pg.locator(".sheet").count() == 0, "die Frage blockiert nichts"
+    assert mt_spuren(pg, "#mt-frage") == [], mt_spuren(pg, "#mt-frage")
+    for r in ("#/mehr", "#/settings", "#/import"):
+        go(pg, r, "#view > *"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
+        assert mt_spuren(pg) == [], (r, mt_spuren(pg))
+        if r == "#/settings": assert not pg.is_checked("#set-mt input") and pg.locator("#set-mt-box").count() == 1
+    go(pg, "#/start", "#mt-frage"); pg.wait_for_function(LEISE, timeout=30000)
+    pg.click("#mt-frage-nein"); assert "ganz für sich" in toast_text(pg, "für sich")
+    pg.wait_for_selector("#mt-frage", state="detached")
+    assert pg.evaluate("[Set_.get('mtAktiv'), Set_.get('mtWahl'), MT.aktiv()]") == [False, "nein", False]
+    assert "Willkommen" in pg.inner_text("#view") and mt_spuren(pg) == [], mt_spuren(pg)
+    pg.evaluate("Nav.render()"); pg.wait_for_function("() => !Nav._busy"); assert pg.locator("#mt-frage").count() == 0, "gemerkt: keine zweite Frage"
+    pg.evaluate(MT_AN)
+
+FU_MT_ANTWORT = {"format": "tourentagebuch-wanderfuehrer", "version": 1, "app": "Meine Touren 3.56.0", "erstellt": "2026-11-22T14:03:00+01:00",
+    "buecher": [{"id": "mt-3f2a1b2c", "key": "Rother Testgebirge", "name": "Rother Testgebirge", "cover_v": None,
+        "touren": [{"id": "t1", "ord": 1, "mt_id": 12, "title": "2 Tour 2", "km": 4.0, "up": 210, "f": "", "pts": {"la": [4752000, 50, 50], "lo": [1100000, 40, 40]},
+                    "gewandert": [{"datum": "2026-11-19", "name": "Meine Runde am See"}]}]}]}
+
+NETZ_WACHE = """() => {
+  /* 2.15.0: Netz-Wächter – zählt jeden Aufruf an die Meine-Touren-Adresse (Native.http, fetch, XMLHttpRequest). __mtStub antwortet an Stelle des Servers. */
+  const isMt = u => /mt\\.test/.test(String(u && u.url || u || ''));
+  window.__netlog = []; window.__net0 = { http: Native.http, fetch: window.fetch, open: XMLHttpRequest.prototype.open };
+  Native.http = async o => { if (isMt(o.url)) { window.__netlog.push((o.method || 'GET') + ' ' + o.url); if (window.__mtStub) return window.__mtStub(o); } return window.__net0.http(o); };
+  window.fetch = function (u) { if (isMt(u)) window.__netlog.push('fetch ' + (u.url || u)); return window.__net0.fetch.apply(this, arguments); };
+  XMLHttpRequest.prototype.open = function (m, u) { if (isMt(u)) window.__netlog.push('xhr ' + u); return window.__net0.open.apply(this, arguments); };
+}"""
+NETZ_WACHE_AUS = "() => { Native.http = window.__net0.http; window.fetch = window.__net0.fetch; XMLHttpRequest.prototype.open = window.__net0.open; delete window.__mtStub; delete window.__net0; }"
+
+def mt_schalter_2150(pg):
+    """2.15.0: Schalter „Mit Meine Touren zusammenarbeiten“. (a) Bei Aus auf jeder Ansicht kein Text und kein Knopf von Meine Touren (Ausnahmen: die Einstellung, die
+    Quellenangabe einer Tour aus Meine Touren); (b) kein Netzaufruf an die Meine-Touren-Adresse, auch nicht beim automatischen Senden, Nachholen und Abgleich beim Öffnen;
+    (c) Bestandsnutzer-Entscheidung; (d) Umschalten im Betrieb (Zahlen, Knöpfe, ohne Neustart); (e) Wanderführer aus Meine Touren holen (gestubbte Antwort im Serverformat)."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    bad = []
+    vor = pg.evaluate("""async () => { const r = {}; for (const k of ['mt', 'zepp', 'komoot', 'mtOffen', 'abgleich']) r[k] = await DB.kvGet(k, null);
+      r.set = { mtAuto: Set_.get('mtAuto'), autoAbgleich: Set_.get('autoAbgleich') }; return r; }""")
+    pg.evaluate(NETZ_WACHE)
+    ids = pg.evaluate("""async () => {
+      await DB.del('kv', 'zepp'); await DB.del('kv', 'komoot');
+      await DB.kvSet('mt', { base: 'https://mt.test', name: 'Volker', role: 'user', token: 'SITZUNG-2150', since: Date.now() });
+      await Set_.set('mtAuto', true); await Set_.set('autoAbgleich', true); await DB.kvSet('abgleich', null); await DB.kvSet('mtOffen', []);
+      const T0 = Date.UTC(2026, 9, 3, 8), pts = (n, la) => Array.from({ length: n }, (_, i) => ({ lat: la + i * 0.0006, lon: 11.3 + i * 0.0003, ele: 700 + 40 * Math.sin(i / 6), t: T0 + (la * 1e6 % 7) * 864e5 + i * 30000 }));
+      const A = (await Tours.add({ name: 'Schalter A angeglichen', sport: 'hike', pts: pts(80, 46.1), src: 'file', force: true })).tour;
+      Object.assign(A, { mtSent: Date.now(), zMt: 1, upMt: 999, downMt: 990, distMt: 12345, starsMt: 4 }); Tours.applyHoehe(A, Geo.stats(await Tours.points(A.id))); A.dist = 12345; await Tours.save(A);
+      const B = (await Tours.add({ name: 'Schalter B von dort', sport: 'hike', pts: pts(60, 46.3), src: 'mt', srcId: 'mt:2150', force: true })).tour;
+      B.mtId = '2150'; await Tours.save(B);
+      const C = (await Tours.add({ name: 'Schalter C eigene', sport: 'hike', pts: pts(50, 46.5), src: 'rec', force: true })).tour;
+      Tours.invalidate(); return { A: A.id, B: B.id, C: C.id }; }""")
+    tour = lambda k: pg.evaluate("id => DB.get('tours', id)", ids[k])
+    a0 = tour("A"); assert a0["up"] == 999 and a0["dist"] == 12345, a0
+
+    # --- Ausschalten im Betrieb (Einstellungen): sofort, mit Meldung, ohne Löschen der Sitzung; Zahlen: eigene Rechnung ---
+    go(pg, "#/settings", "#set-mt"); leise()
+    assert pg.evaluate("document.querySelector('#view .pad').firstElementChild.id") == "set-mt-box", "Abschnitt ganz oben"
+    assert pg.is_checked("#set-mt input") and "Ohne diese Option bleibt Mein Tourentagebuch ganz für sich." in pg.inner_text("#set-mt-box")
+    pg.click("#set-mt"); assert "ganz für sich" in toast_text(pg, "für sich")
+    pg.wait_for_function("() => !MT.aktiv() && Set_.get('mtWahl') === 'nein'")
+    pg.wait_for_function("id => DB.get('tours', id).then(t => t.up !== 999 && t.dist !== 12345)", arg=ids["A"], timeout=30000)
+    a1 = tour("A"); assert a1["zMt"] == 1 and a1["upMt"] == 999 and a1["distMt"] == 12345 and a1["starsMt"] == 4 and a1.get("upSrc") != "mt", a1      # Werte bleiben gespeichert
+    assert pg.evaluate("DB.kvGet('mt', null).then(a => a && a.token)") == "SITZUNG-2150", "die Sitzung bleibt"
+    assert not pg.is_checked("#set-mt input")
+    leise()
+
+    # (a) jede Ansicht ohne Meine Touren
+    routes = ["#/start", "#/", "#/tour/" + ids["A"], "#/tour/" + ids["B"], "#/tour/" + ids["C"], "#/rec", "#/import", "#/sources", "#/photos", "#/fuehrer", "#/stats",
+              "#/stats/rekorde", "#/stats/auswertung", "#/stats/ziele", "#/jahr", "#/mehr", "#/settings", "#/doppelt", "#/reisen", "#/plan"]
+    for r in routes:
+        pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", r)
+        pg.wait_for_function("h => !Nav._busy && Nav.cur === '/' + (h.slice(2).split('/')[0] || '') && document.querySelector('#view').children.length > 0", arg=r); pg.wait_for_timeout(500)
+        f = mt_spuren(pg)
+        assert not f, (r, f)
+        if r.startswith("#/tour/"):
+            pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector(".sheet .menu"); f = mt_spuren(pg); zu(pg); assert not f, (r + " Menü", f)
+    # Tour A: eigene Rechnung, Sterne ohne Herkunft; Tour B: Quelle bleibt als ehrliche Herkunft
+    go(pg, "#/tour/" + ids["A"], "#rate .star"); assert pg.inner_text("#ratecap") == "4 von 5" and pg.locator("#mtinfo, #mtsent").count() == 0, pg.inner_text("#ratecap")
+    go(pg, "#/tour/" + ids["B"], "#tsrc"); assert pg.inner_text("#tsrc").strip() == "· Meine Touren", pg.inner_text("#tsrc")
+    go(pg, "#/mehr", "#m-import"); assert "Meine Touren" not in pg.inner_text("#m-import") and "Komoot" in pg.inner_text("#m-import")
+    # „Alles abgleichen“: nur Meine Touren verbunden → kein Knopf, die Meldung nennt Meine Touren nicht
+    assert pg.evaluate("Import.Alles.quellen().then(q => q.length)") == 0
+    pg.evaluate("AllesUI.start()"); m = toast_text(pg, "noch keine Quelle"); assert "Meine Touren" not in m and "Komoot oder Zepp" in m, m
+    leise()
+    # mit Zepp verbunden: nur Zepp, ohne Meine-Touren-Zeile
+    pg.evaluate("DB.kvSet('zepp', { token: 'z', viaToken: true })")
+    assert pg.evaluate("Import.Alles.quellen().then(q => q.map(x => x.id))") == ["zepp"]
+    go(pg, "#/import", "#all-go"); assert "Meine Touren" not in pg.inner_text("#all-src") and pg.locator("#imp-mt").count() == 0, pg.inner_text("#all-src")
+    pg.evaluate("DB.del('kv', 'zepp')")
+
+    # (b) kein Netzaufruf: automatisch senden nach Aufnahme-Ende, Nachholen, Abgleich beim Öffnen, Netzfunktionen selbst
+    pg.evaluate("window.__mtStub = () => ({ status: 200, headers: {}, body: '[]' })")
+    net = pg.evaluate("""async (ids) => {
+      const C = await DB.get('tours', ids.C), acc = await DB.kvGet('mt', null), r = {};
+      await DB.kvSet('mtOffen', [{ id: ids.C, n: 0 }]);
+      await Senden.auto(C); await Senden.nachholen(); await autoAbgleich(); r.auto = await Import.Alles.auto();
+      r.tours = await Import.MT.tours(acc).then(() => 'lief', e => e.aus ? 'aus' : e.message);
+      r.holen = await Buecher.holeMt(acc, false).then(() => 'lief', e => /ausgeschaltet/.test(e.message) ? 'aus' : e.message);
+      r.dialog = await Senden.dialog(C); r.konto = await MT.konto();
+      r.offen = await DB.kvGet('mtOffen', []);
+      return r; }""", ids)
+    assert net["auto"] is None and net["tours"] == "aus" and net["holen"] == "aus" and net["dialog"] is None and net["konto"] is None, net
+    assert net["offen"] == [{"id": ids["C"], "n": 0}], net      # nichts vorgemerkt, nichts abgearbeitet
+    pg.wait_for_timeout(1500)
+    assert pg.evaluate("window.__netlog") == [], pg.evaluate("window.__netlog")
+    pg.evaluate("DB.kvSet('mtOffen', [])")
+
+    # (c) Bestandsnutzer-Entscheidung beim ersten Start von 2.15.0; Sicherung überschreibt die Entscheidung des Geräts nicht
+    mig = pg.evaluate("""async () => {
+      const r = {}, st = () => [MT.aktiv(), Set_.get('mtWahl'), MT.frageOffen()];
+      const neu = async (wahl, an) => { Set_.v.mtAktiv = an; await Set_.set('mtWahl', wahl); await MT.start(); return st(); };
+      await DB.kvSet('mt', { base: 'https://mt.test', token: 'SITZUNG-2150' }); r.verbindung = await neu('', false);
+      await DB.kvSet('mt', { base: 'https://mt.test', name: 'Volker' }); r.getrennt = await neu('', false);
+      await DB.del('kv', 'mt'); r.touren = await neu('', false);
+      const all0 = DB.all; DB.all = s => s === 'tours' ? Promise.resolve([]) : all0(s);
+      try { r.nichts = await neu('', false); } finally { DB.all = all0; }
+      await DB.kvSet('mt', { base: 'https://mt.test', token: 'SITZUNG-2150' }); r.gemerkt = await neu('nein', false);
+      await Backup.restoreKv([{ k: 'settings', v: { mtAktiv: true, mtWahl: 'ja' } }]); r.sicherung = st();
+      return r; }""")
+    assert mig["verbindung"] == [True, "auto", False] and mig["getrennt"] == [True, "auto", False] and mig["touren"] == [True, "auto", False], mig
+    assert mig["nichts"] == [False, "offen", True] and mig["gemerkt"] == [False, "nein", False] and mig["sicherung"] == [False, "nein", False], mig
+    # die Frage auf der Startseite (mit Touren): „Ja“ schaltet ein, gemerkt
+    pg.evaluate("Set_.set('mtWahl', 'offen')"); go(pg, "#/start", "#mt-frage"); leise()
+    bad += layout_check(pg, ["#/start"])
+    pg.click("#mt-frage-ja"); assert "eingeschaltet" in toast_text(pg, "eingeschaltet")
+    pg.wait_for_selector("#mt-frage", state="detached"); assert pg.evaluate("[MT.aktiv(), Set_.get('mtWahl')]") == [True, "ja"]
+    leise()
+
+    # (d) An: alles wieder da, Zahlen aus Meine Touren wieder maßgeblich – ohne Neustart
+    pg.wait_for_function("id => DB.get('tours', id).then(t => t.up === 999 && t.dist === 12345)", arg=ids["A"], timeout=30000)
+    go(pg, "#/tour/" + ids["A"], "#mtinfo"); assert "aus Meine Touren" in pg.inner_text("#ratecap") and pg.locator("#mtsent").count() == 1
+    go(pg, "#/tour/" + ids["C"], "#rate"); pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("#mt-senden-tour"); zu(pg)
+    go(pg, "#/import", "#imp-mt"); go(pg, "#/mehr", "#m-import"); assert "Meine Touren" in pg.inner_text("#m-import")
+    assert pg.evaluate("Import.Alles.quellen().then(q => q.map(x => x.id))") == ["mt"]
+    # Aus über die Einstellung und gleich wieder an: die Importkarte verschwindet und kommt wieder, ohne Neuladen
+    go(pg, "#/settings", "#set-mt"); pg.click("#set-mt"); toast_text(pg, "für sich"); go(pg, "#/import", "#view .list"); assert pg.locator("#imp-mt").count() == 0
+    leise(); go(pg, "#/settings", "#set-mt"); pg.click("#set-mt"); toast_text(pg, "eingeschaltet"); go(pg, "#/import", "#imp-mt"); leise()
+
+    # (e) Wanderführer aus Meine Touren holen
+    pg.evaluate("""fx => { window.__fuReqs = []; window.__mtStub = o => { const u = new URL(o.url); if (u.pathname !== '/api/guides/export') return { status: 404, headers: {}, body: '{}' };
+      window.__fuReqs.push({ url: o.url, method: o.method || 'GET', cookie: (o.headers || {}).Cookie || '', accept: (o.headers || {}).Accept || '' });
+      if (window.__fuNetz) throw new Error('offline'); const s = window.__fuStatus || 200; return { status: s, headers: {}, body: s === 200 ? JSON.stringify(fx) : '{"detail":"x"}' }; }; }""", FU_MT_ANTWORT)
+    pg.evaluate("window.__netlog.length = 0")
+    go(pg, "#/fuehrer", "#fu-mt"); pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go")
+    assert not pg.is_checked("#fu-mt-cover input"), "Titelbilder: Vorgabe aus"
+    bad += sheet_check_open(pg, "Wanderführer aus Meine Touren")
+    pg.click("#fu-mt-go"); pg.wait_for_selector("#fu-im-sum")
+    rq = pg.evaluate("window.__fuReqs"); assert len(rq) == 1 and rq[0]["url"] == "https://mt.test/api/guides/export" and rq[0]["method"] == "GET" and rq[0]["cookie"] == "kh_session=SITZUNG-2150" and rq[0]["accept"] == "application/json", rq
+    assert pg.inner_text("#fu-im-sum").startswith("1 neues Buch") and pg.get_attribute(".sheet", "aria-label") == "Aus Meine Touren holen", pg.inner_text("#fu-im-sum")
+    pg.click("#fu-im-ok"); toast_text(pg, "Übernommen")
+    bk = pg.evaluate("Buecher.liste().then(l => l.filter(b => b.id === 'mt-3f2a1b2c').map(b => [b.name, b.touren.length, b.touren[0].title, b.touren[0].km, b.touren[0].up]))")
+    assert bk == [["Rother Testgebirge", 1, "2 Tour 2", 4, 210]], bk
+    assert pg.evaluate("Buecher.punkte('mt-3f2a1b2c').then(p => Object.values(p)[0] ? Object.values(p)[0].length : 0)") == 3
+    leise()
+    # mit Titelbildern: ?cover=1; zweites Mal nichts doppelt
+    go(pg, "#/fuehrer", "#fu-mt"); pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go"); pg.click("#fu-mt-cover"); pg.click("#fu-mt-go"); pg.wait_for_selector("#fu-im-sum")
+    assert pg.evaluate("window.__fuReqs[1].url") == "https://mt.test/api/guides/export?cover=1" and "schon da" in pg.inner_text("#fu-im-sum"), pg.inner_text("#fu-im-sum")
+    zu(pg)
+    # Fehler: 404/403 → Version nötig; kein Netz → verständlich; 401 → Anmeldung abgelaufen, Knopf verschwindet
+    for st, rx in ((404, "3\\.56\\.0"), (403, "3\\.56\\.0"), ("netz", "nicht erreichbar")):
+        pg.evaluate("s => { window.__fuStatus = s === 'netz' ? 0 : s; window.__fuNetz = s === 'netz'; }", st); leise()
+        go(pg, "#/fuehrer", "#fu-mt"); pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go"); pg.click("#fu-mt-go"); m = toast_text(pg, rx)
+        pg.wait_for_selector(".sheet", state="detached"); assert pg.locator("#fu-im-sum").count() == 0, (st, m)
+    pg.evaluate("window.__fuStatus = 401; window.__fuNetz = false"); leise()
+    go(pg, "#/fuehrer", "#fu-mt"); pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go"); pg.click("#fu-mt-go")
+    assert toast_text(pg, "abgelaufen") == "Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden."
+    pg.wait_for_function("() => !Nav._busy && Nav.cur === '/fuehrer' && document.querySelector('#fu-xfer') && !document.querySelector('#fu-mt')")
+    assert pg.evaluate("DB.kvGet('mt', null).then(a => [a.base, !!a.token])") == ["https://mt.test", False]
+    assert all("mt.test" in u for u in pg.evaluate("window.__netlog"))
+    leise()
+
+    # aufräumen: Stubs zurück, Touren, Buch und Einstellungen wie vorher
+    pg.evaluate(NETZ_WACHE_AUS)
+    pg.evaluate("""async ([ids, vor]) => { for (const k of ['A', 'B', 'C']) await Tours.remove(ids[k]); await Buecher.entferne('mt-3f2a1b2c');
+      for (const k of ['mt', 'zepp', 'komoot', 'mtOffen', 'abgleich']) { if (vor[k] == null) await DB.del('kv', k); else await DB.kvSet(k, vor[k]); }
+      await Set_.set('mtAuto', vor.set.mtAuto); await Set_.set('autoAbgleich', vor.set.autoAbgleich); Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); Tours.invalidate(); }""", [ids, vor])
+    assert pg.evaluate("typeof window.__net0") == "undefined"
+    return bad
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -3318,6 +3523,7 @@ def main():
         pg.route("**/brouter.de/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"features": [{"geometry": {"coordinates": [[11.0, 47.0, 500], [11.001, 47.001, 520], [11.002, 47.002, 560]]}}]})))
         pg.goto(f"http://127.0.0.1:{port}/index.html"); pg.wait_for_selector("#tabs a")
         assert "Willkommen" in pg.inner_text("#view"), "Leerzustand fehlt"
+        erststart_2150(pg)      # 2.15.0: Frage beim Erststart; danach „Mit Meine Touren zusammenarbeiten“ an (Testhelfer MT_AN)
         # Touren einlesen (wie beim Datei-Import)
         t0 = 1700000000000
         res = pg.evaluate("""async ([a,b,dup]) => { const enc=s=>new TextEncoder().encode(s); const r1=await Import.fromData('a.gpx',enc(a),'file'); const r2=await Import.fromData('b.gpx',enc(b),'file'); const r3=await Import.fromData('a2.gpx',enc(dup),'file'); return [r1,r2,r3]; }""",
@@ -3960,6 +4166,7 @@ def main():
         st_bad = statistik_2130(pg)
         fx_bad = fuehrer_2130(pg)
         dp_bad = doppelt_2140(pg)
+        ms_bad = mt_schalter_2150(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -3991,6 +4198,7 @@ def main():
         bad += st_bad
         bad += fx_bad
         bad += dp_bad
+        bad += ms_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

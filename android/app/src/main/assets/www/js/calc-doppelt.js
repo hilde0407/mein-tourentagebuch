@@ -68,7 +68,7 @@
   /** Zwei Einträge zusammenlegen: gibt die bleibende Tour als neues Objekt zurück (Spur, Zahlen und Sportart von keep).
       Von drop kommen dazu: Notiz, Pins, Schlagworte, Favorit, Plan-Verknüpfung, der von Hand vergebene Name (wenn keep nur einen erzeugten hat)
       und die Zuordnungen (Kennungen der Quellen als alias, Komoot-Nummer, Meine-Touren-Kennung mit ihren Werten) – damit ein späterer Import die gelöschte
-      Tour nicht wieder anlegt. opts: handKeep / handDrop (Name von Hand vergeben?). Fotos und Puls bewegt der Aufrufer. */
+      Tour nicht wieder anlegt. opts: handKeep / handDrop (Name von Hand vergeben?), mt (false = Meine Touren ausgeschaltet, 2.15.0). Fotos und Puls bewegt der Aufrufer. */
   const AB = () => (typeof module !== 'undefined' && module.exports ? require('./calc-abgleich.js') : root.Abgleich);
   function zusammen(keep, drop, opts) {
     opts = opts || {};
@@ -93,7 +93,7 @@
       if (m) {
         t.mtId = String(m);
         for (const k of ['upMt', 'downMt', 'distMt', 'nameMt', 'noteMt', 'tagsMt', 'starsMt', 'zMt']) if (t[k] == null && drop[k] != null) t[k] = drop[k];
-        if (t.zMt) {      // die Zahlen aus Meine Touren gelten weiter – jetzt an der bleibenden Tour
+        if (t.zMt && opts.mt !== false) {      // die Zahlen aus Meine Touren gelten weiter – jetzt an der bleibenden Tour (2.15.0: nur bei „Mit Meine Touren zusammenarbeiten“; opts.mt = false: die eigene Rechnung bleibt)
           if (t.upMt != null) { t.up = t.upMt; if (t.downMt != null) t.down = t.downMt; t.upSrc = 'mt'; }
           if (t.distMt) t.dist = t.distMt;
         }

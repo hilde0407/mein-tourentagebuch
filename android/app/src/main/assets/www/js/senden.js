@@ -14,7 +14,7 @@ const Senden = {
   async post(acc, path, json) {
     let r;
     try { r = await Import.MT.http(acc.base, path, { method: 'POST', json, token: acc.token }); }
-    catch (e) { throw Senden.fehler(e.message, { wieder: true }); }
+    catch (e) { if (e.aus) throw e; throw Senden.fehler(e.message, { wieder: true }); }      // 2.15.0: ausgeschaltet ist kein Netzfehler (nichts vormerken)
     if (r.status === 401) throw await Import.MT.expired(acc);
     return r;
   },
@@ -113,6 +113,7 @@ const Senden = {
   },
   /** Tourseite: eine Tour senden – mit Rückfrage, Fortschritt und Ergebnis. after(): danach (z. B. Seite neu zeichnen). */
   async dialog(t, after) {
+    if (!MT.aktiv()) return null;      // 2.15.0: bei Aus gibt es kein Senden
     if (Senden._busy) { toast('Es läuft schon ein Senden.'); return null; }
     const acc = await Senden.konto(t); if (!acc) return null;
     if (!await Senden.httpOk(acc)) return null;
@@ -133,6 +134,7 @@ const Senden = {
   },
   /** Meine Touren → „Touren senden …“: Auswahl aus den noch nicht gesendeten Touren (neueste zuerst; nichts ist vorgewählt). */
   async auswahl(after) {
+    if (!MT.aktiv()) return;
     const acc0 = await DB.kvGet('mt', null);
     const g = SendenCalc.pruefen({ timed: true, start: 1, status: 'done' }, acc0);
     if (!g.ok) { Senden.erklaeren(g); return; }
@@ -187,7 +189,7 @@ const Senden = {
       (beim nächsten Start der App und nach der nächsten Aufzeichnung, höchstens fünfmal). Ohne Einschalten, Verbindung oder Schreibrechte geschieht nichts. */
   async auto(t) {
     try {
-      if (!Set_.get('mtAuto') || !t) return;
+      if (!MT.aktiv() || !Set_.get('mtAuto') || !t) return;      // 2.15.0: bei Aus nichts vormerken und nichts senden
       const acc = await DB.kvGet('mt', null);
       if (!SendenCalc.pruefen(t, acc).ok) return;
       await DB.kvSet('mtOffen', SendenCalc.queueAdd(await DB.kvGet('mtOffen', []), t.id));      // zuerst vormerken: stirbt die App mittendrin, geht es beim nächsten Start weiter
@@ -196,7 +198,7 @@ const Senden = {
   },
   /** Vorgemerkte Touren senden (leise). Dauerhafte Fehler (Rechte, Anmeldung, leere Strecke) streichen die Tour aus der Warteschlange; Netzfehler und Serverfehler zählen mit. */
   async nachholen() {
-    if (Senden._busy) return;
+    if (Senden._busy || !MT.aktiv()) return;      // 2.15.0: bei Aus bleibt die Warteschlange liegen, bis wieder eingeschaltet wird
     Senden._busy = true;
     try {
       let q = await DB.kvGet('mtOffen', []);

@@ -211,6 +211,7 @@ const Import = {
     },
     /** Ein Aufruf am Server. Fehler der Verbindung werden zu einer verständlichen Meldung (ohne Zugangsdaten). */
     async http(base, path, o) {
+      if (!MT.aktiv()) throw Object.assign(new Error('Die Zusammenarbeit mit Meine Touren ist ausgeschaltet (Mehr → Einstellungen).'), { aus: true });      // 2.15.0: Sicherung – bei Aus kein Netzaufruf
       o = o || {};
       const headers = { Accept: 'application/json' };
       if (o.token) headers.Cookie = Import.MT.COOKIE + '=' + o.token;
@@ -649,13 +650,14 @@ const Import = {
     /** Verbundene Quellen in der Reihenfolge des Abgleichs: [{ id, name, acc }]. */
     async quellen() {
       const ok = { zepp: a => !!(a && a.token), komoot: a => !!(a && a.token), mt: a => !!(a && (a.token || a.open)) }, out = [];
-      for (const id of Abgleich.REIHENFOLGE) { const acc = await DB.kvGet(id, null); if (ok[id](acc)) out.push({ id, name: Abgleich.NAMEN[id], acc }); }
+      for (const id of MTCalc.reihenfolge(Abgleich.REIHENFOLGE, MT.aktiv())) { const acc = await DB.kvGet(id, null); if (ok[id](acc)) out.push({ id, name: Abgleich.NAMEN[id], acc }); }
       return out;
     },
     /** Eine Quelle mit ihren gespeicherten Einstellungen ausführen. upd(i, n, text). */
     eine(q, o, upd) {
       if (q.id === 'zepp') return Import.Zepp.importAll(q.acc, upd, { ele: Set_.get('zeppEle') !== false, stop: o.stop });
       if (q.id === 'komoot') return Import.Komoot.importAll(q.acc, { planned: !!Set_.get('komootPlanned'), stop: o.stop }, upd);
+      if (!MT.aktiv()) return Promise.reject(new Error('Die Zusammenarbeit mit Meine Touren ist ausgeschaltet.'));
       return Import.MT.importAll(q.acc, { zahlen: Set_.get('mtZahlen') !== false, stop: o.stop }, upd);
     },
     /** Alle verbundenen Quellen abgleichen. o: stop() (Abbruch), onProgress(text, anteil 0…1). Gibt { items, stopped, neu, fehler } zurück;

@@ -957,6 +957,55 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(ms < 3000, '5000 Touren × 19 Zoomstufen in ' + ms + ' ms');
 }
 
+/* ---------- 2.15.0 Schalter „Mit Meine Touren zusammenarbeiten“ (calc-mt.js): Bestand oder neu, Texte bei Aus ohne Meine Touren, Reihenfolge, Fehler ---------- */
+{
+  const M = require(W + 'calc-mt.js'), AB = require(W + 'calc-abgleich.js'), D = require(W + 'calc-doppelt.js');
+  const RX = /meine\s*touren|betrachter|tailscale/i;
+  // Verbindung
+  ok(M.verbunden({ token: 'x' }) && M.verbunden({ open: true }) && !M.verbunden({ base: 'https://a' }) && !M.verbunden(null), 'verbunden');
+  ok(M.eingerichtet({ base: 'https://a', name: 'V' }) && !M.eingerichtet(null) && !M.eingerichtet({}), 'eingerichtet (auch nach „Verbindung trennen“)');
+  // Bestand: kv „mt“ oder Touren mit Bezug → an, keine Frage; sonst Frage
+  const neu = { aktiv: false, wahl: 'offen', frage: true }, bestand = { aktiv: true, wahl: 'auto', frage: false };
+  A.deepStrictEqual(M.entscheidung(null, []), neu); n++;
+  A.deepStrictEqual(M.entscheidung(undefined, [{ src: 'file' }, { src: 'komoot', srcId: 'komoot:1' }]), neu); n++;
+  A.deepStrictEqual(M.entscheidung({ base: 'https://mt', token: 't' }, []), bestand); n++;
+  A.deepStrictEqual(M.entscheidung({ base: 'https://mt', name: 'V' }, []), bestand); n++;
+  for (const t of [{ src: 'mt' }, { mtId: '5' }, { zMt: 1 }, { mtSent: 1700000000000 }, { srcId: 'mt:9' }, { alias: ['zepp:1', 'mt:3'] }]) { A.deepStrictEqual(M.entscheidung(null, [{ src: 'file' }, t]), bestand, JSON.stringify(t)); n++; }
+  ok(!M.beruehrt({ src: 'file', srcId: 'file:mt.gpx', alias: ['komoot:mt'] }) && !M.beruehrt(null), 'kein Bezug: Datei mit „mt“ im Namen');
+  ok(M.frage('offen') && !M.frage('') && !M.frage('ja') && !M.frage('nein') && !M.frage('auto'), 'Frage nur bei „offen“');
+  // Zahlen: nur bei An und angeglichen
+  ok(M.zahlenGelten({ zMt: 1 }, true) && !M.zahlenGelten({ zMt: 1 }, false) && !M.zahlenGelten({}, true), 'Zahlen aus Meine Touren nur bei An');
+  // Texte: bei Aus neutral, bei An wie bisher
+  for (const an of [false, true]) {
+    const tx = [M.importSub(an), M.keineQuelle(an), M.aufstiegNeu(3, an), M.aufstiegNeu(1, an), M.skiNeu(2, an), M.sterneZusatz({ starsMt: 4 }, an), M.umschaltText(an)];
+    ok(an ? tx.slice(0, 6).every(x => RX.test(x)) : tx.every(x => !RX.test(x)), (an ? 'An' : 'Aus') + ': Texte ' + JSON.stringify(tx));
+  }
+  ok(M.aufstiegNeu(1, false) === 'Aufstieg neu berechnet. 1 Tour geändert.' && M.aufstiegNeu(3, true) === 'Aufstieg neu berechnet – gleiche Rechnung wie in Meine Touren. 3 Touren geändert.', 'Aufstieg-Hinweis');
+  ok(M.sterneZusatz({ starsMt: 4, starsMan: true }, true) === '' && M.sterneZusatz({ starsMt: 4 }, true) === ' · aus Meine Touren', 'Sterne-Herkunft');
+  ok(M.importSub(false) === 'Dateien, Komoot, Strava, Zepp, Garmin', 'Importzeile bei Aus');
+  // Reihenfolge „Alles abgleichen“: bei Aus ohne Meine Touren, Zepp → Komoot bleibt
+  A.deepStrictEqual(M.reihenfolge(AB.REIHENFOLGE, false), ['zepp', 'komoot']); n++;
+  A.deepStrictEqual(M.reihenfolge(AB.REIHENFOLGE, true), ['zepp', 'komoot', 'mt']); n++;
+  // Wanderführer aus Meine Touren: Pfad und Fehler
+  ok(M.fuehrerPfad(false) === '/api/guides/export' && M.fuehrerPfad(true) === '/api/guides/export?cover=1', 'Pfad Wanderführer-Export');
+  ok(/3\.56\.0/.test(M.fuehrerFehler(403)) && /3\.56\.0/.test(M.fuehrerFehler(404)) && /HTTP 500/.test(M.fuehrerFehler(500)) && /HTTP 418/.test(M.fuehrerFehler(418)), 'Fehlertexte Wanderführer');
+  // Server-Format (Meine Touren 3.56.0) wird von FuehrerDatei.lies/plane toleriert: key, mt_id, app, erstellt, cover_v, gewandert
+  const FDm = require(W + 'calc-fuehrer-datei.js');
+  const srv = { format: 'tourentagebuch-wanderfuehrer', version: 1, app: 'Meine Touren 3.56.0', erstellt: '2026-11-22T14:03:00+01:00', buecher: [{ id: 'mt-3f2a1b2c', key: 'Rother Testgebirge', name: 'Rother Testgebirge', cover_v: null,
+    touren: [{ id: 't1', ord: 1, mt_id: 12, title: '2 Tour 2', km: 4.0, up: 210, f: '', pts: { la: [4752000, 50, 50], lo: [1100000, 40, 40] }, gewandert: [{ datum: '2026-11-19', name: 'Meine Runde am See' }] }] }] };
+  const dm = FDm.lies(JSON.stringify(srv));
+  ok(dm.defekt === 0 && dm.buecher.length === 1 && dm.buecher[0].id === 'mt-3f2a1b2c' && dm.buecher[0].touren[0].punkte.length === 3 && Math.abs(dm.buecher[0].touren[0].punkte[2].lat - 47.521) < 1e-9, 'Serverformat gelesen');
+  const pm = FDm.plane([], dm, {}, () => 'neu1');
+  ok(pm.nNeu === 1 && pm.nTouren === 1 && pm.neu[0].buch.id === 'mt-3f2a1b2c' && FDm.zusammenfassung(pm) === '1 neues Buch', 'Serverformat: Plan');
+  const pm2 = FDm.plane([pm.neu[0].buch], dm, {}, () => 'neu2');
+  ok(pm2.nTouren === 0 && pm2.schon === 1, 'zweites Holen: nichts doppelt');
+  // Doppelte zusammenführen: bei Aus bleibt die eigene Rechnung, die Werte aus Meine Touren kommen mit
+  const keep = { id: 'k', srcId: 'zepp:1', up: 300, down: 290, dist: 5000 }, drop = { id: 'd', srcId: 'mt:7', upMt: 333, downMt: 320, distMt: 5100, zMt: 1 };
+  const zAn = D.zusammen(keep, drop, {}), zAus = D.zusammen(keep, drop, { mt: false });
+  ok(zAn.up === 333 && zAn.dist === 5100 && zAn.upSrc === 'mt', 'Zusammenführen bei An: Zahlen aus Meine Touren');
+  ok(zAus.up === 300 && zAus.dist === 5000 && zAus.upSrc === undefined && zAus.upMt === 333 && zAus.zMt === 1 && zAus.mtId === '7', 'Zusammenführen bei Aus: eigene Rechnung, Werte gespeichert');
+}
+
 /* ---------- An Meine Touren senden (calc-senden.js) ---------- */
 {
   const S = require(W + 'calc-senden.js');
