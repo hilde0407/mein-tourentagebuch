@@ -220,6 +220,81 @@ const Buecher = {
     return s;
   },
 
+  /* ---------- 2.13.0: als Datei übertragen (Rechnung in js/calc-fuehrer-datei.js) ---------- */
+  /** Blatt „Wanderführer exportieren“: Schalter für die (selbst gewählten) Titelbilder, Vorgabe aus; dann JSON nach Download/Tourentagebuch. */
+  exportBlatt() {
+    let mitCover = false;
+    const go = h('button', { class: 'btn pri', id: 'fu-ex-go', onclick: async () => {
+      go.disabled = true;
+      try { const r = await Buecher.exportieren({ mitCover }); s.close(); if (r) toast('Gespeichert: ' + r.ort + ' · ' + r.buecher + (r.buecher === 1 ? ' Buch' : ' Bücher'), 6000); }
+      catch (e) { go.disabled = false; toast('Export nicht möglich: ' + (e && e.message || e), 6000); }
+    } }, 'Exportieren');
+    const s = sheet('Wanderführer exportieren', h('div', { id: 'fu-ex' },
+      h('p', null, 'Speichert deine Bücher mit allen Buchtouren (Titel, Länge, Aufstieg, Strecke) als Datei – zum Übertragen auf ein anderes Gerät oder zum Aufheben. Dabei steht auch, welche Buchtouren du gewandert bist (Datum und Name der Tour).'),
+      h('p', { class: 'muted small' }, 'Keine Spuren deiner Touren, keine Fotos, keine Zugangsdaten. Die Datei bleibt auf dem Handy (Download/Tourentagebuch); weitergegeben wird sie nur, wenn du sie selbst verschickst.'),
+      UI.toggle('Titelbilder mitnehmen (deine eigenen Bilder, größere Datei)', false, v => { mitCover = !!v; }, { id: 'fu-ex-cover' }),
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), go)));
+    return s;
+  },
+  /** Exportdatei schreiben. Gibt { ort, buecher, bytes } zurück (null ohne Bücher). */
+  async exportieren(o) {
+    const buecher = await Buecher.liste();
+    if (!buecher.length) { toast('Noch kein Buch angelegt.'); return null; }
+    const pts = {}, covers = {}, gew = {}, st = await Buecher.stand(buecher), tm = Object.fromEntries((await Tours.list()).map(t => [t.id, t]));
+    for (const b of buecher) {
+      pts[b.id] = await DB.kvGet('guidepts:' + b.id, {});
+      if (o && o.mitCover && b.cover) covers[b.id] = await Buecher.cover(b.id);
+      const sb = (st.buecher[b.id] || { touren: {} }).touren; gew[b.id] = {};
+      for (const k of Object.keys(sb)) gew[b.id][k] = (sb[k] || []).map(id => tm[id]).filter(Boolean).map(t => ({ start: t.start, name: t.name }));
+    }
+    const data = FuehrerDatei.exportiere(buecher, pts, covers, gew, { mitCover: !!(o && o.mitCover), app: 'Mein Tourentagebuch ' + (window.MTApp && MTApp.version ? MTApp.version() : '') });
+    const text = JSON.stringify(data), name = FuehrerDatei.dateiname(Date.now());
+    let ort;
+    try { ort = await Native.json('saveFile', { name, mime: 'application/json', text }); }
+    catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); ort = name; }
+    return { ort, buecher: data.buecher.length, bytes: text.length };
+  },
+  /** „Wanderführer importieren“: Datei wählen, prüfen, Rückfrage mit Zusammenfassung und Konflikten, dann zusammenführen (nichts wird überschrieben). */
+  async importieren(fertig) {
+    let files; try { files = await Buecher.waehle('.json,application/json', false); } catch (e) { toast(e.message, 5000); return; }
+    if (!files || !files.length) return;
+    let d;
+    try { d = FuehrerDatei.lies(new TextDecoder('utf-8').decode(await Import.fetchBuf(files[0].url))); }
+    catch (e) { toast(e.message, 7000); return; }
+    const lokal = await Buecher.liste(), hat = {};
+    for (const b of lokal) if (b.cover) hat[b.id] = true;
+    const pl = FuehrerDatei.plane(lokal, d, hat, () => uid().slice(-9));
+    const ok = h('button', { class: 'btn pri', id: 'fu-im-ok', disabled: !pl.nTouren && !pl.cover.length, onclick: async () => {
+      ok.disabled = true;
+      try { await Buecher.zusammenfuehren(pl); s.close(); toast('Übernommen: ' + FuehrerDatei.zusammenfassung(pl), 6000); if (fertig) fertig(); }
+      catch (e) { ok.disabled = false; toast('Das hat nicht geklappt: ' + (e && e.message || e), 6000); }
+    } }, 'Übernehmen');
+    const s = sheet('Wanderführer importieren', h('div', { id: 'fu-im' },
+      h('p', { id: 'fu-im-sum' }, FuehrerDatei.zusammenfassung(pl) + '.'),
+      d.defekt ? h('p', { class: 'muted small', id: 'fu-im-defekt' }, d.defekt + (d.defekt === 1 ? ' Eintrag ist' : ' Einträge sind') + ' nicht lesbar und bleiben draußen.') : null,
+      pl.konflikte.length ? h('div', { id: 'fu-im-konf' }, h('h3', { class: 'sub' }, pl.konflikte.length === 1 ? '1 Unterschied' : pl.konflikte.length + ' Unterschiede'), h('ul', { class: 'fu-konf' }, pl.konflikte.slice(0, 30).map(k => h('li', null, k))),
+        pl.konflikte.length > 30 ? h('p', { class: 'muted small' }, '… und ' + (pl.konflikte.length - 30) + ' weitere.') : null) : null,
+      h('p', { class: 'muted small' }, 'Vorhandenes bleibt, wie es ist: Es kommen nur neue Bücher und neue Buchtouren dazu. Welche Buchtouren gewandert sind, rechnet die App danach mit deinen Touren neu.'),
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), ok)));
+  },
+  /** Plan aus FuehrerDatei.plane anwenden: Punkte zuerst, dann die Bücherliste (eine Änderung), dann Titelbilder. */
+  async zusammenfuehren(pl) {
+    for (const x of pl.neu) if ((await DB.get('kv', 'guidepts:' + x.buch.id)) === undefined) await DB.kvSet('guidepts:' + x.buch.id, x.pts);
+    for (const e of pl.ergaenzen) { const p = await DB.kvGet('guidepts:' + e.id, {}); for (const k of Object.keys(e.pts)) if (!p[k]) p[k] = e.pts[k]; await DB.kvSet('guidepts:' + e.id, p); }
+    await Buecher.aendere(l => {
+      const ids = new Set(l.map(b => b.id));
+      for (const x of pl.neu) if (!ids.has(x.buch.id)) { l.push(JSON.parse(JSON.stringify(x.buch))); ids.add(x.buch.id); }
+      for (const e of pl.ergaenzen) {
+        const b = l.find(y => y.id === e.id); if (!b) continue;
+        const da = new Set(b.touren.map(t => t.id));
+        for (const t of e.touren) if (!da.has(t.id)) b.touren.push(t);
+        b.next = Math.max(b.next || 0, e.next, ...b.touren.map(t => t.ord + 1));
+      }
+      return l;
+    });
+    for (const c of pl.cover) await Buecher.setzeCover(c.id, c.data);
+  },
+
   /** Karte einer Buchtour (Blatt) mit „Als Planung übernehmen“. */
   async karte(b, bt) {
     const pts = (await Buecher.punkte(b.id))[bt.id] || [];
@@ -332,7 +407,11 @@ Views['/fuehrer'] = async root => {
     if (st.fehlendePaare) { prog = 0; drawSync(); } else prog = null;
     Buecher.sync(hoerer).catch(e => { console.error('Wanderführer-Abgleich', e); if (!gone) { prog = null; drawSync(); toast('Der Abgleich hat nicht geklappt: ' + e.message, 5000); } });
   }
-  body.append(sum, sync, ctl, list);
+  // 2.13.0: Übertragen als Datei (zwischen Geräten; „Meine Touren“ bietet dafür noch keine Schnittstelle für Betrachter-Konten)
+  const xfer = UI.section('Übertragen', [h('p', { class: 'muted small' }, 'Bücher als Datei sichern oder auf ein anderes Gerät holen. Beim Importieren bleibt Vorhandenes unverändert.'),
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'fu-export', onclick: () => Buecher.exportBlatt() }, 'Wanderführer exportieren'),
+      h('button', { class: 'btn', id: 'fu-import', onclick: () => Buecher.importieren(reload) }, 'Wanderführer importieren'))], { id: 'fu-xfer' });
+  body.append(sum, sync, ctl, list, xfer);
   drawAll(); start();
   return () => { gone = true; Buecher._hoerer.delete(hoerer); };
 };

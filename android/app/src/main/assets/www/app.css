@@ -609,3 +609,6 @@ img.tile-off{visibility:hidden}
 .vleg i.vb-s{border-top:2px dashed var(--mark)}
 .vread{color:var(--ink);min-height:1.5em;margin:6px 0 0}
 .bw-mehr{color:var(--muted)}
+.fu-konf{margin:4px 0 8px;padding-left:20px}
+.fu-konf li{margin:4px 0;overflow-wrap:anywhere}
+#fu-xfer .btn{flex:1 1 auto}

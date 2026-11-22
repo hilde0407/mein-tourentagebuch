@@ -3096,6 +3096,62 @@ def statistik_2130(pg):
         pg.evaluate("""async ids => { for (const id of ids) await DB.del('tours', id); Tours.invalidate(); await Set_.set('bestN', 1); Ausw.vgl = { a: null, b: null, m: 'dist' }; }""", ids)
 
 
+def fuehrer_2130(pg):
+    """2.13.0 C: Wanderführer als Datei – exportieren (Titelbilder nur auf Wunsch, Auskunft „gewandert“), importieren (Zusammenfassung, Unterschiede,
+    nichts überschrieben, neue Bücher und Buchtouren, Titelbild nur wo keines ist), kaputte Datei, Platz bei 360 px."""
+    import json as _json
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    cover = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="
+    try:
+        pg.evaluate("""async cover => { const lin = (la, lo) => Array.from({ length: 12 }, (_, i) => ({ lat: la + i * 0.001, lon: lo + i * 0.0012, ele: 500 + i * 10 }));
+          const m = (id, ord, title, km, p) => ({ id, ord, title, km, up: 100, la: p[0].lat, lo: p[0].lon, bb: Fuehrer.umrandung(p), n: p.length, f: title + '.gpx' });
+          const a = lin(28.1, -15.5), b = lin(28.2, -15.6);
+          await DB.kvSet('guidepts:fxbuch001', { t0: Fuehrer.packe(a), t1: Fuehrer.packe(b) });
+          await DB.kvSet('guidecover:fxbuch001', cover); Buecher.coverMem = {};
+          await Buecher.aendere(l => { l.push({ id: 'fxbuch001', name: 'Übertragungsbuch', created: 1, next: 2, cover: 1, touren: [m('t0', 0, 'Roque Nublo', 4.2, a), m('t1', 1, 'Barranco', 9.8, b)] }); return l; }); }""", cover)
+        go(pg, "#/fuehrer", "#fu-export")
+        # 1. Export: Vorgabe ohne Titelbild
+        pg.click("#fu-export"); pg.wait_for_selector(".sheet[aria-label='Wanderführer exportieren']")
+        assert not pg.is_checked("#fu-ex-cover input"), "Titelbilder: Vorgabe aus"
+        bad = sheet_check_open(pg, "Wanderführer exportieren")
+        pg.evaluate("window.__saved = null"); leise(); pg.click("#fu-ex-go")
+        assert "Gespeichert: Download/Tourentagebuch/Tourentagebuch-Wanderfuehrer-" in toast_text(pg, "Gespeichert")
+        sv = pg.evaluate("window.__saved"); assert sv["mime"] == "application/json" and sv["name"].endswith(".json"), sv
+        ex = _json.loads(sv["text"]); bk = [b for b in ex["buecher"] if b["id"] == "fxbuch001"][0]
+        assert ex["format"] == "tourentagebuch-wanderfuehrer" and len(bk["touren"]) == 2 and "cover" not in bk and bk["touren"][0]["pts"]["la"], bk.keys()
+        assert "lat" not in sv["text"] and "tracks" not in sv["text"], "keine Spuren eigener Touren"
+        # mit Titelbild
+        pg.click("#fu-export"); pg.click("#fu-ex-cover"); pg.evaluate("window.__saved = null"); leise(); pg.click("#fu-ex-go"); toast_text(pg, "Gespeichert")
+        ex2 = _json.loads(pg.evaluate("window.__saved.text")); assert [b for b in ex2["buecher"] if b["id"] == "fxbuch001"][0]["cover"] == cover
+        # 2. Import: andere Länge (Unterschied), neue Buchtour, neues Buch mit Titelbild; Titelbild des vorhandenen Buchs bleibt
+        imp = _json.loads(sv["text"]); bk = [b for b in imp["buecher"] if b["id"] == "fxbuch001"][0]
+        imp["buecher"] = [bk]
+        bk["cover"] = cover.replace("Q==", "Qx=="); bk["touren"][1]["km"] = 11.5
+        bk["touren"].append(dict(bk["touren"][0], title="Pico de las Nieves", km=7.1, id="t9", ord=9))
+        imp["buecher"].append({ "id": "fxbuch002", "name": "Zweites Buch", "cover": cover, "touren": [dict(bk["touren"][0], title="Tejeda", km=5.0)] })
+        pg.evaluate("t => { window.__pick = [{ name: 'fuehrer.json', url: URL.createObjectURL(new Blob([t], { type: 'application/json' })) }]; }", _json.dumps(imp))
+        pg.click("#fu-import"); pg.wait_for_selector(".sheet[aria-label='Wanderführer importieren']")
+        su = pg.inner_text("#fu-im-sum"); assert su == "1 neues Buch · 1 neue Buchtour in einem vorhandenen Buch · 1 Buchtour ist schon da · 1 Titelbild.", su
+        kf = pg.inner_text("#fu-im-konf"); assert "2 Unterschiede" in kf and "„Barranco“ in „Übertragungsbuch“: in der Datei 11,5 km, bei dir 9,8 km – nicht übernommen." in kf and "Titelbild von „Übertragungsbuch“: deines bleibt." in kf, kf
+        bad += sheet_check_open(pg, "Wanderführer importieren")
+        leise(); pg.click("#fu-im-ok"); assert "Übernommen" in toast_text(pg, "Übernommen")
+        r = pg.evaluate("""async () => { const l = await Buecher.liste(), a = l.find(b => b.id === 'fxbuch001'), b = l.find(b => b.id === 'fxbuch002');
+          return { a: a.touren.map(t => t.title + ':' + t.km + ':' + t.id), next: a.next, b: b && b.touren.map(t => t.title), bcov: b && b.cover, acov: await DB.kvGet('guidecover:fxbuch001', null), bp: Object.keys(await DB.kvGet('guidepts:fxbuch002', {})), ap: Object.keys(await DB.kvGet('guidepts:fxbuch001', {})) }; }""")
+        assert r["a"] == ["Roque Nublo:4.2:t0", "Barranco:9.8:t1", "Pico de las Nieves:7.1:t2"] and r["next"] == 3 and r["ap"] == ["t0", "t1", "t2"], r
+        assert r["b"] == ["Tejeda"] and r["bcov"] == 1 and r["bp"] == ["t0"] and r["acov"] == cover, r
+        pg.wait_for_selector("[data-book=fxbuch002]")
+        # zweiter Import derselben Datei: nichts Neues, Übernehmen gesperrt
+        pg.evaluate("t => { window.__pick = [{ name: 'fuehrer.json', url: URL.createObjectURL(new Blob([t], { type: 'application/json' })) }]; }", _json.dumps(imp))
+        pg.click("#fu-import"); pg.wait_for_selector("#fu-im-sum"); assert pg.is_disabled("#fu-im-ok") and "3 Buchtouren sind schon da" in pg.inner_text("#fu-im-sum"), pg.inner_text("#fu-im-sum")
+        zu(pg)
+        # 3. kaputte oder fremde Datei: verständliche Meldung, nichts geändert
+        pg.evaluate("() => { window.__pick = [{ name: 'x.json', url: URL.createObjectURL(new Blob(['{\"app\":\"tourentagebuch\"}'])) }]; }")
+        leise(); pg.click("#fu-import"); assert "keine Wanderführer-Datei" in toast_text(pg, "Wanderführer-Datei")
+        return bad
+    finally:
+        pg.evaluate("""async () => { for (const id of ['fxbuch001', 'fxbuch002']) await Buecher.entferne(id); window.__pick = []; window.__saved = null; document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""")
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -3754,6 +3810,7 @@ def main():
         video_2120(pg)
         tb_bad = teilen_2130(pg)
         st_bad = statistik_2130(pg)
+        fx_bad = fuehrer_2130(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -3783,6 +3840,7 @@ def main():
         bad += fu_bad
         bad += tb_bad
         bad += st_bad
+        bad += fx_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
