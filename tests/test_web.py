@@ -3589,6 +3589,59 @@ def flug_2160(pg):
 
 
 
+NOTIZ_MASS = """sel => { const ta = document.querySelector(sel), r = ta.getBoundingClientRect(), lh = parseFloat(getComputedStyle(ta).lineHeight);
+  return { sh: ta.scrollHeight, ch: ta.clientHeight, h: r.height, lh, w: r.width, rechts: r.right, vw: innerWidth, rand: getComputedStyle(ta).borderTopColor, grund: getComputedStyle(ta).backgroundColor, farbe: getComputedStyle(ta).color, resize: getComputedStyle(ta).resize }; }"""
+
+
+def notizhoehe_2160(pg):
+    """2.16.0: Notizfelder wachsen mit dem Inhalt (Tourseite und Planungsnotiz): 40 Zeilen komplett sichtbar, Wachsen beim Tippen, Schrumpfen beim
+    Löschen, 360–430 px und 130 % Schrift, hell und dunkel; kein Ziehgriff. Die Notiz bleibt nach dem Neuladen vollständig sichtbar."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    lang = "\n".join("Zeile %d: Aufstieg über den Steig, oben Einkehr, Rückweg über die Alm." % (i + 1) for i in range(40))
+    tid = pg.evaluate("""async (txt) => { const t = (await Tours.list()).find(x => x.status !== 'planned' && !x.hidden); const alt = t.note; t.note = txt; await Tours.save(t); return [t.id, alt || '']; }""", lang)
+    sel = "textarea[aria-label=Notiz]"
+    def voll(m, tag):
+        assert m["sh"] <= m["ch"] + 1, ("abgeschnitten", tag, m)
+        assert m["resize"] == "none", (tag, m)
+    go(pg, "#/tour/" + tid[0], sel); pg.locator(sel).scroll_into_view_if_needed()
+    m = pg.evaluate(NOTIZ_MASS, sel); voll(m, "Start")
+    assert m["h"] >= 40 * m["lh"] * 0.95, ("40 Zeilen hoch", m)
+    for sch in ("light", "dark"):
+        pg.emulate_media(color_scheme=sch)
+        for w, fs in ((360, 100), (390, 100), (430, 100), (360, 130), (430, 130)):
+            pg.set_viewport_size({"width": w, "height": 800})
+            pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+            pg.wait_for_timeout(150)
+            m = pg.evaluate(NOTIZ_MASS, sel); voll(m, (sch, w, fs))
+            assert m["rechts"] <= m["vw"] + 1 and pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), ("Querrollen", sch, w, fs, m)
+            assert m["farbe"] != m["grund"], (sch, m)
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.emulate_media(color_scheme="light"); pg.set_viewport_size({"width": 390, "height": 800}); pg.wait_for_timeout(150)
+    # Tippen: wächst; Löschen: schrumpft bis auf die Grundhöhe (3 Zeilen)
+    h0 = pg.evaluate(NOTIZ_MASS, sel)["h"]
+    pg.click(sel); pg.keyboard.press("Control+End")
+    for k in range(5): pg.keyboard.press("Enter"); pg.keyboard.type("Neu %d" % k)
+    m = pg.evaluate(NOTIZ_MASS, sel); voll(m, "getippt")
+    assert m["h"] >= h0 + 4 * m["lh"], (h0, m)
+    pg.keyboard.press("Control+A"); pg.keyboard.press("Delete"); pg.keyboard.type("Kurz.")
+    m = pg.evaluate(NOTIZ_MASS, sel); voll(m, "gelöscht")
+    assert m["h"] < 5 * m["lh"] + 40, ("geschrumpft", m)
+    pg.evaluate("document.activeElement.blur()")
+    pg.wait_for_function("id => DB.get('tours', id).then(t => t.note === 'Kurz.')", arg=tid[0], timeout=10000)
+    # wieder lang, Seite neu aufbauen: vollständig
+    pg.evaluate("async ([id, txt]) => { const t = await DB.get('tours', id); t.note = txt; await Tours.save(t); }", [tid[0], lang])
+    pg.evaluate("Nav.render()"); pg.wait_for_selector(sel); pg.wait_for_timeout(200)
+    voll(pg.evaluate(NOTIZ_MASS, sel), "neu geladen")
+    # Planungsnotiz (geplante Tour) genauso
+    pid = pg.evaluate("""async (txt) => { const pts = Array.from({ length: 20 }, (_, i) => ({ lat: 47.1 + i * 0.001, lon: 11.1, ele: 900 + i * 5 }));
+      const r = await Tours.add({ name: 'Plan Notiz 2160', sport: 'hike', pts, src: 'plan', status: 'planned', force: true }); await PlanMeta.patch(r.tour.id, { note: txt }); return r.tour.id; }""", lang)
+    go(pg, "#/tour/" + pid, "#pn-note"); pg.locator("#pn-note").scroll_into_view_if_needed()
+    m = pg.evaluate(NOTIZ_MASS, "#pn-note"); voll(m, "Planung"); assert m["h"] >= 40 * m["lh"] * 0.95, m
+    leise()
+    pg.evaluate("async ([id, alt]) => { const t = await DB.get('tours', id); t.note = alt; await Tours.save(t); }", tid)
+    pg.evaluate("async id => { const t = await DB.get('tours', id); t.hidden = true; await Tours.save(t); }", pid)
+
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -4214,6 +4267,7 @@ def main():
         assert pg.evaluate("window.__saved.name") == "Inselreise.webm" or pg.evaluate("window.__saved.name").endswith((".webm", ".mp4")), pg.evaluate("window.__saved")
         pg.evaluate("location.hash = '#/'"); pg.wait_for_function("() => !document.querySelector('.flight')")
         flug_2160(pg)
+        notizhoehe_2160(pg)
 
         # Zeitzonentolerante Fotozuordnung: tzOff > 0 heißt, die Kamerazeit geht der echten (GPS-)Zeit um tzOff vor (Prüfzeit = ts − tzOff)
         tz = pg.evaluate("""async (t0) => {

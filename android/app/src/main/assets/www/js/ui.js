@@ -3,6 +3,14 @@
    Jede Ansicht baut ihre Abschnitte, Kennzahlen, Listen, Chips, Schalter und leeren Zustände hiermit –
    so sehen alle Seiten gleich aus, und neue Bausteine (Ziele, Serie, Fitness …) brauchen kein eigenes CSS. */
 const UI = {
+  /** 2.16.0: Textfeld wächst mit dem Inhalt (Notizen werden ganz angezeigt). Rasterkniff: ein unsichtbarer Zwilling mit demselben Text liegt
+   *  in derselben Rasterzelle und bestimmt die Höhe – so passt es auch nach Breiten- und Schriftgrößenwechsel ohne Nachrechnen.
+   *  Kein Höchstmaß (die Seite rollt). Gibt die Hülle zurück (statt des Felds einhängen). */
+  autoHoehe(ta) {
+    const w = h('div', { class: 'ah' }), sync = () => { w.dataset.wert = ta.value; };
+    ta.classList.add('ah-t'); ta.addEventListener('input', sync); sync(); w.append(ta);
+    return w;
+  },
   /** Zahl und Einheit getrennt setzen: „3,7 km“ → 3,7 groß, km klein; „↑ 168 m“ → Pfeil klein davor. */
   num(v) {
     const s = String(v == null ? '–' : v);

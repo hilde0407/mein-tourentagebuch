@@ -170,7 +170,7 @@ const TourHelp = {
       setTimeout(() => ad.focus(), 250);
     } }, 'Link hinzufügen');
     draw();
-    box.append(UI.section('Notizen & Quellen', [note, h('div', { class: 'fld' }, 'Herkunft', qs, qt), h('h3', { class: 'sub' }, 'Links'), list, h('div', { class: 'row' }, add)], { id: 'pnotes-sec' }));
+    box.append(UI.section('Notizen & Quellen', [UI.autoHoehe(note), h('div', { class: 'fld' }, 'Herkunft', qs, qt), h('h3', { class: 'sub' }, 'Links'), list, h('div', { class: 'row' }, add)], { id: 'pnotes-sec' }));
     return box;
   },
 };

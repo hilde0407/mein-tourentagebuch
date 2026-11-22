@@ -265,7 +265,7 @@ Views['/tour'] = async (root, [id]) => {
     ...helpPlan,
     UI.section('Höhenprofil', [prof, profInfo]), t.hrAvg ? pulsBlock() : null,
     UI.section('Fotos', [strip, noPhotos, ortBox], { id: 'tphotos', action: h('div', { class: 'row' }, showBtn, h('button', { class: 'btn sm', onclick: addPhotos }, '＋ Fotos')) }),
-    pinList(), helpDone, UI.section('Notiz', note)].filter(Boolean));
+    pinList(), helpDone, UI.section('Notiz', UI.autoHoehe(note))].filter(Boolean));
   title.addEventListener('click', rename);
   drawStrip();
   // 2.14.0: Fotos gelöscht (Lightbox, Doppelte Fotos), einer anderen Tour zugeordnet oder neu hinzugekommen → Leiste und Kartenpunkte frisch aus der Datenbank
