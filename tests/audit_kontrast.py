@@ -168,6 +168,17 @@ def main():
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.evaluate("window.__lightbox && window.__lightbox.close()"); pg.wait_for_timeout(250)
             go("#/settings", "#set-vgalcopy"); pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent.includes('Galerie')"); scan("Einstellungen, Videos in die Galerie")
             pg.evaluate("async () => { window.MTApp.call = window.__vjcall0; for (const id of ['kfo0aaaaaa', 'kfo1aaaaaa', 'kfo2aaaaaa', 'kvid0aaaaaaaaaaaaaav']) await DB.del('photos', id); }")
+            # 2.13.0: Statistik → Vergleich (mit Wert eines Monats), Bestwerte je Sportart, Tour als Bild, Wanderführer übertragen
+            go("#/stats/vergleich", "#vgl-diff"); pg.locator("#vgl-chart rect.vh").nth(5).click(); pg.click("#vgl-tabelle summary"); pg.wait_for_timeout(200); scan("Statistik Vergleich")
+            go("#/stats/rekorde", "#bestwerte"); pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_timeout(300); scan("Statistik Bestwerte je Sportart (drei)"); pg.evaluate("Set_.set('bestN', 1)")
+            pg.evaluate("tid => DB.get('tours', tid).then(t => TourBild.dialog(t))", tid); pg.wait_for_selector("#tb-bild[src]"); pg.wait_for_function("() => document.querySelector('#tb-vor').getAttribute('aria-busy') === 'false'", timeout=60000); scan("Als Bild teilen")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            go("#/fuehrer", "#fu-xfer"); scan("Wanderführer, Übertragen")
+            pg.click("#fu-export"); pg.wait_for_selector("#fu-ex-go"); pg.wait_for_timeout(250); scan("Wanderführer exportieren")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("() => { window.__pick = [{ name: 'f.json', url: URL.createObjectURL(new Blob([JSON.stringify({ format: 'tourentagebuch-wanderfuehrer', version: 1, buecher: [{ id: 'kx1', name: 'Kontrastbuch', touren: [{ title: 'A', km: 3, pts: { la: [4700000, 10, 10], lo: [1100000, 10, 10] } }] }] })])) }]; }")
+            pg.click("#fu-import"); pg.wait_for_selector("#fu-im-sum"); pg.wait_for_timeout(250); scan("Wanderführer importieren")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close()); window.__pick = [];"); pg.wait_for_timeout(250)
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
