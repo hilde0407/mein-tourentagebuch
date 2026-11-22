@@ -3336,7 +3336,7 @@ def main():
         pg.route("**/archive-api.open-meteo.com/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"daily": {"temperature_2m_mean": [8.5], "temperature_2m_max": [12.0], "precipitation_sum": [2.4]}})))
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".kpis")
         pg.get_by_role("button", name="Bestwerte", exact=True).click(); pg.wait_for_selector("text=Bester Tag"); tx = pg.inner_text("#view")
-        assert "Längste Serie" in tx and "Beste Woche" in tx and "Je Sportart" in tx and "Bestwerte" in tx and "Bester Monat" not in tx, tx[:400]
+        assert "Längste Serie" in tx and "Beste Woche" in tx and "Bestwerte je Sportart" in tx and "Bestwerte" in tx and "Bester Monat" not in tx, tx[:400]
         pg.get_by_role("button", name="Kalender", exact=True).click(); pg.wait_for_selector(".cal")
         assert pg.locator(".cd.l1, .cd.l2, .cd.l3, .cd.l4").count() >= 1
         pg.locator("button.cd").first.click(); pg.wait_for_selector(".sheet .li"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
