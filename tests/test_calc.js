@@ -908,6 +908,47 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(S.zusammen({ gesendet: 1, vorhanden: 0, fehler: [{ name: 'x', text: 'nope' }] }) === '1 Tour gesendet · 1 nicht gesendet: nope', 'zusammen mit Fehler');
 }
 
+/* ---------- 2.11.0 Offline-Karten (calc-offline.js): Kachelrechnung, Rechteck, Strecke mit Rand, Grenzen, Pfade (gleiche Zahlen wie TilePlanCheck.java) ---------- */
+{
+  const O = require(W + 'calc-offline.js');
+  const eq = (a, b, m) => ok(JSON.stringify(a) === JSON.stringify(b), (m || '') + ': ' + JSON.stringify(a) + ' ≠ ' + JSON.stringify(b));
+  eq(O.kachelXY(47.5, 11.2, 15), [17403, 11458], 'z15'); eq(O.kachelXY(47.42, 10.98, 12), [2172, 1433], 'z12');
+  eq(O.kachelXY(-33.86, 151.21, 10), [942, 614], 'Sydney'); eq(O.kachelXY(89, -180, 3), [0, 0], 'Nordwestecke'); eq(O.kachelXY(-89, 180, 3), [7, 7], 'Südostecke begrenzt');
+  const b = { s: 47.40, w: 11.00, n: 47.50, e: 11.15 };
+  eq([13, 15, 16, 18].map(z => O.zaehleRechteck(b, 10, z)), [23, 275, 1059, 1059], 'Rechteck je Detailstufe (über 16 nie)');
+  ok(O.zaehleRechteck(b, 15, 12) === 0 && O.zaehleRechteck(b, 10.5, 13) === 0, 'ungültige Zoomstufen: nichts');
+  const rl = O.rechteck(b, 10, 15);
+  ok(rl.length === 275 && rl[0][0] === 10 && rl[rl.length - 1][0] === 15 && new Set(rl.map(String)).size === 275, 'Rechteckliste vollständig und eindeutig');
+  ok(O.rechteck({ s: 46, w: 10, n: 48, e: 13 }, 10, 16) === null && O.zaehleRechteck({ s: 46, w: 10, n: 48, e: 13 }, 10, 16) > O.MAX_KACHELN, 'großes Rechteck: keine Liste');
+  const pts = [[47.40, 11.00], [47.45, 11.05], [47.47, 11.12], [47.47, 11.12], [47.50, 11.20]];
+  ok(O.stuetzen(pts, 2000).length === 12, 'Stützpunkte');
+  eq([13, 15, 16].map(z => O.korridor(pts, 2000, 10, z).anzahl), [38, 306, 1023], 'Strecke mit 2 km Rand');
+  const k15 = O.korridor(pts, 2000, 10, 15);
+  eq(k15.kacheln.slice(0, 2), [[10, 543, 357], [10, 543, 358]], 'erste Kacheln wie in Java');
+  eq(O.abdeckung(k15.kacheln), ['2172/1433', '2172/1434', '2173/1432', '2173/1433', '2173/1434', '2174/1432', '2174/1433', '2175/1431', '2175/1432'], 'Abdeckung z12');
+  ok(O.korridor(pts, 2000, 10, 15, 100).kacheln === null && O.korridor(pts, 2000, 10, 15, 100).anzahl === 306, 'Grenze: Zahl ja, Liste nein');
+  ok(O.korridor([], 2000, 10, 15).anzahl === 0 && O.korridor([[NaN, 1], [95, 11]], 2000, 10, 15).anzahl === 0, 'leere/ungültige Strecke');
+  const lang = O.korridor([[46, 8], [48, 16]], 5000, 10, 16);
+  ok(lang.kacheln === null && lang.anzahl > O.MAX_KACHELN, 'sehr lange Strecke abgelehnt (' + lang.anzahl + (lang.mehr ? '+' : '') + ')');
+  const r = O.rahmen(pts, 2000); ok(r.s < 47.40 && r.n > 47.50 && r.w < 11 && r.e > 11.2 && r.s > 47.38, 'Rahmen mit Rand');
+  // Liegt ein Ort offline vor?
+  const g = [{ src: 'topo', cover: O.abdeckung(k15.kacheln) }, { src: 'topo', bbox: [46.0, 7.0, 46.1, 7.1] }];
+  ok(O.abgedeckt(g, 47.45, 11.05) && O.abgedeckt(g, 46.05, 7.05) && !O.abgedeckt(g, 48.2, 11.5) && !O.abgedeckt(g, NaN, 1) && !O.abgedeckt([], 47.45, 11.05), 'abgedeckt');
+  ok(!O.abgedeckt(g, 47.45, 11.05, 'osm'), 'nur die gewünschte Quelle');
+  // Grenzen und Texte
+  ok(O.pruefen('topo', 275, 0).ok && O.pruefen('osm', 275, 0).grund === 'quelle' && O.pruefen('x', 1, 0).grund === 'quelle', 'Quellen');
+  ok(O.pruefen('topo', 2000, 0).ok && O.pruefen('topo', 2001, 0).grund === 'zuviel' && O.pruefen('topo', 0, 0).grund === 'leer', 'Grenze 2000');
+  ok(O.pruefen('topo', 2000, O.MAX_GESAMT - 1000).grund === 'speicher', 'Gesamtgrenze');
+  ok(O.schaetzung('topo', 1000) === 25600000 && O.schaetzung('osm', 1) === 20480, 'Schätzung wie in Java');
+  eq([0, 2000, 400000, 25600000, 2e9].map(O.mb), ['0 MB', '0,1 MB', '0,4 MB', '24 MB', '1,9 GB'], 'Größen');
+  ok(O.umfang('topo', 1234) === '≈ 1.234 Kacheln, ≈ 30 MB' && O.umfang('topo', 1) === '≈ 1 Kachel, ≈ 0,1 MB' && O.umfang('topo', 60000, true).startsWith('mehr als 60.000'), 'Umfang: ' + O.umfang('topo', 1234));
+  eq(O.STUFEN.map(s => O.zmaxVon(s[0])), [13, 15, 16], 'Detailstufen'); ok(O.zmaxVon('quatsch') === 15, 'Vorgabe Normal (bis 15)');
+  // Pfade: nur ganze Zahlen, Quelle aus der Liste, im Raster
+  ok(O.pfad('topo', 15, 17403, 11458) === 'topo/15/17403/11458.png' && O.lokal('topo', 15, 17403, 11458) === '/tiles/topo/15/17403/11458.png', 'Pfad');
+  ok([['topo', 3, 8, 0], ['topo', -1, 0, 0], ['topo', 1.5, 0, 0], ['../x', 1, 0, 0], ['topo', 1, '0', 0], ['constructor', 1, 0, 0], ['topo', 20, 0, 0]].every(a => O.pfad(...a) === null), 'ungültige Pfade');
+  ok(O.name('  Karwendel\n Runde ') === 'Karwendel Runde' && O.name('', 'X') === 'X' && O.name('x'.repeat(80)).length === 60, 'Namen');
+}
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
