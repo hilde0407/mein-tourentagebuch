@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * Virtueller Server der App: beantwortet die Anfragen des WebView an https://app.tourentagebuch
- * aus den Assets (Oberfläche) und den privaten Ordnern (Fotos, Vorschaubilder, Videos, Cache).
+ * aus den Assets (Oberfläche) und den privaten Ordnern (Fotos, Vorschaubilder, Videos, Cache, seit 2.11.0 Offline-Karten unter /tiles/).
  */
 final class Serve {
     private Serve() { }
@@ -21,6 +21,10 @@ final class Serve {
         try {
             InputStream in;
             if (path.equals("/")) path = "/index.html";
+            if (path.startsWith("/tiles/")) {            // 2.11.0: gespeicherte Kachel einer Offline-Karte (nur Ziffern im Pfad, Quelle aus fester Liste)
+                File f = TileDownload.file(c, TilePlan.localPath(path));
+                return f == null ? resp(404, "text/plain", new ByteArrayInputStream(new byte[0])) : TileDownload.response(f);
+            }
             if (path.startsWith("/photo/") || path.startsWith("/thumb/") || path.startsWith("/cache/")) {
                 File base = path.startsWith("/photo/") ? Photos.dir(c) : path.startsWith("/thumb/") ? Photos.thumbDir(c) : c.getCacheDir();
                 String rel = path.substring(path.indexOf('/', 1) + 1);

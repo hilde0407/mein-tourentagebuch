@@ -89,7 +89,10 @@ public class MainActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
-                if (u == null || !HOST.equals(u.getHost())) return null;
+                if (u == null) return null;
+                if (!HOST.equals(u.getHost())) {      // 2.11.0: Kachel eines bekannten Kartenservers – gespeicherte Offline-Kachel, sonst normal ins Netz
+                    return "GET".equalsIgnoreCase(r.getMethod()) ? TileDownload.intercept(MainActivity.this, u.getHost(), u.getPath()) : null;
+                }
                 return Serve.handle(MainActivity.this, u.getPath() == null ? "/" : u.getPath(), r.getRequestHeaders() == null ? null : r.getRequestHeaders().get("Range"));
             }
 
@@ -865,6 +868,12 @@ public class MainActivity extends Activity {
                 byte[] d = android.util.Base64.decode(a.getString("b64"), android.util.Base64.DEFAULT);
                 return MediaBackup.autoSave(this, a.getString("name"), d, a.optInt("keep", 5)).toString();
             }
+            /* ---- 2.11.0: Offline-Karten (TileDownload / TilePlan) ---- */
+            case "tilesList": return TileDownload.list(this).toString();
+            case "tilesStart": return TileDownload.start(this, a, appVersion()).toString();
+            case "tilesJob": return TileDownload.job().toString();
+            case "tilesCancel": TileDownload.cancel(); return "true";
+            case "tilesDelete": return TileDownload.delete(this, a.getString("id")).toString();
             case "storage": {                          // 2.9.0: Fotos und Videos getrennt (bytes = zusammen, wie bisher); vids: Größe je Video
                 long ph = 0, vb = 0;
                 int np = 0, nv = 0;

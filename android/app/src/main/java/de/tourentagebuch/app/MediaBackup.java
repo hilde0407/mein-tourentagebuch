@@ -126,8 +126,11 @@ final class MediaBackup {
 
     static void cancel() { if (running) cancel.set(true); }
 
+    /** 2.11.0: läuft gerade ein Lauf? (Offline-Karten warten dann; beide nutzen denselben Vordergrunddienst.) */
+    static boolean isRunning() { return running; }
+
     private static synchronized boolean begin(String k, long tot, int nParts) {
-        if (running) return false;
+        if (running || TileDownload.isRunning()) return false;      // 2.11.0: nicht gleichzeitig mit dem Laden einer Offline-Karte
         running = true; kind = k; phase = "start"; error = ""; result = null; cancelled = false;
         done = 0; total = tot; file = 0; files = 0; part = 0; parts = nParts; lastNote = 0;
         cancel.set(false);
