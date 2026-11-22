@@ -101,6 +101,22 @@
       monat: [...by.values()].filter(g => g.dist > 0).sort((a, b) => b.dist - a.dist || (a.y * 12 + a.m) - (b.y * 12 + b.m)).slice(0, n) };
   }
 
+  /** 2.13.0: Bestwerte je Sportart (Rangliste): je Sportart mit mindestens min Touren (Vorgabe 2, nur Touren mit Strecke) die besten n (1 oder 3) für
+      längste Strecke, größten Aufstieg, längste Dauer, höchsten Punkt und – wo sinnvoll – das schnellste Tempo. Tempo nur aus Zeit in Bewegung (über 10 min) und
+      mindestens 1 km Strecke; bei Ski alpin und Ski allgemein nicht (Liftfahrten verfälschen das Tempo). Gleichstand: die frühere Tour zuerst.
+      Gibt [{ sport, n, strecke, aufstieg, dauer, hoehe, tempo }] zurück, die Sportart mit den meisten Touren zuerst. */
+  const OHNE_TEMPO = ['skialpin', 'ski'];
+  const tempo = t => (t.moving > 600 && t.dist >= 1000 ? t.dist / t.moving : 0);
+  function jeSportart(tours, n, min) {
+    n = n === 3 ? 3 : 1; min = min || 2;
+    const real = (tours || []).filter(t => t && t.dist > 0), by = new Map();
+    real.forEach(t => { const k = t.sport || 'other'; if (!by.has(k)) by.set(k, []); by.get(k).push(t); });
+    const top = (a, f) => a.filter(t => f(t) > 0).sort((x, y) => f(y) - f(x) || (x.start || 0) - (y.start || 0)).slice(0, n);
+    return [...by.entries()].filter(([, a]) => a.length >= min).map(([sport, a]) => ({ sport, n: a.length, strecke: top(a, t => t.dist), aufstieg: top(a, t => t.up || 0),
+      dauer: top(a, t => t.dur || 0), hoehe: top(a, t => t.maxAlt || 0), tempo: OHNE_TEMPO.includes(sport) ? [] : top(a, tempo) }))
+      .sort((x, y) => y.n - x.n || (x.sport < y.sport ? -1 : 1));
+  }
+
   /* ---- Sicherungs-Erinnerung ---- */
   const TAGE_AUSWAHL = [7, 14, 30, 0];      // 0 = aus
   /** Soll der Hinweis erscheinen? last = Zeitpunkt der letzten Sicherung (ms) oder null, tage = Schwelle (0 = aus), snooze = „Später“ bis (ms) oder null.
@@ -116,6 +132,6 @@
     return { zeigen: true, nie: false, tage: d, text: 'Letzte Sicherung vor ' + d + (d === 1 ? ' Tag' : ' Tagen') };
   }
 
-  const api = { METRIKEN, MIN_TAG_PROGNOSE, KNAPP, TAGE_AUSWAHL, weekIdx, dayNum, sportPasst, legacy, sauber, zusammen, wertEiner, stand, fuerJahr, serie, bestwerte, sicherungHinweis };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api; else { root.Ziele = api; root.Serie = { berechne: serie }; root.Bestwerte = { berechne: bestwerte }; root.Sicherung = { hinweis: sicherungHinweis, TAGE_AUSWAHL }; }
+  const api = { METRIKEN, MIN_TAG_PROGNOSE, KNAPP, TAGE_AUSWAHL, weekIdx, dayNum, sportPasst, legacy, sauber, zusammen, wertEiner, stand, fuerJahr, serie, bestwerte, jeSportart, OHNE_TEMPO, tempo, sicherungHinweis };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else { root.Ziele = api; root.Serie = { berechne: serie }; root.Bestwerte = { berechne: bestwerte, jeSportart, tempo }; root.Sicherung = { hinweis: sicherungHinweis, TAGE_AUSWAHL }; }
 })(typeof window !== 'undefined' ? window : globalThis);

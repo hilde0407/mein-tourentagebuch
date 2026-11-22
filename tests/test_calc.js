@@ -1050,6 +1050,136 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(JSON.stringify(V.galerieOffen(['av', 'bv', 'av', 'cv', '', null], ['bv'])) === '["av","cv"]' && V.galerieOffen(null, null).length === 0, 'Galerie: noch nicht kopierte');
 }
 
+/* ---------- 2.13.0 Tour als Bild teilen (calc-teilen.js): Maße, Titel setzen, Fotoauswahl, Kennzahlen, Dateiname ---------- */
+(() => {
+  const T = require(W + 'calc-teilen.js');
+  const mAt = size => s => s.length * size * 0.5;      // Messung wie eine gleichbreite Schrift: halbe Schriftgröße je Zeichen
+  // Titel: kurz → größte Schrift, eine Zeile; länger → zwei Zeilen in der größten Schrift; sehr lang → kleiner, dann gekürzt
+  let r = T.titel('Hüttenrunde', 952, mAt, 'hoch'); ok(r.size === 72 && r.lines.length === 1 && !r.cut, 'kurzer Titel ' + JSON.stringify(r));
+  r = T.titel('Über den Grat zur Hütte und zurück durchs Tal', 952, mAt, 'hoch'); ok(r.size === 72 && r.lines.length === 2 && !r.cut, 'zwei Zeilen ' + JSON.stringify(r));
+  const lang = 'Sehr lange Rundtour über sieben Gipfel mit Einkehr in der Hütte am See und Abstieg über die Klamm bis zum Bahnhof im Tal';
+  r = T.titel(lang, 952, mAt, 'hoch'); ok(r.size === 54 && r.lines.length === 2 && r.cut && /…$/.test(r.lines[1]) && r.lines.every(l => mAt(54)(l) <= 952), 'gekürzt ' + JSON.stringify(r));
+  r = T.titel(lang, 952, mAt, 'quadrat'); ok(r.lines.length === 1 && r.cut && r.size === 46, 'Quadrat: eine Zeile');
+  ok(T.titel('', 952, mAt, 'hoch').lines[0] === 'Tour' && T.titel('  a   b ', 952, mAt, 'hoch').lines[0] === 'a b', 'leerer Titel → „Tour“, Leerraum zusammengefasst');
+  // Layout: alles im Bild, Reihenfolge Titel → Zahlen → Karte → Profil → Fotos, Karte nie zu klein
+  for (const f of ['hoch', 'quadrat']) for (const z of [1, 2]) for (const nF of [0, 1, 2, 3]) for (const pr of [true, false]) {
+    const L = T.layout(f, { zeilen: z, titelSize: T.TITEL[f].sizes[0], fotos: nF, profil: pr }), tag = f + ' ' + z + ' ' + nF + ' ' + pr;
+    ok(L.W === 1080 && L.H === (f === 'hoch' ? 1350 : 1080), 'Größe ' + tag);
+    ok(L.titel.y.length === Math.min(z, T.TITEL[f].zeilen) && L.unter > L.titel.y[L.titel.y.length - 1] && L.zahlen.y > L.unter && L.karte.y > L.zahlen.ly, 'Reihenfolge ' + tag);
+    ok(L.karte.h >= (f === 'quadrat' ? 220 : 260) && L.karte.x === L.M && L.karte.w === L.IW, 'Karte ' + tag + ' ' + L.karte.h);
+    const last = L.fotos.length ? L.fotos[0] : L.profil || L.karte;
+    ok(last.y + last.h <= L.H - 30, 'unten Platz für die Fußzeile ' + tag);
+    ok(L.fotos.length === nF && L.fotos.every(c => c.x >= L.M && c.x + c.w <= L.W - L.M + 1 && c.w > 200), 'Fotozellen ' + tag);
+    ok(!!L.profil === pr && (!pr || L.profil.y > L.karte.y + L.karte.h), 'Profil ' + tag);
+    ok(L.zahlen.cols.length === 3 && L.zahlen.cols[2].x + L.zahlen.cols[2].w <= L.W - L.M + 1, 'drei Spalten ' + tag);
+  }
+  ok(T.layout('quatsch', {}).format === 'hoch', 'unbekanntes Format → Hochformat');
+  // Fotoauswahl: Videos raus, Titelfoto zuerst, ohne Gesicht bevorzugt und verteilt, Aufnahmereihenfolge
+  const ph = (id, ts, extra) => Object.assign({ id, ts }, extra);
+  const ps = [ph('a', 1, { faces: 2 }), ph('b', 2, { faces: 0 }), ph('c', 3), ph('dv', 4, { video: true }), ph('e', 5, { faces: -1 }), ph('f', 6, { faces: 1 }), ph('g', 7, { faces: 0 }), ph('h', 8, { faces: 0 })];
+  A.deepStrictEqual(T.fotoAuswahl(ps, 3).map(p => p.id), ['b', 'e', 'h']); n++;
+  A.deepStrictEqual(T.fotoAuswahl(ps, 3, 'c').map(p => p.id), ['b', 'c', 'h']); n++;
+  A.deepStrictEqual(T.fotoAuswahl(ps, 1, 'f').map(p => p.id), ['f']); n++;
+  A.deepStrictEqual(T.fotoAuswahl([ph('a', 1, { faces: 2 }), ph('b', 2, { faces: 3 })], 3).map(p => p.id), ['a', 'b']); n++;      // nur Personenfotos: trotzdem welche
+  A.deepStrictEqual(T.fotoAuswahl([ph('x', 1, { faces: 2 }), ph('y', 2, { faces: 0 })], 3).map(p => p.id), ['x', 'y']); n++;      // Personenfoto füllt auf
+  ok(T.fotoAuswahl([], 3).length === 0 && T.fotoAuswahl(ps, 0).length === 0 && T.fotoAuswahl([ph('1v', 1, { video: true })], 3).length === 0 && T.fotoAuswahl(ps, 9).length === 3, 'Randfälle Fotoauswahl');
+  // Kennzahlen und Dateiname
+  A.deepStrictEqual(T.kennzahlen({ dist: 12345, up: 0, dur: 3600, moving: 3000 }), { dist: 12345, up: 0, zeit: 3600 }); n++;
+  A.deepStrictEqual(T.kennzahlen({ dist: 0, moving: 900 }), { dist: null, up: null, zeit: 900 }); n++;
+  ok(T.dateiname('Über den Grat', 'hoch') === 'Tourentagebuch-Tour_ueber_den_Grat.jpg' && T.dateiname('Über den Grat', 'quadrat') === 'Tourentagebuch-Tour_ueber_den_Grat-quadrat.jpg' && /^[A-Za-z0-9._-]+$/.test(T.dateiname('ä/ö?*"x', 'hoch')), 'Dateiname');
+})();
+
+/* ---------- 2.13.0 Jahresvergleich (calc-vergleich.js): Monate aufsummiert, gleicher Kalendertag, Schaltjahr, Jahr ohne Touren, nur ein Jahr ---------- */
+(() => {
+  const V = require(W + 'calc-vergleich.js');
+  const tt = (y, m, d, dist, up, extra) => tour('hike', day(y, m, d), dist, 3600, up, extra);
+  const all = [tt(2025, 1, 10, 10000, 100), tt(2025, 3, 1, 5000, 50), tt(2025, 11, 20, 20000, 500), tt(2026, 1, 5, 12000, 200, { moving: 1800 }), tt(2026, 2, 28, 8000, 0),
+    tt(2026, 11, 21, 3000, 30), tour('bike', day(2026, 5, 5), 40000, 7200, 300), tt(2026, 6, 1, 1, 1, { status: 'planned' }), tt(2026, 6, 2, 1, 1, { hidden: true })];
+  // vergangene Jahre: ganzes Jahr gegen ganzes Jahr
+  let v = V.berechne(all, 2025, 2024, new Date(2026, 10, 22));
+  ok(!v.bisHeute && v.a.summe.n === 3 && v.a.summe.dist === 35000 && v.b.leer && v.diff.dist.pct === null && V.pctText(v.diff.dist) === 'neu', 'Jahr gegen Jahr ohne Touren');
+  ok(v.a.kum.dist[0] === 10000 && v.a.kum.dist[2] === 15000 && v.a.kum.dist[11] === 35000 && v.a.ende === 11 && v.b.kum.dist.every(x => x === 0), 'aufsummiert');
+  // laufendes Jahr: Vorjahr bis zum gleichen Tag (22.11.), Linie endet im November
+  v = V.berechne(all, 2026, 2025, new Date(2026, 10, 22, 9));
+  ok(v.bisHeute && v.a.ende === 10 && v.a.kum.dist[10] === 63000 && v.a.kum.dist[11] === null && v.b.ende === 11, 'laufendes Jahr endet im laufenden Monat');
+  ok(v.a.summe.dist === 63000 && v.b.summe.dist === 35000 && V.pctText(v.diff.dist) === '+80 %' && v.a.summe.n === 4 && v.b.summe.n === 3, 'Summen bis heute ' + JSON.stringify(v.diff.dist));
+  ok(v.a.summe.zeit === 1800 + 3600 + 3600 + 7200, 'Zeit: in Bewegung, sonst Dauer');
+  v = V.berechne(all, 2026, 2025, new Date(2026, 10, 19, 9));      // vor dem 20.11.: die Novembertour 2025 zählt noch nicht mit
+  ok(v.b.summe.n === 2 && v.b.summe.dist === 15000 && v.b.kum.dist[10] === 35000, 'Stichtag vor der Vorjahrestour, Linie bleibt ganz');
+  // Sportart-Filter
+  v = V.berechne(all, 2026, 2025, new Date(2026, 10, 22), s => s === 'bike');
+  ok(v.a.summe.n === 1 && v.b.leer && V.pctText(v.diff.n) === 'neu', 'Sportart-Filter');
+  // Schaltjahr: 29.02.2028 gegen 2027 → bis 28.02.2027; umgekehrt 28.02.2027 (laufend) gegen 2028 → bis 28.02.2028 (der 29. nicht)
+  const sj = [tt(2027, 2, 28, 1000, 0), tt(2027, 3, 1, 1000, 0), tt(2028, 2, 29, 2000, 0), tt(2028, 2, 28, 500, 0)];
+  v = V.berechne(sj, 2028, 2027, new Date(2028, 1, 29, 12));
+  ok(v.b.summe.n === 1 && v.a.summe.n === 2 && v.stichtag.tag === 28 && v.stichtag.monat === 1, 'Schaltjahr: 29.02. gegen 28.02.');
+  v = V.berechne(sj, 2027, 2028, new Date(2027, 1, 28, 12));
+  ok(v.a.summe.n === 1 && v.b.summe.n === 1 && v.b.summe.dist === 500 && v.b.ende === -1 && v.b.kum.dist.every(x => x === null), 'Zukunftsjahr: keine Linie, gleicher Tag');
+  ok(V.tageImMonat(2028, 1) === 29 && V.tageImMonat(2027, 1) === 28 && V.tageImMonat(2100, 1) === 28 && V.tageImMonat(2000, 1) === 29, 'Schaltjahre');
+  // nur ein Jahr vorhanden: Auswahl hat das laufende Jahr dazu; gleiches Jahr gegen sich: gleich
+  ok(JSON.stringify(V.jahre([tt(2024, 5, 5, 1, 1)], new Date(2026, 0, 2))) === '[2026,2024]' && JSON.stringify(V.jahre([], new Date(2026, 0, 2))) === '[2026]', 'Jahre');
+  v = V.berechne([tt(2024, 5, 5, 1000, 10)], 2024, 2024, new Date(2026, 0, 2));
+  ok(v.gleich && V.pctText(v.diff.dist) === '±0 %', 'gleiches Jahr');
+  v = V.berechne([], 2026, 2025, new Date(2026, 0, 2));
+  ok(v.a.leer && v.b.leer && V.pctText(v.diff.dist) === null && v.a.kum.n[0] === 0, 'keine Touren');
+  ok(V.pctText({ a: 90, b: 100, pct: -0.1 }) === '−10 %' && V.pctText({ a: 1, b: 300, pct: (1 - 300) / 300 }) === '−100 %' && V.pctText({ a: 100.4, b: 100, pct: 0.004 }) === '±0 %', 'Prozenttexte');
+  A.deepStrictEqual(V.vorgabe(new Date(2026, 4, 1)), { a: 2026, b: 2025 }); n++;
+})();
+
+/* ---------- 2.13.0 Bestwerte je Sportart (calc-ziele.js): Rangliste, Tempo nur wo sinnvoll, Mindestzahl ---------- */
+(() => {
+  const ts = [tour('hike', day(2026, 1, 1), 10000, 4 * 3600, 800, { moving: 3 * 3600, maxAlt: 1800 }), tour('hike', day(2026, 2, 1), 15000, 5 * 3600, 600, { moving: 4 * 3600, maxAlt: 2100 }),
+    tour('hike', day(2026, 3, 1), 15000, 3 * 3600, 900, { moving: 300 }), tour('run', day(2026, 1, 2), 8000, 2400, 50, { moving: 2400 }),
+    tour('skialpin', day(2026, 1, 3), 30000, 6 * 3600, 3000, { moving: 3 * 3600 }), tour('skialpin', day(2026, 1, 4), 25000, 5 * 3600, 2000, { moving: 2 * 3600 }), tour('hike', day(2026, 4, 1), 0, 100, 0)];
+  const r1 = Z.jeSportart(ts, 1), r3 = Z.jeSportart(ts, 3);
+  ok(r1.map(g => g.sport).join() === 'hike,skialpin' && r1[0].n === 3, 'Sportarten mit mindestens 2 Touren, meiste zuerst');
+  ok(r1[0].strecke.length === 1 && r1[0].strecke[0].start === day(2026, 2, 1), 'Gleichstand: frühere Tour zuerst');
+  ok(r3[0].strecke.length === 3 && r3[0].aufstieg.map(t => t.up).join() === '900,800,600' && r3[0].hoehe[0].maxAlt === 2100 && r3[0].dauer[0].dur === 5 * 3600, 'beste drei');
+  ok(r3[0].tempo.length === 2 && Math.abs(Z.tempo(r3[0].tempo[0]) - 15000 / 14400) < 1e-9, 'Tempo nur mit Zeit in Bewegung über 10 min');
+  ok(r1[1].tempo.length === 0 && r1[1].strecke[0].dist === 30000, 'Ski alpin ohne Tempo');
+  ok(Z.jeSportart(ts, 1, 1).some(g => g.sport === 'run') && Z.jeSportart([], 1).length === 0, 'Mindestzahl einstellbar, leer');
+})();
+
+/* ---------- 2.13.0 Wanderführer als Datei (calc-fuehrer-datei.js): Export, Prüfen, Zusammenführen ohne Überschreiben, Konflikte ---------- */
+(() => {
+  const FD = require(W + 'calc-fuehrer-datei.js'), FuL = require(W + 'calc-fuehrer.js');
+  const linie = (la, lo, k) => Array.from({ length: 12 }, (_, i) => ({ lat: la + i * 0.001 * k, lon: lo + i * 0.0012, ele: 500 + i * 10 }));
+  const meta = (id, ord, title, km) => ({ id, ord, title, km, up: 100, la: 47, lo: 11, bb: [47, 11, 47.1, 11.1], n: 12, f: title + '.gpx' });
+  const lokal = [{ id: 'buchA', name: 'Rother Karwendel', created: 1, next: 2, cover: 1, touren: [meta('t0', 0, 'Soiernhaus', 12.3), meta('t1', 1, 'Pleisenspitze', 15)] }];
+  const pts = { buchA: { t0: FuL.packe(linie(47.4, 11.3, 1)), t1: FuL.packe(linie(47.3, 11.4, 2)) } };
+  const ex = FD.exportiere(lokal, pts, { buchA: 'data:image/jpeg;base64,AAAA' }, { buchA: { t1: [{ start: day(2026, 7, 4), name: 'Pleisen' }] } }, { now: day(2026, 11, 22) });
+  ok(ex.format === FD.FORMAT && ex.version === 1 && ex.buecher.length === 1 && ex.buecher[0].touren.length === 2 && !('cover' in ex.buecher[0]), 'Export ohne Titelbild (Vorgabe)');
+  ok(ex.buecher[0].touren[1].gewandert[0].datum === '2026-07-04' && ex.buecher[0].touren[1].gewandert[0].name === 'Pleisen' && !ex.buecher[0].touren[0].gewandert, 'Auskunft „gewandert“');
+  ok(FD.exportiere(lokal, pts, { buchA: 'data:image/jpeg;base64,AAAA' }, null, { mitCover: true }).buecher[0].cover === 'data:image/jpeg;base64,AAAA', 'Titelbild nur auf Wunsch');
+  ok(FD.exportiere(lokal, pts, { buchA: 'data:image/png;base64,AAAA' }, null, { mitCover: true }).buecher[0].cover === undefined, 'nur JPEG-Titelbilder');
+  ok(FD.dateiname(day(2026, 11, 22)) === 'Tourentagebuch-Wanderfuehrer-2026-11-22.json', 'Dateiname');
+  // Prüfen
+  for (const [bad, rx] of [['kein json', /kein JSON/], ['{"format":"x"}', /keine Wanderführer-Datei/], [JSON.stringify({ format: FD.FORMAT, version: 9, buecher: [] }), /neueren Version/], [JSON.stringify({ format: FD.FORMAT, version: 1 }), /keine Bücher/]]) {
+    let m = ''; try { FD.lies(bad); } catch (e) { m = e.message; } ok(rx.test(m), 'Prüfung: ' + m);
+  }
+  const roh = JSON.parse(JSON.stringify(ex));
+  roh.buecher[0].touren.push({ title: 'kaputt', km: 3, pts: { la: [1], lo: [1] } }, { title: '', km: 3, pts: roh.buecher[0].touren[0].pts });
+  roh.buecher.push({ name: 'Rother Allgäu', id: 'buchB', cover: 'data:image/jpeg;base64,BBBB', touren: [{ title: 'Grünten', km: 9.5, up: 700, pts: FuL.packe(linie(47.6, 10.4, 1)) }, { title: 'Grünten', km: 9.52, up: 700, pts: FuL.packe(linie(47.6, 10.4, 1)) }] });
+  roh.buecher.push({ name: 'rother karwendel ', id: 'andereId', touren: [{ title: 'Soiernhaus', km: 13.9, pts: roh.buecher[0].touren[0].pts }, { title: 'Schöttelkarspitze', km: 11, pts: FuL.packe(linie(47.45, 11.25, 1)) }] });
+  roh.buecher[0].name = 'Karwendel (Rother)';
+  const d = FD.lies(JSON.stringify(roh));
+  ok(d.buecher.length === 3 && d.defekt === 2 && d.buecher[0].touren.length === 2 && d.buecher[0].touren[0].punkte.length === 12, 'unlesbare Buchtouren gezählt');
+  // Zusammenführen
+  let k = 0; const pl = FD.plane(lokal, d, { buchA: true }, () => 'neu' + (k++));
+  ok(pl.nNeu === 1 && pl.neu[0].buch.id === 'buchB' && pl.neu[0].buch.touren.length === 1 && pl.schon === 3, 'neues Buch, doppelte Buchtour im Buch zählt einmal ' + JSON.stringify([pl.nNeu, pl.schon]));
+  ok(pl.cover.length === 1 && pl.cover[0].id === 'buchB', 'Titelbild nur für das neue Buch');
+  ok(pl.ergaenzen.length === 1 && pl.ergaenzen[0].id === 'buchA' && pl.ergaenzen[0].touren.length === 1 && pl.ergaenzen[0].touren[0].title === 'Schöttelkarspitze' && pl.ergaenzen[0].touren[0].id === 't2' && pl.ergaenzen[0].touren[0].ord === 2, 'gleicher Name → vorhandenes Buch ergänzt');
+  ok(pl.konflikte.length === 2 && /heißt in der Datei/.test(pl.konflikte[0]) && /Soiernhaus.*13,9 km.*12,3 km.*nicht übernommen/.test(pl.konflikte[1]), 'Konflikte ' + JSON.stringify(pl.konflikte));
+  ok(pl.ergaenzen[0].pts.t2 && Math.abs(pl.ergaenzen[0].touren[0].la - 47.45) < 1e-9 && pl.ergaenzen[0].touren[0].bb.length === 4, 'Kennzahlen neu gerechnet');
+  ok(/1 neues Buch · 1 neue Buchtour in einem vorhandenen Buch · 3 Buchtouren sind schon da · 1 Titelbild/.test(FD.zusammenfassung(pl)), FD.zusammenfassung(pl));
+  // gleiche Datei noch einmal nach dem Import: nichts Neues; Kennung schon vergeben → neue Kennung
+  const lokal2 = lokal.concat([pl.neu[0].buch]); lokal2[0] = Object.assign({}, lokal2[0], { touren: lokal2[0].touren.concat(pl.ergaenzen[0].touren) });
+  const pl2 = FD.plane(lokal2, d, { buchA: true, buchB: true }, () => 'x');
+  ok(pl2.nTouren === 0 && FD.zusammenfassung(pl2).indexOf('neu') < 0, 'zweiter Import ändert nichts: ' + FD.zusammenfassung(pl2));
+  const pl3 = FD.plane([{ id: 'buchB', name: 'Ganz anders', next: 0, touren: [] }], { buecher: [{ id: null, name: 'Neu', touren: [] }, { id: 'buchB', name: 'Ganz anders', touren: [] }] }, {}, (() => { let i = 0; return () => 'id' + (i++); })());
+  ok(pl3.neu.length === 1 && pl3.neu[0].buch.id === 'id0', 'ohne Kennung: neue Kennung');
+})();
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
