@@ -41,15 +41,31 @@ public class VideoPlayerActivity extends Activity {
         if (b != null) { pos = b.getInt("pos", 0); wasPlaying = b.getBoolean("playing", true); }
 
         // Hochformat- oder Querformat-Video: Bildschirm folgt dem Video (Sensor darf um 180° drehen)
-        int o = VideoPlan.orientation(in.getIntExtra(EXTRA_W, 0), in.getIntExtra(EXTRA_H, 0));
+        // Maße und Drehung aus der Datei selbst lesen: Handyvideos sind oft 1920x1080 mit Drehung 90 (also hochkant angezeigt)
+        int vw = in.getIntExtra(EXTRA_W, 0), vh = in.getIntExtra(EXTRA_H, 0);
+        try {
+            android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+            try {
+                r.setDataSource(f.getAbsolutePath());
+                int w = Integer.parseInt(r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+                int h = Integer.parseInt(r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+                String rot = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+                int rd = rot == null ? 0 : Integer.parseInt(rot);
+                if (rd == 90 || rd == 270) { int t = w; w = h; h = t; }
+                vw = w; vh = h;
+            } finally { r.release(); }
+        } catch (Exception e) { /* dann die übergebenen Maße */ }
+        int o = VideoPlan.orientation(vw, vh);
         setRequestedOrientation(o == 1 ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 : o == 2 ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        immersive();
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         vv = new VideoView(this);
-        root.addView(vv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        // MATCH_PARENT: VideoView skaliert das Bild seitenverhältnistreu so groß wie möglich (WRAP_CONTENT blieb in Videogröße)
+        root.addView(vv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
         TextView close = new TextView(this);
         close.setText("✕");
         close.setTextColor(Color.WHITE);
@@ -79,6 +95,16 @@ public class VideoPlayerActivity extends Activity {
         });
         vv.setVideoPath(f.getAbsolutePath());
     }
+
+    @SuppressWarnings("deprecation")
+    private void immersive() {
+        getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) immersive(); }
 
     private void fail(int what, int extra) {
         if (failed) return;
