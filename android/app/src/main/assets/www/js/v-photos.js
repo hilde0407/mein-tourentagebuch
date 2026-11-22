@@ -1,9 +1,11 @@
 'use strict';
 /* Fotos: Raster, Vollbild-Ansicht mit Diashow, Quellen (Galerie, Ordner, SMB, WebDAV/Nextcloud, Kamera). */
 const Lightbox = {
-  open(list, idx) {
+  open(list0, idx) {
     if (window.__lightbox) window.__lightbox.close();
-    let i = idx, timer = null;
+    // 2.14.0: eigene Kopie der Liste – Löschen in der Lightbox verändert nicht mehr heimlich die Liste der Ansicht dahinter (die lädt nach „photos-changed“ neu)
+    const list = (list0 || []).slice();
+    let i = Math.min(Math.max(0, idx | 0), Math.max(0, list.length - 1)), timer = null;
     const img = h('img', { alt: '', class: 'lb-img' });
     // 2.8.0: Panoramen (breiter als 2,2 : 1) füllen die Höhe und lassen sich quer schieben; „Ganz anzeigen“ zeigt das ganze Bild auf Breite
     const pan = h('div', { class: 'lb-pan', id: 'lb-pan' }, img);
@@ -170,7 +172,7 @@ const Lightbox = {
         h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'zeit' ? ' (aus der Tourzeit ergänzt' + (p.camShift ? ', Uhrzeit ' + FotoOrtCalc.versatzText(p.camShift) : '') + ')' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
         tour ? h('p', null, '🥾 ', h('a', { href: '#/tour/' + tour.id, onclick: () => { s.close(); close(); } }, tour.name)) : h('p', null, 'Keiner Tour zugeordnet'),
         h('div', { class: 'row' },
-          h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); } } }, 'Tour wählen'),
+          h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); window.dispatchEvent(new Event('photos-changed')); } } }, 'Tour wählen'),
           p.lat != null ? h('button', { class: 'btn sm', onclick: () => { s.close(); close(); sessionStorage.setItem('mapFocus', JSON.stringify([p.lat, p.lon])); Nav.go('/map'); } }, 'Auf Karte') : null,
           h('button', { class: 'btn sm danger', id: 'lb-del', onclick: async () => { if (await (V ? confirmBox('Video löschen?', 'Das Video wird aus dem Tourentagebuch gelöscht: Datei, Vorschaubild und Eintrag. Eine Kopie in der Galerie bleibt, falls es eine gibt.', 'Löschen') : confirmBox('Foto löschen?', 'Das Foto wird aus dem Tourentagebuch entfernt (das Original bleibt unberührt).', 'Löschen'))) { await Photos.remove(p.id); list.splice(i, 1); s.close(); if (!list.length) close(); else { i = Math.min(i, list.length - 1); show(); } window.dispatchEvent(new Event('photos-changed')); } } }, 'Löschen'))));
     }

@@ -233,7 +233,8 @@ Views['/tour'] = async (root, [id]) => {
   const showBtn = h('button', { class: 'btn sm', id: 'tshow', onclick: () => Show.open(photos.map(p => Object.assign({ tourName: t.name }, p)), { tour: t, pts }) }, '▶ Diashow');
   const drawStrip = () => {
     strip.innerHTML = '';
-    photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'aria-label': (p.video ? VideoCalc.dauerText(p.dur) : 'Foto') + ' ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), UI.vidMark(p))));
+    // 2.14.0: Das Vorschaubild merkt sich die Kennung des Fotos, nicht seine Stelle – sonst öffnete nach dem Löschen eines Fotos jedes folgende Bild das nächste.
+    photos.forEach((p, i) => strip.append(h('button', { class: 'th', 'data-id': p.id, 'aria-label': (p.video ? VideoCalc.dauerText(p.dur) : 'Foto') + ' ' + (i + 1), onclick: () => Lightbox.open(photos, Math.max(0, photos.findIndex(q => q.id === p.id))) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), UI.vidMark(p))));
     strip.hidden = showBtn.hidden = !photos.length; noPhotos.hidden = !!photos.length;
     drawOrt();
   };
@@ -267,6 +268,10 @@ Views['/tour'] = async (root, [id]) => {
     pinList(), helpDone, UI.section('Notiz', note)].filter(Boolean));
   title.addEventListener('click', rename);
   drawStrip();
+  // 2.14.0: Fotos gelöscht (Lightbox, Doppelte Fotos), einer anderen Tour zugeordnet oder neu hinzugekommen → Leiste und Kartenpunkte frisch aus der Datenbank
+  // (vorher blieb die Leiste stehen, das gelöschte Foto war weiter zu sehen und die Stellen verrutschten).
+  const reloadPhotos = async () => { if (!strip.isConnected) return; photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); };
+  window.addEventListener('photos-changed', reloadPhotos);
   const xs = MapKit.profile(prof, pts, (i, o) => {
     if (i == null) { map.removeLayer(cursor); profInfo.textContent = ''; return; }
     cursor.setLatLng([pts[i].lat, pts[i].lon]).addTo(map);
@@ -356,6 +361,7 @@ Views['/tour'] = async (root, [id]) => {
     try { const r = await Native.json('saveFile', { name, mime: 'application/gpx+xml', text: Geo.gpx(t.name, t.sport, pts, wp) }); toast('Gespeichert: ' + r); }
     catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([Geo.gpx(t.name, t.sport, pts)], { type: 'application/gpx+xml' })), download: name }); document.body.append(a); a.click(); a.remove(); }
   }
+  return () => window.removeEventListener('photos-changed', reloadPhotos);
 };
 
 /** Route an die Hülle geben (Sprachansagen) und zur Aufzeichnung wechseln. */

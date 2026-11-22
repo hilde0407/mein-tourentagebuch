@@ -3152,6 +3152,56 @@ def fuehrer_2130(pg):
         pg.evaluate("""async () => { for (const id of ['fxbuch001', 'fxbuch002']) await Buecher.entferne(id); window.__pick = []; window.__saved = null; document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""")
 
 
+def dp_jpg(farbe, muster=0, w=96, h=72):
+    """Kleines Testbild: Farbverlauf mit Muster – gleiches Muster = gleiches Motiv (auch in anderer Größe), anderes Muster = anderes Motiv."""
+    import io as _io
+    from PIL import Image as _Im, ImageDraw as _Dr
+    im = _Im.new("RGB", (w, h), farbe); d = _Dr.Draw(im)
+    for k in range(6):
+        x = (k * 37 + muster * 53) % w; y = (k * 23 + muster * 31) % h
+        d.rectangle([x, y, x + w // 4, y + h // 5], fill=(255 - 40 * k % 255, (muster * 70 + 30 * k) % 255, 60 * k % 255))
+    b = _io.BytesIO(); im.save(b, "JPEG", quality=90); return b.getvalue()
+
+def doppelt_2140(pg):
+    """2.14.0: doppelte Fotos – Fotoleiste nach dem Löschen richtig neu gezeichnet; Import überspringt Bekanntes; Suche zeigt Gruppen; Löschen mit Übernahme."""
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    t0 = 1580000000000      # eigene Tour im Januar 2020, weit weg von den übrigen Testdaten
+    bilder = {"dpa": dp_jpg((40, 120, 90), 1), "dpb": dp_jpg((40, 120, 90), 1), "dpc": dp_jpg((200, 80, 40), 2)}
+    def bild(r):
+        k = r.request.url.split("/")[-1][:3]
+        r.fulfill(status=200, body=bilder.get(k, bilder["dpc"]), content_type="image/jpeg")
+    pg.route("**/thumb/dp*", bild); pg.route("**/photo/dp*", bild)
+    ids = ["dpa1111111", "dpb2222222", "dpc3333333"]
+    tid = None
+    try:
+        tid = pg.evaluate("""async t0 => (await Tours.add({ name: 'Doppeltest', sport: 'hike', src: 'file', force: true,
+          pts: Array.from({ length: 60 }, (_, i) => ({ lat: 47.6 + i * 0.0005, lon: 11.6 + i * 0.0004, ele: 800 + i * 3, t: t0 + i * 30000 })) })).tour.id""", t0)
+        pg.evaluate("""async ([t0, tid]) => {
+          await DB.put('photos', { id: 'dpa1111111', name: 'IMG_0001.JPG', ts: t0 + 300000, lat: 47.61, lon: 11.61, pos: 'exif', tour: tid, src: 'smb', w: 96, h: 72, note: '' });
+          await DB.put('photos', { id: 'dpb2222222', name: 'IMG_0001.JPG', ts: t0 + 300000, lat: null, lon: null, pos: 'none', tour: tid, src: 'rechner', w: 96, h: 72, note: 'Gipfelblick' });
+          await DB.put('photos', { id: 'dpc3333333', name: 'IMG_0002.JPG', ts: t0 + 600000, lat: 47.62, lon: 11.62, pos: 'exif', tour: tid, src: 'smb', w: 96, h: 72, note: '' }); }""", [t0, tid])
+        # 1. Fotoleiste: ein Foto in der Lightbox löschen → Leiste zeigt danach genau die übrigen, und jedes Vorschaubild öffnet sein eigenes Foto
+        go(pg, "#/tour/" + tid, "#tphotos .strip .th")
+        assert pg.locator("#tphotos .strip .th").count() == 3
+        pg.locator("#tphotos .strip .th").nth(0).click(); pg.wait_for_selector(".lb")
+        pg.click(".lb button[aria-label=Details]"); pg.wait_for_selector("#lb-del"); pg.click("#lb-del")
+        pg.wait_for_selector(".sheet[aria-label='Foto löschen?']"); pg.click(".sheet[aria-label='Foto löschen?'] button.pri")
+        pg.wait_for_function("() => DB.get('photos', 'dpa1111111').then(p => !p)")
+        pg.evaluate("window.__lightbox && window.__lightbox.close()")
+        pg.wait_for_function("() => document.querySelectorAll('#tphotos .strip .th').length === 2", timeout=5000)
+        srcs = pg.eval_on_selector_all("#tphotos .strip .th img", "l => l.map(i => i.getAttribute('src'))")
+        assert srcs == ["/thumb/dpb2222222.jpg", "/thumb/dpc3333333.jpg"], srcs
+        pg.locator("#tphotos .strip .th").nth(1).click(); pg.wait_for_selector(".lb")
+        assert "dpc3333333" in pg.get_attribute(".lb .lb-img", "src"), pg.get_attribute(".lb .lb-img", "src")
+        assert pg.inner_text(".lb .lb-cnt") == "2 / 2", pg.inner_text(".lb .lb-cnt")
+        pg.evaluate("window.__lightbox && window.__lightbox.close()")
+        return []
+    finally:
+        pg.unroute("**/thumb/dp*"); pg.unroute("**/photo/dp*")
+        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) await Tours.remove(tid);
+          window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
