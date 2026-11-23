@@ -1476,6 +1476,157 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(M.schreiber({ codec: 'avc', w: 2, h: 2, fps: 24 }).timescale === 90000 && M.schreiber({ codec: 'avc', w: 2, h: 2, fps: 7 }).timescale === 7000, 'Zeitbasis');
 }
 
+/* ---------- 2.18.0 Abgleich von Notizen und Fotos mit Meine Touren (calc-abgleich-medien.js): Notiz-Regel wie der Server, Holen spiegelbildlich, Lage, Fotoplan ---------- */
+(() => {
+  const M = require(W + 'calc-abgleich-medien.js');
+  const W0 = new Date(2026, 10, 22, 14, 5).getTime(), TZ = '——— Aus Mein Tourentagebuch, 22.11.2026 14:05 ———', TH = '——— Aus Meine Touren, 22.11.2026 14:05 ———';
+  // Server-Regel: alle Fälle der Tabelle in docs/versionen/3.57.0.md (Meine Touren)
+  const sm = (c, ct, n, b) => M.serverMerge(c, ct, n, b, W0);
+  A.deepStrictEqual(sm('Alt', 5, '', 5), { status: 'leer', text: 'Alt' }); n++;
+  A.deepStrictEqual(sm('Alt', 5, '   \n ', null), { status: 'leer', text: 'Alt' }, 'nur Leerraum löscht nie'); n++;
+  A.deepStrictEqual(sm('Gleich', 5, 'Gleich', null), { status: 'gleich', text: 'Gleich' }); n++;
+  A.deepStrictEqual(sm('Zeile\r\nzwei  ', 5, 'Zeile\nzwei', null), { status: 'gleich', text: 'Zeile\nzwei' }, 'Zeilenenden und Leerzeichen am Ende zählen nicht'); n++;
+  A.deepStrictEqual(sm('', null, 'Neu', null), { status: 'uebernommen', text: 'Neu' }); n++;
+  A.deepStrictEqual(sm('Server', 7, 'App', 7), { status: 'uebernommen', text: 'App' }, 'basis = Stempel: am Server seither nichts geändert'); n++;
+  A.deepStrictEqual(sm('Server', 8, 'Server und mehr', 7), { status: 'uebernommen', text: 'Server und mehr' }); n++;
+  A.deepStrictEqual(sm('Server und mehr', 8, 'mehr', 7), { status: 'schon_enthalten', text: 'Server und mehr' }); n++;
+  A.deepStrictEqual(sm('Im Browser ergänzt', 8, 'Vom Handy', 7), { status: 'zusammengefuehrt', text: 'Im Browser ergänzt\n\n' + TZ + '\nVom Handy' }, 'Beispiel der Server-Beschreibung'); n++;
+  A.deepStrictEqual(sm('A', null, 'B', null).status, 'zusammengefuehrt'); n++;
+  // Holen: spiegelbildlich, lokale unveränderte Notiz wird ersetzt, sonst angehängt
+  const hm = (l, s, u) => M.holenMerge(l, s, u, W0);
+  A.deepStrictEqual(hm('Hier', '', false), { status: 'leer', text: 'Hier' }); n++;
+  A.deepStrictEqual(hm('', 'Dort', false), { status: 'uebernommen', text: 'Dort' }); n++;
+  A.deepStrictEqual(hm('Hier', 'Dort neu', true), { status: 'uebernommen', text: 'Dort neu' }, 'hier seit dem Abgleich unverändert'); n++;
+  A.deepStrictEqual(hm('Hier', 'Hier und dort', false), { status: 'uebernommen', text: 'Hier und dort' }); n++;
+  A.deepStrictEqual(hm('Hier und dort', 'dort', false), { status: 'schon_enthalten', text: 'Hier und dort' }); n++;
+  A.deepStrictEqual(hm('Vom Handy 🥾', 'Im Browser', false), { status: 'zusammengefuehrt', text: 'Vom Handy 🥾\n\n' + TH + '\nIm Browser' }); n++;
+  // Lage: Entscheidungsmatrix
+  const lage = (t, r) => M.notizLage(t, r, W0);
+  ok(lage({ note: 'x' }, { text: 'x', geaendert: 1 }).fall === 'gleich' && lage({ note: 'x' }, { text: 'x', geaendert: 1 }).vorschlag === 'nichts', 'gleich');
+  ok(lage({ note: 'x\r\n' }, { text: 'x', geaendert: 1 }).fall === 'gleich', 'Zeilenende');
+  ok(lage({ note: '' }, { text: '', geaendert: null }).fall === 'gleich', 'beide leer');
+  let L = lage({ note: 'Hier' }, { text: '', geaendert: null });
+  ok(L.fall === 'nurHier' && L.vorschlag === 'senden' && L.senden.dort === 'Hier' && L.holen.hier === 'Hier', 'nur hier: ' + JSON.stringify(L));
+  L = lage({ note: '' }, { text: 'Dort', geaendert: 9 });
+  ok(L.fall === 'nurDort' && L.vorschlag === 'holen' && L.holen.hier === 'Dort' && L.senden.status === 'leer' && L.senden.dort === 'Dort' && L.beides.hier === 'Dort', 'nur dort, leer löscht nie');
+  L = lage({ note: 'Alt', noteMt: 'Alt', mtNotizBasis: 5 }, { text: 'Alt, im Browser gekürzt', geaendert: 6 });
+  ok(L.fall === 'dortNeu' && L.vorschlag === 'holen' && L.holen.hier === 'Alt, im Browser gekürzt', 'nur dort geändert');
+  L = lage({ note: 'Alt', noteMt: 'Alt', mtNotizBasis: 5 }, { text: 'Ganz anders', geaendert: 6 });
+  ok(L.fall === 'dortNeu' && L.holen.hier === 'Ganz anders' && L.holen.status === 'uebernommen', 'hier unverändert: Server-Text gilt (wie die Server-Regel spiegelbildlich)');
+  L = lage({ note: 'Neu hier', noteMt: 'Alt', mtNotizBasis: 5 }, { text: 'Alt', geaendert: 5 });
+  ok(L.fall === 'hierNeu' && L.vorschlag === 'senden' && L.senden.dort === 'Neu hier' && L.senden.status === 'uebernommen', 'nur hier geändert: Server übernimmt (basis gleich)');
+  L = lage({ note: 'Vom Handy', noteMt: 'Alt', mtNotizBasis: 5 }, { text: 'Im Browser ergänzt', geaendert: 6 });
+  ok(L.fall === 'beide' && L.vorschlag === 'beides' && L.senden.dort === 'Im Browser ergänzt\n\n' + TZ + '\nVom Handy' && L.beides.hier === L.senden.dort && L.holen.hier === 'Vom Handy\n\n' + TH + '\nIm Browser ergänzt', 'Konflikt: ' + JSON.stringify(L));
+  L = lage({ note: 'Vom Handy' }, { text: 'Vom Handy, ergänzt', geaendert: 6 });
+  ok(L.fall === 'beide' && L.vorschlag === 'holen' && L.holen.hier === 'Vom Handy, ergänzt', 'nie abgeglichen, dort enthält hier');
+  ok(M.notizText(L) === 'Beide verschieden' && M.notizText(lage({ note: 'a' }, { text: 'a' })) === 'Gleich – nichts zu tun', 'Texte');
+  // Grenzen: 20 000 Zeichen (Codepunkte, Emoji = 1 Zeichen wie in Python)
+  const lang = 'x'.repeat(19990), emo = '🥾'.repeat(20000);
+  ok(M.laenge(emo) === 20000 && emo.length === 40000, 'Emoji zählen einfach');
+  ok(lage({ note: emo }, { text: '', geaendert: null }).zuLang.length === 0, '20 000 Emoji passen');
+  L = lage({ note: lang + ' und hier' }, { text: lang + ' und dort', geaendert: 3 });
+  ok(L.zuLang.includes('senden') && L.zuLang.includes('beides') && L.zuLang.includes('holen'), 'zusammengeführt zu lang: ' + L.zuLang);
+  ok(lage({ note: 'y'.repeat(20001) }, { text: '', geaendert: null }).zuLang.includes('senden'), 'überlange Notiz hier');
+  // Fotoplan: ref, mtPid, gleiche Aufnahme, gelöscht, Betrachter, Videos und Grenzen
+  const T = 1782892800000;
+  const lokal = [
+    { id: 'a1', name: 'IMG_1.jpg', ts: T, size: 3e6, w: 4000, h: 3000 },                  // dort mit ref a1
+    { id: 'a2', name: 'IMG_2.jpg', ts: T + 60000, size: 1e6, w: 2000, h: 1500 },          // neu hier
+    { id: 'a3', name: 'IMG_3.jpg', ts: T + 120000, mtPid: 900 },                           // von dort geholt, dort gelöscht
+    { id: 'a4', name: 'IMG_4.jpg', ts: T + 180000, mtGeloescht: true },                    // dort gelöscht gemeldet
+    { id: 'a5', name: 'DSC5.jpg', ts: T + 240000 },                                       // gleiche Aufnahme wie dort Nr. 815 (ohne ref)
+    { id: 'a6', name: 'x', ts: T + 300000, mtPid: 816 },                                  // verknüpft
+    { id: 'v1v', name: 'Video.mp4', ts: T + 400000, video: true, size: 50e6 },
+    { id: 'v2v', name: 'Video.mp4', ts: T + 500000, video: true, size: 250e6 }];
+  const srv = { darf_schreiben: true, fotos: [
+    { id: 812, taken_ts: T / 1000, size: 412345, ref: 'a1', name: 'IMG_1.jpg' }, { id: 814, taken_ts: T / 1000 + 1000, size: 500000, ref: null, name: null },
+    { id: 815, taken_ts: T / 1000 + 241, size: 400000, ref: null, name: null }, { id: 816, taken_ts: T / 1000 + 300, size: 1, ref: null },
+    { id: 817, taken_ts: T / 1000 + 60, size: 1, ref: null, name: 'anderes.jpg' }],
+    videos: [{ id: 3, taken_ts: T / 1000 + 900, size: 48e6, video: true, ref: null }, { id: 4, taken_ts: T / 1000 + 950, size: 300e6, video: true, ref: null }] };
+  let P = M.fotoPlan(lokal, srv, {});
+  ok(P.holen.map(x => x.id).join() === '814,817' && P.vorhanden === 3, 'holen: ' + P.holen.map(x => x.id) + ' vorhanden ' + P.vorhanden);
+  ok(P.senden.map(p => p.id).join() === 'a2' && P.geloescht.map(p => p.id).join() === 'a4' && P.dortGeloescht.map(p => p.id).join() === 'a3', 'senden ' + P.senden.map(p => p.id) + ' gelöscht ' + P.geloescht.map(p => p.id));
+  ok(P.videosHolen.map(x => x.id).join() === '3' && P.videosSenden.map(x => x.id).join() === 'v1v' && P.videosZuGross.map(x => x.id).join() === '4,v2v', 'Videos und 200 MB');
+  ok(M.fotoPlan(lokal, srv, { force: true }).senden.map(p => p.id).join() === 'a2,a4', 'trotzdem senden nur mit force');
+  ok(M.fotoText(P) === '2 neue Fotos dort · 1 neu hier · 3 schon vorhanden', M.fotoText(P));
+  let X = M.auswahl(P, 'beides', {});
+  ok(X.holen.length === 2 && X.senden.length === 1 && X.videosHolen.length === 0 && X.videosSenden.length === 0 && !X.wlan, 'Videos nur mit Haken');
+  X = M.auswahl(P, 'beides', { videos: true });
+  ok(X.videosHolen.length === 1 && X.videosSenden.length === 1 && X.videoBytes === 98e6 && X.wlan, 'mit Haken');
+  ok(M.auswahl(P, 'holen', { videos: true }).senden.length === 0 && M.auswahl(P, 'senden', {}).holen.length === 0, 'Richtung');
+  const P2 = M.fotoPlan(lokal, Object.assign({}, srv, { darf_schreiben: false }), {});
+  ok(!P2.darfSchreiben && M.auswahl(P2, 'beides', { videos: true }).senden.length === 0 && M.auswahl(P2, 'beides', { videos: true }).videosSenden.length === 0, 'Betrachter sendet nie');
+  // Tourgrenze 1 GB: belegt 900 MB dort → ein 150-MB-Video passt nicht mehr
+  const P3 = M.fotoPlan([{ id: 'w1v', ts: T, video: true, size: 150e6 }], { fotos: [], videos: [{ id: 9, taken_ts: T / 1000 + 5000, size: 900 * 1048576, ref: 'zz' }] }, { videos: true });
+  ok(P3.videosZuGross.filter(v => v.wo === 'hier').length === 1 && P3.videosSenden.length === 0, 'Tourgrenze');
+  ok(M.videoFrage([{ size: 180 * 1048576 }, { size: 20 * 1048576 }]) === '2 Video(s) bis 180 MB, zusammen 200 MB, nur im WLAN', M.videoFrage([{ size: 180 * 1048576 }, { size: 20 * 1048576 }]));
+  ok(M.mb(412345) === '0,4 MB' && M.mb(48e6) === '46 MB' && M.mb(1.5 * 1073741824) === '1,5 GB', 'mb');
+  // Zählen und Ergebnis
+  let z = null; for (const st of ['neu', 'neu', 'vorhanden', 'geloescht', 'x']) z = M.zaehle(z, { status: st });
+  ok(z.neu === 2 && z.vorhanden === 1 && z.geloescht === 1 && z.fehler === 1, 'zählen');
+  ok(M.ergebnisText({ notiz: 'zusammengefuehrt', holen: 2, gesendet: z }) === 'Notizen zusammengeführt · 2 Fotos geholt · 2 Fotos gesendet · 1 waren dort schon · 1 dort gelöscht – nicht wieder aufgenommen', M.ergebnisText({ notiz: 'zusammengefuehrt', holen: 2, gesendet: z }));
+  ok(M.ergebnisText({}) === 'Nichts zu tun – alles ist gleich', 'nichts');
+  // Abruf nötig? Stand gleich, alles verknüpft, Notiz unverändert → nein
+  ok(!M.brauchtAbruf({ mtStand: 's1', note: 'a', noteMt: 'a' }, { stand: 's1' }, [{ id: 'p', mtPid: 1 }, { id: 'v', video: true }], {}), 'nichts zu tun');
+  ok(M.brauchtAbruf({ mtStand: 's1', note: 'a', noteMt: 'a' }, { stand: 's1' }, [{ id: 'v', video: true }], { videos: true }), 'Video unverknüpft mit Haken');
+  ok(M.brauchtAbruf({ mtStand: 's1', note: 'b', noteMt: 'a' }, { stand: 's1' }, [], {}) && M.brauchtAbruf({ mtStand: 's0' }, { stand: 's1' }, [], {}) && !M.brauchtAbruf({}, null, [], {}), 'Notiz/Stand');
+  ok(M.mtId({ mtId: 12 }) === '12' && M.mtId({ srcId: 'mt:g178' }) === 'g178' && M.mtId({ srcId: 'komoot:1' }) === null, 'mtId');
+  // Felder fürs Senden: ref = Foto-Kennung, taken in ms, Zeitzone, force nur auf Wunsch, Video mit bestaetigt
+  const f1 = M.sendeFelder({ id: 'abc', name: 'IMG.jpg', ts: Date.UTC(2026, 6, 1, 10), lat: 47.5, lon: 11.25 }, false);
+  ok(f1.ref === 'abc' && f1.taken === String(Date.UTC(2026, 6, 1, 10)) && f1.offset === '+02:00' && f1.lat === '47.5' && f1.lng === '11.25' && !('force' in f1), JSON.stringify(f1));
+  ok(M.sendeFelder({ id: 'abc', ts: Date.UTC(2026, 0, 1) }, true).force === '1' && M.sendeFelder({ id: 'abc', ts: Date.UTC(2026, 0, 1) }, true).offset === '+01:00', 'force, Winterzeit');
+  const fv = M.sendeFelder({ id: 'vvv', video: true, ts: 5, dur: 4200 }, true);
+  ok(fv.bestaetigt === '1' && fv.dur_ms === '4200' && !('force' in fv) && fv.name === 'vvv.mp4', JSON.stringify(fv));
+})();
+
+/* ---------- 2.18.0 Komoot-Paket und Pins in der GPX (calc-komoot.js): Säubern, Maskieren, Wegpunkte, GPX 1.1, README, Manifest, EXIF ---------- */
+(() => {
+  const K = require(W + 'calc-komoot.js');
+  ok(K.clean('a\u0000b\u0007c\r\nd\re\n\n\n\nf', null) === 'abc\nd\ne\n\nf', 'Steuerzeichen und Zeilenenden: ' + JSON.stringify(K.clean('a\u0000b\u0007c\r\nd\re\n\n\n\nf')));
+  ok(K.clean('🥾🥾🥾🥾', 3) === '🥾🥾…' && K.clean('kurz', 10) === 'kurz', 'kürzen ohne Emoji zu halbieren');
+  ok(K.clean('x\ud800y', null) === 'xy' && K.clean('\udc00z', null) === 'z', 'kaputte Ersatzzeichen');
+  ok(K.xml('<a href="x">&\'</a>') === '&lt;a href=&quot;x&quot;&gt;&amp;&apos;&lt;/a&gt;', 'maskieren');
+  const T0 = Date.UTC(2026, 9, 3, 8), pts = Array.from({ length: 11 }, (_, i) => ({ lat: 47 + i * 0.001, lon: 11 + i * 0.001, ele: 800 + i, t: T0 + i * 60000 }));
+  const g = K.ortZurZeit(pts, T0 + 90000); ok(Math.abs(g.lat - 47.0015) < 1e-9 && Math.abs(g.ele - 801.5) < 1e-9, 'zwischen zwei Punkten');
+  ok(K.ortZurZeit(pts, T0 - 700000) === null && K.ortZurZeit(pts, T0 + 10 * 60000 + 500000) !== null && K.ortZurZeit([], T0) === null, 'Rand');
+  const pins = [{ ts: T0 + 120000, lat: 47.3, lon: 11.3, text: 'Gipfel <Kreuz> & Brotzeit\nmit Aussicht 🥾' }, { ts: T0 + 30000, text: '' }, { ts: T0 + 99e6, text: 'weit weg' }, { ts: T0 + 60000, lat: 0, lon: 0, text: 'Null' }];
+  const w = K.pinWpts(pins, pts, {});
+  ok(w.wpts.length === 2 && w.ohneOrt === 2 && w.wpts[0].name === 'Pin ' + new Date(T0 + 30000).getHours().toString().padStart(2, '0') + ':00' && w.wpts[1].name === 'Gipfel <Kreuz> & Brotzeit mit Aussicht 🥾' && w.wpts[1].desc === 'Gipfel <Kreuz> & Brotzeit\nmit Aussicht 🥾', JSON.stringify(w));
+  const lang = K.pinWpts([{ ts: T0, lat: 47, lon: 11, text: 'x'.repeat(300) }], pts, {}).wpts[0], langMt = K.pinWpts([{ ts: T0, lat: 47, lon: 11, text: 'x'.repeat(300) }], pts, { nameMax: 200 }).wpts[0];
+  ok(Array.from(lang.name).length === 60 && lang.name.endsWith('…') && lang.desc.length === 300 && Array.from(langMt.name).length === 200, 'Namenslänge Komoot 60, Meine Touren 200');
+  const x = K.gpx({ name: 'Tour & <Test>', sport: 'hike', pts, wpts: w.wpts, desc: 'Notiz\u0001 mit "Zeichen"\n' + 'n'.repeat(3000) });
+  ok(x.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1"') && x.includes('<metadata><name>Tour &amp; &lt;Test&gt;</name><desc>Notiz mit &quot;Zeichen&quot;'), 'Kopf und metadata');
+  ok((x.match(/<wpt /g) || []).length === 2 && x.includes('<name>Gipfel &lt;Kreuz&gt; &amp; Brotzeit mit Aussicht 🥾</name><desc>Gipfel &lt;Kreuz&gt; &amp; Brotzeit\nmit Aussicht 🥾</desc>') && x.includes('<time>2026-10-03T08:02:00Z</time>'), 'Wegpunkte');
+  ok(x.indexOf('</metadata>') < x.indexOf('<wpt') && x.indexOf('</wpt>\n<trk>') > 0 && (x.match(/<desc>/g) || []).length === 3 && (x.match(/<trkpt /g) || []).length === 11, 'Reihenfolge nach GPX 1.1, Beschreibung in metadata und trk');
+  const d0 = x.match(/<metadata>.*?<desc>([\s\S]*?)<\/desc>/)[1]; ok(Array.from(d0.replace(/&quot;/g, '"')).length === 2000 && d0.endsWith('…'), 'Notiz höchstens 2000 Zeichen: ' + d0.length);
+  ok(!/[\x00-\x08]/.test(x), 'keine Steuerzeichen');
+  ok(K.dateiname('Gipfel/Tour: Zugspitze?', 'x') === 'Gipfel_Tour_ Zugspitze' && K.dateiname('', 'Tour') === 'Tour' && K.dateiname('Hütte ö', '') === 'Hütte ö', K.dateiname('Gipfel/Tour: Zugspitze?', 'x'));
+  ok(K.fotoName(3, new Date(2026, 9, 3, 10, 15, 0).getTime()) === 'fotos/03_2026-10-03_10-15-00.jpg' && K.fotoName(12, 0) === 'fotos/12_ohne-zeit.jpg', 'Fotoname');
+  const fotos = [{ id: 'a', faces: 0 }, { id: 'b', faces: 2 }, { id: 'c' }, { id: 'v', video: true }];
+  ok(K.vorgabe(fotos).gewaehlt.length === 0 && K.vorgabe(fotos).gesicht.join() === 'b' && K.ohneGesicht(fotos).join() === 'a,c', 'Vorauswahl: keine; Gesicht nie automatisch');
+  ok(K.ohneGesicht(Array.from({ length: 80 }, (_, i) => ({ id: 'p' + i }))).length === 60, 'höchstens 60');
+  ok(K.ziel(4000, 3000).join() === '2000,1500' && K.ziel(800, 600).join() === '800,600' && K.ziel(1000, 3000, 2000).join() === '667,2000', 'Zielgröße');
+  const rd = K.readme({ name: 'Runde', start: T0, gpx: 'Runde.gpx', wpts: 2, notiz: true, fotos: 3, ort: false });
+  ok(rd.includes('SICHTBARKEIT SELBST WÄHLEN') && rd.includes('Standard-Sichtbarkeit deines Kontos') && rd.includes('einzeln') && rd.includes('Einwilligung') && rd.includes('nicht zuverlässig zurückholen') && rd.includes('Aufnahmeort in den Fotos: entfernt') && rd.includes('\r\n') && rd.includes('keine Automatik'), 'README');
+  const mf = JSON.parse(K.manifest({ id: 't1', name: 'Runde', gpx: 'Runde.gpx', wpts: 2, notiz: true, fotoListe: [{ datei: 'fotos/01.jpg', id: 'a', ort: false }], ort: false }));
+  ok(mf.format === 'mein-tourentagebuch-komoot-paket' && mf.version === 1 && mf.ort_entfernt === true && mf.fotos.length === 1 && mf.wegpunkte === 2, 'Manifest');
+  ok(K.notizTxt('a\nb') === 'a\r\nb\r\n' && K.notizTxt('  ') === '', 'notiz.txt');
+  // EXIF: fremdes EXIF (mit GPS) und XMP raus, Aufnahmezeit rein, Ort nur auf Wunsch
+  const seg = (m, body) => { const b = new Uint8Array(4 + body.length); b.set([0xff, m, (body.length + 2) >> 8, (body.length + 2) & 255]); b.set(body, 4); return b; };
+  const cat = (...a) => { const r = new Uint8Array(a.reduce((s, x) => s + x.length, 0)); let o = 0; a.forEach(x => { r.set(x, o); o += x.length; }); return r; };
+  const fremd = K.exifBlock(T0, 12.5, -3.25);
+  const jfif = seg(0xe0, [0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]), xmp = seg(0xe1, Array.from('http://ns.adobe.com/xap/1.0/\0<x/>').map(c => c.charCodeAt(0))), com = seg(0xfe, [65, 66]);
+  const jpg = cat(new Uint8Array([0xff, 0xd8]), jfif, fremd, xmp, com, new Uint8Array([0xff, 0xda, 0, 2, 1, 2, 3, 0xff, 0xd9]));
+  const e0 = K.liesExif(jpg); ok(e0.bloecke === 1 && Math.abs(e0.lat - 12.5) < 1e-6 && Math.abs(e0.lon + 3.25) < 1e-6, 'eigener EXIF-Block lesbar: ' + JSON.stringify(e0));
+  const ohne = K.ohneExif(jpg); ok(K.liesExif(ohne).bloecke === 0 && ohne.length === jpg.length - fremd.length - xmp.length - com.length, 'alles entfernt');
+  const mitZeit = K.fotoExif(jpg, { ts: T0, lat: 47.1, lon: 11.2, ort: false }), e1 = K.liesExif(mitZeit);
+  const dz = new Date(T0); ok(e1.zeit === dz.getFullYear() + ':10:03 10:00:00' && e1.offset === '+02:00' && e1.lat === null && e1.lon === null && e1.bloecke === 1, 'Zeit ohne Ort: ' + JSON.stringify(e1));
+  ok(mitZeit[2] === 0xff && mitZeit[3] === 0xe0 && mitZeit[2 + jfif.length] === 0xff && mitZeit[3 + jfif.length] === 0xe1, 'EXIF nach dem JFIF-Block');
+  const e2 = K.liesExif(K.fotoExif(jpg, { ts: T0, lat: -47.123456, lon: 11.654321, ort: true }));
+  ok(Math.abs(e2.lat + 47.123456) < 1e-6 && Math.abs(e2.lon - 11.654321) < 1e-6, 'Ort auf Wunsch: ' + JSON.stringify(e2));
+  let fehler = 0; try { K.ohneExif(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2])); } catch (e) { fehler++; } ok(fehler === 1, 'kein JPEG');
+})();
+
 (async () => {
   // --- GPX einer Buchtour lesen ---
   const gpx = (inner, meta) => '<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">' + (meta || '') + inner + '</gpx>';
