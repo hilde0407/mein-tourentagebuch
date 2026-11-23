@@ -214,7 +214,7 @@ const Buecher = {
         if (fertig) fertig(r);
       } catch (e) { s.close(); toast('Das hat nicht geklappt: ' + e.message, 6000); }
     } }, 'GPX-Dateien wählen');
-    box.append(id ? null : h('label', { class: 'fld' }, 'Name des Buchs', name), hinweis, err,
+    box.append(...(id ? [] : [h('label', { class: 'fld' }, 'Name des Buchs', name)]), hinweis, err,
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), go));
     if (!id) setTimeout(() => name.focus(), 250);
     return s;
