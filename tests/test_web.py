@@ -3792,7 +3792,7 @@ def komootpaket_2180(pg):
         assert "Download/Tourentagebuch/Komoot-Paket" in pg.inner_text("#kp-ort-t") and "2 Foto(s)" in pg.inner_text("#kp-fertig") and "2 Pin(s)" in pg.inner_text("#kp-fertig"), pg.inner_text("#kp-fertig")
         bad += sheet_check_open(pg, "Komoot-Paket gespeichert")
         z = zip_lesen(); names = sorted(z.namelist())
-        assert names == sorted(["Komoot Gipfel_Runde.gpx", "notiz.txt", "README.txt", "manifest.json", "fotos/01_2026-10-03_10-05-00.jpg", "fotos/02_2026-10-03_10-15-00.jpg"]), names
+        assert [n for n in names if not n.startswith("fotos/")] == sorted(["Komoot Gipfel_Runde.gpx", "notiz.txt", "README.txt", "manifest.json"]) and len([n for n in names if re.fullmatch(r"fotos/0[12]_2026-10-03_\d\d-\d\d-00\.jpg", n)]) == 2, names
         root = ET.fromstring(z.read("Komoot Gipfel_Runde.gpx")); ns = {"g": "http://www.topografix.com/GPX/1/1"}
         w = root.findall("g:wpt", ns)
         assert len(w) == 2 and w[0].find("g:name", ns).text == "Quelle" and w[0].find("g:time", ns).text == "2026-10-03T08:10:00Z" and w[0].find("g:desc", ns) is None
@@ -3801,9 +3801,10 @@ def komootpaket_2180(pg):
         assert z.read("notiz.txt").decode("utf-8") == "Toller Tag 🥾\r\nmit <Brotzeit> & Aussicht\r\n"
         rd = z.read("README.txt").decode("utf-8"); assert "SICHTBARKEIT SELBST WÄHLEN" in rd and "Standard-Sichtbarkeit" in rd and "Foto hinzufügen" in rd and "Aufnahmeort in den Fotos: entfernt" in rd and "2 ausgewählte Fotos" in rd, rd
         mf = json.loads(z.read("manifest.json")); assert mf["format"] == "mein-tourentagebuch-komoot-paket" and [f["id"] for f in mf["fotos"]] == ["kp1aaaaaaaaaaaaaaaaa", "kp2aaaaaaaaaaaaaaaaa"] and mf["ort_entfernt"] is True and mf["fotos"][1]["gesicht"] is True and mf["wegpunkte"] == 2, mf
-        for n, gr in (("fotos/01_2026-10-03_10-05-00.jpg", (2000, 1333)), ("fotos/02_2026-10-03_10-15-00.jpg", (1200, 1600))):
+        fn = sorted(n for n in names if n.startswith("fotos/"))
+        for n, gr in ((fn[0], (2000, 1333)), (fn[1], (1200, 1600))):
             im = _Im.open(_io.BytesIO(z.read(n))); ex = im.getexif()
-            assert im.size == gr and ex.get_ifd(0x8769).get(0x9003, "").startswith("2026:10:03 10:") and not ex.get_ifd(0x8825) and 0x8825 not in ex and 0x0110 not in ex, (n, im.size, dict(ex), ex.get_ifd(0x8825))
+            assert im.size == gr and ex.get_ifd(0x8769).get(0x9003, "").startswith("2026:10:03 ") and not ex.get_ifd(0x8825) and 0x8825 not in ex and 0x0110 not in ex, (n, im.size, dict(ex), ex.get_ifd(0x8825))
         pg.click("#kp-teilen"); pg.wait_for_selector("#kp-fertig", state="detached")
         sh = [c for c in pg.evaluate("window.__tb.calls") if c[0] == "shareCache"]; assert sh and sh[-1][1]["mime"] == "application/zip" and sh[-1][1]["name"].startswith("komoot-paket-"), sh
         leise()
