@@ -86,6 +86,8 @@ Views['/import'] = async root => {
           UI.toggle('Neue Aufzeichnungen automatisch senden', !!Set_.get('mtAuto'), v => Set_.set('mtAuto', !!v), { id: 'mt-auto' }),
           h('p', { class: 'muted small' }, 'Nur wenn du das einschaltest: Nach dem Ende einer Aufzeichnung wird die Tour still an Meine Touren gesendet. Klappt das nicht (kein Netz), versucht die App es später noch einmal.')),
         /^http:/.test(c.base) ? h('p', { class: 'muted small' }, 'Die Verbindung ist nicht verschlüsselt (http).') : null,
+        h('div', { id: 'mt-abgleich-box' }, h('button', { class: 'btn', id: 'mt-abgleich-alle', onclick: () => { s.close(); MedienAbgleich.alle(() => mt()); } }, 'Notizen und Fotos abgleichen …'),      // 2.18.0
+          h('p', { class: 'muted small' }, 'Für alle verbundenen Touren: zeigt erst, was neu ist. Übertragen wird nur, was du dann wählst.')),
         zahlen, zHint,
         h('div', { class: 'row end wrap' },
           h('button', { class: 'btn', id: 'mt-off', onclick: async () => { await M.logout(c); s.close(); toast('Verbindung getrennt'); mt(); } }, 'Verbindung trennen'),

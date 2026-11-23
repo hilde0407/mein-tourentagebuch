@@ -643,3 +643,17 @@ img.tile-off{visibility:hidden}
 .fd-a{margin-top:20px}.fd-a .btn{flex:1 1 auto}
 .ps-dup{margin-top:14px;padding-top:4px;border-top:1px solid var(--line)}
 .ps-dup p{margin:2px 0 0}
+/* 2.18.0: Abgleich mit Meine Touren und Komoot-Paket */
+.sheet .seg.ab-seg{margin:10px 0}
+.ab-text{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-height:220px;overflow:auto;margin:4px 0;padding:8px 10px;background:var(--soft);border-radius:var(--r);font:inherit;font-size:.9rem;color:var(--ink)}
+.ab-det{margin:4px 0}
+.ab-vor{margin-top:6px}
+.warn{color:var(--danger);font-weight:600}
+.kp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:8px 0}
+.kp-f{position:relative;display:flex;flex-direction:column;gap:2px;min-height:44px;border:2px solid var(--line);border-radius:var(--r);padding:4px;cursor:pointer;background:var(--card);color:var(--ink)}
+.kp-f.on{border-color:var(--acc)}
+.kp-f img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;display:block}
+.kp-f input{position:absolute;top:8px;left:8px;width:22px;height:22px;margin:0}
+.kp-f small{font-size:.74rem;line-height:1.2;color:var(--muted)}
+.kp-f small.kp-g{color:var(--danger);font-weight:600}
+.kp-zahl{font-weight:600}

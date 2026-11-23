@@ -310,7 +310,9 @@ Views['/tour'] = async (root, [id]) => {
         UI.row({ icon: 'photo', title: 'Als Bild teilen', id: 'tb-menu', onclick: () => { s.close(); TourBild.dialog(t); } }),
         it('file', 'Als PDF', () => PdfUI.tour(t)),
         it('share', 'Als GPX speichern', exportGpx),
-        SendenCalc.sichtbar(t, mtAcc) ? UI.row({ icon: 'server', title: 'An Meine Touren senden', id: 'mt-senden-tour', onclick: () => { s.close(); Senden.dialog(t, () => Nav.render()); } }) : null]),
+        UI.row({ icon: 'download', title: 'Komoot-Paket …', id: 'kp-menu', onclick: () => { s.close(); KomootPaket.dialog(t); } }),      // 2.18.0: Export zum Selbst-Hochladen – unabhängig von Meine Touren
+        SendenCalc.sichtbar(t, mtAcc) ? UI.row({ icon: 'server', title: 'An Meine Touren senden', id: 'mt-senden-tour', onclick: () => { s.close(); Senden.dialog(t, () => Nav.render()); } }) : null,
+        MedienAbgleich.sichtbar(t, mtAcc) ? UI.row({ icon: 'swap', title: 'Mit Meine Touren abgleichen …', id: 'mt-abgleich-tour', onclick: () => { s.close(); MedienAbgleich.tour(t, () => Nav.render()); } }) : null]),
       grp('Bearbeiten', [
         it('pencil', 'Umbenennen', rename),
         it('bulb', 'Namensvorschläge', suggestNames),

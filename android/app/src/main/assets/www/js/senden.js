@@ -3,7 +3,7 @@
    (Vorgabe aus) – nach dem Ende einer Aufzeichnung. Der Weg ist derselbe wie bei der Android-App von Meine Touren: POST /api/record/upload mit JSON { gpx, name, sport }.
    Der Server legt die Tour an und erkennt Doppelte am Start (Kennung g<Startzeit>); das Tagebuch fragt vorher die Tourenliste ab und erkennt zusätzlich Touren, die dort aus
    einer anderen Quelle (Zepp, Komoot …) stammen (gleicher Start ± 5 Minuten, ähnliche Länge). Notiz und Sterne gehen danach mit POST /api/tours/<id>/note und /rating – nur bei neu
-   angelegten Touren, damit nichts am Server überschrieben wird. Fotos werden nicht gesendet. Gemerkt wird die Kennung (Tour.mtId), dann findet „Aus Meine Touren holen“ die Tour
+   angelegten Touren (2.18.0: Pins als Wegpunkte und die Notiz als Beschreibung auch in der GPX, Schalter „Pins und Notiz mitsenden“, Vorgabe an), damit nichts am Server überschrieben wird. Fotos werden nicht gesendet. Gemerkt wird die Kennung (Tour.mtId), dann findet „Aus Meine Touren holen“ die Tour
    wieder und legt sie nicht doppelt an. Ein Konto „nur ansehen“ (Betrachter) darf nicht schreiben: die App sagt das, bevor sie etwas sendet. Das Passwort wird nirgends gespeichert. */
 const Senden = {
   _busy: false,
@@ -35,7 +35,7 @@ const Senden = {
     if (m) id = String(m.id);
     else {
       upd('Tour wird gesendet …');
-      const sp = SendenCalc.sport(t), body = { gpx: Geo.gpx(t.name, sp || '', pts), name: t.name };
+      const sp = SendenCalc.sport(t), body = { gpx: Senden.gpx(t, sp, pts, Senden.mitNotiz(o)), name: t.name };
       if (sp) body.sport = sp;
       const r = await Senden.post(acc, '/api/record/upload', body);
       if (r.status !== 200) { const d = M.detail(r, ''); throw Senden.fehler(SendenCalc.fehlerText(r.status, d), { status: r.status, wieder: SendenCalc.WIEDER(r.status), verboten: r.status === 403 }); }
@@ -44,8 +44,8 @@ const Senden = {
       id = String(j.id); neu = !j.dup;
       if (liste) liste.push({ id, start_ts: Math.round(t.start / 1000), dist_m: t.dist });      // für die nächsten Touren einer Auswahl
     }
-    if (neu) {      // Notiz und Sterne: nur bei einer neu angelegten Tour; ein Fehler hier stört das Ergebnis nicht
-      const note = String(t.note || '').trim(), st = Abgleich.sterne(t);
+    if (neu) {      // Notiz und Sterne: nur bei einer neu angelegten Tour; ein Fehler hier stört das Ergebnis nicht. 2.18.0: die Notiz nur mit „Pins und Notiz mitsenden“
+      const note = Senden.mitNotiz(o) ? String(t.note || '').trim() : '', st = Abgleich.sterne(t);
       try {
         if (note) { upd('Notiz wird gesendet …'); const r = await Senden.post(acc, '/api/tours/' + encodeURIComponent(id) + '/note', { note }); if (r.status !== 200) warn = 'Die Notiz ist nicht angekommen.'; }
         if (st) { const r = await Senden.post(acc, '/api/tours/' + encodeURIComponent(id) + '/rating', { stars: st }); if (r.status !== 200) warn = 'Die Sterne sind nicht angekommen.'; }
@@ -57,6 +57,15 @@ const Senden = {
     for (const x of cur === t ? [t] : [cur, t]) { if (frei) x.mtId = id; x.mtSent = Date.now(); }
     await Tours.save(cur);
     return { status: neu ? 'gesendet' : 'vorhanden', id, warn };
+  },
+  /** 2.18.0: „Pins und Notiz mitsenden“ (Vorgabe an; o.mitNotiz geht vor der Einstellung mtMitNotiz). */
+  mitNotiz(o) { return o && o.mitNotiz != null ? !!o.mitNotiz : Set_.get('mtMitNotiz') !== false; },
+  /** GPX zum Senden. Mit Pins und Notiz: Pins als <wpt> (Name = Pin-Text bis 200 Zeichen – so liest Meine Touren ihn über wps.from_gpx als Pin-Notiz, Zeit, Ort;
+      Pins ohne Ort bekommen den Ort der Spur zu ihrer Zeit), die Notiz als <desc> (höchstens 2000 Zeichen; der Upload selbst übernimmt sie nicht – dafür geht sie danach
+      wie bisher über /note). Ohne: genau die GPX wie bis 2.17.0 (Geo.gpx, nur die Spur). */
+  gpx(t, sp, pts, mit) {
+    if (!mit) return Geo.gpx(t.name, sp || '', pts);
+    return KomootCalc.gpx({ name: t.name, sport: sp || '', pts, wpts: KomootCalc.pinWpts(t.pins, pts, { nameMax: KomootCalc.NAME_MAX_MT }).wpts, desc: t.note });
   },
   /** Mehrere nacheinander. o: { stop(), onProgress(i, n, text) }. Rechte- und Anmeldefehler brechen alles ab (sie gälten für jede Tour), ebenso ein nicht erreichbarer Server. */
   async mehrere(acc, tours, o) {
@@ -91,6 +100,11 @@ const Senden = {
           h('button', { class: 'btn pri', id: 'send-ja', onclick: () => { done = true; s.close(); res(true); } }, ja))), { onclose: () => { if (!done) res(false); } });
     });
   },
+  /** 2.18.0: Schalter „Pins und Notiz mitsenden“ in der Rückfrage (gemerkt; gilt auch für das automatische Senden). */
+  schalter() {
+    const n = UI.toggle('Pins und Notiz mitsenden', Set_.get('mtMitNotiz') !== false, v => Set_.set('mtMitNotiz', !!v), { id: 'send-pins' });
+    return h('div', { id: 'send-pins-box' }, n, h('p', { class: 'muted small' }, 'Pins kommen als Wegpunkte mit Uhrzeit und Text in die gesendete Strecke, die Notiz als Beschreibung.'));
+  },
   /** Warum es nicht geht (Konto „nur ansehen“, keine Verbindung, geplante Tour …) – ruhig und in Worten. */
   erklaeren(g) {
     const s = sheet(g.code === 'betrachter' ? 'Dafür brauchst du ein Konto mit Schreibrechten' : 'Senden nicht möglich', h('div', { id: 'send-grund' },
@@ -121,7 +135,8 @@ const Senden = {
     if (!await Senden.frage('An Meine Touren senden?', h('div', null,
       h('p', { id: 'send-name' }, h('b', null, t.name)), h('p', { class: 'muted', id: 'send-info' }, bits),
       h('p', null, 'Die Tour wird an ', h('b', null, Senden.host(acc.base)), ' gesendet' + (acc.name ? ' (Konto ' + acc.name + ')' : '') + '.'),
-      h('p', { class: 'muted small' }, 'Name, Sportart, Strecke mit Zeiten und Höhen, Notiz und Sterne gehen mit. Fotos nicht. Ist die Tour dort schon vorhanden, wird nichts doppelt angelegt.')), 'Senden')) return null;
+      Senden.schalter(),
+      h('p', { class: 'muted small' }, 'Name, Sportart, Strecke mit Zeiten und Höhen und die Sterne gehen mit. Fotos nicht (die gleichst du danach mit „Mit Meine Touren abgleichen …“ ab). Ist die Tour dort schon vorhanden, wird nichts doppelt angelegt.')), 'Senden')) return null;
     Senden._busy = true; let r = null, err = null;
     try {
       r = await PhotoSources.progress('An Meine Touren senden', async upd => { let k = 0; return Senden.eine(acc, t, { upd: text => upd(Math.min(++k, 3), 4, null, text) }); }, { note: 'Bitte die App geöffnet lassen, bis das Senden fertig ist.' });
@@ -162,7 +177,7 @@ const Senden = {
       const ts = kand.filter(t => pick.has(t.id));
       if (!ts.length) return;
       if (!await Senden.httpOk(acc0)) return;
-      if (!await Senden.frage('Wirklich senden?', h('p', null, ts.length + (ts.length === 1 ? ' Tour wird' : ' Touren werden') + ' an ' + Senden.host(acc0.base) + ' gesendet (Konto ' + (acc0.name || '–') + ').'), 'Senden')) return;
+      if (!await Senden.frage('Wirklich senden?', h('div', null, h('p', null, ts.length + (ts.length === 1 ? ' Tour wird' : ' Touren werden') + ' an ' + Senden.host(acc0.base) + ' gesendet (Konto ' + (acc0.name || '–') + ').'), Senden.schalter()), 'Senden')) return;
       s.close(); await Senden.mitFortschritt(acc0, ts, after);
     };
     draw();

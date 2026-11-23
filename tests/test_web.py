@@ -3306,7 +3306,8 @@ MT_SPUREN_JS = """(extra) => {
   /* 2.15.0: Sucht auf der sichtbaren Seite und in offenen Blättern nach Berührungspunkten mit Meine Touren (Text, Beschriftungen, Knopf-Kennungen).
      Ausnahmen: die Einstellung selbst (#set-mt-box), die Quellenangabe einer Tour aus Meine Touren (#tsrc) und was der Aufrufer nennt. */
   const RX = /meine[\\s-]*touren|betrachter|tailscale|ts\\.net/i, out = [];
-  const IDS = ['imp-mt', 'mt-senden-tour', 'mt-auto', 'mtsent', 'mtinfo', 'mt-zahlen', 'mt-senden', 'mt-go', 'mt-url', 'mt-off', 'mt-state', 'mt-viewer', 'fu-mt', 'fu-mt-go', 'mt-frage', 'send-zu-mt'];
+  const IDS = ['imp-mt', 'mt-senden-tour', 'mt-auto', 'mtsent', 'mtinfo', 'mt-zahlen', 'mt-senden', 'mt-go', 'mt-url', 'mt-off', 'mt-state', 'mt-viewer', 'fu-mt', 'fu-mt-go', 'mt-frage', 'send-zu-mt',
+    'mt-abgleich-tour', 'mt-abgleich-alle', 'mt-abgleich-box', 'ab-sheet', 'ab-alle', 'ab-go', 'ab-a-go', 'ab-viewer', 'ab-ergebnis', 'send-pins', 'send-pins-box'];      // 2.18.0: Abgleich von Notizen/Fotos, Pins mitsenden
   const weg = '#tsrc, .quelle, #set-mt-box' + (extra ? ', ' + extra : '');
   for (const r of [document.querySelector('#view'), ...document.querySelectorAll('.sheet')]) {
     if (!r) continue;
@@ -3458,6 +3459,8 @@ def mt_schalter_2150(pg):
     pg.wait_for_function("id => DB.get('tours', id).then(t => t.up === 999 && t.dist === 12345)", arg=ids["A"], timeout=30000)
     go(pg, "#/tour/" + ids["A"], "#mtinfo"); assert "aus Meine Touren" in pg.inner_text("#ratecap") and pg.locator("#mtsent").count() == 1
     go(pg, "#/tour/" + ids["C"], "#rate"); pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("#mt-senden-tour"); zu(pg)
+    go(pg, "#/tour/" + ids["B"], "#rate"); pg.click("header.top button[aria-label=Aktionen]"); pg.wait_for_selector("#mt-abgleich-tour"); assert pg.locator("#kp-menu").count() == 1; zu(pg)      # 2.18.0
+    go(pg, "#/import", "#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-abgleich-alle"); zu(pg)
     go(pg, "#/import", "#imp-mt"); go(pg, "#/mehr", "#m-import"); assert "Meine Touren" in pg.inner_text("#m-import")
     assert pg.evaluate("Import.Alles.quellen().then(q => q.map(x => x.id))") == ["mt"]
     # Aus über die Einstellung und gleich wieder an: die Importkarte verschwindet und kommt wieder, ohne Neuladen
@@ -3503,6 +3506,325 @@ def mt_schalter_2150(pg):
       for (const k of ['mt', 'zepp', 'komoot', 'mtOffen', 'abgleich']) { if (vor[k] == null) await DB.del('kv', k); else await DB.kvSet(k, vor[k]); }
       await Set_.set('mtAuto', vor.set.mtAuto); await Set_.set('autoAbgleich', vor.set.autoAbgleich); Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); Tours.invalidate(); }""", [ids, vor])
     assert pg.evaluate("typeof window.__net0") == "undefined"
+    return bad
+
+
+AB_SERVER = """(cfg) => {
+  /* 2.18.0: Meine Touren 3.57.0 nachgestellt – GET /api/tours/{id}/tagebuch, GET /api/tagebuch/uebersicht, POST /api/tours/{id}/notiz (Regel wie notiz_merge in
+     tagebuch_abgleich.py, hier unabhängig nachgeschrieben), /api/tours (Liste), /api/record/upload (fürs Senden mit Pins); dazu die Hülle: mtNetz, mtFotoHolen,
+     mtFotoSenden, mtVideoStart, mtJob, mtJobCancel, deletePhoto. Alles wird mitgeschrieben (window.__ab). */
+  const A = window.__ab = { log: [], calls: [], notizPosts: [], uploads: [], wifi: true, tours: cfg.tours, geloescht: new Set(cfg.geloescht || []), darf: true, nextId: 900, vnext: 50 };
+  const norm = s => String(s || '').replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n').replace(/[ \\t]+\\n/g, '\\n').trim();
+  const json = (st, o) => ({ status: st, headers: {}, body: JSON.stringify(o) });
+  const stand = t => 's' + (t.notiz.geaendert || 0) + '-' + t.fotos.map(f => f.id).join('.') + '-' + t.videos.map(v => v.id).join('.');
+  window.__mtStub = o => {
+    const u = new URL(o.url), m = (o.method || 'GET').toUpperCase(), path = u.pathname; A.log.push(m + ' ' + path + u.search);
+    if ((o.headers || {}).Cookie !== 'kh_session=SITZUNG-2180') return json(401, { detail: 'Nicht angemeldet' });
+    let x;
+    if (m === 'GET' && path === '/api/tagebuch/uebersicht') { const out = {}; (u.searchParams.get('ids') || '').split(',').forEach(id => { const t = A.tours[id]; if (t) out[id] = { fotos: t.fotos.length, videos: t.videos.length, notiz_geaendert: t.notiz.geaendert, notiz: !!t.notiz.text, stand: stand(t) }; }); return json(200, out); }
+    if (m === 'GET' && (x = path.match(/^\\/api\\/tours\\/([^/]+)\\/tagebuch$/))) { const t = A.tours[decodeURIComponent(x[1])]; if (!t) return json(404, { detail: 'Tour nicht gefunden' });
+      return json(200, { tour: { id: x[1], name: 'T', start_ts: 1 }, notiz: t.notiz, fotos: t.fotos, videos: t.videos, grenzen: { foto_mb: 40, video_mb: 200, video_tour_mb: 1024, breite_max: 2400, notiz_zeichen: 20000, heic: false }, darf_schreiben: A.darf }); }
+    if (m === 'POST' && (x = path.match(/^\\/api\\/tours\\/([^/]+)\\/notiz$/))) {
+      const t = A.tours[decodeURIComponent(x[1])], b = JSON.parse(o.body); A.notizPosts.push(b);
+      if (!A.darf) return json(403, { detail: 'Dieser Zugang darf nur ansehen' });
+      const cur = norm(t.notiz.text), neu = norm(b.text); let st, text = null;
+      if (!neu) st = 'leer'; else if (neu === cur) st = 'gleich'; else if (!cur) { st = 'uebernommen'; text = neu; } else if (b.basis != null && t.notiz.geaendert != null && +b.basis === +t.notiz.geaendert) { st = 'uebernommen'; text = neu; }
+      else if (cur.includes(neu)) st = 'schon_enthalten'; else if (neu.includes(cur)) { st = 'uebernommen'; text = neu; } else { st = 'zusammengefuehrt'; text = cur + '\\n\\n——— Aus Mein Tourentagebuch, 22.11.2026 14:05 ———\\n' + neu; }
+      if (text != null) t.notiz = { text, geaendert: (t.notiz.geaendert || 0) + 1000 };
+      return json(200, { status: st, konflikt: st === 'zusammengefuehrt', notiz: t.notiz }); }
+    if (m === 'GET' && path === '/api/tours') return json(200, []);
+    if (m === 'POST' && path === '/api/record/upload') { const b = JSON.parse(o.body); A.uploads.push(b); return json(200, { id: 'g' + (7000 + A.uploads.length), dup: false }); }
+    if (m === 'POST' && /\\/(note|rating)$/.test(path)) return json(200, { ok: true });
+    return json(404, { detail: 'Not Found' });
+  };
+  const c0 = window.MTApp.call; window.__abCall0 = c0;
+  window.MTApp.call = (id, m, a) => {
+    const o = JSON.parse(a || '{}');
+    if (!/^mt(Netz|FotoHolen|FotoSenden|VideoStart|Job|JobCancel)$/.test(m) && m !== 'deletePhoto') return c0.call(window.MTApp, id, m, a);
+    A.calls.push([m, o]); let r;
+    const tidOf = url => decodeURIComponent(new URL(url).pathname.split('/')[3]);
+    if (m === 'mtNetz') r = { wifi: A.wifi };
+    else if (m === 'deletePhoto') r = true;
+    else if (m === 'mtFotoHolen') { const pid = +new URL(o.url).pathname.split('/').pop(), f = A.tours[tidOf(o.url)].fotos.find(x => x.id === pid);
+      r = f ? { status: 200, id: f.appId || ('h' + pid + 'aaaaaaaa'), name: o.name, ts: o.taken, lat: o.lat, lon: o.lng, w: 1600, h: 1200, src: 'meinetouren', exif: true, fp: 'p1:1:' + pid, fpd: 'p1:2:' + pid, size: 300000 } : { status: 404, body: '{"detail":"Foto nicht gefunden"}' }; }
+    else if (m === 'mtFotoSenden') { const t = A.tours[tidOf(o.url)], f = o.fields;
+      if (!A.darf) r = { status: 403, body: '{"detail":"Dieser Zugang darf nur ansehen"}' };
+      else if (A.geloescht.has(f.ref) && f.force !== '1') r = { status: 200, body: JSON.stringify({ status: 'geloescht', id: null }) };
+      else { const v = t.fotos.find(x => x.ref === f.ref); if (v) r = { status: 200, body: JSON.stringify({ status: 'vorhanden', id: v.id, wie: 'kennung' }) };
+        else { const nid = A.nextId++; t.fotos.push({ id: nid, taken_ts: Math.round(+f.taken / 1000), lat: f.lat ? +f.lat : null, lng: f.lng ? +f.lng : null, size: 1, v: 'v' + nid, video: false, fp: null, sha1: 'x', ref: f.ref, name: f.name }); r = { status: 200, body: JSON.stringify({ status: 'neu', id: nid }) }; } } }
+    else if (m === 'mtVideoStart') {
+      if (o.wifiOnly && !A.wifi) r = { started: false, error: 'Kein WLAN. Videos werden nur im WLAN übertragen.' };
+      else { r = { started: true }; const t = A.tours[tidOf(o.url)];
+        if (o.mode === 'holen') { const vid = +new URL(o.url).pathname.split('/').pop(); A.job = { running: false, mode: 'holen', done: 10, total: 10, status: 200, error: '', body: '', result: { id: 'vv' + vid + 'aaaaaaaaav', name: o.name, ts: o.taken, w: 640, h: 480, dur: 4000, video: true, src: 'meinetouren', size: 10 } }; }
+        else { const nid = A.vnext++; t.videos.push({ id: nid, taken_ts: 1, size: 10, v: 'w', video: true, ref: o.fields.ref, name: o.fields.name }); A.job = { running: false, mode: 'senden', done: 10, total: 10, status: 200, error: '', body: JSON.stringify({ status: 'neu', id: nid }), result: null }; } } }
+    else if (m === 'mtJob') r = A.job || { running: false };
+    else r = true;
+    setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
+  };
+}"""
+AB_SERVER_AUS = "() => { window.MTApp.call = window.__abCall0; delete window.__abCall0; }"
+
+
+def abgleich_2180(pg):
+    """2.18.0 A/B/C: Notizen, Fotos und Videos mit Meine Touren abgleichen (Server und Hülle nachgestellt im Format von Meine Touren 3.57.0).
+    Notiz: Lage, beide Fassungen, Vorschau der zusammengeführten Fassung, Holen/Senden/Beides, basis; Fotos: Vorschau „N dort / M hier / K vorhanden“, Holen mit mtPid und
+    Duplikaten, Senden mit ref/taken/Ort, gelöschte nur mit „trotzdem senden“ (force); Videos nur mit Haken und Rückfrage, nur im WLAN; Betrachter: nur Holen;
+    Sammel-Abgleich über die Übersicht (stand); Senden mit Pins und Notiz in der GPX (Schalter); Layout des Blatts. Stubs werden zurückgesetzt."""
+    import xml.etree.ElementTree as ET
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    bad = []
+    vor = pg.evaluate("async () => ({ mt: await DB.kvGet('mt', null), wlan: Set_.get('mtWlan'), mitNotiz: Set_.get('mtMitNotiz') })")
+    T = 1782892800
+    cfg = {"tours": {
+        "g2180": {"notiz": {"text": "Im Browser ergänzt", "geaendert": 6}, "fotos": [
+            {"id": 812, "taken_ts": T, "lat": 47.5, "lng": 11.25, "size": 412345, "v": "3f9a", "video": False, "fp": "c3c3", "sha1": "9b1e", "ref": "a1aaaaaaaaaaaaaaaaaa", "name": "IMG_1.jpg"},
+            {"id": 814, "taken_ts": T + 600, "lat": 47.51, "lng": 11.26, "size": 500000, "v": "4a", "video": False, "fp": None, "sha1": None, "ref": None, "name": None},
+            {"id": 817, "taken_ts": T + 900, "lat": None, "lng": None, "size": 380000, "v": "5b", "video": False, "fp": None, "sha1": None, "ref": None, "name": None},
+            {"id": 818, "taken_ts": T + 1100, "lat": None, "lng": None, "size": 380000, "v": "6c", "video": False, "fp": None, "sha1": None, "ref": None, "name": None, "appId": "a9aaaaaaaaaaaaaaaaaa"}],
+            "videos": [{"id": 3, "taken_ts": T + 1200, "lat": None, "lng": None, "size": 48123456, "v": "77aa", "video": True, "dur_ms": 42000, "sha1": "77aa", "ref": None, "name": "Video.mp4"}]},
+        "g2181": {"notiz": {"text": "", "geaendert": None}, "fotos": [{"id": 830, "taken_ts": T + 86400 * 3, "lat": 47.6, "lng": 11.3, "size": 300000, "v": "x", "video": False, "fp": None, "sha1": None, "ref": None, "name": "Gipfel.jpg"}], "videos": []},
+        "g2182": {"notiz": {"text": "Gleich", "geaendert": 9}, "fotos": [], "videos": []}},
+        "geloescht": ["a4aaaaaaaaaaaaaaaaaa"]}
+    pg.evaluate(NETZ_WACHE); pg.evaluate(AB_SERVER, cfg)
+    ids = pg.evaluate("""async (T) => {
+      await DB.kvSet('mt', { base: 'https://mt.test', name: 'Volker', role: 'user', token: 'SITZUNG-2180', since: Date.now() }); await Set_.set('mtWlan', true); await Set_.set('mtMitNotiz', true);
+      const pts = (t0, n) => Array.from({ length: n }, (_, i) => ({ lat: 47.5 + i * 0.0002, lon: 11.25 + i * 0.0002, ele: 900 + i, t: t0 + i * 30000 }));
+      const X = (await Tours.add({ name: 'Abgleich Gipfeltour', sport: 'hike', pts: pts(T * 1000, 80), src: 'file', force: true })).tour;
+      Object.assign(X, { mtId: 'g2180', note: 'Vom Handy', noteMt: 'Alt', mtNotizBasis: 5 }); await Tours.save(X);
+      const Y = (await Tours.add({ name: 'Abgleich Zweite', sport: 'hike', pts: pts((T + 86400 * 3) * 1000 - 60000, 40), src: 'mt', srcId: 'mt:g2181', force: true })).tour;
+      Object.assign(Y, { note: 'Nur hier notiert' }); await Tours.save(Y);
+      const Z = (await Tours.add({ name: 'Abgleich Dritte', sport: 'hike', pts: pts((T + 86400 * 6) * 1000, 40), src: 'file', force: true })).tour;
+      Object.assign(Z, { mtId: 'g2182', note: 'Gleich', noteMt: 'Gleich', mtNotizBasis: 9 }); await Tours.save(Z);
+      const ph = (id, ts, extra) => DB.put('photos', Object.assign({ id, name: id + '.jpg', ts, lat: 47.5, lon: 11.25, w: 4000, h: 3000, src: 'galerie', tour: X.id, pos: 'exif', note: '', size: 2500000 }, extra || {}));
+      await ph('a1aaaaaaaaaaaaaaaaaa', T * 1000); await ph('a2aaaaaaaaaaaaaaaaaa', T * 1000 + 300000, { name: 'IMG_2.jpg' }); await ph('a4aaaaaaaaaaaaaaaaaa', T * 1000 + 400000, { mtGeloescht: true });
+      await ph('a9aaaaaaaaaaaaaaaaaa', T * 1000 + 500000, { name: 'IMG_9.jpg' });      // gleiche Datei wie 818 dort (Hülle liefert diese Kennung): Duplikat
+      await ph('b1b2c3d4e5f6a7b8c9dv', T * 1000 + 700000, { name: 'Video.mp4', video: true, size: 30 * 1048576, dur: 5000 });
+      Tours.invalidate(); return { X: X.id, Y: Y.id, Z: Z.id }; }""", T)
+    tour = lambda k: pg.evaluate("id => DB.get('tours', id)", ids[k])
+    foto = lambda i: pg.evaluate("id => DB.get('photos', id)", i)
+    calls = lambda m: pg.evaluate("m => window.__ab.calls.filter(c => c[0] === m).map(c => c[1])", m)
+    menue = lambda k: (pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", ids[k]), pg.wait_for_selector(".tourp h1"), pg.click("button[aria-label=Aktionen]"), pg.wait_for_selector(".sheet .menu"))
+    try:
+        # --- 1. Vorschau für Tour X: Notiz beide verschieden, Fotos 2 dort / 1 hier / 2 vorhanden (ref + gleiche Aufnahme 818 ist dort ohne ref → holen), Videos aus ---
+        menue("X"); assert pg.locator("#mt-abgleich-tour").count() == 1 and pg.locator("#kp-menu").count() == 1
+        pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go")
+        assert pg.inner_text("#ab-n-lage") == "Beide verschieden", pg.inner_text("#ab-n-lage")
+        assert pg.evaluate("[document.querySelector('#ab-n-hier pre').textContent, document.querySelector('#ab-n-dort pre').textContent]") == ["Vom Handy", "Im Browser ergänzt"]
+        neu = pg.locator("#ab-n-neu").inner_text()
+        assert neu.startswith("Im Browser ergänzt\n\n——— Aus Mein Tourentagebuch, ") and neu.endswith(" ———\nVom Handy"), neu      # Vorschlag „Beides“: Server-Regel
+        pg.click("#ab-notiz .seg button:has-text('Holen')"); neu = pg.locator("#ab-n-neu").inner_text()
+        assert neu.startswith("Vom Handy\n\n——— Aus Meine Touren, ") and neu.endswith("———\nIm Browser ergänzt"), neu
+        pg.click("#ab-notiz .seg button:has-text('Beides')")
+        assert pg.inner_text("#ab-f-zahl") == "3 neue Fotos dort · 2 neu hier · 1 schon vorhanden", pg.inner_text("#ab-f-zahl")
+        assert not pg.is_checked("#ab-videos input") and "nicht dabei" in pg.inner_text("#ab-v-info") and pg.locator("#ab-force").count() == 1 and not pg.is_checked("#ab-force input")
+        assert pg.is_checked("#ab-wlan input")
+        bad += sheet_check_open(pg, "Abgleich Tour")
+        # dunkel
+        pg.emulate_media(color_scheme="dark"); bad += sheet_check_open(pg, "Abgleich Tour dunkel"); pg.emulate_media(color_scheme="light")
+        pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Jetzt abgleichen?']")
+        txt = pg.inner_text(".sheet[aria-label='Jetzt abgleichen?']"); assert "3 Foto(s) holen" in txt and "2 Foto(s) senden" in txt and "Video" not in txt, txt
+        pg.click(".sheet[aria-label='Jetzt abgleichen?'] .btn.pri"); pg.wait_for_selector("#ab-ergebnis-t", timeout=30000)
+        erg = pg.inner_text("#ab-ergebnis-t")
+        assert erg.startswith("Notizen zusammengeführt · 2 Fotos geholt · 1 schon vorhanden · 1 Foto gesendet · 1 waren dort schon"), erg
+        assert pg.locator("#ab-konflikt").count() == 1
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached")
+        assert calls("mtVideoStart") == [], "Videos nie ohne Haken"
+        np = pg.evaluate("window.__ab.notizPosts"); assert np == [{"text": "Vom Handy", "basis": 5}], np
+        x = tour("X"); srvn = pg.evaluate("window.__ab.tours.g2180.notiz")
+        assert x["note"] == srvn["text"] and x["noteMt"] == srvn["text"] and x["mtNotizBasis"] == srvn["geaendert"] == 1006 and x["mtStand"].startswith("s1006-"), (x["note"], x.get("mtStand"), srvn)
+        h814 = foto("h814aaaaaaaa"); h817 = foto("h817aaaaaaaa")
+        assert h814["tour"] == ids["X"] and h814["mtPid"] == 814 and h814["src"] == "meinetouren" and h814["ts"] == (T + 600) * 1000 and h814["lat"] == 47.51 and h814["pos"] == "exif", h814
+        assert h817["mtPid"] == 817 and h817["pos"] == "track" and h817["lat"] is not None, h817      # ohne Ort am Server: Ort aus der Spur
+        assert foto("a9aaaaaaaaaaaaaaaaaa")["mtPid"] == 818, "Duplikat: vorhandenes Foto verknüpft statt doppelt"
+        hol = calls("mtFotoHolen"); assert [h["url"] for h in hol] == ["https://mt.test/api/tours/g2180/tagebuch/photo/814?w=1600&v=4a", "https://mt.test/api/tours/g2180/tagebuch/photo/817?w=1600&v=5b", "https://mt.test/api/tours/g2180/tagebuch/photo/818?w=1600&v=6c"], hol
+        assert all(h["cookie"] == "kh_session=SITZUNG-2180" for h in hol) and hol[0]["taken"] == (T + 600) * 1000 and hol[0]["lat"] == 47.51
+        snd = calls("mtFotoSenden"); assert len(snd) == 1 and snd[0]["id"] == "a2aaaaaaaaaaaaaaaaaa" and snd[0]["maxPx"] == 2200 and snd[0]["url"] == "https://mt.test/api/tours/g2180/photo", snd
+        f = snd[0]["fields"]; assert f["ref"] == "a2aaaaaaaaaaaaaaaaaa" and f["taken"] == str((T * 1000 + 300000)) and f["lat"] == "47.5" and f["lng"] == "11.25" and f["name"] == "IMG_2.jpg" and "force" not in f and f["offset"] in ("+02:00", "+01:00"), f
+        assert foto("a2aaaaaaaaaaaaaaaaaa")["mtPid"] == 900 and foto("a4aaaaaaaaaaaaaaaaaa").get("mtPid") is None
+        leise()
+
+        # --- 2. Zweiter Abgleich: Notiz gleich; gelöschte nur mit „trotzdem senden“; Videos nur mit Haken + Rückfrage; ohne WLAN nicht ---
+        pg.evaluate("window.__ab.calls.length = 0; window.__ab.notizPosts.length = 0")
+        menue("X"); pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go")
+        assert pg.inner_text("#ab-n-lage").startswith("Gleich") and pg.locator("#ab-notiz .seg").count() == 0
+        assert pg.inner_text("#ab-f-zahl") == "0 neue Fotos dort · 0 neu hier · 5 schon vorhanden", pg.inner_text("#ab-f-zahl")
+        pg.click("#ab-videos"); pg.wait_for_function("() => /1 dort neu/.test(document.querySelector('#ab-v-info').textContent)")
+        assert "1 hier neu (30 MB)" in pg.inner_text("#ab-v-info") and "46 MB" in pg.inner_text("#ab-v-info"), pg.inner_text("#ab-v-info")
+        pg.evaluate("window.__ab.wifi = false")
+        pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Auch Videos übertragen?']")
+        txt = pg.inner_text(".sheet[aria-label='Auch Videos übertragen?']"); assert "2 Video(s) bis 46 MB" in txt and "nur im WLAN" in txt, txt
+        pg.click(".sheet[aria-label='Auch Videos übertragen?'] .btn.pri"); m = toast_text(pg, "Kein WLAN"); assert calls("mtVideoStart") == [], m
+        pg.wait_for_selector(".sheet", state="detached"); leise()
+        pg.evaluate("window.__ab.wifi = true")
+        menue("X"); pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go"); pg.click("#ab-force")
+        assert "0 neue Fotos dort · 1 neu hier" in pg.inner_text("#ab-f-zahl"), pg.inner_text("#ab-f-zahl")
+        pg.click("#ab-videos"); pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Auch Videos übertragen?']"); pg.click(".sheet[aria-label='Auch Videos übertragen?'] .btn.pri")
+        pg.wait_for_selector("#ab-ergebnis-t", timeout=30000); erg = pg.inner_text("#ab-ergebnis-t")
+        assert "1 Foto gesendet" in erg and "2 Videos übertragen" in erg, erg
+        snd = calls("mtFotoSenden"); assert len(snd) == 1 and snd[0]["fields"]["force"] == "1" and snd[0]["id"] == "a4aaaaaaaaaaaaaaaaaa", snd
+        vs = calls("mtVideoStart"); assert [v["mode"] for v in vs] == ["holen", "senden"] and all(v["wifiOnly"] is True for v in vs), vs
+        assert vs[0]["url"] == "https://mt.test/api/tours/g2180/tagebuch/video/3?video=1" and vs[1]["fields"]["bestaetigt"] == "1" and vs[1]["fields"]["ref"] == "b1b2c3d4e5f6a7b8c9dv" and vs[1]["fields"]["dur_ms"] == "5000", vs
+        assert foto("vv3aaaaaaaaav")["video"] is True and foto("vv3aaaaaaaaav")["mtPid"] == 3 and foto("b1b2c3d4e5f6a7b8c9dv")["mtPid"] == 50 and foto("a4aaaaaaaaaaaaaaaaaa").get("mtGeloescht") is None
+        assert pg.evaluate("window.__ab.notizPosts") == [], "gleiche Notiz: nichts gesendet"
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached"); leise()
+
+        # --- 3. Betrachter: nur Holen, kein Senden-Knopf, Hinweis; nichts geht schreibend an den Server ---
+        pg.evaluate("async () => { window.__ab.darf = false; window.__ab.calls.length = 0; const a = await DB.kvGet('mt', null); a.role = 'viewer'; await DB.kvSet('mt', a); }")
+        menue("Y"); pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go")
+        assert "darf nur ansehen" in pg.inner_text("#ab-viewer") and pg.locator("#ab-sheet .seg button:has-text('Senden')").count() == 0 and pg.locator("#ab-sheet .seg button:has-text('Beides')").count() == 0
+        assert pg.inner_text("#ab-n-lage") == "Notiz nur hier" and pg.inner_text("#ab-f-zahl").startswith("1 neues Foto dort"), pg.inner_text("#ab-f-zahl")
+        pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Jetzt abgleichen?']"); pg.click(".sheet[aria-label='Jetzt abgleichen?'] .btn.pri"); pg.wait_for_selector("#ab-ergebnis-t", timeout=30000)
+        assert "1 Foto geholt" in pg.inner_text("#ab-ergebnis-t") and calls("mtFotoSenden") == [] and pg.evaluate("window.__ab.notizPosts") == [], pg.inner_text("#ab-ergebnis-t")
+        assert tour("Y")["note"] == "Nur hier notiert"
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached")
+        pg.evaluate("async () => { window.__ab.darf = true; const a = await DB.kvGet('mt', null); a.role = 'user'; await DB.kvSet('mt', a); }"); leise()
+
+        # --- 4. Sammel-Abgleich (Touren importieren → Meine Touren): Übersicht, nur Touren mit Neuem; Tour Z unverändert wird nicht gelesen ---
+        pg.evaluate("async id => { const t = await DB.get('tours', id); t.mtStand = 's9--'; await Tours.save(t); window.__ab.log.length = 0; window.__ab.calls.length = 0; }", ids["Z"])
+        go(pg, "#/import", "#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-abgleich-alle"); pg.click("#mt-abgleich-alle")
+        pg.wait_for_selector("#ab-a-go", timeout=30000)
+        log = pg.evaluate("window.__ab.log"); assert log[0].startswith("GET /api/tagebuch/uebersicht?ids=") and "GET /api/tours/g2182/tagebuch" not in log and "GET /api/tours/g2181/tagebuch" in log, log
+        assert pg.inner_text("#ab-a-zahl") == "1 Tour hat Neues." and "Abgleich Zweite" in pg.inner_text("#ab-a-liste") and "Notiz nur hier" in pg.inner_text("#ab-a-liste"), pg.inner_text("#ab-alle")
+        bad += sheet_check_open(pg, "Sammel-Abgleich")
+        pg.click("#ab-a-go"); pg.wait_for_selector(".sheet[aria-label='Jetzt abgleichen?']"); pg.click(".sheet[aria-label='Jetzt abgleichen?'] .btn.pri"); pg.wait_for_selector("#ab-ergebnis-t", timeout=30000)
+        assert pg.inner_text("#ab-ergebnis-t").startswith("Notiz übernommen"), pg.inner_text("#ab-ergebnis-t")
+        assert pg.evaluate("window.__ab.tours.g2181.notiz.text") == "Nur hier notiert" and tour("Y")["mtNotizBasis"] == 1000
+        pg.click("#ab-fertig"); pg.wait_for_selector("#mt-abgleich-alle"); zu(pg); leise()      # danach wieder das Blatt „Meine Touren“
+        # nochmal: alles gleich
+        go(pg, "#/import", "#imp-mt"); pg.click("#imp-mt"); pg.wait_for_selector("#mt-abgleich-alle"); pg.click("#mt-abgleich-alle"); assert "nichts abzugleichen" in toast_text(pg, "nichts abzugleichen"); leise()
+
+        # --- 5. Senden mit Pins und Notiz (C): Wegpunkte mit Zeit/Text, Notiz als desc; Schalter aus: nur die Spur wie bisher ---
+        sid = pg.evaluate("""async () => { const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 47.2 + i * 0.0003, lon: 11.1, ele: 700 + i, t: Date.UTC(2027, 4, 1, 8) + i * 30000 }));
+          const t = (await Tours.add({ name: 'Pin-Tour', sport: 'hike', pts, src: 'rec', force: true })).tour;
+          Object.assign(t, { note: 'Notiz <mit> & Zeichen', pins: [{ id: 'p1', ts: Date.UTC(2027, 4, 1, 8, 5), lat: 47.21, lon: 11.1, text: 'Quelle am Weg' }, { id: 'p2', ts: Date.UTC(2027, 4, 1, 8, 10), lat: null, lon: null, text: 'Bank mit Aussicht' }] });
+          await Tours.save(t); return t.id; }""")
+        pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", sid); pg.wait_for_selector(".tourp h1"); pg.click("button[aria-label=Aktionen]"); pg.wait_for_selector("#mt-senden-tour")
+        pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-pins"); assert pg.is_checked("#send-pins input")
+        pg.click("#send-ja"); toast_text(pg, "gesendet")
+        g = pg.evaluate("window.__ab.uploads[0].gpx"); root = ET.fromstring(g.encode("utf-8")); ns = {"g": "http://www.topografix.com/GPX/1/1"}
+        w = root.findall("g:wpt", ns)
+        assert [x.find("g:name", ns).text for x in w] == ["Quelle am Weg", "Bank mit Aussicht"] and w[0].find("g:time", ns).text == "2027-05-01T08:05:00Z" and abs(float(w[1].get("lat")) - 47.2060) < 0.001, g[:600]
+        assert root.find("g:metadata/g:desc", ns).text == "Notiz <mit> & Zeichen" and root.find("g:trk/g:desc", ns).text == "Notiz <mit> & Zeichen" and len(root.findall(".//g:trkpt", ns)) == 40
+        leise()
+        sid2 = pg.evaluate("""async () => { const pts = Array.from({ length: 30 }, (_, i) => ({ lat: 46.2 + i * 0.0003, lon: 10.1, ele: 700, t: Date.UTC(2027, 4, 3, 8) + i * 30000 }));
+          const t = (await Tours.add({ name: 'Pin-Tour 2', sport: 'hike', pts, src: 'rec', force: true })).tour; Object.assign(t, { note: 'n', pins: [{ id: 'q', ts: Date.UTC(2027, 4, 3, 8, 2), lat: 46.2, lon: 10.1, text: 'x' }] }); await Tours.save(t); return t.id; }""")
+        pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", sid2); pg.wait_for_selector(".tourp h1"); pg.click("button[aria-label=Aktionen]"); pg.wait_for_selector("#mt-senden-tour")
+        pg.click("#mt-senden-tour"); pg.wait_for_selector("#send-pins"); bad += sheet_check_open(pg, "Senden mit Pins"); pg.click("#send-pins"); assert not pg.is_checked("#send-pins input")
+        pg.click("#send-ja"); toast_text(pg, "gesendet")
+        g2 = pg.evaluate("window.__ab.uploads[1].gpx"); assert "<wpt" not in g2 and "<desc>" not in g2 and "<metadata>" not in g2, g2[:300]
+        assert pg.evaluate("Set_.get('mtMitNotiz')") is False and not any(l.endswith("/note") and "7002" in l for l in pg.evaluate("window.__ab.log")), "ohne Schalter keine Notiz"
+        leise()
+
+        # --- 6. MT aus: kein Eintrag, kein Knopf, kein Netzaufruf – das Komoot-Paket bleibt ---
+        pg.evaluate("async () => { Set_.v.mtAktiv = false; await Set_.set('mtWahl', 'nein'); window.__netlog.length = 0; window.__ab.calls.length = 0; }")
+        menue("X"); assert pg.locator("#mt-abgleich-tour").count() == 0 and pg.locator("#kp-menu").count() == 1 and mt_spuren(pg) == [], mt_spuren(pg); zu(pg)
+        r = pg.evaluate("async id => { const t = await DB.get('tours', id); return [await MedienAbgleich.tour(t), await MedienAbgleich.alle()]; }", ids["X"])
+        assert r == [None, None] and pg.evaluate("window.__netlog") == [] and pg.evaluate("window.__ab.calls") == [], (r, pg.evaluate("window.__netlog"))
+        pg.evaluate("async () => { Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); }")
+    finally:
+        pg.evaluate(AB_SERVER_AUS); pg.evaluate(NETZ_WACHE_AUS)
+        pg.evaluate("""async ([ids, vor]) => { for (const k of Object.keys(ids)) await Tours.remove(ids[k]);
+          for (const t of await Tours.list()) if (/^Pin-Tour/.test(t.name)) await Tours.remove(t.id);
+          for (const p of await DB.all('photos')) if (/^(a[1249]a{18}|b1b2c3d4e5f6a7b8c9dv|h8\\d\\daaaaaaaa|vv3a+v)$/.test(p.id)) await DB.del('photos', p.id);
+          if (vor.mt == null) await DB.del('kv', 'mt'); else await DB.kvSet('mt', vor.mt); await Set_.set('mtWlan', vor.wlan); await Set_.set('mtMitNotiz', vor.mitNotiz); Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); Tours.invalidate(); }""", [ids, vor])
+    return bad
+
+
+def kp_jpg(w, h, farbe, gps=True):
+    """JPEG mit EXIF (Kamera, Aufnahmezeit und – wenn gps – GPS-Position), wie ein Foto vom Handy."""
+    import io as _io
+    from PIL import Image as _Im
+    im = _Im.new("RGB", (w, h), farbe)
+    for x in range(0, w, 97): im.paste((255 - farbe[0], 80, 40), (x, 0, min(w, x + 20), h))
+    ex = _Im.Exif(); ex[0x0110] = "Testkamera"; ex[0x0132] = "2026:10:03 10:15:00"
+    if gps: ex[0x8825] = {1: "N", 2: (47.0, 30.0, 0.0), 3: "E", 4: (11.0, 15.0, 0.0)}
+    b = _io.BytesIO(); im.save(b, "JPEG", quality=80, exif=ex.tobytes()); return b.getvalue()
+
+
+def komootpaket_2180(pg):
+    """2.18.0 D: Komoot-Paket im Tourmenü – auch bei „Mit Meine Touren zusammenarbeiten“ aus. Fotoauswahl mit Vorschaubildern (Vorgabe: keine; Gesicht nie vorgewählt,
+    mit Hinweis; „Alle ohne Gesicht“), ZIP lesen: GPX mit Pins (wpt) und Notiz (desc), notiz.txt, README, manifest, nur gewählte Fotos, verkleinert auf 2000 px, EXIF-GPS
+    entfernt (Zeit bleibt), mit „Ort im Foto behalten“ GPS drin; gespeichert in Download/Tourentagebuch, Teilen; Layout hell und dunkel."""
+    import base64, io as _io, zipfile
+    import xml.etree.ElementTree as ET
+    from PIL import Image as _Im
+    leise = lambda: pg.wait_for_function(LEISE, timeout=30000)
+    bad = []
+    bilder = {"kp1aaaaaaaaaaaaaaaaa": kp_jpg(3000, 2000, (40, 120, 200)), "kp2aaaaaaaaaaaaaaaaa": kp_jpg(1200, 1600, (200, 160, 40)), "kp3aaaaaaaaaaaaaaaaa": kp_jpg(2400, 1800, (90, 200, 90))}
+    def foto_route(r):
+        pid = r.request.url.split("/")[-1].split(".")[0].split("?")[0]
+        if pid in bilder: r.fulfill(status=200, body=bilder[pid], content_type="image/jpeg")
+        else: r.fallback()
+    pg.route("**/photo/kp*", foto_route); pg.route("**/thumb/kp*", foto_route)
+    pg.evaluate(TB_MOCK)
+    an0 = pg.evaluate("MT.aktiv()")
+    tid = pg.evaluate("""async () => {
+      Set_.v.mtAktiv = false; await Set_.set('mtWahl', 'nein');
+      const T0 = Date.UTC(2026, 9, 3, 8), pts = Array.from({ length: 60 }, (_, i) => ({ lat: 47.4 + i * 0.0004, lon: 11.2 + i * 0.0002, ele: 800 + i * 4, t: T0 + i * 60000 }));
+      const t = (await Tours.add({ name: 'Komoot Gipfel/Runde', sport: 'hike', pts, src: 'file', force: true })).tour;
+      Object.assign(t, { note: 'Toller Tag 🥾\\nmit <Brotzeit> & Aussicht', pins: [{ id: 'k1', ts: T0 + 600000, lat: 47.404, lon: 11.202, text: 'Quelle' }, { id: 'k2', ts: T0 + 1800000, lat: null, lon: null, text: 'Gipfelkreuz mit sehr langer Beschreibung, die für den Namen eines Wegpunkts deutlich zu lang ist und gekürzt werden muss' }] });
+      await Tours.save(t);
+      const ph = (id, min, faces) => DB.put('photos', { id, name: id + '.jpg', ts: T0 + min * 60000, lat: 47.41, lon: 11.21, w: 3000, h: 2000, src: 'galerie', tour: t.id, pos: 'exif', note: '', faces });
+      await ph('kp1aaaaaaaaaaaaaaaaa', 5, 0); await ph('kp2aaaaaaaaaaaaaaaaa', 15, 2); await ph('kp3aaaaaaaaaaaaaaaaa', 25, 0);
+      Tours.invalidate(); return t.id; }""")
+    menue = lambda: (pg.evaluate("id => { location.hash = '#/tour/' + id; return Nav.render(); }", tid), pg.wait_for_selector(".tourp h1"), pg.click("button[aria-label=Aktionen]"), pg.wait_for_selector(".sheet .menu"))
+    def zip_lesen():
+        sv = pg.evaluate("window.__saved"); assert sv and sv["mime"] == "application/zip" and sv["name"].startswith("Komoot-Paket Komoot Gipfel_Runde") and sv["name"].endswith(".zip"), sv
+        b64 = pg.evaluate("p => window.__tb.cache[p].join('|')", sv["path"])
+        data = b"".join(base64.b64decode(x) for x in b64.split("|"))
+        return zipfile.ZipFile(_io.BytesIO(data))
+    try:
+        menue(); assert pg.locator("#kp-menu").count() == 1 and mt_spuren(pg) == [], mt_spuren(pg)
+        pg.click("#kp-menu"); pg.wait_for_selector("#kp-go")
+        assert pg.inner_text("#kp-zahl") == "0 von 3 Fotos gewählt (höchstens 60)" and pg.locator("#kp-fotos .kp-f").count() == 3 and pg.locator("#kp-fotos input:checked").count() == 0
+        assert pg.locator("#kp-fotos .kp-f[data-id=kp2aaaaaaaaaaaaaaaaa] .kp-g").inner_text() == "Gesicht erkannt – Rechte der Personen beachten" and pg.locator("#kp-fotos .kp-g").count() == 1
+        assert "Einwilligung" in pg.inner_text("#kp-rechte") and not pg.is_checked("#kp-ort input") and pg.is_checked("#kp-notiz input")
+        pg.click("#kp-alle"); assert pg.inner_text("#kp-zahl").startswith("2 von 3") and not pg.is_checked("#kp-fotos .kp-f[data-id=kp2aaaaaaaaaaaaaaaaa] input"), "Gesicht nie automatisch"
+        pg.click("#kp-fotos .kp-f[data-id=kp3aaaaaaaaaaaaaaaaa]"); pg.click("#kp-fotos .kp-f[data-id=kp2aaaaaaaaaaaaaaaaa]")      # bewusst: eines ab-, das Gesicht dazu
+        assert pg.inner_text("#kp-zahl").startswith("2 von 3") and pg.is_checked("#kp-fotos .kp-f[data-id=kp2aaaaaaaaaaaaaaaaa] input")
+        pg.evaluate("document.querySelectorAll('.sheet, .sheet-b').forEach(e => { e.scrollTop = 0; })")      # nach den Klicks oben beginnen (halb weggerollte Zeilen zählen sonst als zu klein)
+        bad += sheet_check_open(pg, "Komoot-Paket")
+        pg.emulate_media(color_scheme="dark"); bad += sheet_check_open(pg, "Komoot-Paket dunkel"); pg.emulate_media(color_scheme="light")
+        for sel in ("#kp-ort", "#kp-go", "#kp-abbr"):      # weiter unten: nach dem Rollen gut erreichbar (44 px)
+            pg.evaluate("s => document.querySelector(s).scrollIntoView({ block: 'center' })", sel); pg.wait_for_timeout(80)
+            assert pg.evaluate("""s => { const el = document.querySelector(s), r = el.getBoundingClientRect(); return r.height >= 44 && [[0, 0], [0, -21], [0, 21]].every(([dx, dy]) => { const e = document.elementFromPoint(r.left + r.width / 2 + dx, r.top + r.height / 2 + dy); return e && (e === el || el.contains(e)); }); }""", sel), sel
+        pg.click("#kp-go"); pg.wait_for_selector("#kp-fertig", timeout=60000)
+        assert "Download/Tourentagebuch/Komoot-Paket" in pg.inner_text("#kp-ort-t") and "2 Foto(s)" in pg.inner_text("#kp-fertig") and "2 Pin(s)" in pg.inner_text("#kp-fertig"), pg.inner_text("#kp-fertig")
+        bad += sheet_check_open(pg, "Komoot-Paket gespeichert")
+        z = zip_lesen(); names = sorted(z.namelist())
+        assert names == sorted(["Komoot Gipfel_Runde.gpx", "notiz.txt", "README.txt", "manifest.json", "fotos/01_2026-10-03_10-05-00.jpg", "fotos/02_2026-10-03_10-15-00.jpg"]), names
+        root = ET.fromstring(z.read("Komoot Gipfel_Runde.gpx")); ns = {"g": "http://www.topografix.com/GPX/1/1"}
+        w = root.findall("g:wpt", ns)
+        assert len(w) == 2 and w[0].find("g:name", ns).text == "Quelle" and w[0].find("g:time", ns).text == "2026-10-03T08:10:00Z" and w[0].find("g:desc", ns) is None
+        assert len(w[1].find("g:name", ns).text) == 60 and w[1].find("g:name", ns).text.endswith("…") and w[1].find("g:desc", ns).text.startswith("Gipfelkreuz mit sehr langer") and abs(float(w[1].get("lat")) - 47.412) < 0.001
+        assert root.find("g:metadata/g:desc", ns).text == "Toller Tag 🥾\nmit <Brotzeit> & Aussicht" and root.find("g:trk/g:desc", ns).text == root.find("g:metadata/g:desc", ns).text and len(root.findall(".//g:trkpt", ns)) == 60
+        assert z.read("notiz.txt").decode("utf-8") == "Toller Tag 🥾\r\nmit <Brotzeit> & Aussicht\r\n"
+        rd = z.read("README.txt").decode("utf-8"); assert "SICHTBARKEIT SELBST WÄHLEN" in rd and "Standard-Sichtbarkeit" in rd and "Foto hinzufügen" in rd and "Aufnahmeort in den Fotos: entfernt" in rd and "2 ausgewählte Fotos" in rd, rd
+        mf = json.loads(z.read("manifest.json")); assert mf["format"] == "mein-tourentagebuch-komoot-paket" and [f["id"] for f in mf["fotos"]] == ["kp1aaaaaaaaaaaaaaaaa", "kp2aaaaaaaaaaaaaaaaa"] and mf["ort_entfernt"] is True and mf["fotos"][1]["gesicht"] is True and mf["wegpunkte"] == 2, mf
+        for n, gr in (("fotos/01_2026-10-03_10-05-00.jpg", (2000, 1333)), ("fotos/02_2026-10-03_10-15-00.jpg", (1200, 1600))):
+            im = _Im.open(_io.BytesIO(z.read(n))); ex = im.getexif()
+            assert im.size == gr and ex.get_ifd(0x8769).get(0x9003, "").startswith("2026:10:03 10:") and not ex.get_ifd(0x8825) and 0x8825 not in ex and 0x0110 not in ex, (n, im.size, dict(ex), ex.get_ifd(0x8825))
+        pg.click("#kp-teilen"); pg.wait_for_selector("#kp-fertig", state="detached")
+        sh = [c for c in pg.evaluate("window.__tb.calls") if c[0] == "shareCache"]; assert sh and sh[-1][1]["mime"] == "application/zip" and sh[-1][1]["name"].startswith("komoot-paket-"), sh
+        leise()
+        # Ort im Foto behalten, ohne Notiz, ein Foto
+        pg.evaluate("window.__saved = null"); menue(); pg.click("#kp-menu"); pg.wait_for_selector("#kp-go")
+        pg.click("#kp-fotos .kp-f[data-id=kp3aaaaaaaaaaaaaaaaa]"); pg.click("#kp-ort"); pg.click("#kp-notiz"); pg.click("#kp-go"); pg.wait_for_selector("#kp-fertig", timeout=60000)
+        z = zip_lesen(); names = sorted(z.namelist()); assert "notiz.txt" not in names and len([n for n in names if n.startswith("fotos/")]) == 1, names
+        im = _Im.open(_io.BytesIO(z.read([n for n in names if n.startswith("fotos/")][0]))); g = im.getexif().get_ifd(0x8825)
+        assert g and g[1] == "N" and abs(g[2][0] + g[2][1] / 60 + g[2][2] / 3600 - 47.41) < 1e-4 and im.size == (2000, 1500), (dict(g), im.size)
+        assert "<desc>" not in z.read("Komoot Gipfel_Runde.gpx").decode() or "Gipfelkreuz" in z.read("Komoot Gipfel_Runde.gpx").decode()
+        assert "Aufnahmeort in den Fotos: enthalten" in z.read("README.txt").decode("utf-8")
+        zu(pg)
+        # ohne Fotos: Paket trotzdem (nur GPX, README, Manifest)
+        pg.evaluate("window.__saved = null"); menue(); pg.click("#kp-menu"); pg.wait_for_selector("#kp-go"); pg.click("#kp-go"); pg.wait_for_selector("#kp-fertig", timeout=60000)
+        assert not any(n.startswith("fotos/") for n in zip_lesen().namelist()) and "ohne Fotos" in pg.inner_text("#kp-fertig")
+        zu(pg); leise()
+    finally:
+        pg.unroute("**/photo/kp*"); pg.unroute("**/thumb/kp*")
+        pg.evaluate("() => { window.MTApp.call = window.__tbcall0; }")
+        pg.evaluate("""async ([id, an]) => { await Tours.remove(id); for (const p of ['kp1aaaaaaaaaaaaaaaaa', 'kp2aaaaaaaaaaaaaaaaa', 'kp3aaaaaaaaaaaaaaaaa']) await DB.del('photos', p);
+          Set_.v.mtAktiv = an; await Set_.set('mtWahl', an ? 'ja' : 'nein'); window.__saved = null; Tours.invalidate(); }""", [tid, an0])
     return bad
 
 
@@ -4555,6 +4877,8 @@ def main():
         fx_bad = fuehrer_2130(pg)
         dp_bad = doppelt_2140(pg)
         ms_bad = mt_schalter_2150(pg)
+        ab_bad = abgleich_2180(pg)
+        kp_bad = komootpaket_2180(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -4587,6 +4911,8 @@ def main():
         bad += fx_bad
         bad += dp_bad
         bad += ms_bad
+        bad += ab_bad
+        bad += kp_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
