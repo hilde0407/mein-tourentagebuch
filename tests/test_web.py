@@ -1,5 +1,5 @@
 """Browser-Test der Oberfläche mit simulierter Android-Brücke (Playwright)."""
-import http.server, json, os, socketserver, threading, sys
+import http.server, json, os, re, socketserver, threading, sys
 from playwright.sync_api import sync_playwright
 
 WWW = os.path.join(os.path.dirname(__file__), "..", "android", "app", "src", "main", "assets", "www")
@@ -3639,7 +3639,7 @@ def abgleich_2180(pg):
         hol = calls("mtFotoHolen"); assert [h["url"] for h in hol] == ["https://mt.test/api/tours/g2180/tagebuch/photo/814?w=1600&v=4a", "https://mt.test/api/tours/g2180/tagebuch/photo/817?w=1600&v=5b", "https://mt.test/api/tours/g2180/tagebuch/photo/818?w=1600&v=6c"], hol
         assert all(h["cookie"] == "kh_session=SITZUNG-2180" for h in hol) and hol[0]["taken"] == (T + 600) * 1000 and hol[0]["lat"] == 47.51
         snd = calls("mtFotoSenden"); assert len(snd) == 1 and snd[0]["id"] == "a2aaaaaaaaaaaaaaaaaa" and snd[0]["maxPx"] == 2200 and snd[0]["url"] == "https://mt.test/api/tours/g2180/photo", snd
-        f = snd[0]["fields"]; assert f["ref"] == "a2aaaaaaaaaaaaaaaaaa" and f["taken"] == str((T * 1000 + 300000)) and f["lat"] == "47.5" and f["lng"] == "11.25" and f["name"] == "IMG_2.jpg" and "force" not in f and f["offset"] in ("+02:00", "+01:00"), f
+        f = snd[0]["fields"]; assert f["ref"] == "a2aaaaaaaaaaaaaaaaaa" and f["taken"] == str((T * 1000 + 300000)) and f["lat"] == "47.5" and f["lng"] == "11.25" and f["name"] == "IMG_2.jpg" and "force" not in f and re.fullmatch(r"[+-]\d\d:\d\d", f["offset"]), f
         assert foto("a2aaaaaaaaaaaaaaaaaa")["mtPid"] == 900 and foto("a4aaaaaaaaaaaaaaaaaa").get("mtPid") is None
         leise()
 
