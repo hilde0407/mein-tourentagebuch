@@ -313,7 +313,7 @@ FlugVideo.erzeuge = async (ctx, w, weg) => {
     ergebnis = null;
   } finally {
     st.fertig = true;
-    if (altCss == null) mapEl.removeAttribute('style'); else mapEl.setAttribute('style', altCss);
+    if (!altCss) mapEl.removeAttribute('style'); else mapEl.setAttribute('style', altCss);
     try { if (ctx.stufe() !== altStufe) ctx.setzeStufe(altStufe); } catch (e) { /* egal */ }
     ctx.ende();
     try { m.setPixelRatio(altPr); m.resize(); } catch (e) { /* Karte schon weg */ }

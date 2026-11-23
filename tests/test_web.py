@@ -3719,7 +3719,7 @@ def flugvideo_2170(pg):
     assert w2 == ("webcodecs" if wc else None), w2
     if wc and w1 == "android": print("  Wegwahl: headless meldet keine Hardware-WebCodecs → mit Hülle-Kodierer „über Android“, ohne → WebCodecs (Software)")
     pg.evaluate("FlugVideo.GRENZEN.zeitlimit = 6000; FlugVideo.test = { protokoll: [] }")
-    alt_pr = pg.evaluate("window.__flug.getPixelRatio()")
+    alt_pr, alt_st = pg.evaluate("[window.__flug.getPixelRatio(), Flug.aktiv.stufe()]")
     WAHL = {"titel": True, "datum": True, "kennzahlen": True, "profil": True, "fotos": True, "stufe": "schoen", "codec": "avc"}
     # (c) echter Mini-Export mit WebCodecs: 320 × 240, 10 Bilder über den ganzen Flug
     if not wc:
@@ -3760,10 +3760,12 @@ def flugvideo_2170(pg):
         assert all(abs(p["zoom"] - 15.7) < 1e-6 for p in pro), [p["zoom"] for p in pro]      # Zoom wie bei der Aufnahme (zBase + 0,9)
         assert all(p["ok"] for p in pro), "alle Bilder ohne Zeitlimit (Kacheln nachgestellt)"
         # nach dem Export: Karte wieder wie vorher, Flug bedienbar
-        assert pg.evaluate("[window.__flug.getPixelRatio(), document.querySelector('.flight .fm').getAttribute('style'), Flug.aktiv.stufe()]") == [alt_pr, None, "fluessig"]
+        zust = pg.evaluate("[window.__flug.getPixelRatio(), document.querySelector('.flight .fm').getAttribute('style'), Flug.aktiv.stufe(), window.__flug.getCanvas().width]"); assert zust[0] == alt_pr and not zust[1] and zust[2] == alt_st and zust[3] == 390, zust
         assert pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoDienst').map(c => !!c[1].an).join()").startswith("true") and pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoDienst').pop()[1].an") is False
     # Kamera bei derselben Zeit: Export-Kamera = reine Funktion (FlugCalc.kamera über Flug.aktiv.kameraBei während des Exports)
     pg.evaluate("""() => { const ctx = Flug.aktiv.video(), o = ctx.stelleZeit; window.__fvSoll = []; ctx.stelleZeit = sec => { const r = o(sec); window.__fvSoll.push({ sec, k: ctx.kameraBei(sec), m: [window.__flug.getCenter().lng, window.__flug.getCenter().lat, window.__flug.getBearing(), window.__flug.getPitch(), window.__flug.getZoom()] }); return r; }; window.__fvO = o; }""")
+    # ab hier ohne Vorladen der Strecke (im Mini-Export oben echt geprüft; spart Zeit beim Software-Zeichnen)
+    pg.evaluate("() => { const c = Flug.aktiv.video(); window.__fvVw = c.vorwaermen; c.vorwaermen = async (melde) => { melde(1); }; }")
     # (d) über Android: Start, Bilder als JPEG der Reihe nach, Fortschritt, Ergebnis
     pg.evaluate("__fv.info.avc = { name: 'c2.mtk.avc.encoder', hw: true, encLang: 3840, encKurz: 2160 }; __fv.calls = []; FlugVideo.test = { protokoll: [] }")
     leise()
@@ -3807,7 +3809,7 @@ def flugvideo_2170(pg):
     assert "Abgebrochen" in toast_text(pg, "Abgebrochen")
     assert pg.evaluate("window.__fvAb") is None and pg.locator("#fv-fertig").count() == 0
     assert pg.evaluate("__fv.calls.some(c => c[0] === 'flugVideoCancel') && !__fv.calls.some(c => c[0] === 'flugVideoFinish') && __fv.nativ === null")
-    assert pg.evaluate("[window.__flug.getPixelRatio(), document.querySelector('.flight .fm').getAttribute('style'), Flug.aktiv.stufe()]") == [alt_pr, None, "fluessig"]
+    zust = pg.evaluate("[window.__flug.getPixelRatio(), document.querySelector('.flight .fm').getAttribute('style'), Flug.aktiv.stufe(), window.__flug.getCanvas().width]"); assert zust[0] == alt_pr and not zust[1] and zust[2] == alt_st and zust[3] == 390, zust
     assert pg.evaluate("__fv.calls.filter(c => c[0] === 'flugVideoDienst').pop()[1].an") is False
     # … und mit WebCodecs (Zwischendatei in der Hülle gelöscht)
     if wc:
@@ -3820,6 +3822,7 @@ def flugvideo_2170(pg):
         tmp = pg.evaluate("(__fv.calls.find(c => c[0] === 'flugVideoCancel') || [0, {}])[1].tmp")
         assert tmp and tmp.startswith("flugvideo-") and pg.evaluate("Object.keys(__fv.dateien).length") == 0, (tmp, pg.evaluate("Object.keys(__fv.dateien)"))
         assert "Abgebrochen" in toast_text(pg, "Abgebrochen")
+    pg.evaluate("() => { Flug.aktiv.video().vorwaermen = window.__fvVw; window.__fvVw = null; }")
     # Flug läuft danach normal weiter
     pg.click("#fp"); pg.wait_for_function("() => document.querySelector('#fp').innerText.includes('Pause')")
     # Stubs zurücksetzen

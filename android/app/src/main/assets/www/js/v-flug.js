@@ -223,7 +223,7 @@ Views['/flug'] = async (root, [id]) => {
     m.addLayer({ id: 'fotos', type: 'circle', source: 'fotos', paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#1e88e5', 'circle-stroke-width': 3 } });
     // 2.17.0: Positionspunkt als Kartenebene – der HTML-Punkt landet nicht im Videobild; sichtbar nur bei Aufnahme und Export
     m.addSource('pos', { type: 'geojson', data: { type: 'Point', coordinates: ll(P[0]) } });
-    m.addLayer({ id: 'pos', type: 'circle', source: 'pos', layout: { visibility: 'none' }, paint: { 'circle-radius': 8, 'circle-color': '#f2c230', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3, 'circle-pitch-alignment': 'map' } });
+    m.addLayer({ id: 'pos', type: 'circle', source: 'pos', layout: { visibility: 'none' }, paint: { 'circle-radius': 8, 'circle-color': '#f2c230', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3, 'circle-pitch-alignment': 'viewport' } });
     schatten();
     // Vorlauf: erst die Kacheln am Startpunkt laden (höchstens 4 s), dann losfliegen – sonst ruckeln die ersten Sekunden beim Nachladen
     msg.textContent = 'Karte wird geladen …';
