@@ -207,6 +207,37 @@ def main():
             pg.evaluate("FlugVideo.fertig({ ok: true, name: 'Flug_Test_2026-07-04.mp4', bytes: 140e6, w: 1920, h: 1080, dauerMs: 61000, shown: 'Movies/Tourentagebuch/Flug_Test_2026-07-04.mp4', luecken: 3, ms: 900000, art: 'webcodecs', hw: true }, [])")
             pg.wait_for_selector("#fv-fertig"); pg.wait_for_timeout(250); scan("Video fertig")
             pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            # 2.18.0: Mit Meine Touren abgleichen (Vorschau mit Konflikt und Videos, Rückfrage, Ergebnis, Betrachter, Sammel), Senden mit Pins, Komoot-Paket
+            T0 = 1782892800
+            pg.evaluate(T.NETZ_WACHE); pg.evaluate(T.AB_SERVER, {"tours": {"g2180": {"notiz": {"text": "Im Browser ergänzt", "geaendert": 6}, "fotos": [{"id": 814, "taken_ts": T0 + 600, "lat": 47.5, "lng": 11.2, "size": 500000, "v": "a", "video": False, "ref": None, "name": None}],
+                "videos": [{"id": 3, "taken_ts": T0 + 900, "size": 48000000, "v": "b", "video": True, "ref": None, "name": "Video.mp4"}]}}, "geloescht": ["kab2aaaaaaaaaaaaaaaa"]})
+            ab = pg.evaluate("""async T0 => { await DB.kvSet('mt', { base: 'https://mt.test', name: 'V', role: 'user', token: 'SITZUNG-2180' });
+              const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 47.5 + i * 2e-4, lon: 11.2, ele: 900 + i, t: T0 * 1000 + i * 30000 }));
+              const t = (await Tours.add({ name: 'Kontrast Abgleich', sport: 'hike', pts, src: 'file', force: true })).tour;
+              Object.assign(t, { mtId: 'g2180', note: 'Vom Handy', noteMt: 'Alt', mtNotizBasis: 5, pins: [{ id: 'kp', ts: T0 * 1000 + 60000, lat: 47.5, lon: 11.2, text: 'Quelle' }] }); await Tours.save(t);
+              await DB.put('photos', { id: 'kab1aaaaaaaaaaaaaaaa', name: 'a.jpg', ts: T0 * 1000 + 100000, w: 40, h: 30, tour: t.id, faces: 0 });
+              await DB.put('photos', { id: 'kab2aaaaaaaaaaaaaaaa', name: 'b.jpg', ts: T0 * 1000 + 200000, w: 40, h: 30, tour: t.id, faces: 2, mtGeloescht: true });
+              await DB.put('photos', { id: 'kab3aaaaaaaaaaaaaaav', name: 'Video.mp4', ts: T0 * 1000 + 300000, w: 40, h: 30, tour: t.id, video: true, size: 30e6 });
+              return t.id; }""", T0)
+            pg.evaluate("id => DB.get('tours', id).then(t => MedienAbgleich.tour(t))", ab); pg.wait_for_selector("#ab-go"); pg.click("#ab-n-hier summary"); pg.click("#ab-videos"); pg.wait_for_timeout(250); scan("Abgleich, Vorschau")
+            pg.click("#ab-notiz .seg button:has-text('Holen')"); pg.wait_for_timeout(150); scan("Abgleich, Vorschau Holen")
+            pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Auch Videos übertragen?']"); pg.wait_for_timeout(250); scan("Abgleich, Rückfrage Videos")
+            pg.click(".sheet[aria-label='Auch Videos übertragen?'] .btn.pri"); pg.wait_for_selector("#ab-ergebnis-t", timeout=30000); pg.wait_for_timeout(300); scan("Abgleich, Ergebnis")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("async () => { window.__ab.darf = false; const a = await DB.kvGet('mt', null); a.role = 'viewer'; await DB.kvSet('mt', a); }")
+            pg.evaluate("async id => { const t = await DB.get('tours', id); t.note = 'Neu nur hier'; await Tours.save(t); MedienAbgleich.tour(t); }", ab); pg.wait_for_selector("#ab-go"); pg.wait_for_timeout(250); scan("Abgleich, Betrachter")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("async () => { window.__ab.darf = true; const a = await DB.kvGet('mt', null); a.role = 'user'; await DB.kvSet('mt', a); }")
+            pg.evaluate("MedienAbgleich.alle()"); pg.wait_for_selector("#ab-a-go", timeout=30000); pg.wait_for_timeout(250); scan("Abgleich, alle Touren")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("async id => { const t = await DB.get('tours', id); delete t.mtId; await Tours.save(t); Senden.dialog(t); }", ab); pg.wait_for_selector("#send-pins"); pg.wait_for_timeout(250); scan("Senden, Pins und Notiz")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("id => DB.get('tours', id).then(t => KomootPaket.dialog(t))", ab); pg.wait_for_selector("#kp-go"); pg.click("#kp-alle"); pg.wait_for_timeout(300); scan("Komoot-Paket, Auswahl")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("id => DB.get('tours', id).then(t => KomootPaket.ausgeben({ bytes: new Uint8Array(2048), name: 'Komoot-Paket Kontrast.zip', manifest: { fotos: [], wegpunkte: 1 }, ohneOrt: 1 }, t))", ab); pg.wait_for_selector("#kp-fertig"); pg.wait_for_timeout(250); scan("Komoot-Paket, gespeichert")
+            pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate(T.AB_SERVER_AUS); pg.evaluate(T.NETZ_WACHE_AUS)
+            pg.evaluate("async id => { await Tours.remove(id); for (const p of ['kab1aaaaaaaaaaaaaaaa', 'kab2aaaaaaaaaaaaaaaa', 'kab3aaaaaaaaaaaaaaav', 'h814aaaaaaaa', 'vv3aaaaaaaaav']) await DB.del('photos', p); await DB.del('kv', 'mt'); }", ab)
             # Aktionsmenüs auf Tour- und Listenseiten
             for r in (f"#/tour/{tid}", "#/", "#/photos"):
                 pg.evaluate(f"location.hash='{r}'"); pg.wait_for_timeout(600)
