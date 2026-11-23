@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Tests (Parser, Aufzeichnungslogik, Wiederherstellung, Wegansagen, Video-Umwandlung, Foto-Größen, Medien-Sicherung, Offline-Karten, Video-Export)
+      - name: Tests (Parser, Aufzeichnungslogik, Wiederherstellung, Wegansagen, Video-Umwandlung, Foto-Größen, Medien-Sicherung, Offline-Karten, Video-Export, Fotos/Videos mit Meine Touren)
         run: |
           node tests/test_parse.js
           node tests/test_calc.js
@@ -57,6 +57,8 @@ jobs:
           java -cp /tmp/jc MediaPrintCheck
           javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/VideoExportPlan.java tests/android/VideoExportPlanCheck.java
           java -cp /tmp/jc VideoExportPlanCheck
+          javac -d /tmp/jc android/app/src/main/java/de/tourentagebuch/app/MtTransfer.java tests/android/MtTransferCheck.java
+          java -cp /tmp/jc MtTransferCheck
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

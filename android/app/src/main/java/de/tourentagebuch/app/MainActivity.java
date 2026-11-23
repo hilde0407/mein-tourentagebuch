@@ -693,6 +693,13 @@ public class MainActivity extends Activity {
             case "photoFaces": return photoFaces(a.optString("id"));
             case "deletePhoto": Photos.delete(this, a.optString("id")); return "true";
             case "photoPrints": return Photos.prints(this, a.getJSONArray("ids")).toString();      // 2.14.0: Abdruck und Größe gespeicherter Fotos/Videos
+            /* ---- 2.18.0: Fotos und Videos mit Meine Touren abgleichen (MtMedien / MtTransfer); die Oberfläche ruft das nur bei „Mit Meine Touren zusammenarbeiten“ auf ---- */
+            case "mtNetz": return MtMedien.netz(this).toString();
+            case "mtFotoSenden": return MtMedien.fotoSenden(this, a).toString();
+            case "mtFotoHolen": return MtMedien.fotoHolen(this, a).toString();
+            case "mtVideoStart": return MtMedien.start(this, a).toString();
+            case "mtJob": return MtMedien.job().toString();
+            case "mtJobCancel": MtMedien.cancel(); return "true";
             case "uploadStart": { JSONObject j = UploadServer.start(this); UploadService.start(this); return j.toString(); }
             case "uploadStop": UploadServer.stop(); UploadService.stop(this); return "true";
             case "uploadPoll": return UploadServer.poll().toString();
