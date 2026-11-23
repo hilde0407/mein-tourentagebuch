@@ -1577,6 +1577,23 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(M.sendeFelder({ id: 'abc', ts: Date.UTC(2026, 0, 1) }, true).force === '1' && M.sendeFelder({ id: 'abc', ts: Date.UTC(2026, 0, 1) }, true).offset === '+01:00', 'force, Winterzeit');
   const fv = M.sendeFelder({ id: 'vvv', video: true, ts: 5, dur: 4200 }, true);
   ok(fv.bestaetigt === '1' && fv.dur_ms === '4200' && !('force' in fv) && fv.name === 'vvv.mp4', JSON.stringify(fv));
+  // 2.18.1: Auftrag für die Hülle – Reihenfolge je Tour, alles zum Übernehmen im Schritt, kein Cookie, Stand am Ende jeder Tour
+  const tA = { id: 'tA', name: 'Gipfel', note: ' Vom Handy  ', mtNotizBasis: 5 }, tB = { id: 'tB', name: 'Zweite', note: '' };
+  const aA = { holen: [{ id: 814, v: '4a', taken_ts: 1000, lat: 47.5, lng: 11.2 }, { id: 817, name: 'Gipfel.jpg', taken_ts: 0, lat: null, lng: null }], senden: [{ id: 'p1', name: 'IMG.jpg', ts: 5000, mtGeloescht: true }, { id: 'p2', ts: 6000 }],
+    videosHolen: [{ id: 3, v: '77', size: 4800, taken_ts: 2000 }], videosSenden: [{ id: 'v1v', video: true, ts: 7000, size: 10, dur: 4000 }] };
+  const job = M.auftrag([{ t: tA, id: 'g 1', notiz: 'beides', a: aA, force: true, r: { videos: [{ size: 100 }, { size: 23 }] } },
+    { t: tB, id: 'g2', notiz: 'senden', a: { holen: [], senden: [] } }, { t: tB, id: 'g3', notiz: 'nichts', a: {}, stand: true }], 'https://mt.test');
+  ok(JSON.stringify(job.map(x => x.art + ':' + x.mt)) === JSON.stringify(['notiz:g 1', 'foto-holen:g 1', 'foto-holen:g 1', 'foto-senden:g 1', 'foto-senden:g 1', 'video-holen:g 1', 'video-senden:g 1', 'stand:g 1', 'stand:g3']), JSON.stringify(job.map(x => x.art + ':' + x.mt)));
+  ok(job[0].url === 'https://mt.test/api/tours/g%201/notiz' && job[0].body === JSON.stringify({ text: 'Vom Handy', basis: 5 }) && job[0].L === 'Vom Handy' && job[0].beides === true && job[0].tour === 'tA' && job[0].tname === 'Gipfel', JSON.stringify(job[0]));
+  ok(job[1].url === 'https://mt.test/api/tours/g%201/tagebuch/photo/814?w=1600&v=4a' && job[1].taken === 1000000 && job[1].lat === 47.5 && job[1].pid === 814 && job[1].name === 'MeineTouren_814.jpg', JSON.stringify(job[1]));
+  ok(job[2].url.endsWith('/photo/817?w=1600') && job[2].taken === 0 && job[2].name === 'Gipfel.jpg', JSON.stringify(job[2]));
+  ok(job[3].id === 'p1' && job[3].fields.force === '1' && job[3].maxPx === 2200 && job[3].url === 'https://mt.test/api/tours/g%201/photo' && !('force' in job[4].fields), 'Senden: force nur bei gelöschten und Schalter');
+  ok(job[5].key === 'g 1_3_77' && job[5].size === 4800 && job[5].url.endsWith('/tagebuch/video/3?video=1') && job[6].used === 123 && job[6].fields.bestaetigt === '1' && job[6].fields.dur_ms === '4000', JSON.stringify([job[5], job[6]]));
+  ok(job[7].url === 'https://mt.test/api/tagebuch/uebersicht?ids=g%201' && job.every(x => !('cookie' in x)), 'Stand, kein Cookie');
+  ok(M.auftrag([{ t: tB, id: 'g2', notiz: 'senden', a: {} }], 'x').length === 0, 'leere Notiz wird nie gesendet, ohne Schritte kein Stand');
+  ok(M.fortsetzbar({ da: true, running: false, ende: null, fertig: 3, n: 9 }) && M.fortsetzbar({ da: true, running: false, ende: 'wlan', fertig: 3, n: 9 }), 'unterbrochen / kein WLAN: fortsetzbar');
+  ok(!M.fortsetzbar({ da: true, running: true, fertig: 3, n: 9 }) && !M.fortsetzbar({ da: true, running: false, ende: 'abgebrochen', fertig: 3, n: 9 }) && !M.fortsetzbar({ da: true, running: false, ende: null, fertig: 9, n: 9 })
+    && !M.fortsetzbar({ da: true, running: false, ende: 'relogin', fertig: 1, n: 9 }) && !M.fortsetzbar(null) && !M.fortsetzbar([]), 'nicht fortsetzbar');
 })();
 
 /* ---------- 2.18.0 Komoot-Paket und Pins in der GPX (calc-komoot.js): Säubern, Maskieren, Wegpunkte, GPX 1.1, README, Manifest, EXIF ---------- */

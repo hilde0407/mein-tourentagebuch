@@ -493,6 +493,15 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** 2.18.1: App-Details in den Einstellungen (Xiaomi/HyperOS: dort „Autostart“ und Energiesparen „Keine Einschränkungen“). Braucht keine Berechtigung. */
+        @JavascriptInterface
+        public void openAppDetails() {
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception e) { try { startActivity(new Intent(Settings.ACTION_SETTINGS)); } catch (Exception e2) { /* keine Einstellungen */ } }
+            });
+        }
+
         @JavascriptInterface
         public void openUrl(String u) {
             runOnUiThread(() -> {
@@ -695,11 +704,12 @@ public class MainActivity extends Activity {
             case "photoPrints": return Photos.prints(this, a.getJSONArray("ids")).toString();      // 2.14.0: Abdruck und Größe gespeicherter Fotos/Videos
             /* ---- 2.18.0: Fotos und Videos mit Meine Touren abgleichen (MtMedien / MtTransfer); die Oberfläche ruft das nur bei „Mit Meine Touren zusammenarbeiten“ auf ---- */
             case "mtNetz": return MtMedien.netz(this).toString();
-            case "mtFotoSenden": return MtMedien.fotoSenden(this, a).toString();
-            case "mtFotoHolen": return MtMedien.fotoHolen(this, a).toString();
-            case "mtVideoStart": return MtMedien.start(this, a).toString();
-            case "mtJob": return MtMedien.job().toString();
-            case "mtJobCancel": MtMedien.cancel(); return "true";
+            /* 2.18.1: der ganze Abgleich als Auftrag in der Hülle (MtAbgleich, Vordergrunddienst MtAbgleichService) – läuft auch bei ausgeschaltetem Bildschirm */
+            case "mtAbgleichStart": return MtAbgleich.start(this, a).toString();
+            case "mtAbgleichStand": return MtAbgleich.stand(this, a).toString();
+            case "mtAbgleichFortsetzen": return MtAbgleich.fortsetzen(this, a).toString();
+            case "mtAbgleichCancel": MtAbgleich.cancel(); return "true";
+            case "mtAbgleichVerwerfen": return MtAbgleich.verwerfen(this).toString();
             case "uploadStart": { JSONObject j = UploadServer.start(this); UploadService.start(this); return j.toString(); }
             case "uploadStop": UploadServer.stop(); UploadService.stop(this); return "true";
             case "uploadPoll": return UploadServer.poll().toString();

@@ -110,12 +110,14 @@ async function boot() {
   window.addEventListener('mtphoto', handlePhotoQueue);
   window.addEventListener('mtvideo', () => Videos.poll());      // 2.7.1: Video-Umwandlung im Hintergrund meldet sich
   window.addEventListener('mtresume', () => Pano.check());      // 2.8.0: zurück aus der Kamera-App – Panorama übernehmen?
+  window.addEventListener('mtresume', () => { MedienAbgleich.pruefeOffen().catch(e => console.error('Abgleich', e)); });      // 2.18.1: Ergebnisse des Abgleichs aus der Hülle übernehmen, unterbrochenen Abgleich fortsetzen?
   window.addEventListener('mtresume', () => { const e = $('#set-akku-stand'), r = $('#rec-akku small'); if (e) e.textContent = RecRescue.akkuZeile(); if (r) r.textContent = RecRescue.akkuZeile(); });      // 2.12.0: zurück aus den Akku-Einstellungen
   await Nav.render();
   setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
   setTimeout(autoAbgleich, 6000);
   setTimeout(() => Backup.auto().then(r => { if (r && Nav.cur === '/start' && $('#backupnote')) Nav.render(); }), 12000);      // 2.10.0: automatische Tagessicherung in den Ordner (nur wenn eingeschaltet)
   setTimeout(() => Medien.status().then(s => { if (s && s.running) Medien.follow(); }), 2500);      // 2.10.0: läuft noch eine Medien-Sicherung (Oberfläche neu geladen)? Fortschritt zeigen
+  setTimeout(() => MedienAbgleich.pruefeOffen().catch(e => console.error('Abgleich', e)), 3000);      // 2.18.1: lief beim letzten Mal ein Abgleich mit Meine Touren? (Ergebnisse übernehmen, fortsetzen?)
   setTimeout(() => Senden.nachholen().catch(e => console.error('Senden', e)), 9000);      // 2.5.0: vorgemerkte Aufzeichnungen noch einmal versuchen (nur wenn eingeschaltet)      // 2.2.0: still im Hintergrund, nach dem Start und nach der Neuberechnung; nur wenn eingeschaltet
   setTimeout(() => { handleShared(); handlePhotoQueue(); checkUnsaved(); Videos.poll(); Videos.prefs(); Pano.check(); }, 600);      // Videos.prefs: 2.9.0 Einstellungen für Aufnahme und Galerie an die Hülle      // Pano.check: auch nach Prozessende während der Kamera      // Videos.poll: Ergebnisse, die fertig wurden, während die App zu war
 }

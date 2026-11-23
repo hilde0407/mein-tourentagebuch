@@ -2,7 +2,8 @@
 /* 2.18.0: Notizen, Fotos und (auf Wunsch) Videos mit Meine Touren abgleichen – in beide Richtungen, nur auf Knopfdruck, mit Vorschau „was ist neu“.
    Tourseite → Aktionen → „Mit Meine Touren abgleichen …“ (eine Tour) und Touren importieren → Meine Touren → „Notizen und Fotos abgleichen …“ (alle verbundenen Touren).
    Server: Meine Touren ab 3.57.0 (GET /api/tours/{id}/tagebuch, GET /api/tagebuch/uebersicht, GET …/tagebuch/photo|video, POST …/notiz|photo|video).
-   Regeln und Rechnung: js/calc-abgleich-medien.js (MedienCalc). Übertragung der Dateien: Hülle (MtMedien.java / MtTransfer.java).
+   Regeln und Rechnung: js/calc-abgleich-medien.js (MedienCalc). Übertragung: seit 2.18.1 als Auftrag in der Hülle (MtAbgleich.java im Vordergrunddienst
+   MtAbgleichService, Schritte in MtMedien.java / MtTransfer.java) – läuft auch bei ausgeschaltetem Bildschirm weiter.
    Bei Aus („Mit Meine Touren zusammenarbeiten“) gibt es nichts davon: kein Eintrag, kein Knopf, kein Netzaufruf (jede Funktion prüft MT.aktiv() zuerst). */
 const MedienAbgleich = {
   _busy: false,
@@ -129,7 +130,8 @@ const MedienAbgleich = {
     const wlan = UI.toggle('Nur über WLAN (große Mengen und Videos)', Set_.get('mtWlan') !== false, v => Set_.set('mtWlan', !!v), { id: 'ab-wlan' });
     const ft = MedienAbgleich.fotoTeil(plan, darf, {});
     body.innerHTML = '';
-    body.append(darf ? null : MedienAbgleich.hinweisBetrachter(), nt.el, ft.el, wlan,
+    if (!darf) body.append(MedienAbgleich.hinweisBetrachter());      // 2.18.1: append(null) schrieb „null“ ins Blatt
+    body.append(nt.el, ft.el, wlan,
       h('p', { class: 'muted small' }, 'Es wird nur übertragen, was du hier wählst – erst nach „Abgleichen“ und einer Rückfrage. Notizen werden zusammengeführt, nie überschrieben.'),
       h('div', { class: 'row end wrap' }, h('button', { class: 'btn', id: 'ab-abbr', onclick: () => s.close() }, 'Abbrechen'), go));
     go.onclick = async () => {
@@ -155,142 +157,235 @@ const MedienAbgleich = {
     return confirmBox(vids.length ? 'Auch Videos übertragen?' : 'Jetzt abgleichen?', teile.join(' · ') + (mb ? ' – etwa ' + MedienCalc.mb(mb) + '.' : '.'), vids.length ? 'Ja, mit Videos' : 'Abgleichen');
   },
 
-  /* ---------------------------------------------------------------- Ausführen ---------------------------------------------------------------- */
+  /* ---------------------------------------------------------------- Ausführen ----------------------------------------------------------------
+     2.18.1: Die Schleife über alle Schritte läuft als Auftrag in der Hülle (MtAbgleich.java, Vordergrunddienst mit Wake-Lock und WLAN-Sperre) – auch bei
+     ausgeschaltetem Bildschirm, wenn die WebView angehalten ist. Die Oberfläche baut den Plan (MedienCalc.auftrag), startet ihn (mtAbgleichStart) und übernimmt
+     die Ergebnisse in die Datenbank, sobald sie läuft (mtAbgleichStand mit „ab“ = schon übernommene Zeilen; gemerkt in kv LAUF). Die Übernahme ist
+     wiederholbar ohne Schaden (gleiche Kennungen werden verknüpft, nicht doppelt angelegt). Unterbrochen (Dienst vom System beendet) → „Abgleich fortsetzen?“. */
+  LAUF: 'mtAbgleichLauf',
+  _ix: null, _frage: false,
+  neuRes: () => ({ notiz: null, konflikt: false, holen: 0, uebersprungen: 0, gesendet: null, videos: 0, fehler: [], stopped: false }),
   async mitFortschritt(acc, items, after) {
     if (MedienAbgleich._busy) { toast('Es läuft schon ein Abgleich.'); return null; }
+    if (!MT.aktiv()) return null;
     if (items.some(i => i.a.wlan) && Set_.get('mtWlan') !== false) {
       let wifi = true; try { wifi = !!(await Native.json('mtNetz')).wifi; } catch (e) { wifi = true; }      // ohne Hülle (Browser) keine Prüfung
       if (!wifi) { toast('Kein WLAN. Für große Mengen und Videos bitte mit einem WLAN verbinden – oder „Nur über WLAN“ ausschalten (Videos nur im WLAN).', 9000); return null; }
     }
-    MedienAbgleich._busy = true; let halt = false, res = null, err = null;
+    MedienAbgleich._busy = true;
+    const res = MedienAbgleich.neuRes();
+    let job;
     try {
-      res = await PhotoSources.progress('Mit Meine Touren abgleichen', upd => MedienAbgleich.ausfuehren(acc, items, { stop: () => halt, upd }),
-        { cancel: () => { halt = true; Native.call('mtJobCancel').catch(() => {}); }, note: 'Bitte die App geöffnet lassen, bis der Abgleich fertig ist.' });
+      for (const it of items) {      // Notiz holen braucht kein Netz: gleich hier (dann ist sie auch bei einem Abbruch schon da)
+        const t = (await DB.get('tours', it.t.id)) || it.t;
+        const leerHier = it.notiz === 'beides' && !MedienCalc.norm(t.note) && it.r.notiz && it.r.notiz.text;      // ein leerer Text löscht nie: dann holen
+        if (it.notiz === 'holen' || leerHier) {
+          const st = await MedienAbgleich.notizHolen(it);
+          if (st) { res.notiz = st.status; if (st.status === 'zusammengefuehrt') res.konflikt = true; }
+          it.notiz = 'nichts'; it.stand = true;
+        }
+        it.t = (await DB.get('tours', it.t.id)) || it.t;
+      }
+      job = { jobId: 'ab' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), titel: 'Mit Meine Touren abgleichen', wifiOnly: Set_.get('mtWlan') !== false,
+        wlanFotos: items.some(i => i.a.wlan), tasks: MedienCalc.auftrag(items, acc.base) };
+    } catch (e) { MedienAbgleich._busy = false; toast('Abgleich nicht möglich: ' + e.message, 8000); if (after) after(); return null; }
+    await DB.kvSet(MedienAbgleich.LAUF, { jobId: job.jobId, ab: 0, res });
+    let st;
+    try { st = await Native.json('mtAbgleichStart', Object.assign({ cookie: MedienAbgleich.cookie(acc) }, job)); } catch (e) { st = { started: false, error: e.message }; }
+    if (!st || !st.started) {
+      MedienAbgleich._busy = false; await DB.del('kv', MedienAbgleich.LAUF);
+      toast('Abgleich nicht gestartet: ' + ((st && st.error) || 'unbekannter Fehler'), 9000); if (after) after(); return null;
+    }
+    return MedienAbgleich.verfolgen(acc, after);
+  },
+  /** Hinweis beim Start: Akku-Optimierung ausnehmen (nur wenn die Hülle sagt, dass sie an ist). Keine Berechtigung nötig – nur Einstellungen öffnen. */
+  akkuHinweis() {
+    let frei = null; try { if (window.MTApp && MTApp.batteryUnrestricted) frei = !!MTApp.batteryUnrestricted(); } catch (e) { frei = null; }
+    if (frei !== false) return null;
+    return h('div', { id: 'ab-akku' }, h('p', { class: 'small' }, 'Für lange Übertragungen bei gesperrtem Bildschirm: die Akku-Optimierung für diese App ausschalten. Bei Xiaomi/HyperOS zusätzlich in den App-Einstellungen „Autostart“ einschalten und unter Akku/Energiesparen „Keine Einschränkungen“ wählen.'),
+      h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'ab-akku-opt', onclick: () => MTApp.openBatterySettings() }, 'Akku-Optimierung'),
+        MTApp.openAppDetails ? h('button', { class: 'btn', id: 'ab-akku-app', onclick: () => MTApp.openAppDetails() }, 'App-Einstellungen') : null));
+  },
+  /** Fortschritt zeigen und Ergebnisse übernehmen, bis der Auftrag in der Hülle nicht mehr läuft. Das Blatt darf man schließen – übernommen wird trotzdem. */
+  async verfolgen(acc, after) {
+    MedienAbgleich._busy = true; MedienAbgleich._ix = null;
+    const bar = h('div', { class: 'prog' }, h('i')), txt = h('p', { id: 'ab-p-text' }, 'Wird gestartet …');
+    const stop = h('button', { class: 'btn', id: 'ab-p-stop', onclick: e => { e.currentTarget.disabled = true; e.currentTarget.textContent = 'Wird abgebrochen …'; Native.call('mtAbgleichCancel').catch(() => {}); } }, 'Abbrechen');
+    const akku = MedienAbgleich.akkuHinweis();
+    const s = sheet('Mit Meine Touren abgleichen', h('div', { id: 'ab-lauf' }, txt, bar,
+      h('p', { class: 'muted small' }, 'Du kannst das Handy sperren oder die App verlassen – der Abgleich läuft im Hintergrund weiter (siehe Benachrichtigung).'), akku, h('div', { class: 'row end' }, stop)));
+    let st = null, err = null;
+    try {
+      for (;;) {
+        st = await MedienAbgleich.abholen();
+        if (!st || !st.da) break;
+        const n = +st.n || 1, f = Math.min(+st.fertig || 0, n);
+        bar.firstChild.style.width = (st.bytesTotal > 0 ? (f + st.bytesDone / st.bytesTotal) / n * 100 : f / n * 100) + '%';
+        txt.textContent = st.running ? (st.text || (f + ' von ' + n)) + (st.bytesTotal > 0 ? ' · ' + MedienCalc.mb(st.bytesDone) + ' von ' + MedienCalc.mb(st.bytesTotal) : '') : f + ' von ' + n + ' erledigt';
+        if (akku && akku.isConnected) { try { if (MTApp.batteryUnrestricted()) akku.remove(); } catch (e) { /* bleibt */ } }
+        if (!st.running) break;
+        await sleep(1000);
+      }
     } catch (e) { err = e; }
-    finally { MedienAbgleich._busy = false; }
+    finally { s.close(); MedienAbgleich._busy = false; }
+    if (err) { toast('Abgleich: ' + err.message, 9000); if (after) after(); return null; }
+    return MedienAbgleich.abschluss(acc, st, after);
+  },
+  /** Neue Ergebnisse aus der Hülle holen und übernehmen. Gibt den Stand zurück (st.lauf = { jobId, ab, res }). */
+  async abholen() {
+    let lauf = await DB.kvGet(MedienAbgleich.LAUF, null), st;
+    for (;;) {
+      const ab = lauf && lauf.ab || 0;
+      st = await Native.json('mtAbgleichStand', { ab });
+      if (!st || !st.da) { if (lauf) await DB.del('kv', MedienAbgleich.LAUF); return st; }
+      if (!lauf || lauf.jobId !== st.jobId) { lauf = { jobId: st.jobId, ab: 0, res: MedienAbgleich.neuRes() }; await DB.kvSet(MedienAbgleich.LAUF, lauf); if (ab) continue; }
+      const erg = st.ergebnisse || [];
+      if (erg.length && !MedienAbgleich._ix) MedienAbgleich._ix = FotoDoppeltCalc.index(await DB.all('photos'));
+      for (const e of erg) {
+        try { await MedienAbgleich.uebernehmen(e, lauf.res, MedienAbgleich._ix); } catch (x) { lauf.res.fehler.push(x.message); }
+        lauf.ab++; await DB.kvSet(MedienAbgleich.LAUF, lauf);
+      }
+      if (!st.mehr || !erg.length) { st.lauf = lauf; return st; }
+    }
+  },
+  /** Ein Ergebnis der Hülle in die Datenbank übernehmen (wie bis 2.18.0 direkt nach jedem Aufruf). e: { status, body, id …, fehler?, uebersprungen?, a: Schritt }. */
+  async uebernehmen(e, res, ix) {
+    const a = e.a || {}, art = a.art;
+    if (e.uebersprungen) { res.gesendet = MedienCalc.zaehle(res.gesendet, { status: 'vorhanden' }); return; }      // eben beim Holen als dasselbe Foto erkannt
+    if (e.fehler) { if (art !== 'stand') res.fehler.push(e.fehler); return; }
+    if (e.status === 401 || e.status === 403) return;      // beendet den Auftrag; Meldung in abschluss()
+    if (e.status !== 200) {
+      if (art === 'stand') return;      // Stand bleibt alt: beim nächsten Mal wird die Tour eben gelesen
+      try { MedienAbgleich.pruefe({ status: e.status || 500, body: e.body || '' }, { notiz: 'Notiz senden', 'foto-holen': 'Foto holen', 'foto-senden': 'Foto senden' }[art] || 'Video'); }
+      catch (x) { res.fehler.push(x.message); }
+      return;
+    }
+    if (art === 'notiz') {
+      const t = await DB.get('tours', a.tour); if (!t) return;
+      const j = JSON.parse(e.body || '{}'), srv = (j && j.notiz) || {};
+      if (MedienCalc.norm(t.note) === a.L) {      // hier seither nicht geändert
+        if (a.beides && srv.text) { t.note = srv.text; t.noteMt = MedienCalc.norm(srv.text); } else t.noteMt = a.L;
+        t.mtNotizBasis = srv.geaendert != null ? srv.geaendert : null;
+      } else t.noteMt = a.L;      // inzwischen hier weitergeschrieben: Basis bleibt, beim nächsten Abgleich wird zusammengeführt statt überschrieben
+      await Tours.save(t);
+      res.notiz = j.status; if (j.status === 'zusammengefuehrt') res.konflikt = true;
+      return;
+    }
+    if (art === 'stand') {
+      const j = JSON.parse(e.body || '{}'), t = await DB.get('tours', a.tour);
+      if (t && j && j[a.mt]) { t.mtStand = j[a.mt].stand; await Tours.save(t); }
+      return;
+    }
+    if (art === 'foto-holen') {
+      if (!e.id) { res.fehler.push('Foto nicht übernommen.'); return; }
+      if (await MedienAbgleich.fotoUebernehmen(e, a, ix)) res.holen++; else res.uebersprungen++;
+      return;
+    }
+    if (art === 'foto-senden') {
+      const j = JSON.parse(e.body || '{}'), q = await DB.get('photos', a.id);
+      if (q) {
+        if ((j.status === 'neu' || j.status === 'vorhanden') && j.id != null && (!j.tour_id || String(j.tour_id) === String(a.mt))) { q.mtPid = j.id; delete q.mtGeloescht; }
+        if (j.status === 'geloescht') q.mtGeloescht = true;
+        await DB.put('photos', q);
+      }
+      res.gesendet = MedienCalc.zaehle(res.gesendet, j);
+      return;
+    }
+    if (art === 'video-holen') {
+      const m = e.result; if (!m || !m.id) { res.fehler.push('Video nicht übernommen.'); return; }
+      const old = await DB.get('photos', m.id);
+      if (old) { if (old.mtPid == null) { old.mtPid = a.pid; await DB.put('photos', old); } return; }
+      await DB.put('photos', { id: m.id, name: m.name || 'Video.mp4', ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: 'meinetouren', video: true,
+        dur: m.dur || 0, tour: a.tour, pos: m.lat != null ? 'exif' : 'none', note: '', mtPid: a.pid, fp: m.fp, fpd: m.fpd, size: m.size });
+      res.videos++;
+      return;
+    }
+    if (art === 'video-senden') {
+      const b = JSON.parse(e.body || '{}'), q = await DB.get('photos', a.id);
+      if (q && b.id != null) { q.mtPid = b.id; await DB.put('photos', q); }
+      if (b.status === 'neu') res.videos++;
+    }
+  },
+  /** Geholtes Foto (Metadaten m aus der Hülle, Datei schon gespeichert) der Tour zuordnen. true = neu, false = schon vorhanden (verknüpft oder Duplikat). */
+  async fotoUebernehmen(m, a, ix) {
+    const old = await DB.get('photos', m.id);
+    if (old) { if (old.mtPid == null) { old.mtPid = a.pid; if (!old.tour) old.tour = a.tour; await DB.put('photos', old); } return false; }
+    if (FotoDoppeltCalc.bekannt(ix, m)) { try { await Native.call('deletePhoto', { id: m.id }); } catch (e) { /* ohne Hülle */ } return false; }
+    const t = await DB.get('tours', a.tour);
+    const p = { id: m.id, name: m.name, ts: m.ts || a.taken || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: 'meinetouren',
+      video: !!m.video, dur: m.dur || 0, tour: a.tour, pos: m.lat != null ? 'exif' : 'none', note: '', mtPid: a.pid };
+    if (m.fp) p.fp = m.fp; if (m.fpd) p.fpd = m.fpd; if (m.size) p.size = m.size;
+    if (p.lat == null && p.ts && t && t.timed) { const g = Geo.at(await Tours.points(t.id), p.ts, (+Set_.get('photoMargin') || 20) * 60000); if (g) { p.lat = g.lat; p.lon = g.lon; p.pos = 'track'; } }
+    await DB.put('photos', p); FotoDoppeltCalc.merke(ix, p);
+    return true;
+  },
+  /** Auftrag zu Ende (oder unterbrochen): fortsetzen anbieten, sonst Plan löschen und Ergebnis zeigen. */
+  async abschluss(acc, st, after) {
     Tours.invalidate(); window.dispatchEvent(new Event('photos-changed'));
-    if (err) { toast('Abgleich nicht fertig: ' + err.message, 9000); if (after) after(); return null; }
+    if (!st || !st.da) return null;
+    const res = (st.lauf && st.lauf.res) || MedienAbgleich.neuRes();
+    if (MedienCalc.fortsetzbar(st)) return MedienAbgleich.fortsetzenFragen(acc, st, after);
+    try { await Native.json('mtAbgleichVerwerfen'); } catch (e) { /* bleibt liegen, wird beim nächsten Start neu angelegt */ }
+    await DB.del('kv', MedienAbgleich.LAUF);
+    if (st.ende === 'relogin') { const e = acc ? await Import.MT.expired(acc) : new Error('Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.'); toast('Abgleich nicht fertig: ' + e.message, 9000); if (after) after(); return null; }
+    if (st.ende === 'verboten') { toast('Abgleich nicht fertig: Dieses Konto darf nur ansehen. Senden ist damit nicht möglich.', 9000); if (after) after(); return null; }
+    if (st.ende === 'abgebrochen') res.stopped = true;
+    return MedienAbgleich.ergebnis(res, after);
+  },
+  ergebnis(res, after) {
     const s = sheet(res.stopped ? 'Abgleich abgebrochen' : 'Abgeglichen', h('div', { id: 'ab-ergebnis' }, h('p', { id: 'ab-ergebnis-t' }, MedienCalc.ergebnisText(res)),
       res.konflikt ? h('p', { class: 'muted small', id: 'ab-konflikt' }, 'Die Notiz war an beiden Stellen geändert. Beide Fassungen sind erhalten – getrennt durch eine Zeile mit Datum.') : null,
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'ab-fertig', onclick: () => s.close() }, 'Fertig'))), { onclose: () => { if (after) after(); } });
     return res;
   },
-  /** Alle gewählten Übertragungen nacheinander. Rechte- und Anmeldefehler brechen ab; einzelne Fotos dürfen scheitern (gezählt). */
-  async ausfuehren(acc, items, o) {
-    if (!MT.aktiv()) throw MedienAbgleich.fehler('Die Zusammenarbeit mit Meine Touren ist ausgeschaltet.');
-    const res = { notiz: null, konflikt: false, holen: 0, uebersprungen: 0, gesendet: null, videos: 0, fehler: [], stopped: false };
-    const total = items.reduce((x, i) => x + (i.notiz !== 'nichts' ? 1 : 0) + i.a.n, 0) || 1;
-    let k = 0;
-    const step = text => { k++; if (o.upd) o.upd(Math.min(k, total), total, text); };
-    const ix = FotoDoppeltCalc.index(await DB.all('photos'));
-    for (const it of items) {
-      if (o.stop()) { res.stopped = true; break; }
-      const name = it.t.name;
-      if (it.notiz !== 'nichts') { step(name + ' · Notiz'); const st = await MedienAbgleich.notiz(acc, it); if (st) { res.notiz = st.status; if (st.status === 'zusammengefuehrt') res.konflikt = true; } }
-      for (const x of it.a.holen) {
-        if (o.stop()) { res.stopped = true; break; }
-        step(name + ' · Foto holen');
-        try { const n = await MedienAbgleich.fotoHolen(acc, it, x, ix); if (n) res.holen++; else res.uebersprungen++; }
-        catch (e) { if (e.relogin || e.verboten) throw e; res.fehler.push(e.message); }
-      }
-      for (const p of it.a.senden) {
-        if (o.stop()) { res.stopped = true; break; }
-        step(name + ' · Foto senden');
-        const q = await DB.get('photos', p.id);
-        if (!q || q.mtPid != null) { res.gesendet = MedienCalc.zaehle(res.gesendet, { status: 'vorhanden' }); continue; }      // eben beim Holen als dasselbe Foto erkannt
-        try { res.gesendet = MedienCalc.zaehle(res.gesendet, await MedienAbgleich.fotoSenden(acc, it, p)); }
-        catch (e) { if (e.relogin || e.verboten) throw e; res.fehler.push(e.message); }
-      }
-      for (const v of it.a.videosHolen.map(x => ['holen', x]).concat(it.a.videosSenden.map(p => ['senden', p]))) {
-        if (o.stop()) { res.stopped = true; break; }
-        step(name + ' · Video ' + (v[0] === 'holen' ? 'holen' : 'senden'));
-        try { if (await MedienAbgleich.video(acc, it, v[0], v[1], o)) res.videos++; }
-        catch (e) { if (e.relogin || e.verboten) throw e; if (e.message === 'abgebrochen') { res.stopped = true; break; } res.fehler.push(e.message); }
-      }
-      if (res.stopped) break;
-      try { const u = await MedienAbgleich.uebersicht(acc, [it.id]); const t = await DB.get('tours', it.t.id); if (t && u[it.id]) { t.mtStand = u[it.id].stand; await Tours.save(t); } }
-      catch (e) { if (e.relogin) throw e; /* Stand bleibt alt: beim nächsten Mal wird die Tour eben gelesen */ }
+  /** „Abgleich fortsetzen?“ – Fortsetzen, nicht fortsetzen (Plan verwerfen) oder Blatt schließen (später: beim nächsten Öffnen wieder fragen). */
+  async fortsetzenFragen(acc, st, after) {
+    if (MedienAbgleich._frage) return null;
+    MedienAbgleich._frage = true;
+    const wahl = await new Promise(ok => {
+      let done = false;
+      const w = v => () => { done = true; s.close(); ok(v); };
+      const s = sheet('Abgleich fortsetzen?', h('div', { id: 'ab-weiter' },
+        h('p', { id: 'ab-weiter-t' }, 'Der Abgleich mit Meine Touren wurde unterbrochen' + (st.ende === 'wlan' ? ' – zu lange kein WLAN' : ' – vermutlich hat Android die App im Hintergrund beendet') + '. '
+          + st.fertig + ' von ' + st.n + ' Schritten sind erledigt und übernommen. Der Rest kann jetzt weiterlaufen.'),
+        MedienAbgleich.akkuHinweis(),
+        h('div', { class: 'row end wrap' }, h('button', { class: 'btn', id: 'ab-weiter-nein', onclick: w('nein') }, 'Nicht fortsetzen'), h('button', { class: 'btn pri', id: 'ab-weiter-ja', onclick: w('ja') }, 'Fortsetzen'))),
+        { onclose: () => { if (!done) ok('spaeter'); } });
+    });
+    MedienAbgleich._frage = false;
+    if (wahl === 'spaeter') return null;
+    if (wahl === 'nein') {
+      try { await Native.json('mtAbgleichVerwerfen'); } catch (e) { /* egal */ }
+      await DB.del('kv', MedienAbgleich.LAUF);
+      const res = (st.lauf && st.lauf.res) || MedienAbgleich.neuRes(); res.stopped = true;
+      return MedienAbgleich.ergebnis(res, after);
     }
-    return res;
+    acc = acc || await MT.konto();
+    if (!acc) { toast('Es besteht keine Verbindung zu Meine Touren. Bitte erst wieder anmelden – der Abgleich bleibt vorgemerkt.', 8000); return null; }
+    let r; try { r = await Native.json('mtAbgleichFortsetzen', { cookie: MedienAbgleich.cookie(acc), wifiOnly: Set_.get('mtWlan') !== false }); } catch (e) { r = { started: false, error: e.message }; }
+    if (!r || !r.started) { toast('Abgleich nicht fortgesetzt: ' + ((r && r.error) || 'unbekannter Fehler'), 8000); return null; }
+    return MedienAbgleich.verfolgen(acc, after);
   },
-  /** Notiz nach Wahl übertragen. Gibt { status } zurück. */
-  async notiz(acc, it) {
+  /** Beim Öffnen und beim Zurückkehren in die App: läuft ein Auftrag noch (Fortschritt zeigen), liegen Ergebnisse bereit (übernehmen) oder wurde er unterbrochen (fragen)? */
+  async pruefeOffen() {
+    if (!MT.aktiv() || !Native.available() || MedienAbgleich._busy || MedienAbgleich._frage) return null;
+    MedienAbgleich._busy = true; MedienAbgleich._ix = null;
+    let st;
+    try { st = await MedienAbgleich.abholen(); } catch (e) { st = null; console.error('Abgleich prüfen', e); }
+    finally { MedienAbgleich._busy = false; }
+    if (!st || !st.da) return null;
+    const acc = await MT.konto();
+    if (st.running) return MedienAbgleich.verfolgen(acc, null);
+    return MedienAbgleich.abschluss(acc, st, null);
+  },
+  /** Notiz holen (nur hier, ohne Netz). Gibt { status } zurück. */
+  async notizHolen(it) {
     const t = (await DB.get('tours', it.t.id)) || it.t, L = MedienCalc.norm(t.note);
-    if (it.notiz === 'holen') {
-      const neu = MedienCalc.holenMerge(L, it.r.notiz && it.r.notiz.text, t.noteMt != null && MedienCalc.norm(t.noteMt) === L);
-      if (MedienCalc.laenge(neu.text) > MedienCalc.NOTIZ_MAX) throw MedienAbgleich.fehler('Zusammen wäre die Notiz zu lang.');
-      t.note = neu.text; t.noteMt = neu.text; t.mtNotizBasis = it.r.notiz ? it.r.notiz.geaendert : null;
-      await Tours.save(t); Object.assign(it.t, { note: t.note, noteMt: t.noteMt, mtNotizBasis: t.mtNotizBasis });
-      return neu.status === 'uebernommen' || neu.status === 'zusammengefuehrt' ? { status: neu.status === 'uebernommen' ? 'geholt' : 'zusammengefuehrt' } : neu;
-    }
-    if (!L) { if (it.notiz === 'beides' && it.r.notiz && it.r.notiz.text) { it.notiz = 'holen'; return MedienAbgleich.notiz(acc, it); } return { status: 'leer' }; }      // ein leerer Text löscht nie
-    const r = await Senden.post(acc, MedienAbgleich.pfad(it.id, '/notiz'), { text: L, basis: t.mtNotizBasis != null ? t.mtNotizBasis : null });
-    MedienAbgleich.pruefe(r, 'Notiz senden');
-    const j = JSON.parse(r.body), srv = (j && j.notiz) || {};
-    if (it.notiz === 'beides' && srv.text) { t.note = srv.text; t.noteMt = MedienCalc.norm(srv.text); }
-    else t.noteMt = L;
-    t.mtNotizBasis = srv.geaendert != null ? srv.geaendert : null;
+    const neu = MedienCalc.holenMerge(L, it.r.notiz && it.r.notiz.text, t.noteMt != null && MedienCalc.norm(t.noteMt) === L);
+    if (MedienCalc.laenge(neu.text) > MedienCalc.NOTIZ_MAX) throw MedienAbgleich.fehler('Zusammen wäre die Notiz zu lang.');
+    t.note = neu.text; t.noteMt = neu.text; t.mtNotizBasis = it.r.notiz ? it.r.notiz.geaendert : null;
     await Tours.save(t); Object.assign(it.t, { note: t.note, noteMt: t.noteMt, mtNotizBasis: t.mtNotizBasis });
-    return { status: j.status };
-  },
-  /** Ein Foto holen und dieser Tour zuordnen. Gibt true (neu) oder false (schon vorhanden) zurück. */
-  async fotoHolen(acc, it, x, ix) {
-    const m = await Native.json('mtFotoHolen', { url: acc.base + MedienAbgleich.pfad(it.id, '/tagebuch/photo/' + encodeURIComponent(x.id) + '?w=' + MedienCalc.HOLEN_PX + (x.v ? '&v=' + encodeURIComponent(x.v) : '')),
-      cookie: MedienAbgleich.cookie(acc), name: x.name || ('MeineTouren_' + x.id + '.jpg'), taken: x.taken_ts ? x.taken_ts * 1000 : 0, lat: x.lat, lng: x.lng });
-    if (m.status === 401) throw await Import.MT.expired(acc);
-    if (m.status !== 200 || !m.id) MedienAbgleich.pruefe({ status: m.status || 500, body: m.body || '' }, 'Foto holen');
-    const old = await DB.get('photos', m.id);
-    if (old) { if (old.mtPid == null) { old.mtPid = x.id; if (!old.tour) old.tour = it.t.id; await DB.put('photos', old); } return false; }
-    if (FotoDoppeltCalc.bekannt(ix, m)) { try { await Native.call('deletePhoto', { id: m.id }); } catch (e) { /* ohne Hülle */ } return false; }
-    const p = { id: m.id, name: m.name, ts: m.ts || (x.taken_ts ? x.taken_ts * 1000 : 0), lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: 'meinetouren',
-      video: !!m.video, dur: m.dur || 0, tour: it.t.id, pos: m.lat != null ? 'exif' : 'none', note: '', mtPid: x.id };
-    if (m.fp) p.fp = m.fp; if (m.fpd) p.fpd = m.fpd; if (m.size) p.size = m.size;
-    if (p.lat == null && p.ts && it.t.timed) { const g = Geo.at(await Tours.points(it.t.id), p.ts, (+Set_.get('photoMargin') || 20) * 60000); if (g) { p.lat = g.lat; p.lon = g.lon; p.pos = 'track'; } }
-    await DB.put('photos', p); FotoDoppeltCalc.merke(ix, p);
-    return true;
-  },
-  /** Ein Foto senden. Gibt die Antwort des Servers ({ status: neu|vorhanden|geloescht, id }) zurück. */
-  async fotoSenden(acc, it, p) {
-    const r = await Native.json('mtFotoSenden', { url: acc.base + MedienAbgleich.pfad(it.id, '/photo'), cookie: MedienAbgleich.cookie(acc), id: p.id,
-      fields: MedienCalc.sendeFelder(p, it.force && p.mtGeloescht), maxPx: MedienCalc.FOTO_PX });
-    if (r.status === 401) throw await Import.MT.expired(acc);
-    MedienAbgleich.pruefe({ status: r.status, body: r.body || '' }, 'Foto senden');
-    const j = JSON.parse(r.body || '{}'), q = await DB.get('photos', p.id);
-    if (q) {
-      if ((j.status === 'neu' || j.status === 'vorhanden') && j.id != null && (!j.tour_id || String(j.tour_id) === String(it.id))) { q.mtPid = j.id; delete q.mtGeloescht; }
-      if (j.status === 'geloescht') q.mtGeloescht = true;
-      await DB.put('photos', q);
-    }
-    return j;
-  },
-  /** Ein Video senden oder holen – im Hintergrund der Hülle, mit Fortschritt. */
-  async video(acc, it, richtung, x, o) {
-    const a = { mode: richtung, cookie: MedienAbgleich.cookie(acc), wifiOnly: Set_.get('mtWlan') !== false };
-    if (richtung === 'holen') Object.assign(a, { url: acc.base + MedienAbgleich.pfad(it.id, '/tagebuch/video/' + encodeURIComponent(x.id) + '?video=1'), key: it.id + '_' + x.id + '_' + (x.v || ''), name: x.name || 'Video.mp4', taken: x.taken_ts ? x.taken_ts * 1000 : 0, lat: x.lat, lng: x.lng, size: x.size || 0 });
-    else Object.assign(a, { url: acc.base + MedienAbgleich.pfad(it.id, '/video'), id: x.id, fields: MedienCalc.sendeFelder(x, false), used: (it.r.videos || []).reduce((s, v) => s + (+v.size || 0), 0) });
-    const st = await Native.json('mtVideoStart', a);
-    if (!st.started) throw MedienAbgleich.fehler(st.error || 'Video nicht übertragen.');
-    let j;
-    for (;;) {
-      await sleep(700);
-      j = await Native.json('mtJob');
-      if (o.upd && j.total > 0) o.upd(j.done, j.total, null, 'Video ' + (richtung === 'holen' ? 'holen' : 'senden') + ' · ' + MedienCalc.mb(j.done) + ' von ' + MedienCalc.mb(j.total));
-      if (!j.running) break;
-    }
-    if (j.error) throw MedienAbgleich.fehler(j.error);
-    if (j.status === 401) throw await Import.MT.expired(acc);
-    MedienAbgleich.pruefe({ status: j.status, body: j.body || '' }, 'Video');
-    if (richtung === 'holen') {
-      const m = j.result; if (!m || !m.id) throw MedienAbgleich.fehler('Video nicht übernommen.');
-      const old = await DB.get('photos', m.id);
-      if (old) { if (old.mtPid == null) { old.mtPid = x.id; await DB.put('photos', old); } return false; }
-      await DB.put('photos', { id: m.id, name: m.name || 'Video.mp4', ts: m.ts || 0, lat: m.lat != null ? m.lat : null, lon: m.lon != null ? m.lon : null, w: m.w, h: m.h, src: 'meinetouren', video: true,
-        dur: m.dur || 0, tour: it.t.id, pos: m.lat != null ? 'exif' : 'none', note: '', mtPid: x.id, fp: m.fp, fpd: m.fpd, size: m.size });
-      return true;
-    }
-    const b = JSON.parse(j.body || '{}'), q = await DB.get('photos', x.id);
-    if (q && b.id != null) { q.mtPid = b.id; await DB.put('photos', q); }
-    return b.status === 'neu';
+    return neu.status === 'uebernommen' || neu.status === 'zusammengefuehrt' ? { status: neu.status === 'uebernommen' ? 'geholt' : 'zusammengefuehrt' } : neu;
   },
 
   /* ---------------------------------------------------------------- Alle verbundenen Touren ---------------------------------------------------------------- */

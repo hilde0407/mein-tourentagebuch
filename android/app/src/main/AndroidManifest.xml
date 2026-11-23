@@ -101,5 +101,10 @@
             android:name=".VideoService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- 2.18.1: Abgleich mit Meine Touren (Fotos, Videos, Notizen) im Hintergrund, auch bei ausgeschaltetem Bildschirm -->
+        <service
+            android:name=".MtAbgleichService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

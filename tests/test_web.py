@@ -3511,8 +3511,8 @@ def mt_schalter_2150(pg):
 
 AB_SERVER = """(cfg) => {
   /* 2.18.0: Meine Touren 3.57.0 nachgestellt – GET /api/tours/{id}/tagebuch, GET /api/tagebuch/uebersicht, POST /api/tours/{id}/notiz (Regel wie notiz_merge in
-     tagebuch_abgleich.py, hier unabhängig nachgeschrieben), /api/tours (Liste), /api/record/upload (fürs Senden mit Pins); dazu die Hülle: mtNetz, mtFotoHolen,
-     mtFotoSenden, mtVideoStart, mtJob, mtJobCancel, deletePhoto. Alles wird mitgeschrieben (window.__ab). */
+     tagebuch_abgleich.py, hier unabhängig nachgeschrieben), /api/tours (Liste), /api/record/upload (fürs Senden mit Pins); dazu die Hülle: mtNetz, Auftrag
+     (mtAbgleichStart/Stand/Fortsetzen/Cancel/Verwerfen, 2.18.1), deletePhoto. Alles wird mitgeschrieben (window.__ab). */
   const A = window.__ab = { log: [], calls: [], notizPosts: [], uploads: [], wifi: true, tours: cfg.tours, geloescht: new Set(cfg.geloescht || []), darf: true, nextId: 900, vnext: 50 };
   const norm = s => String(s || '').replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n').replace(/[ \\t]+\\n/g, '\\n').trim();
   const json = (st, o) => ({ status: st, headers: {}, body: JSON.stringify(o) });
@@ -3537,28 +3537,67 @@ AB_SERVER = """(cfg) => {
     if (m === 'POST' && /\\/(note|rating)$/.test(path)) return json(200, { ok: true });
     return json(404, { detail: 'Not Found' });
   };
+  /* 2.18.1: Die Hülle arbeitet den Abgleich als Auftrag ab (MtAbgleich.java) – hier nachgestellt: Schritte nacheinander, Journal, Stand mit „ab“, Ende,
+     Fortsetzen, Abbrechen, Verwerfen. Die einzelnen Schritte werden wie früher als mtFotoHolen/mtFotoSenden/mtVideoStart mitgeschrieben.
+     Prüfhebel: A.schlaf (WebView angehalten: Stand liefert keine Ergebnisse), A.killNach (nach so vielen Ergebnissen „vom System beendet“, ohne Ende),
+     A.langsam (ms je Schritt). */
+  const tidOf = url => decodeURIComponent(new URL(url).pathname.split('/')[3]);
+  const J = A.job = { plan: null, journal: [], running: false, ende: null, cancel: false, cookie: '', geholt: new Set() };
+  const schritt = (t, ck) => {
+    const o = Object.assign({}, t, { cookie: ck }); let r;
+    if (t.art === 'notiz') { const x = window.__mtStub({ url: t.url, method: 'POST', headers: { Cookie: ck }, body: t.body }); return { status: x.status, body: x.body }; }
+    if (t.art === 'stand') { const x = window.__mtStub({ url: t.url, headers: { Cookie: ck } }); return { status: x.status, body: x.body }; }
+    if (ck !== 'kh_session=SITZUNG-2180') return { status: 401, body: '{"detail":"Nicht angemeldet"}' };
+    if (t.art === 'foto-holen') { A.calls.push(['mtFotoHolen', o]); const pid = +new URL(o.url).pathname.split('/').pop(), f = A.tours[tidOf(o.url)].fotos.find(x => x.id === pid);
+      r = f ? { status: 200, id: f.appId || ('h' + pid + 'aaaaaaaa'), name: o.name, ts: o.taken, lat: o.lat, lon: o.lng, w: 1600, h: 1200, src: 'meinetouren', exif: true, fp: 'p1:1:' + pid, fpd: 'p1:2:' + pid, size: 300000 } : { status: 404, body: '{"detail":"Foto nicht gefunden"}' };
+      if (r.id) J.geholt.add(r.id); return r; }
+    if (t.art === 'foto-senden') { if (J.geholt.has(o.id)) return { status: 200, uebersprungen: true };
+      A.calls.push(['mtFotoSenden', o]); const tt = A.tours[tidOf(o.url)], f = o.fields;
+      if (!A.darf) return { status: 403, body: '{"detail":"Dieser Zugang darf nur ansehen"}' };
+      if (A.geloescht.has(f.ref) && f.force !== '1') return { status: 200, body: JSON.stringify({ status: 'geloescht', id: null }) };
+      const v = tt.fotos.find(x => x.ref === f.ref); if (v) return { status: 200, body: JSON.stringify({ status: 'vorhanden', id: v.id, wie: 'kennung' }) };
+      const nid = A.nextId++; tt.fotos.push({ id: nid, taken_ts: Math.round(+f.taken / 1000), lat: f.lat ? +f.lat : null, lng: f.lng ? +f.lng : null, size: 1, v: 'v' + nid, video: false, fp: null, sha1: 'x', ref: f.ref, name: f.name });
+      return { status: 200, body: JSON.stringify({ status: 'neu', id: nid }) }; }
+    const tt = A.tours[tidOf(o.url)];
+    A.calls.push(['mtVideoStart', Object.assign({ mode: t.art === 'video-holen' ? 'holen' : 'senden', wifiOnly: J.plan.wifiOnly }, o)]);
+    if (t.art === 'video-holen') { const vid = +new URL(o.url).pathname.split('/').pop(); return { status: 200, body: '', result: { id: 'vv' + vid + 'aaaaaaaaav', name: o.name, ts: o.taken, w: 640, h: 480, dur: 4000, video: true, src: 'meinetouren', size: 10 } }; }
+    const nid = A.vnext++; tt.videos.push({ id: nid, taken_ts: 1, size: 10, v: 'w', video: true, ref: o.fields.ref, name: o.fields.name }); return { status: 200, body: JSON.stringify({ status: 'neu', id: nid }) };
+  };
+  const laufe = async () => {
+    const tasks = J.plan.tasks, fertig = new Set(J.journal.map(x => x.i));
+    for (let i = 0; i < tasks.length; i++) {
+      if (fertig.has(i)) continue;
+      await new Promise(r => setTimeout(r, A.langsam || 5));
+      if (J.cancel) { J.ende = 'abgebrochen'; break; }
+      if (A.killNach != null && J.journal.length >= A.killNach) { A.killNach = null; J.running = false; return; }      // vom System beendet: kein Ende
+      const e = schritt(tasks[i], J.cookie); e.versuche = 1; J.journal.push({ i, e });
+      if (e.status === 401) { J.ende = 'relogin'; break; } if (e.status === 403) { J.ende = 'verboten'; break; }
+    }
+    if (!J.ende) J.ende = 'fertig';
+    J.running = false;
+  };
   const c0 = window.MTApp.call; window.__abCall0 = c0;
   window.MTApp.call = (id, m, a) => {
     const o = JSON.parse(a || '{}');
-    if (!/^mt(Netz|FotoHolen|FotoSenden|VideoStart|Job|JobCancel)$/.test(m) && m !== 'deletePhoto') return c0.call(window.MTApp, id, m, a);
-    A.calls.push([m, o]); let r;
-    const tidOf = url => decodeURIComponent(new URL(url).pathname.split('/')[3]);
+    if (!/^mt(Netz|Abgleich(Start|Stand|Fortsetzen|Cancel|Verwerfen))$/.test(m) && m !== 'deletePhoto') return c0.call(window.MTApp, id, m, a);
+    if (m !== 'mtAbgleichStand') A.calls.push([m, o]);
+    let r;
     if (m === 'mtNetz') r = { wifi: A.wifi };
     else if (m === 'deletePhoto') r = true;
-    else if (m === 'mtFotoHolen') { const pid = +new URL(o.url).pathname.split('/').pop(), f = A.tours[tidOf(o.url)].fotos.find(x => x.id === pid);
-      r = f ? { status: 200, id: f.appId || ('h' + pid + 'aaaaaaaa'), name: o.name, ts: o.taken, lat: o.lat, lon: o.lng, w: 1600, h: 1200, src: 'meinetouren', exif: true, fp: 'p1:1:' + pid, fpd: 'p1:2:' + pid, size: 300000 } : { status: 404, body: '{"detail":"Foto nicht gefunden"}' }; }
-    else if (m === 'mtFotoSenden') { const t = A.tours[tidOf(o.url)], f = o.fields;
-      if (!A.darf) r = { status: 403, body: '{"detail":"Dieser Zugang darf nur ansehen"}' };
-      else if (A.geloescht.has(f.ref) && f.force !== '1') r = { status: 200, body: JSON.stringify({ status: 'geloescht', id: null }) };
-      else { const v = t.fotos.find(x => x.ref === f.ref); if (v) r = { status: 200, body: JSON.stringify({ status: 'vorhanden', id: v.id, wie: 'kennung' }) };
-        else { const nid = A.nextId++; t.fotos.push({ id: nid, taken_ts: Math.round(+f.taken / 1000), lat: f.lat ? +f.lat : null, lng: f.lng ? +f.lng : null, size: 1, v: 'v' + nid, video: false, fp: null, sha1: 'x', ref: f.ref, name: f.name }); r = { status: 200, body: JSON.stringify({ status: 'neu', id: nid }) }; } } }
-    else if (m === 'mtVideoStart') {
-      if (o.wifiOnly && !A.wifi) r = { started: false, error: 'Kein WLAN. Videos werden nur im WLAN übertragen.' };
-      else { r = { started: true }; const t = A.tours[tidOf(o.url)];
-        if (o.mode === 'holen') { const vid = +new URL(o.url).pathname.split('/').pop(); A.job = { running: false, mode: 'holen', done: 10, total: 10, status: 200, error: '', body: '', result: { id: 'vv' + vid + 'aaaaaaaaav', name: o.name, ts: o.taken, w: 640, h: 480, dur: 4000, video: true, src: 'meinetouren', size: 10 } }; }
-        else { const nid = A.vnext++; t.videos.push({ id: nid, taken_ts: 1, size: 10, v: 'w', video: true, ref: o.fields.ref, name: o.fields.name }); A.job = { running: false, mode: 'senden', done: 10, total: 10, status: 200, error: '', body: JSON.stringify({ status: 'neu', id: nid }), result: null }; } } }
-    else if (m === 'mtJob') r = A.job || { running: false };
-    else r = true;
+    else if (m === 'mtAbgleichStart') {
+      if (J.running) r = { started: false, error: 'Es läuft schon ein Abgleich.' };
+      else { J.plan = { jobId: o.jobId, wifiOnly: o.wifiOnly, wlanFotos: o.wlanFotos, tasks: JSON.parse(JSON.stringify(o.tasks)) }; J.journal = []; J.ende = null; J.cancel = false; J.cookie = o.cookie; J.geholt = new Set(); J.running = true; r = { started: true }; laufe(); }
+    } else if (m === 'mtAbgleichFortsetzen') {
+      if (!J.plan || J.running || (J.ende && J.ende !== 'wlan')) r = { started: false, error: 'Es gibt keinen unterbrochenen Abgleich.' };
+      else { J.ende = null; J.cancel = false; J.cookie = o.cookie; J.running = true; r = { started: true }; laufe(); }
+    } else if (m === 'mtAbgleichCancel') { J.cancel = true; r = true; }
+    else if (m === 'mtAbgleichVerwerfen') { if (J.running) r = { ok: false }; else { J.plan = null; J.journal = []; J.ende = null; r = { ok: true }; } }
+    else if (m === 'mtAbgleichStand') {
+      if (!J.plan) r = { da: false, running: J.running };
+      else { const ab = +o.ab || 0, sicht = A.schlaf ? [] : J.journal.slice(ab);
+        r = { da: true, running: A.schlaf ? true : J.running, jobId: J.plan.jobId, n: J.plan.tasks.length, fertig: A.schlaf ? 0 : J.journal.length, zeilen: J.journal.length, ende: A.schlaf ? null : J.ende,
+          ergebnisse: sicht.map(x => Object.assign({}, x.e, { i: x.i, a: J.plan.tasks[x.i] })), mehr: false, text: 'Schritt', pos: 0, bytesDone: 0, bytesTotal: 0, wartetWlan: false }; }
+    }
     setTimeout(() => window.__mtcb(+id, true, JSON.stringify(r)), 5);
   };
 }"""
@@ -3715,6 +3754,62 @@ def abgleich_2180(pg):
         assert pg.evaluate("Set_.get('mtMitNotiz')") is False and not any(l.endswith("/note") and "7002" in l for l in pg.evaluate("window.__ab.log")), "ohne Schalter keine Notiz"
         leise()
 
+        # --- 7. 2.18.1: Bildschirm aus / Dienst beendet. Der Auftrag läuft in der Hülle weiter, auch wenn die Oberfläche nichts abholt (A.schlaf); die Ergebnisse
+        #     werden danach vollständig übernommen. Hinweis zur Akku-Optimierung beim Start (mit beiden Knöpfen). Vom System beendet → „Abgleich fortsetzen?“,
+        #     danach nur die offenen Schritte. Beim nächsten Öffnen (pruefeOffen) werden gepufferte Ergebnisse übernommen, auch bei „Nicht fortsetzen“. ---
+        pg.evaluate("""() => { window.__akku = { opt: 0, app: 0 }; window.__ab7 = { bat: MTApp.openBatterySettings, frei: MTApp.batteryUnrestricted, det: MTApp.openAppDetails };
+          MTApp.batteryUnrestricted = () => false; MTApp.openBatterySettings = () => { window.__akku.opt++; }; MTApp.openAppDetails = () => { window.__akku.app++; };
+          const g = window.__ab.tours.g2180; for (const id of [840, 841, 842, 843, 844, 845, 846]) g.fotos.push({ id, taken_ts: 1782892800 + 4000 + (id - 840) * 60, lat: 47.52, lng: 11.27, size: 300000, v: 'n' + id, video: false, fp: null, sha1: null, ref: null, name: null });
+          g.fotos_spaeter = g.fotos.splice(g.fotos.length - 4, 4); window.__ab.calls.length = 0; window.__ab.schlaf = true; window.__ab.langsam = 1200; }""")
+        menue("X"); pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go")
+        assert pg.inner_text("#ab-f-zahl").startswith("3 neue Fotos dort"), pg.inner_text("#ab-f-zahl")
+        pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Jetzt abgleichen?']"); pg.click(".sheet[aria-label='Jetzt abgleichen?'] .btn.pri")
+        pg.wait_for_selector("#ab-lauf #ab-akku"); assert "Autostart" in pg.inner_text("#ab-akku") and "Keine Einschränkungen" in pg.inner_text("#ab-akku"), pg.inner_text("#ab-akku")
+        bad += sheet_check_open(pg, "Abgleich läuft (Akku-Hinweis)")
+        pg.click("#ab-akku-opt"); pg.click("#ab-akku-app"); assert pg.evaluate("window.__akku") == {"opt": 1, "app": 1}
+        st = pg.evaluate("Native.json('mtAbgleichStart', { jobId: 'x', tasks: [{ art: 'stand' }] })"); assert st["started"] is False, "zweiter Auftrag während einer läuft"
+        pg.wait_for_function("() => !window.__ab.job.running && window.__ab.job.ende === 'fertig'", timeout=30000)      # die Hülle ist fertig, die Oberfläche hat noch nichts abgeholt
+        assert foto("h840aaaaaaaa") is None and len(calls("mtFotoHolen")) == 3, "noch nicht übernommen"
+        pg.evaluate("window.__ab.schlaf = false")      # Bildschirm wieder an
+        pg.wait_for_selector("#ab-ergebnis-t", timeout=30000); erg = pg.inner_text("#ab-ergebnis-t"); assert erg.startswith("3 Fotos geholt"), erg
+        assert all(foto(f"h{i}aaaaaaaa")["mtPid"] == i and foto(f"h{i}aaaaaaaa")["tour"] == ids["X"] for i in (840, 841, 842))
+        assert any(c[0] == "mtAbgleichVerwerfen" for c in pg.evaluate("window.__ab.calls")) and pg.evaluate("window.__ab.job.plan") is None and pg.evaluate("DB.kvGet('mtAbgleichLauf', null)") is None
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached"); leise()
+        # vom System beendet nach einem Schritt → fortsetzen; nur die offenen Schritte laufen, das erste Foto wird nicht noch einmal geholt
+        pg.evaluate("() => { const g = window.__ab.tours.g2180; g.fotos.push(g.fotos_spaeter.shift(), g.fotos_spaeter.shift()); window.__ab.calls.length = 0; window.__ab.langsam = 5; window.__ab.killNach = 1; MTApp.batteryUnrestricted = () => true; }")
+        menue("X"); pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go"); pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Jetzt abgleichen?']"); pg.click(".sheet[aria-label='Jetzt abgleichen?'] .btn.pri")
+        pg.wait_for_selector("#ab-weiter-ja", timeout=30000); t = pg.inner_text("#ab-weiter-t"); assert "1 von 3 Schritten" in t and "unterbrochen" in t, t
+        assert pg.locator("#ab-weiter #ab-akku").count() == 0, "Akku frei: kein Hinweis"
+        bad += sheet_check_open(pg, "Abgleich fortsetzen")
+        assert foto("h843aaaaaaaa")["mtPid"] == 843 and foto("h844aaaaaaaa") is None, "erstes Ergebnis schon übernommen"
+        pg.click("#ab-weiter-ja"); pg.wait_for_selector("#ab-ergebnis-t", timeout=30000); erg = pg.inner_text("#ab-ergebnis-t")
+        assert erg.startswith("2 Fotos geholt"), erg
+        hol = [c["pid"] for c in calls("mtFotoHolen")]; assert hol == [843, 844], hol
+        fo = calls("mtAbgleichFortsetzen"); assert len(fo) == 1 and fo[0]["cookie"] == "kh_session=SITZUNG-2180", fo
+        assert foto("h844aaaaaaaa")["mtPid"] == 844 and ".844-" in tour("X")["mtStand"], tour("X").get("mtStand")
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached"); leise()
+        # Auftrag lief, die App war zu (Oberfläche neu): beim Öffnen gepufferte Ergebnisse übernehmen; „Nicht fortsetzen“ verwirft den Rest
+        pg.evaluate("""async id => { const g = window.__ab.tours.g2180; g.fotos.push(...g.fotos_spaeter.splice(0)); window.__ab.calls.length = 0; window.__ab.killNach = 1;
+          const t = await DB.get('tours', id), neu = g.fotos.filter(f => f.id === 845 || f.id === 846);
+          const tasks = MedienCalc.auftrag([{ t, id: 'g2180', notiz: 'nichts', a: { holen: neu, senden: [], videosHolen: [], videosSenden: [] }, r: { videos: [] } }], 'https://mt.test');
+          await Native.json('mtAbgleichStart', { jobId: 'ab-test-offen', cookie: 'kh_session=SITZUNG-2180', wifiOnly: true, tasks }); }""", ids["X"])
+        pg.wait_for_function("() => !window.__ab.job.running", timeout=30000)
+        assert foto("h845aaaaaaaa") is None
+        pg.evaluate("() => { MedienAbgleich.pruefeOffen(); }"); pg.wait_for_selector("#ab-weiter-nein", timeout=30000)      # wie beim Öffnen der App (wartet nicht auf die Antwort)
+        assert foto("h845aaaaaaaa")["mtPid"] == 845 and "1 von 3 Schritten" in pg.inner_text("#ab-weiter-t"), pg.inner_text("#ab-weiter-t")
+        pg.click("#ab-weiter-nein"); pg.wait_for_selector("#ab-ergebnis-t"); erg = pg.inner_text("#ab-ergebnis-t")
+        assert erg.startswith("1 Foto geholt") and "abgebrochen" in erg, erg
+        assert foto("h846aaaaaaaa") is None and pg.evaluate("window.__ab.job.plan") is None and [c["pid"] for c in calls("mtFotoHolen")] == [845]
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached"); leise()
+        assert pg.evaluate("MedienAbgleich.pruefeOffen()") is None and pg.locator(".sheet").count() == 0, "nichts mehr offen"
+        # Abbrechen: der Auftrag endet mit „abgebrochen“ und wird nicht zum Fortsetzen angeboten
+        pg.evaluate("() => { window.__ab.tours.g2180.fotos.push({ id: 847, taken_ts: 1782892800 + 4000 + 7 * 60, lat: null, lng: null, size: 1, v: 'n847', video: false, fp: null, sha1: null, ref: null, name: null }); window.__ab.langsam = 400; window.__ab.calls.length = 0; }")
+        menue("X"); pg.click("#mt-abgleich-tour"); pg.wait_for_selector("#ab-go"); pg.click("#ab-go"); pg.wait_for_selector(".sheet[aria-label='Jetzt abgleichen?']"); pg.click(".sheet[aria-label='Jetzt abgleichen?'] .btn.pri")
+        pg.wait_for_selector("#ab-p-stop"); pg.click("#ab-p-stop"); pg.wait_for_selector("#ab-ergebnis-t", timeout=30000)
+        assert "abgebrochen" in pg.inner_text("#ab-ergebnis-t") and calls("mtFotoHolen") == [] and pg.locator("#ab-weiter").count() == 0, pg.inner_text("#ab-ergebnis-t")
+        pg.click("#ab-fertig"); pg.wait_for_selector(".sheet", state="detached"); leise()
+        pg.evaluate("() => { window.__ab.langsam = 5; MTApp.openBatterySettings = window.__ab7.bat; if (window.__ab7.frei) MTApp.batteryUnrestricted = window.__ab7.frei; else delete MTApp.batteryUnrestricted; if (window.__ab7.det) MTApp.openAppDetails = window.__ab7.det; else delete MTApp.openAppDetails; }")
+
         # --- 6. MT aus: kein Eintrag, kein Knopf, kein Netzaufruf – das Komoot-Paket bleibt ---
         pg.evaluate("async () => { Set_.v.mtAktiv = false; await Set_.set('mtWahl', 'nein'); window.__netlog.length = 0; window.__ab.calls.length = 0; }")
         menue("X"); assert pg.locator("#mt-abgleich-tour").count() == 0 and pg.locator("#kp-menu").count() == 1 and mt_spuren(pg) == [], mt_spuren(pg); zu(pg)
@@ -3726,6 +3821,7 @@ def abgleich_2180(pg):
         pg.evaluate("""async ([ids, vor]) => { for (const k of Object.keys(ids)) await Tours.remove(ids[k]);
           for (const t of await Tours.list()) if (/^Pin-Tour/.test(t.name)) await Tours.remove(t.id);
           for (const p of await DB.all('photos')) if (/^(a[1249]a{18}|b1b2c3d4e5f6a7b8c9dv|h8\\d\\daaaaaaaa|vv3a+v)$/.test(p.id)) await DB.del('photos', p.id);
+          await DB.del('kv', 'mtAbgleichLauf');
           if (vor.mt == null) await DB.del('kv', 'mt'); else await DB.kvSet('mt', vor.mt); await Set_.set('mtWlan', vor.wlan); await Set_.set('mtMitNotiz', vor.mitNotiz); Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); Tours.invalidate(); }""", [ids, vor])
     return bad
 

@@ -207,7 +207,35 @@
     return f;
   }
 
+  /* ---------------- 2.18.1: Auftrag für die Hülle ---------------- */
+  /** Schritte für den Abgleich in der Hülle (MtAbgleich.java), in dieser Reihenfolge je Tour: Notiz senden, Fotos holen, Fotos senden, Videos, Stand lesen.
+      items: [{ t (Tour der App: id, name, note, mtNotizBasis), id (Kennung in Meine Touren), notiz ('senden'|'beides'|sonst nichts), a (auswahl()), force, r (GET /tagebuch),
+               stand (Stand auch ohne andere Schritte lesen, z. B. nach „Notiz holen“) }].
+      Notiz holen braucht kein Netz und gehört nicht hierher (macht die Oberfläche sofort). Jeder Schritt trägt, was die Oberfläche zum Übernehmen braucht
+      (tour, mt, pid …); das Sitzungs-Cookie steht nicht darin. */
+  function auftrag(items, base) {
+    const out = [], enc = encodeURIComponent;
+    for (const it of items || []) {
+      const pfad = rest => base + '/api/tours/' + enc(it.id) + rest, c = { tour: it.t.id, mt: String(it.id), tname: String(it.t.name || '') }, a = it.a || {};
+      if (it.notiz === 'senden' || it.notiz === 'beides') {
+        const L = norm(it.t.note);
+        if (L) out.push(Object.assign({ art: 'notiz', url: pfad('/notiz'), body: JSON.stringify({ text: L, basis: it.t.mtNotizBasis != null ? it.t.mtNotizBasis : null }), L, beides: it.notiz === 'beides' }, c));
+      }
+      for (const x of a.holen || []) out.push(Object.assign({ art: 'foto-holen', url: pfad('/tagebuch/photo/' + enc(x.id) + '?w=' + HOLEN_PX + (x.v ? '&v=' + enc(x.v) : '')),
+        name: x.name || ('MeineTouren_' + x.id + '.jpg'), taken: x.taken_ts ? x.taken_ts * 1000 : 0, lat: x.lat, lng: x.lng, pid: x.id }, c));
+      for (const p of a.senden || []) out.push(Object.assign({ art: 'foto-senden', url: pfad('/photo'), id: p.id, fields: sendeFelder(p, !!(it.force && p.mtGeloescht)), maxPx: FOTO_PX }, c));
+      for (const x of a.videosHolen || []) out.push(Object.assign({ art: 'video-holen', url: pfad('/tagebuch/video/' + enc(x.id) + '?video=1'), key: it.id + '_' + x.id + '_' + (x.v || ''),
+        name: x.name || 'Video.mp4', taken: x.taken_ts ? x.taken_ts * 1000 : 0, lat: x.lat, lng: x.lng, size: x.size || 0, pid: x.id }, c));
+      const used = ((it.r && it.r.videos) || []).reduce((s, v) => s + (+v.size || 0), 0);
+      for (const p of a.videosSenden || []) out.push(Object.assign({ art: 'video-senden', url: pfad('/video'), id: p.id, fields: sendeFelder(p, false), used }, c));
+      if ((out.length && out[out.length - 1].mt === c.mt) || it.stand) out.push(Object.assign({ art: 'stand', url: base + '/api/tagebuch/uebersicht?ids=' + enc(it.id) }, c));
+    }
+    return out;
+  }
+  /** Stand der Hülle → lässt sich der Auftrag fortsetzen? (vom System beendet oder zu lange ohne WLAN, noch nicht alles erledigt) */
+  function fortsetzbar(st) { return !!(st && st.da && !st.running && (st.ende == null || st.ende === 'wlan') && +st.fertig < +st.n); }
+
   const api = { NOTIZ_MAX, laenge, VIDEO_MAX, VIDEO_TOUR_MAX, FOTO_PX, HOLEN_PX, WLAN_AB, norm, trennzeile, datum, serverMerge, holenMerge, notizLage, notizText,
-    gleicheAufnahme, fotoPlan, auswahl, mb, fotoText, videoFrage, zaehle, ergebnisText, brauchtAbruf, mtId, offset, sendeFelder };
+    gleicheAufnahme, fotoPlan, auswahl, mb, fotoText, videoFrage, zaehle, ergebnisText, brauchtAbruf, mtId, offset, sendeFelder, auftrag, fortsetzbar };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.MedienCalc = api;
 })(typeof window !== 'undefined' ? window : globalThis);

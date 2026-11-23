@@ -173,6 +173,27 @@ public final class MtTransfer {
         }
     }
 
+    /** 2.18.1: kleiner JSON-Aufruf (GET, oder POST mit json als Inhalt) für den Auftrag in der Hülle – Notiz senden, Stand lesen. Wirft bei Netzfehler. */
+    public static Result json(String url, String cookie, String method, String json, int timeoutMs) throws IOException {
+        HttpURLConnection h = open(url, cookie, timeoutMs);
+        try {
+            h.setRequestMethod(method == null ? "GET" : method);
+            if (json != null) {
+                byte[] b = json.getBytes(StandardCharsets.UTF_8);
+                h.setDoOutput(true);
+                h.setRequestProperty("Content-Type", "application/json");
+                h.setFixedLengthStreamingMode(b.length);
+                try (OutputStream out = h.getOutputStream()) { out.write(b); }
+            }
+            Result r = new Result();
+            r.status = h.getResponseCode();
+            r.body = readBody(h, 256 * 1024);
+            return r;
+        } finally {
+            h.disconnect();
+        }
+    }
+
     /**
      * In die Teildatei part laden (fortsetzen, wenn schon angefangen). maxBytes: größere Antworten werden abgebrochen (413-artig, Status 413 im Ergebnis).
      * Ergebnis: status 200/206 = fertig; sonst der Status des Servers (die Teildatei bleibt bei Netzfehler oder Abbruch erhalten).
