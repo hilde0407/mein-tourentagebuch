@@ -2764,7 +2764,7 @@ def pdf_anteil(im, box=None):
     from PIL import ImageChops, Image
     c = im.crop(box) if box else im
     d = ImageChops.difference(c, Image.new("RGB", c.size, (251, 252, 248))).convert("L").point(lambda v: 255 if v > 24 else 0)
-    return sum(1 for v in d.getdata() if v) / (c.size[0] * c.size[1])
+    return d.histogram()[255] / (c.size[0] * c.size[1])
 
 def pdf(pg, aus=None):
     """2.5.0 Als PDF. aus: Ordner für Beispieldateien (PDF und PNG je Seite), sonst nichts schreiben."""
