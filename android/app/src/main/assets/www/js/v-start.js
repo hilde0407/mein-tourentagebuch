@@ -125,18 +125,20 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
     const d = Math.round((a - b) / b * 100);
     return h('p', { class: 'hcmp ' + (d >= 0 ? 'up' : 'down') }, (d >= 0 ? d + ' % mehr' : -d + ' % weniger') + ' Strecke als ' + (yr - 1) + ' um diese Zeit');
   };
-  const used = [...new Set(all.filter(t => inYear(t, yr)).map(t => t.sport))];
+  const gr = StatGruppen.aktuell();      // 2.19.0: Statistik-Gruppen sind ein Chip (statt eines je Sportart)
+  const usedSp = [...new Set(all.filter(t => inYear(t, yr)).map(t => t.sport))];
+  const used = [...new Set(Sports.list.map(s => s[0]).filter(k => usedSp.includes(k)).map(k => StatGruppen.schluessel(k, gr)))];
   let sport = '';      // nur Seitenzustand: filtert allein diesen Abschnitt
   const chips = UI.chips([]), box = h('div'), goalBox = h('div', { class: 'ygoals' });
   let mine = [];
   const draw = () => {
-    const ok = t => !sport || t.sport === sport;
+    const ok = t => StatGruppen.passt(sport, t.sport, gr);
     const cur = all.filter(t => inYear(t, yr) && ok(t)), prev = all.filter(t => tillToday(t, yr - 1) && ok(t));
     chips.innerHTML = ''; box.innerHTML = '';
     chips.hidden = used.length < 2;      // bei nur einer Sportart gäbe es nichts zu wählen
     if (used.length > 1) {
       chips.append(UI.chip('Alle', !sport, () => { sport = ''; draw(); }));
-      Sports.list.filter(s => used.includes(s[0])).forEach(s => chips.append(UI.chip(s[1], sport === s[0], () => { sport = sport === s[0] ? '' : s[0]; draw(); })));
+      used.forEach(k => chips.append(UI.chip(StatGruppen.name(k, gr), sport === k, () => { sport = sport === k ? '' : k; draw(); })));
     }
     const mon = Array(12).fill(0);
     cur.forEach(t => { mon[new Date(t.start).getMonth()] += t.dist; });
@@ -149,7 +151,8 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
     } else box.append(h('p', { class: 'muted' }, yr + ' steht noch keine Tour im Tagebuch.'));
     // Ziele folgen der Auswahl: „Alle“ zeigt alle Ziele, eine Sportart nur Ziele, die genau für sie (oder ihre Gruppe) gelten – ein Ziel „Alle Sportarten“ zählt auch andere Touren und würde neben den Zahlen oben falsch wirken
     goalBox.innerHTML = '';
-    const shown = sport ? mine.filter(g => g.sport && Ziele.sportPasst(g, sport)) : mine;
+    const grp = StatGruppen.gruppe(sport, gr);      // Gruppen-Chip: Ziele genau für die Gruppe oder solche, die alle ihre Sportarten zählen
+    const shown = sport ? mine.filter(g => g.sport && (grp ? g.sport === sport || grp.sports.every(m => Ziele.sportPasst(g, m, gr)) : Ziele.sportPasst(g, sport, gr))) : mine;
     if (shown.length) goalBox.append(...shown.slice(0, 3).map(g => Goals.row(g, all, now)), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, shown.length > 3 ? 'Alle ' + shown.length + ' Ziele' : 'Ziele ändern'));
     else if (mine.length) goalBox.append(h('p', { class: 'muted small', id: 'ynogoal' }, 'Kein Ziel nur für diese Sportart. Die Ziele für alle Sportarten siehst du unter „Alle“.'), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, 'Ziele ändern'));
     else goalBox.append(h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));

@@ -1,7 +1,7 @@
 'use strict';
 /* Planen: Wegpunkte auf der Karte setzen, Routing über BRouter (konfigurierbar), Profil, Speichern/Export/Ansagen. */
 const Router = {
-  profileFor: s => ({ hike: 'hiking-mountain', walk: 'hiking-mountain', mountaineering: 'hiking-mountain', run: 'hiking-mountain', mtb: 'mtb', bike: 'trekking', ebike: 'trekking', racebike: 'fastbike', ski: 'hiking-mountain', skitour: 'hiking-mountain', skialpin: 'hiking-mountain', nordic: 'hiking-mountain' }[s] || 'trekking'),
+  profileFor: s => ({ hike: 'hiking-mountain', walk: 'hiking-mountain', mountaineering: 'hiking-mountain', snowshoe: 'hiking-mountain', climbing: 'hiking-mountain', nordicwalking: 'hiking-mountain', trailrun: 'hiking-mountain', gravel: 'trekking', emtb: 'mtb', snowboard: 'hiking-mountain', run: 'hiking-mountain', mtb: 'mtb', bike: 'trekking', ebike: 'trekking', racebike: 'fastbike', ski: 'hiking-mountain', skitour: 'hiking-mountain', skialpin: 'hiking-mountain', nordic: 'hiking-mountain' }[s] || 'trekking'),
   /** Strecke zwischen zwei Punkten; bei Fehler gerade Linie (geradeaus = true). */
   async leg(a, b, profile) {
     const base = (Set_.get('routeUrl') || 'https://brouter.de/brouter').replace(/\/$/, '');
@@ -77,7 +77,7 @@ Views['/plan'] = async (root, [editId]) => {
   map.on('click', e => addWp(e.latlng));
 
   const hint = h('p', { class: 'muted' }, 'Tippe auf die Karte, um Start, Zwischenpunkte und Ziel zu setzen. Punkte lassen sich verschieben; langes Drücken löscht einen Punkt.');
-  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, Sports.list.filter(s => ['hike', 'walk', 'run', 'mtb', 'bike', 'ebike', 'racebike', 'skitour', 'nordic'].includes(s[0]) || s[0] === sport).map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
+  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, Sports.list.filter(s => Sports.KAT[0][2].concat(Sports.KAT[1][2], ['skitour', 'skialpin', 'nordic', 'snowboard', 'inline', 'horse']).includes(s[0]) || s[0] === sport)      /* 2.19.0: alle Aktivitäten zu Fuß und mit dem Rad, die Winterarten mit Strecke */.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
   const snapCb = h('input', { type: 'checkbox', checked: true, onchange: async e => { snap = e.target.checked; if (wps.length > 1) await rebuild(); } });
   panel.append(h('div', { class: 'row' }, sel, h('label', { class: 'sw' }, snapCb, h('span', null, 'Wegen folgen'))), info, prof, hint,
     h('div', { class: 'row wrap' },

@@ -5,9 +5,10 @@
    Touren sind {id, name, sport, start (ms), dist (m), up (m), dur (s), moving (s), maxAlt (m), stars …}. Läuft im Browser (globales `Jahr`) und in Node. */
 (function (root) {
   const node = typeof module !== 'undefined' && module.exports;
+  const SG = node ? require('./calc-statgruppen.js') : root.StatGruppen;      // 2.19.0: eigene Statistik-Gruppen ersetzen die festen für ihre Sportarten
   const Z = node ? require('./calc-ziele.js') : root.Ziele, PH = node ? require('./calc-planhilfe.js') : root.Planhilfe, AB = node ? require('./calc-abgleich.js') : root.Abgleich;
 
-  /** Sportgruppen des Rückblicks: Spazieren zählt (wie seit 2.0.1 bei Zepp) als Wandern, Bergsteigen auch; Schneeschuh ist schon Wandern (Schlagwort). */
+  /** Sportgruppen des Rückblicks bis 2.18 (nur noch zum Nachschlagen; seit 2.19.0 sind es die Standardgruppen in calc-statgruppen.js, änderbar unter Einstellungen). */
   const GRUPPEN = [
     ['wandern', 'Wandern', ['hike', 'walk'].concat(PH.SPORT_GRP.foot)],
     ['laufen', 'Laufen', PH.SPORT_GRP.run],
@@ -40,15 +41,17 @@
     return vorgabe(all, now);
   }
 
-  function nachSportart(ts) {
-    const out = GRUPPEN.map(([key, label, sports]) => ({ key, label, sports, ts: ts.filter(t => sports.includes(t.sport)) }));
-    const rest = ts.filter(t => !GRUPPEN.some(g => g[2].includes(t.sport)));
-    out.push({ key: 'sonst', label: 'Sonstiges', sports: [], ts: rest });
+  /** Aufteilung nach Sportart. 2.19.0: nach den Statistik-Gruppen (calc-statgruppen.js; Vorgabe: die geltenden, ohne Änderung die Standardgruppen Wandern,
+      Rad, Ski – dieselbe Aufteilung wie GRUPPEN bis 2.18). Sportarten ohne Gruppe stehen für sich, „Sonstiges“ wie gehabt. Schlüssel: 'sgrp:<id>', 'laufen',
+      die Sportart oder 'sonst'. */
+  function nachSportart(ts, gruppen) {
+    const gr = gruppen === undefined ? SG.aktuell() : gruppen, by = new Map();
+    ts.forEach(t => { const [key, label] = SG.rueckblickZeile(t.sport, gr); if (!by.has(key)) by.set(key, { key, label, ts: [] }); by.get(key).ts.push(t); });
     const total = sum(ts, 'dist');
-    return out.filter(g => g.ts.length).map(g => {
+    return [...by.values()].map(g => {
       const k = kennzahlen(g.ts);
       return { key: g.key, label: g.label, n: k.n, dist: k.dist, up: k.up, zeit: k.zeit, anteil: total > 0 ? k.dist / total : k.n / ts.length };
-    }).sort((a, b) => b.anteil - a.anteil || b.n - a.n);
+    }).sort((a, b) => b.anteil - a.anteil || b.n - a.n || (a.key < b.key ? -1 : 1));
   }
   function nachMonat(ts) {
     const m = Array.from({ length: 12 }, (_, i) => ({ m: i, name: MONATE[i], n: 0, dist: 0, up: 0, zeit: 0 }));
@@ -74,7 +77,8 @@
   }
   const diff = (a, b) => ({ n: a.n - b.n, dist: a.dist - b.dist, up: a.up - b.up, zeit: a.zeit - b.zeit, tage: a.tage - b.tage });
 
-  /** Alles für die Seite und die Bildkarte. all: alle Touren (auch geplante und ausgeblendete – sie werden hier aussortiert), year, now, opts.regionen (Tour → Name).
+  /** Alles für die Seite und die Bildkarte. all: alle Touren (auch geplante und ausgeblendete – sie werden hier aussortiert), year, now, opts.regionen (Tour → Name),
+      opts.gruppen (Statistik-Gruppen, Vorgabe: die gespeicherten).
       vorjahr gibt es nur, wenn das Vorjahr Touren hat; im laufenden Jahr wird bis zum gleichen Kalendertag des Vorjahres verglichen (bisHeute), sonst Jahr gegen Jahr. */
   function berechne(all, year, now, opts) {
     now = now || new Date(); opts = opts || {};
@@ -86,7 +90,7 @@
     if (bisHeute) { const d = now.getMonth() === 1 && now.getDate() === 29 ? 28 : now.getDate(), grenze = new Date(year - 1, now.getMonth(), d, 23, 59, 59, 999).getTime(); pv = pv.filter(t => t.start <= grenze); }
     if (pv.length) { const kv = kennzahlen(pv); vorjahr = { year: year - 1, bisHeute, kennzahlen: kv, diff: diff(k, kv) }; }
     return {
-      year, leer: false, n: ts.length, kennzahlen: k, vorjahr, monate, sportarten: nachSportart(ts), regionen: regionen(ts, opts.regionen),
+      year, leer: false, n: ts.length, kennzahlen: k, vorjahr, monate, sportarten: nachSportart(ts, opts.gruppen), regionen: regionen(ts, opts.regionen),
       hoehepunkte: { laengste: bw.strecke[0] || null, aufstieg: bw.aufstieg[0] || null, hoechster: bw.hoehe[0] || null,
         serieWochen: Z.serie(ts, new Date(year, 11, 31)).rekord, monat: aktivsterMonat(monate), schoenste: schoenste(ts) },
       ids: ts.map(t => t.id),

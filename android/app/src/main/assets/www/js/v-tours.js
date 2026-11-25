@@ -356,7 +356,8 @@ Views['/tour'] = async (root, [id]) => {
     catch (e) { toast(e.message); }
   }
   async function changeSport() {
-    const s = sheet('Sportart', UI.list(Sports.list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; t.sportMan = 1; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' }));
+    // 2.19.0: alle Aktivitäten nach Kategorien („Ski (allgemein)“ nur, wenn die Tour sie schon hat)
+    const s = sheet('Sportart', h('div', null, Sports.kategorien(t.sport).map(([kid, knm, list]) => [h('h3', { class: 'sub' }, knm), UI.list(list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; t.sportMan = 1; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' })]).flat()));
   }
   async function exportGpx() {
     const wp = photos.filter(p => p.lat != null).map(p => ({ lat: p.lat, lon: p.lon, name: p.name }));

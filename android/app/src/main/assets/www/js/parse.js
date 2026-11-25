@@ -1,42 +1,139 @@
 'use strict';
 /* Einlesen von GPX, TCX, FIT (auch aus ZIP/GZ). Ergebnis: [{name, sport, pts:[{lat,lon,ele,t,newSeg}], srcId?}] */
+/* 2.19.0: Aktivitäten-Katalog als Tabelle (Vorlage: aktivitaeten-katalog.md, Stand 25.11.2026, aus der Sportliste der Amazfit Balance 2) – jede Zeile ist eine
+   eigene Sportart: [Kategorie, Schlüssel, Name, Zeichen (wird zum Symbol, js/icons.js), Kartenfarbe]. Weitere Aktivitäten: eine Zeile ergänzen (Symbol in
+   ICON_CHARS, Zuordnung in Sports.norm, ggf. Senden in calc-senden.js). Die Schlüssel bis 2.18 bleiben (hike, walk, mtb, bike …).
+   Zusammengefasst wird nur noch über selbst angelegte Statistik-Gruppen (calc-statgruppen.js). */
+const KATEGORIEN = [['fuss', 'Zu Fuß'], ['rad', 'Rad'], ['winter', 'Winter'], ['wasser', 'Wasser'], ['sonst', 'Outdoor & Sonstige']];
+const KATALOG = [
+  ['fuss', 'hike', 'Wandern', '🥾', '#2e7d32'],
+  ['fuss', 'walk', 'Spazieren', '🚶', '#43a047'],
+  ['fuss', 'dogwalk', 'Gassigehen', '🐕', '#7cb342'],
+  ['fuss', 'mountaineering', 'Bergsteigen', '🧗', '#4e342e'],
+  ['fuss', 'climbing', 'Klettern', '🪨', '#795548'],
+  ['fuss', 'nordicwalking', 'Nordic Walking', '🦯', '#558b2f'],
+  ['fuss', 'snowshoe', 'Schneeschuh', '🌨️', '#0277bd'],
+  ['fuss', 'run', 'Laufen', '🏃', '#c62828'],
+  ['fuss', 'trailrun', 'Trailrunning', '🌲', '#ad2121'],
+  ['fuss', 'orienteering', 'Orientierungslauf', '🧭', '#e57373'],
+  ['rad', 'bike', 'Radtour', '🚴', '#1565c0'],
+  ['rad', 'commute', 'Radpendeln', '🏙️', '#42a5f5'],
+  ['rad', 'racebike', 'Rennrad', '🚴', '#6a1b9a'],
+  ['rad', 'mtb', 'Mountainbike', '🚵', '#e65100'],
+  ['rad', 'gravel', 'Gravelbike', '🚲', '#8d6e63'],
+  ['rad', 'cyclocross', 'Cyclocross', '🚲', '#ff7043'],
+  ['rad', 'bmx', 'BMX', '🛞', '#ef6c00'],
+  ['rad', 'ebike', 'E-Bike', '⚡', '#00838f'],
+  ['rad', 'emtb', 'E-Mountainbike', '🚵', '#00695c'],
+  ['winter', 'skialpin', 'Ski alpin', '🏔️', '#3949ab'],
+  ['winter', 'skitour', 'Skitour', '🎿', '#ad1457'],
+  ['winter', 'nordic', 'Langlauf', '❄️', '#00796b'],
+  ['winter', 'snowboard', 'Snowboard', '🏂', '#283593'],
+  ['winter', 'sled', 'Rodeln / Bob', '🛷', '#5d4037'],
+  ['winter', 'iceskate', 'Eislaufen', '⛸️', '#4fc3f7'],
+  ['winter', 'snowmobile', 'Schneemobil', '🛻', '#455a64'],
+  ['winter', 'ski', 'Ski (allgemein)', '⛷️', '#37474f'],      // 2.2.0: nur noch, wenn die genaue Art unbekannt ist (früher „Ski & Schnee“); in Auswahllisten nur, wenn schon gewählt
+  ['wasser', 'swim', 'Freiwasserschwimmen', '🏊', '#0288d1'],
+  ['wasser', 'snorkel', 'Schnorcheln', '🤿', '#039be5'],
+  ['wasser', 'kayak', 'Kajak / Kanu', '🛶', '#00897b'],
+  ['wasser', 'sup', 'Stand-up-Paddling', '🏄', '#26a69a'],
+  ['wasser', 'rowing', 'Rudern', '🚣', '#006064'],
+  ['wasser', 'dragonboat', 'Drachenboot', '🐉', '#00838f'],
+  ['wasser', 'sailing', 'Segeln', '⛵', '#1976d2'],
+  ['wasser', 'boat', 'Bootfahren', '🚤', '#0d47a1'],
+  ['wasser', 'waterski', 'Wasserski', '🌊', '#4dd0e1'],
+  ['wasser', 'surf', 'Wellenreiten', '🏄', '#0097a7'],
+  ['wasser', 'kitesurf', 'Kitesurfen', '🪁', '#00acc1'],
+  ['wasser', 'wakesurf', 'Wakesurfen', '🌊', '#26c6da'],
+  ['sonst', 'skateboard', 'Skateboard', '🛹', '#fb8c00'],
+  ['sonst', 'inline', 'Inlineskaten / Rollschuh', '🛼', '#f57c00'],
+  ['sonst', 'horse', 'Reiten', '🐎', '#6d4c41'],
+  ['sonst', 'fishing', 'Angeln', '🎣', '#5c6bc0'],
+  ['sonst', 'hunting', 'Jagen', '🦌', '#827717'],
+  ['sonst', 'archery', 'Bogenschießen', '🏹', '#9e9d24'],
+  ['sonst', 'golf', 'Golf', '⛳', '#689f38'],
+  ['sonst', 'atv', 'Quad / ATV', '🚙', '#8d6e63'],
+  ['sonst', 'motorbike', 'Offroad-Motorrad', '🏍️', '#bf360c'],
+  ['sonst', 'other', 'Sonstiges', '📍', '#546e7a'],
+];
 const Sports = {
-  list: [
-    ['hike', 'Wandern', '🥾'], ['walk', 'Spazieren', '🚶'], ['mtb', 'Mountainbike', '🚵'], ['bike', 'Tourenrad', '🚴'],
-    ['racebike', 'Rennrad', '🚴'], ['ebike', 'E-Bike', '⚡'], ['run', 'Laufen', '🏃'],
-    ['skialpin', 'Ski alpin', '🏂'], ['skitour', 'Skitour', '🎿'], ['nordic', 'Langlauf', '❄️'],
-    ['ski', 'Ski (allgemein)', '⛷️'],      // 2.2.0: nur noch, wenn die genaue Art unbekannt ist (früher „Ski & Schnee“)
-    ['mountaineering', 'Bergsteigen', '🧗'], ['other', 'Sonstiges', '📍'],
-  ],
-  /** Die Wintersportarten (Gruppe „Ski“); Schneeschuhwandern zählt seit 2.2.0 als Wandern und bekommt das Schlagwort „Schneeschuh“. */
+  /** [Schlüssel, Name, Zeichen] je Sportart, in der Reihenfolge des Katalogs. */
+  list: KATALOG.map(r => [r[1], r[2], r[3]]),
+  /** Kategorien für Auswahllisten: [id, Name, [Schlüssel …]]. */
+  KAT: KATEGORIEN.map(([id, name]) => [id, name, KATALOG.filter(r => r[0] === id).map(r => r[1])]),
+  /** Kartenfarbe je Sportart (MapKit.sportColor). */
+  farben: () => Object.fromEntries(KATALOG.map(r => [r[1], r[4]])),
+  /** Nur noch für ältere Touren gedacht – in Auswahllisten nur, wenn die Tour sie schon hat. */
+  ALT: ['ski'],
+  /** Kategorien mit [Schlüssel, Name, Zeichen] der Sportarten; mit: Sportart, die trotz ALT erscheinen soll (die gerade gewählte). */
+  kategorien(mit) { return Sports.KAT.map(([id, name, keys]) => [id, name, keys.filter(k => !Sports.ALT.includes(k) || k === mit).map(k => Sports.list.find(s => s[0] === k))]); },
+  /** Die Skiarten (feste Auswahl „Ski (alle Arten)“ für ältere Ziele und Filter). */
   SKI: ['skialpin', 'skitour', 'nordic', 'ski'],
   SCHNEESCHUH: 'Schneeschuh',
   label: id => (Sports.list.find(s => s[0] === id) || Sports.list.find(s => s[0] === 'other'))[1],
   icon: id => (Sports.list.find(s => s[0] === id) || Sports.list.find(s => s[0] === 'other'))[2],
-  /** Passt eine Tour dieser Sportart zur Auswahl in einem Filter? sel: '' (alle), 'grp:ski' (alle Skiarten) oder eine Sportart. */
-  passt: (sel, sport) => !sel || (sel === 'grp:ski' ? Sports.SKI.includes(sport) : sel === sport),
+  /** Passt eine Tour dieser Sportart zur Auswahl in einem Filter? sel: '' (alle), 'grp:ski' (alle Skiarten), 'sgrp:<id>' (eigene Statistik-Gruppe, 2.19.0)
+      oder eine Sportart. Gerechnet in calc-statgruppen.js; gruppen: Liste der Statistik-Gruppen (Vorgabe: die gespeicherten). */
+  passt: (sel, sport, gruppen) => {
+    const SG = typeof StatGruppen !== 'undefined' ? StatGruppen : require('./calc-statgruppen.js');      // eslint-disable-line no-undef
+    return SG.passt(sel, sport, gruppen === undefined ? SG.aktuell() : gruppen);
+  },
   /** Ist die angegebene Sportart Schneeschuhwandern (Meine Touren „snowshoe“, Komoot, Strava „Snowshoe“, GPX-Typ, FIT 35)? */
   isSnowshoe(s) { s = String(s || '').toLowerCase().replace(/[\s_-]+/g, ''); return s.includes('snowshoe') || s.includes('schneeschuh'); },
-  /** Schlagworte, die eine Sportangabe mitbringt: Schneeschuhwandern wird zu Wandern, bleibt aber über „Schneeschuh“ auffindbar. */
+  /** Schlagworte, die eine Sportangabe mitbringt: Schneeschuh bekommt (wie seit 2.2.0) das Schlagwort „Schneeschuh“. */
   tags: s => (Sports.isSnowshoe(s) ? [Sports.SCHNEESCHUH] : []),
   /** Verschiedene Bezeichnungen (Komoot, Strava, Garmin, Bosch, GPX-Typ) auf unsere Sportarten abbilden. */
   norm(s) {
     s = String(s || '').toLowerCase().replace(/[\s_-]+/g, '');
     if (!s) return 'other';
+    if (/motorbik|motorcycl|motocross|motorrad|dirtbike/.test(s)) return 'motorbike';      // vor „bik“/„cycl“
+    if (/^atv$|quad/.test(s)) return 'atv';
+    if (s.includes('cyclocross')) return 'cyclocross';
+    if (s.includes('bmx')) return 'bmx';
+    if (/commut|pendel/.test(s)) return 'commute';
     if (s.includes('race') || s.includes('roadbik') || s === 'road') return 'racebike';
-    if (/^e(touring|mountain|mtb|bike|bicycle|ride|gravel|racebike)/.test(s) || s.includes('ebike') || s.includes('emtb') || s.includes('pedelec')) return 'ebike';
-    if (s.includes('mtb') || s.includes('mountainbik') || s.includes('gravel')) return 'mtb';
+    if (/^e(mountain|mtb)/.test(s) || s.includes('emtb')) return 'emtb';      // 2.19.0: E-Mountainbike eigene Sportart (Meine Touren „e_mtb“, Strava „EMountainBikeRide“)
+    if (/^e(touring|bike|bicycle|ride|gravel|racebike)/.test(s) || s.includes('ebike') || s.includes('pedelec')) return 'ebike';
+    if (s.includes('gravel')) return 'gravel';      // 2.19.0 (bis 2.18: Mountainbike)
+    if (s.includes('mtb') || s.includes('mountainbik')) return 'mtb';
     if (s.includes('bic') || s.includes('bik') || s.includes('ride') || s.includes('cycl')) return 'bike';
-    if (s.includes('run') || s.includes('jog') || s.includes('trail')) return 'run';
+    if (s.includes('trail')) return 'trailrun';      // 2.19.0 (bis 2.18: Laufen)
+    if (/orienteer|orientierungslauf/.test(s)) return 'orienteering';
+    if (s.includes('run') || s.includes('jog')) return 'run';
     if (/skitour|skimo|skimountaineer|backcountry|skitouring|touringski/.test(s)) return 'skitour';      // vor „mountaineer“: Skibergsteigen ist Skitour
-    if (s.includes('mountaineer') || s.includes('climb')) return 'mountaineering';
-    if (s.includes('nordicwalk')) return 'hike';      // Nordic Walking (Meine Touren, Garmin): zu Fuß, kein Wintersport
-    if (Sports.isSnowshoe(s)) return 'hike';          // 2.2.0: Schneeschuhwandern zählt als Wandern (Schlagwort „Schneeschuh“ über Sports.tags)
+    if (s.includes('mountaineer') || s.includes('bergsteig')) return 'mountaineering';
+    if (/climb|kletter|viaferrata|boulder/.test(s)) return 'climbing';      // 2.19.0 (bis 2.18: Bergsteigen)
+    if (s.includes('nordicwalk')) return 'nordicwalking';      // 2.19.0 eigene Sportart (bis 2.18: Wandern)
+    if (Sports.isSnowshoe(s)) return 'snowshoe';      // 2.19.0: eigene Sportart (2.2.0–2.18: Wandern); Schlagwort „Schneeschuh“ weiter über Sports.tags
     if (/nordic|crosscountry|langlauf|skate?skiing|classicski/.test(s)) return 'nordic';
-    if (/skialpin|alpineski|alpin|downhill|resort|snowboard/.test(s)) return 'skialpin';
+    if (/waterski|wasserski/.test(s)) return 'waterski';      // vor „ski“
+    if (/snowmobil|schneemobil|motorschlitten/.test(s)) return 'snowmobile';
+    if (s.includes('snowboard')) return 'snowboard';      // 2.19.0 (bis 2.18: Ski alpin)
+    if (/sled|rodel|toboggan|schlitten/.test(s)) return 'sled';
+    if (/iceskat|eislauf|eisschnell/.test(s)) return 'iceskate';
+    if (/skialpin|alpineski|alpin|downhill|resort/.test(s)) return 'skialpin';
     if (s.includes('ski') || s.includes('snow')) return 'ski';      // Wintersport ohne genauere Angabe
+    if (/kitesurf|kiteboard/.test(s)) return 'kitesurf';
+    if (s.includes('wakesurf')) return 'wakesurf';
+    if (/surf|wellenreit/.test(s)) return 'surf';
+    if (/standup|paddleboard|^sup$/.test(s)) return 'sup';
+    if (/dragonboat|drachenboot/.test(s)) return 'dragonboat';
+    if (/snorkel|schnorchel/.test(s)) return 'snorkel';
+    if (/kayak|canoe|kanu|paddl/.test(s)) return 'kayak';
+    if (/rowing|rudern|^row$/.test(s)) return 'rowing';
+    if (/sail|segel/.test(s)) return 'sailing';
+    if (/swim|schwimm|openwater/.test(s)) return 'swim';
+    if (/boat|boot/.test(s)) return 'boat';
+    if (s.includes('skateboard')) return 'skateboard';
+    if (/fish|angeln/.test(s)) return 'fishing';
+    if (/hunt|jagd|jagen/.test(s)) return 'hunting';
+    if (/archery|bogensch/.test(s)) return 'archery';
+    if (/dogwalk|gassi/.test(s)) return 'dogwalk';
+    if (/inline|rollerblad|rollerskat|rollschuh/.test(s)) return 'inline';
+    if (/horse|reiten|equestrian/.test(s)) return 'horse';
+    if (s.includes('golf')) return 'golf';
     if (s.includes('hik') || s.includes('wander') || s.includes('trek')) return 'hike';
-    if (s.includes('walk') || s.includes('spazier')) return 'walk';
+    if (s.includes('walk') || s.includes('spazier') || s.includes('gehen')) return 'walk';
     return 'other';
   },
 };
@@ -155,10 +252,13 @@ const Parse = {
         }
       }
     }
-    // FIT-Sportnummern (wie in Meine Touren, app/fitfile.py): 12 Langlauf, 13 Ski alpin, 14 Snowboard (zählt als Ski alpin), 35 Schneeschuh (zählt als Wandern);
+    // FIT-Sportnummern (wie in Meine Touren, app/fitfile.py): 12 Langlauf, 13 Ski alpin, 14 Snowboard (bis 2.18 Ski alpin), 35 Schneeschuh (seit 2.19.0 eigene Sportart, mit Schlagwort);
     // Untersportart 37 = Backcountry: Skitour. 2.2.0: 19 (Paddeln) ist nicht mehr „Ski“.
-    const names = { 1: 'run', 2: 'bike', 11: 'walk', 17: 'hike', 12: 'nordic', 13: 'skialpin', 14: 'skialpin', 35: 'hike', 5: 'other', 31: 'mountaineering', 16: 'mountaineering', 15: 'other', 19: 'other', 37: 'other' };
+    // 2.19.0: 14 Snowboard, 31 Klettern, 5 Schwimmen, 15 Rudern, 19 Paddeln, 25 Golf, 30 Inlineskaten, 32 Segeln, 33 Eislaufen, 37 Stand-up-Paddling, 41 Kajak – eigene Sportarten.
+    const names = { 1: 'run', 2: 'bike', 11: 'walk', 17: 'hike', 12: 'nordic', 13: 'skialpin', 14: 'snowboard', 35: 'snowshoe', 5: 'swim', 31: 'climbing', 16: 'mountaineering', 15: 'rowing', 19: 'kayak', 37: 'sup',
+      25: 'golf', 30: 'inline', 32: 'sailing', 33: 'iceskate', 41: 'kayak' };
     let sp = names[sport] || 'other';
+    if (sport === '1' && subsport === '3') sp = 'trailrun';      // 2.19.0: Untersportart Trail
     if (sp === 'bike' && subsport === '8') sp = 'mtb'; else if (sp === 'bike' && subsport === '7') sp = 'racebike'; else if (sp === 'bike' && subsport === '28') sp = 'ebike';
     else if ((sport === '12' || sport === '13' || sport === '14') && subsport === '37') sp = 'skitour';
     return pts.length ? [{ name: nm, sport: sp, rawSport: sport, tags: sport === '35' ? [Sports.SCHNEESCHUH] : [], pts }] : [];

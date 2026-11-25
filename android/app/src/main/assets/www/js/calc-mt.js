@@ -31,7 +31,7 @@
   const keineQuelle = an => 'Es ist noch keine Quelle verbunden. Unter „Touren importieren“ lässt sich ' + (an ? 'Meine Touren, Komoot oder Zepp' : 'Komoot oder Zepp') + ' verbinden.';
   const aufstiegNeu = (n, an) => 'Aufstieg neu berechnet' + (an ? ' – gleiche Rechnung wie in Meine Touren' : '') + '. ' + n + (n === 1 ? ' Tour' : ' Touren') + ' geändert.';
   const skiNeu = (n, an) => n + (n === 1 ? ' Ski-Tour steht' : ' Ski-Touren stehen') + ' jetzt als „Ski (allgemein)“: Ski alpin, Skitour und Langlauf sind getrennte Sportarten. '
-    + (an ? 'Beim nächsten Abgleich mit Meine Touren bekommen sie ihre genaue Art; Schneeschuh-Touren werden dabei zu Wandern.' : 'Die genaue Art kannst du auf der Tourseite wählen.');
+    + (an ? 'Beim nächsten Abgleich mit Meine Touren bekommen sie ihre genaue Art; Schneeschuh-Touren bekommen dabei die Sportart Schneeschuh.' : 'Die genaue Art kannst du auf der Tourseite wählen.');
   const sterneZusatz = (t, an) => (an && t && !t.starsMan && t.starsMt ? ' · aus Meine Touren' : '');
   const umschaltText = an => an ? 'Zusammenarbeit mit Meine Touren ist eingeschaltet.' : 'Mein Tourentagebuch arbeitet jetzt ganz für sich.';
   /** Reihenfolge bei „Alles abgleichen“: bei Aus ohne Meine Touren (Zepp → Komoot bleibt). */

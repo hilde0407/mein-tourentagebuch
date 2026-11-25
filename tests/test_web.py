@@ -1126,9 +1126,9 @@ def neue_funktionen(pg):
     pg.wait_for_selector("text=Wochenziele"); wk = pg.inner_text("#goals .sec:has(h3:text-is('Wochenziele')) .ygoal")
     assert "Touren pro Woche" in wk and "/ 2 Touren" in wk and ("Noch" in wk or "letzte Tag" in wk or "erreicht" in wk), wk
     # Sportart je Ziel; dasselbe Ziel zweimal ändert das vorhandene
-    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.select_option("#goalsport", "grp:foot"); pg.click("#goalmetric .chip:has-text('Aufstieg')"); pg.fill("#goalval", "12000"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
-    assert "Aufstieg · Wandern und Bergsteigen" in pg.inner_text("#goals") and "/ 12.000 m" in pg.inner_text("#goals")
-    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.select_option("#goalsport", "grp:foot"); pg.click("#goalmetric .chip:has-text('Aufstieg')"); pg.fill("#goalval", "15000"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
+    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.select_option("#goalsport", "mountaineering"); pg.click("#goalmetric .chip:has-text('Aufstieg')"); pg.fill("#goalval", "12000"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
+    assert "Aufstieg · Bergsteigen" in pg.inner_text("#goals") and "/ 12.000 m" in pg.inner_text("#goals")      # 2.19.0: feste Gruppen nur noch für alte Ziele; Bergsteigen wählbar
+    pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.select_option("#goalsport", "mountaineering"); pg.click("#goalmetric .chip:has-text('Aufstieg')"); pg.fill("#goalval", "15000"); pg.click("#goalsave"); pg.wait_for_selector(".sheet", state="detached")
     assert pg.evaluate("DB.kvGet('goals2', []).then(l => l.length === 3 && l.filter(g => g.metric === 'up').length === 1 && l.find(g => g.metric === 'up').target === 15000)")
     # Ändern und Löschen
     pg.locator("#goals .ygoal", has_text="Strecke").first.click(); pg.wait_for_selector("#goaldel"); assert pg.input_value("#goalval") == "500"
@@ -1381,7 +1381,7 @@ def meine_touren(pg):
         pub: ['http://touren.example.org', 'http://8.8.8.8', 'http://172.32.0.1', 'http://100.128.0.1', 'http://[2001:db8::1]'].map(M.privat),
         sp: ['hike', 'touringbicycle', 'e_touringbicycle', 'e_mtb', 'mtb', 'racebike', 'jogging', 'skialpin', 'skitour', 'snowshoe', 'nordic', 'nordicwalking', 'mountaineering', 'other', 'kitesurfen', ''].map(M.sport) }; }""")
     assert u["b"] == ["https://meine-touren.example.ts.net", "http://192.168.1.5:8080", "https://touren.example.org"] and all(u["bad"]) and all(u["priv"]) and not any(u["pub"]), u
-    assert u["sp"] == ["hike", "bike", "ebike", "ebike", "mtb", "racebike", "run", "skialpin", "skitour", "hike", "nordic", "hike", "mountaineering", "other", "other", "other"], u["sp"]
+    assert u["sp"] == ["hike", "bike", "ebike", "emtb", "mtb", "racebike", "run", "skialpin", "skitour", "snowshoe", "nordic", "nordicwalking", "mountaineering", "other", "kitesurf", "other"], u["sp"]      # 2.19.0: Kitesurfen ist eine Aktivität
     pre = pg.evaluate(MT_VORHANDEN, srv)
     # Blatt: unverschlüsselte Adresse außerhalb des eigenen Netzes → deutlicher Hinweis und Rückfrage; im eigenen Netz nur der Hinweis
     go = lambda: (pg.evaluate("location.hash = '#/import'"), pg.wait_for_selector("#imp-mt"), pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_selector(".sheet", state="detached"), pg.click("#imp-mt"))
@@ -1419,8 +1419,8 @@ def meine_touren(pg):
     assert st["987654321"]["id"] == pre["k"] and st["987654321"]["name"] == "Zugspitze durchs Reintal" and st["987654321"]["up"] == 2210 and st["987654321"]["srcId"] == "komoot:987654321", st["987654321"]
     assert st["s0"]["id"] != pre["l"] and st["s0"]["srcId"] == "mt:s0" and st["s0"]["src"] == "mt", st["s0"]      # gleiche Startzeit, aber ganz andere Länge: eigene Tour
     g1 = st["g1"]; assert g1["note"] == "Früh los, oben Gämsen gesehen." and g1["stars"] == 5 and sorted(g1["tags"]) == ["Gipfel", "Wetterstein"] and g1["hr"] and g1["timed"] and g1["start"] == by["g1"]["start_ts"] * 1000, g1
-    assert {t["sport"]: st[t["id"]]["sport"] for t in srv if st[t["id"]]} == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run",
-        "skialpin": "skialpin", "skitour": "skitour", "snowshoe": "hike", "nordic": "nordic", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
+    assert {t["sport"]: st[t["id"]]["sport"] for t in srv if st[t["id"]]} == {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "emtb", "racebike": "racebike", "jogging": "run",
+        "skialpin": "skialpin", "skitour": "skitour", "snowshoe": "snowshoe", "nordic": "nordic", "nordicwalking": "nordicwalking", "mountaineering": "mountaineering", "other": "other"}      # 2.19.0: Schneeschuh, E-MTB, Nordic Walking eigene Sportarten
     # Tourseite: Quelle, maßgebliche Zahlen mit eigener Rechnung daneben, Bewertung
     pg.evaluate("id => { location.hash = '#/tour/' + id }", g1["id"]); pg.wait_for_selector("#mtinfo"); f = pg.inner_text("#mtinfo")
     assert "· Meine Touren" in pg.inner_text(".tourp .sub") and "stammen aus Meine Touren" in f and "Eigene Rechnung aus der Spur: 4,5 km · ↑ " in f and "Sternen" not in f, f      # die Sterne stehen jetzt in der eigenen Bewertung (2.2.0)
@@ -1789,7 +1789,7 @@ def winter(pg):
       const l = await Tours.list(); return { out, t: l.filter(t => /^W /.test(t.name)).map(t => [t.name, t.sport, t.tags || []]) }; }""")
     got = {n.split()[1]: [sp, tg] for n, sp, tg in r["t"]}
     assert r["out"] == {"snowshoe0": 1, "skitour1": 1, "skialpin2": 1, "nordic3": 1, "skiing4": 1, "Snowshoe5": 1}, r
-    assert got["snowshoe"] == ["hike", ["Schneeschuh"]] and got["skitour"] == ["skitour", []] and got["skialpin"] == ["skialpin", []] and got["nordic"] == ["nordic", []] and got["skiing"] == ["ski", []] and got["Snowshoe"] == ["hike", ["Schneeschuh"]], got
+    assert got["snowshoe"] == ["snowshoe", ["Schneeschuh"]] and got["skitour"] == ["skitour", []] and got["skialpin"] == ["skialpin", []] and got["nordic"] == ["nordic", []] and got["skiing"] == ["ski", []] and got["Snowshoe"] == ["snowshoe", ["Schneeschuh"]], got      # 2.19.0: Schneeschuh eigene Sportart
     # 2. Abgleich mit Meine Touren: alte „ski“-Touren bekommen ihre Art, Schneeschuh wird Wandern + Schlagwort, Handwahl bleibt
     pg.evaluate("(fx) => { window.__mtFx = fx; }", fx); pg.evaluate(MT_FAKE, fx)
     o = pg.evaluate(WINTER_TOUREN, srv)
@@ -1807,12 +1807,12 @@ def winter(pg):
     st = pg.evaluate("""async (o) => { const out = {}; for (const [k, id] of Object.entries(o)) { const t = await DB.get('tours', id); out[k] = { sport: t.sport, alt: t.sportAlt, man: t.sportMan, tags: t.tags || [], mt: t.sportMt, name: t.name }; } return out; }""", o)
     assert st["s4"] == {"sport": "skialpin", "alt": "ski", "man": None, "tags": [], "mt": "skialpin", "name": st["s4"]["name"]}, st["s4"]
     assert st["s7"]["sport"] == "nordic" and st["s7"]["mt"] == "nordic", st["s7"]
-    assert st["s6"]["sport"] == "hike" and st["s6"]["tags"] == ["Schneeschuh"] and st["s6"]["mt"] == "snowshoe" and st["s6"]["alt"] == "ski", st["s6"]
+    assert st["s6"]["sport"] == "snowshoe" and st["s6"]["tags"] == ["Schneeschuh"] and st["s6"]["mt"] == "snowshoe" and st["s6"]["alt"] == "ski", st["s6"]
     assert st["s5"]["sport"] == "nordic" and st["s5"]["man"] == 1 and st["s5"]["mt"] == "skitour", "von Hand gewählte Sportart wird nie überschrieben: " + json.dumps(st["s5"])
     assert st["frei"]["sport"] == "ski" and st["frei"]["mt"] is None, "Tour nur in der App bleibt „Ski (allgemein)“"
     # neue Touren vom Server: richtige Arten (s0–s10 kommen als neue Touren, soweit nicht oben zugeordnet)
     neu = pg.evaluate("""async () => { const o = {}; for (const t of await Tours.list()) { const m = /^mt:(s\\d+)$/.exec(t.srcId || ''); if (m) o[m[1]] = [t.sport, t.tags || [], t.sportMt]; } return o; }""")
-    assert neu["s8"][0] == "hike" and neu["s3"][0] == "run" and neu["s9"][0] == "mountaineering" and neu["s10"][0] == "other", neu
+    assert neu["s8"][0] == "nordicwalking" and neu["s3"][0] == "run" and neu["s9"][0] == "mountaineering" and neu["s10"][0] == "other", neu
     assert "s4" not in neu and "s6" not in neu and "s7" not in neu, "zugeordnete Touren werden nicht noch einmal angelegt"
     # Schlagwort nur einmal: in der App entfernt → der nächste Abgleich bringt es nicht zurück; neuer Schneeschuh-Eintrag am Server bekommt es
     pg.evaluate("async id => { const t = await DB.get('tours', id); t.tags = []; await Tours.save(t); }", o["s6"])
@@ -1820,16 +1820,17 @@ def winter(pg):
     assert pg.evaluate("id => DB.get('tours', id).then(t => t.tags)", o["s6"]) == [], "entferntes Schlagwort kommt nicht wieder"
     pg.evaluate("async () => { for (const t of await Tours.list()) if (t.srcId === 'mt:s8') await Tours.remove(t.id); window.__mt.edit = l => l.map(t => t.id === 's8' ? Object.assign({}, t, { sport: 'snowshoe' }) : t); }")
     pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
-    ns = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:s8'))"); assert ns["sport"] == "hike" and ns["tags"] == ["Schneeschuh"] and ns["sportMt"] == "snowshoe", ns      # neue Tour vom Server
+    ns = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:s8'))"); assert ns["sport"] == "snowshoe" and ns["tags"] == ["Schneeschuh"] and ns["sportMt"] == "snowshoe", ns      # neue Tour vom Server (2.19.0: Sportart Schneeschuh)
     pg.evaluate("window.__mt.edit = null")
     # Filter über das Schlagwort (Album) und die Tourseite zeigt Wandern + Schlagwort
     pg.evaluate("id => { location.hash = '#/tour/' + id }", ns["id"]); pg.wait_for_selector(".tourp")
-    assert "Wandern" in pg.inner_text(".tourp .sub") and pg.locator(".tourp a.chip", has_text="Schneeschuh").count() == 1
+    assert "Schneeschuh" in pg.inner_text(".tourp .sub") and pg.locator(".tourp a.chip", has_text="Schneeschuh").count() == 1
     # 3. Oberfläche: Sportart ändern (alle Arten, Handwahl), Tourenliste mit Chips, Statistik-Filter, Ziele, Planer, Aufzeichnung
     pg.evaluate("id => { location.hash = '#/tour/' + id }", o["s4"]); pg.wait_for_selector(".tourp"); pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
     pg.locator("header.top button[aria-label=Aktionen]").click(); pg.get_by_text("Sportart ändern").click(); pg.wait_for_selector(".sheet[aria-label='Sportart'] .li")
     names = pg.locator(".sheet[aria-label='Sportart'] .li .li-t b").all_inner_texts()
-    for want in ("Ski alpin", "Skitour", "Langlauf", "Ski (allgemein)", "Wandern"): assert want in names, names
+    for want in ("Ski alpin", "Skitour", "Langlauf", "Wandern", "Bergsteigen", "Schneeschuh", "Snowboard"): assert want in names, names
+    assert "Ski (allgemein)" not in names, names      # 2.19.0: nur noch für Touren, die sie schon haben
     pg.locator(".sheet .li", has_text="Skitour").click(); pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_function("() => document.querySelector('.tourp .sub') && /Skitour/.test(document.querySelector('.tourp .sub').textContent)")
     t4 = pg.evaluate("id => DB.get('tours', id)", o["s4"]); assert t4["sport"] == "skitour" and t4["sportMan"] == 1, t4
     pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)"); assert pg.evaluate("id => DB.get('tours', id).then(t => t.sport)", o["s4"]) == "skitour", "Abgleich überschreibt die Handwahl nicht"
@@ -1838,17 +1839,20 @@ def winter(pg):
     for want in ("Skitour", "Langlauf", "Ski (allgemein)", "Wandern"): assert any(want in c for c in chips), chips
     pg.click(".filters .chips .chip:has-text('Skitour')"); assert pg.locator("a.tour").count() == pg.evaluate("Tours.list().then(l => l.filter(t => t.sport === 'skitour' && t.status !== 'planned' && !t.hidden).length)")
     assert "Skitour" in pg.inner_text("a.tour .tb small"); pg.click(".filters .chips .chip:has-text('Alle')")
-    pg.evaluate("location.hash = '#/stats'"); pg.wait_for_selector(".kpis"); pg.select_option("select[aria-label=Zeitraum]", "all"); pg.select_option("select[aria-label=Sportart]", "grp:ski"); pg.wait_for_timeout(300)
-    nski = pg.evaluate("Tours.list().then(l => l.filter(t => Sports.SKI.includes(t.sport) && t.status !== 'planned' && !t.hidden).length)")
+    pg.evaluate("Set_.set('statGruppen', StatGruppen.vorschlaege([]).filter(v => v.id === 'ski'))")      # 2.19.0: „Ski (alle Arten)“ gibt es nur noch als selbst angelegte Gruppe (Vorschlag „Alle Ski-Arten“)
+    pg.evaluate("location.hash = '#/stats'"); pg.wait_for_selector(".kpis"); pg.select_option("select[aria-label=Zeitraum]", "all"); pg.select_option("select[aria-label=Sportart]", "sgrp:ski"); pg.wait_for_timeout(300)
+    nski = pg.evaluate("Tours.list().then(l => l.filter(t => Sports.SKI.concat(['snowboard']).includes(t.sport) && t.status !== 'planned' && !t.hidden).length)")
     assert pg.locator(".kpis .kpi").first.inner_text().split("\n")[0].strip() == str(nski) and nski >= 6, (pg.inner_text(".kpis"), nski)
     pg.evaluate("location.hash = '#/stats/ziele'"); pg.wait_for_selector("#goaladd"); pg.click("#goaladd"); pg.wait_for_selector("#goalsport")
-    opts = pg.locator("#goalsport option").all_inner_texts(); assert "Ski (alle Arten)" in opts and "Skitour" in opts and "Langlauf" in opts and "Ski alpin" in opts and "Ski (allgemein)" not in opts, opts
+    opts = pg.locator("#goalsport option").all_inner_texts(); pg.evaluate("Set_.set('statGruppen', [])"); assert "Ski (zusammengefasst)" in opts and "Ski (alle Arten)" not in opts and "Skitour" in opts and "Langlauf" in opts and "Ski alpin" in opts and "Ski (allgemein)" not in opts, opts
     zu(pg)
     pg.evaluate("location.hash = '#/plan'"); pg.wait_for_selector(".ppanel select"); po = pg.locator(".ppanel select option").all_inner_texts()
     assert "Skitour" in po and "Langlauf" in po and "Ski (allgemein)" not in po and "Wandern" in po, po
     assert pg.evaluate("[Router.profileFor('skitour'), Router.profileFor('nordic'), Router.profileFor('skialpin'), Router.profileFor('ski'), Router.profileFor('hike')]") == ["hiking-mountain"] * 4 + ["hiking-mountain"]
     pg.evaluate("location.hash = '#/rec'"); pg.wait_for_selector(".bigstart"); rc = pg.locator(".chips .chip").all_inner_texts()
-    assert any("Skitour" in c for c in rc) and any("Langlauf" in c for c in rc) and any("Ski alpin" in c for c in rc) and not any("allgemein" in c for c in rc), rc
+    assert any("Skitour" in c for c in rc) and any("Mehr" in c for c in rc) and not any("allgemein" in c for c in rc), rc      # 2.19.0: Favoriten als Chips, alle übrigen unter „Mehr …“
+    pg.click("#rec-mehr"); pg.wait_for_selector("#rec-alle"); ma = pg.locator("#rec-alle .li-t b").all_inner_texts(); pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
+    assert "Langlauf" in ma and "Ski alpin" in ma and "Bergsteigen" in ma and "Schneeschuh" in ma and "Ski (allgemein)" not in ma, ma
     # Symbole und Farben für alle Arten (kein leeres Symbol, jede Skiart eine eigene Kartenfarbe)
     ic = pg.evaluate("() => Sports.list.map(s => [s[0], Ico.svg(s[2]).length > 50, /^#[0-9a-f]{6}$/i.test(MapKit.sportColor[s[0]] || '')])")
     assert all(a and b for _, a, b in ic), ic
@@ -2238,7 +2242,7 @@ def jahr(pg):
     go(pg, "#/jahr/2019", "#jahr-teilen")
     vj = pg.inner_text("#jahr-vorjahr"); assert "Gegenüber 2018" in vj and "+3" in vj and "+43,0 km" in vj, vj
     sp = pg.evaluate("[...document.querySelectorAll('.jsp')].map(e => [e.dataset.sport, e.innerText.replace(/\\s+/g, ' ')])")
-    assert [x[0] for x in sp] == ["rad", "wandern", "laufen"] and "2 Touren" in sp[1][1] and "18,0 km" in sp[1][1], sp
+    assert [x[0] for x in sp] == ["mtb", "hike", "run"] and "2 Touren" in sp[1][1] and "18,0 km" in sp[1][1], sp
     hp = pg.inner_text("#jahr-hoehe"); assert "Längste Tour" in hp and "Rad zum See" in hp and "Schönste Tour" in hp and "5 Sterne" in hp and "Aktivster Monat" in hp and "Juli 2019" in hp and "Längste Serie" not in hp, hp
     assert pg.locator("#jahr-hoehe a.li").count() == 4, "Verweise auf Touren"
     assert pg.evaluate("document.querySelectorAll('#jahr-chart svg rect').length") == 12 and "Juli 40,0 km" in pg.get_attribute("#jahr-chart svg", "aria-label") and "Januar 15,0 km" in pg.get_attribute("#jahr-chart svg", "aria-label")
@@ -3086,7 +3090,7 @@ def statistik_2130(pg):
         # Bestwerte je Sportart: Beste / Beste drei, Tempo
         go(pg, "#/stats/rekorde", "#bw-sport")
         pg.select_option("select[aria-label=Zeitraum]", "all"); pg.wait_for_selector("#bw-sport")
-        hs = pg.locator("#bw-sport h3.sub[data-sport]").all_inner_texts(); assert any("Wandern" in x for x in hs) and any("Tourenrad" in x for x in hs), hs
+        hs = pg.locator("#bw-sport h3.sub[data-sport]").all_inner_texts(); assert any("Wandern" in x for x in hs) and any("Radtour" in x for x in hs), hs      # 2.19.0: „Tourenrad“ heißt „Radtour“
         assert pg.locator("#bw-sport .bw-mehr").count() == 0 and pg.locator("#bw-sport a[data-m=tempo]").count() >= 1
         pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_selector("#bw-sport .bw-mehr")
         assert "Platz 2 und 3" in pg.inner_text("#bw-sport")
@@ -4309,6 +4313,126 @@ def notizhoehe_2160(pg):
 
 
 
+def statgruppen_2190(pg):
+    """2.19.0: Aktivitäten-Katalog, Statistik-Gruppen und Favoriten. Vorgabe: jede Aktivität einzeln, keine Gruppe. Einstellungen: Vorschläge (ein Klick), Gruppe
+    abhaken/löschen, gesperrte Sportarten, unfertige Gruppe; Wirkung in Statistik-Filter, Block „Sportarten“, Bestwerte je Sportart, Auswertung, Jahresrückblick,
+    Zielen; Schneeschuh-Touren als Schneeschuh führen und zurück; Sicherung; Favoriten (Reihenfolge, Sterne, 12er-Grenze) und „Tour aufnehmen“ mit „Mehr …“,
+    zuletzt benutzte Aktivität vorgewählt; Bergsteigen, Schneeschuh, Skitour überall wählbar. Gibt Layoutfehler zurück."""
+    bad = []
+    go = lambda h, sel: (pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h), pg.wait_for_selector(sel), pg.wait_for_timeout(300))
+    ok_klick = lambda: (pg.wait_for_selector(".sheet .btn.pri"), pg.click(".sheet .btn.pri"), pg.wait_for_selector(".sheet", state="detached"))
+    ids = pg.evaluate("""async () => {
+      await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); await Set_.set('recSport', '');
+      const T0 = new Date(2019, 6, 10, 9).getTime(), mk = async (name, sport, k, tags) => {
+        const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 46.1 + k * 0.01 + i * 0.0004, lon: 10.1 + i * 0.0003, ele: 900 + i * 6, t: T0 + k * 86400000 + i * 60000 }));
+        return (await Tours.add({ name, sport, tags, pts, src: 'file', force: true })).tour.id; };
+      const r = { h: await mk('SG Wandern', 'hike', 0), m: await mk('SG Berg', 'mountaineering', 1), s: await mk('SG Schneeschuh alt', 'hike', 2, ['Schneeschuh']),
+        b: await mk('SG MTB', 'mtb', 3), e: await mk('SG E-Bike', 'ebike', 4), m2: await mk('SG Berg 2', 'mountaineering', 5), k: await mk('SG Kajak', 'kayak', 6) };
+      Tours.invalidate(); return r; }""")
+    # Vorgabe: keine Gruppen, jede Aktivität einzeln (auch Bergsteigen, Kajak)
+    go("#/stats", ".kpis"); pg.select_option("select[aria-label=Zeitraum]", "2019"); pg.wait_for_timeout(200)
+    rows = pg.eval_on_selector_all("#st-sport .hb", "els => els.map(e => e.dataset.sport)")
+    assert {"hike", "mountaineering", "mtb", "ebike", "kayak"} <= set(rows) and not any(r.startswith("sgrp:") for r in rows), rows
+    opts = pg.locator("select[aria-label=Sportart] option").all_inner_texts()
+    for want in ("Bergsteigen", "Schneeschuh", "Skitour", "Snowboard", "Kajak / Kanu", "Gassigehen", "Orientierungslauf", "Schneemobil", "Angeln", "E-Mountainbike", "Gravelbike"): assert want in opts, (want, opts)
+    assert "Ski (alle Arten)" not in opts and not any("zusammengefasst" in o for o in opts), opts
+    # Einstellungen: Vorschläge, keine Gruppe
+    go("#/settings", "#sg-box")
+    assert pg.locator("#sg-box .sg-grp").count() == 0 and "Keine Gruppen" in pg.inner_text("#sg-stand"), pg.inner_text("#sg-box")
+    assert pg.locator("#sg-vorschlaege button").count() == 3
+    pg.click("#sg-vorschlag-rad"); pg.wait_for_function("() => Set_.get('statGruppen').some(g => g.id === 'rad')")
+    pg.click("#sg-vorschlag-berg"); pg.wait_for_function("() => Set_.get('statGruppen').some(g => g.id === 'berg')")
+    gr = pg.evaluate("Set_.get('statGruppen')")
+    assert [g["id"] for g in gr] == ["rad", "berg"] and gr[1]["sports"] == ["hike", "mountaineering", "snowshoe"], gr
+    assert pg.locator("#sg-vorschlag-ski").count() == 1 and pg.locator("#sg-vorschlag-rad").count() == 0
+    assert pg.is_disabled("#sg-grp-1 [data-sport=mtb] input") and "in „Rad“" in pg.inner_text("#sg-grp-1 [data-sport=mtb]") and pg.is_checked("#sg-grp-1 [data-sport=snowshoe] input")
+    pg.locator("#sg-box").scroll_into_view_if_needed(); bad += ["Statistik-Gruppen: " + m for m in pg.evaluate(LAYOUT_JS)]
+    # E-Bike aus „Rad“ lösen → steht wieder für sich
+    pg.click("#sg-grp-0 [data-sport=ebike] input"); pg.wait_for_function("() => !Set_.get('statGruppen')[0].sports.includes('ebike')")
+    # unfertige Gruppe: Hinweis, wird nicht gespeichert
+    pg.click("#sg-add"); pg.wait_for_selector("#sg-hinweis-2")
+    assert len(pg.evaluate("Set_.get('statGruppen')")) == 2
+    # Statistik: Filter und Block „Sportarten“
+    go("#/stats", ".kpis"); pg.select_option("select[aria-label=Zeitraum]", "2019"); pg.wait_for_timeout(200)
+    opts = pg.locator("select[aria-label=Sportart] option").all_inner_texts()
+    assert "Wandern + Berg + Schneeschuh (zusammengefasst)" in opts and "Rad (zusammengefasst)" in opts and "Bergsteigen" in opts, opts
+    rows = pg.eval_on_selector_all("#st-sport .hb", "els => els.map(e => e.dataset.sport)")
+    assert "sgrp:berg" in rows and "sgrp:rad" in rows and "ebike" in rows and "kayak" in rows and "mountaineering" not in rows and "hike" not in rows and "mtb" not in rows, rows
+    pg.select_option("select[aria-label=Sportart]", "sgrp:berg"); pg.wait_for_timeout(200)
+    assert pg.locator(".kpis .kpi").first.inner_text().split("\n")[0].strip() == "4", pg.inner_text(".kpis")      # Wandern, Schneeschuh (alt: Wandern), 2 × Bergsteigen
+    # Bestwerte je Sportart und Auswertung
+    pg.select_option("select[aria-label=Sportart]", ""); pg.click(".chips .chip:has-text('Bestwerte')"); pg.wait_for_selector("#bw-sport h3")
+    hs = pg.eval_on_selector_all("#bw-sport h3[data-sport]", "els => els.map(e => [e.dataset.sport, e.textContent])")
+    assert any(k == "sgrp:berg" and "Wandern + Berg + Schneeschuh · 4 Touren" in t for k, t in hs), hs
+    pg.click(".chips .chip:has-text('Auswertung')"); pg.wait_for_selector("table.cstat")
+    tr = pg.eval_on_selector_all("table.cstat tbody tr", "els => els.map(e => [e.dataset.sport, e.cells[0].textContent, e.cells[1].textContent])")
+    assert any(k == "sgrp:berg" and b == "4" for k, a, b in tr) and any(k == "kayak" for k, a, b in tr), tr
+    # Jahresrückblick
+    go("#/jahr/2019", "#jahr-sport")
+    sp = pg.eval_on_selector_all("#jahr-sport .jsp", "els => els.map(e => e.dataset.sport)")
+    assert "sgrp:berg" in sp and "sgrp:rad" in sp and "ebike" in sp and "kayak" in sp, sp
+    # Ziele: Gruppe wählbar, gelöschte Gruppe robust, feste Gruppen nur bei alten Zielen
+    z = pg.evaluate("""async () => {
+      const g = { id: 'zsg', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'sgrp:berg' }, g2 = Object.assign({}, g, { id: 'zweg', sport: 'sgrp:weg' }), g3 = Object.assign({}, g, { id: 'zalt', sport: 'grp:bike' });
+      await Goals.save([g, g2, g3]); const all = (await Tours.list()).filter(Jahr.zaehlt), d = new Date(2019, 11, 31);
+      return { ist: Ziele.stand(g, all, d).ist, weg: Ziele.stand(g2, all, d).ist, alt: Ziele.stand(g3, all, d).ist, name: Goals.name(g), name2: Goals.name(g2) }; }""")
+    assert z["ist"] == 4 and z["weg"] == 0 and z["alt"] == 2 and "(zusammengefasst)" in z["name"] and "Gelöschte Gruppe" in z["name2"], z
+    go("#/stats/ziele", "#view"); pg.wait_for_timeout(300)
+    pg.evaluate("Goals.edit({ id: 'zweg', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'sgrp:weg' }, null, () => {})"); pg.wait_for_selector("#goalsport")
+    o2 = pg.locator("#goalsport option").all_inner_texts()
+    assert "Wandern + Berg + Schneeschuh (zusammengefasst)" in o2 and "Gelöschte Gruppe" in o2 and pg.eval_on_selector("#goalsport", "e => e.value") == "sgrp:weg" and "Rad (alle Arten)" not in o2 and "Bergsteigen" in o2 and "Skitour" in o2, o2
+    pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("Goals.edit({ id: 'zalt', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'grp:bike' }, null, () => {})"); pg.wait_for_selector("#goalsport")
+    assert "Rad (alle Arten)" in pg.locator("#goalsport option").all_inner_texts() and pg.eval_on_selector("#goalsport", "e => e.value") == "grp:bike"
+    pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("Goals.save([])")
+    # Schneeschuh-Touren als Aktivität Schneeschuh führen und zurück
+    go("#/settings", "#ss-um")
+    assert "1 Wandern-Tour" in pg.inner_text("#ss-stand"), pg.inner_text("#ss-box")
+    pg.click("#ss-um"); ok_klick(); pg.wait_for_selector("#ss-zurueck")
+    t = pg.evaluate("id => DB.get('tours', id)", ids["s"]); assert t["sport"] == "snowshoe" and t["tags"] == ["Schneeschuh"] and t["ssUm"] == 1, t
+    pg.click("#ss-zurueck"); ok_klick(); pg.wait_for_selector("#ss-um")
+    t = pg.evaluate("id => DB.get('tours', id)", ids["s"]); assert t["sport"] == "hike" and "ssUm" not in t and t["tags"] == ["Schneeschuh"], t
+    # Favoriten: Vorgabe, Reihenfolge, Stern, Grenze
+    assert pg.eval_on_selector_all("#fav-liste .fav-row", "els => els.map(e => e.dataset.sport)") == ["hike", "run", "bike", "skitour", "mtb"]
+    pg.click("#fav-liste .fav-row[data-sport=run] button[aria-label='Laufen nach vorn']"); pg.wait_for_timeout(150)
+    pg.click("#fav-mountaineering"); pg.wait_for_timeout(150); pg.click("#fav-kayak"); pg.wait_for_timeout(150)
+    assert pg.evaluate("Set_.get('favAkt')") == ["run", "hike", "bike", "skitour", "mtb", "mountaineering", "kayak"]
+    pg.click("#fav-liste .fav-row[data-sport=bike] button[aria-label='Radtour entfernen']"); pg.wait_for_timeout(150)
+    for k in ["walk", "snowshoe", "trailrun", "gravel", "emtb", "nordic"]: pg.click("#fav-" + k); pg.wait_for_timeout(60)
+    assert len(pg.evaluate("Set_.get('favAkt')")) == 12 and pg.is_disabled("#fav-golf") and "12 von höchstens 12" in pg.inner_text("#fav-zahl")
+    pg.locator("#fav-box").scroll_into_view_if_needed(); bad += ["Favoriten: " + m for m in pg.evaluate(LAYOUT_JS)]
+    pg.click("#fav-standard"); pg.wait_for_timeout(150); assert pg.evaluate("Set_.get('favAkt')") == ["hike", "run", "bike", "skitour", "mtb"]
+    pg.evaluate("Set_.set('favAkt', ['run', 'mountaineering', 'snowshoe'])")
+    # Tour aufnehmen: Favoriten als Chips, „Mehr …“, zuletzt benutzte vorgewählt
+    go("#/rec", ".bigstart")
+    ch = pg.eval_on_selector_all(".chips.wrap .chip[data-sport]", "els => els.map(e => [e.dataset.sport, e.classList.contains('on')])")
+    assert ch == [["run", True], ["mountaineering", False], ["snowshoe", False]], ch
+    pg.click("#rec-mehr"); pg.wait_for_selector("#rec-alle")
+    al = pg.locator("#rec-alle .li-t b").all_inner_texts(); hk = pg.locator("#rec-alle h3").all_inner_texts()
+    assert hk == ["Zu Fuß", "Rad", "Winter", "Wasser", "Outdoor & Sonstige"] and "Skitour" in al and "Stand-up-Paddling" in al and "Golf" in al and "Ski (allgemein)" not in al, (hk, al)
+    pg.click("#rec-akt-sup"); pg.wait_for_selector(".sheet", state="detached")
+    ch = pg.eval_on_selector_all(".chips.wrap .chip[data-sport]", "els => els.map(e => [e.dataset.sport, e.classList.contains('on')])")
+    assert ch[0] == ["sup", True] and len(ch) == 4, ch
+    pg.click(".bigstart"); pg.wait_for_timeout(300)
+    assert pg.evaluate("window.__calls.filter(c => c[0] === 'start').pop()[1]") == "sup" and pg.evaluate("Set_.get('recSport')") == "sup"
+    pg.evaluate("window.__rec.state = 'idle'; window.__rec.unsent = false; Nav.render()"); pg.wait_for_selector(".bigstart")
+    assert pg.eval_on_selector(".chips.wrap .chip.on", "e => e.dataset.sport") == "sup", "zuletzt benutzte bleibt vorgewählt"
+    # Sicherung: Gruppen und Favoriten rein und raus
+    bk = pg.evaluate("""async () => { const d = await Backup.collect(); const s = d.kv.find(k => k.k === 'settings'); const gr = s.v.statGruppen, fav = s.v.favAkt;
+      await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD);
+      await Backup.restoreKv([{ k: 'settings', v: { statGruppen: gr.concat([{ id: 'x', name: 'kaputt', sports: ['hike'] }]), favAkt: fav.concat(['gibtsnicht']) } }]);
+      const nach = Set_.get('statGruppen'), fnach = Set_.get('favAkt'); await Backup.restoreKv([{ k: 'settings', v: { bestN: 1 } }]);
+      return { gr, nach, fav, fnach, bleibt: Set_.get('statGruppen'), gespeichert: (await DB.kvGet('settings', {})).statGruppen }; }""")
+    assert bk["nach"] == bk["gr"] and bk["bleibt"] == bk["gr"] and bk["gespeichert"] == bk["gr"] and bk["fnach"] == bk["fav"] == ["run", "mountaineering", "snowshoe"], bk
+    # Planung: Bergsteigen, Schneeschuh, Skitour, Ski alpin wählbar; Tour bearbeiten: alle Kategorien
+    go("#/plan", "select[aria-label=Sportart]"); po = pg.locator("select[aria-label=Sportart] option").all_inner_texts()
+    assert "Bergsteigen" in po and "Schneeschuh" in po and "Skitour" in po and "Ski alpin" in po, po
+    # aufräumen
+    pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); await Set_.set('recSport', ''); Tours.invalidate(); }", ids)
+    return bad
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -4976,6 +5100,7 @@ def main():
         ms_bad = mt_schalter_2150(pg)
         ab_bad = abgleich_2180(pg)
         kp_bad = komootpaket_2180(pg)
+        sg_bad = statgruppen_2190(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -5010,6 +5135,7 @@ def main():
         bad += ms_bad
         bad += ab_bad
         bad += kp_bad
+        bad += sg_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

@@ -43,6 +43,20 @@
     return t;
   }
 
+  /* ---- 2.19.0: Schneeschuh als eigene Sportart ---- */
+  /** 2.19.0: neue Sportarten → Sportart, unter der die App sie bis 2.18 führte. */
+  const BIS_2_18 = { snowshoe: 'hike', nordicwalking: 'hike', emtb: 'ebike', gravel: 'mtb', trailrun: 'run', snowboard: 'skialpin', climbing: 'mountaineering' };
+  /** Gleiche Sportart für den Abgleich mit Meine Touren? Eine neue Sportart und die, unter der sie bis 2.18 lief (z. B. Schneeschuh ↔ Wandern, E-Mountainbike ↔ E-Bike),
+      gelten als gleich – so stellt ein Abgleich nie still um und zeigt keinen Unterschied. Umstellen geht nur auf Knopfdruck (Schneeschuh) oder von Hand. */
+  function sportGleich(a, b) { return a === b || BIS_2_18[a] === b || BIS_2_18[b] === a; }
+  /** Touren, die „Schneeschuh umstellen“ ändern würde: Wandern mit dem Schlagwort „Schneeschuh“, Sportart nicht von Hand gewählt. */
+  function schneeschuhKandidaten(tours) { return (tours || []).filter(t => t && t.sport === 'hike' && !t.sportMan && (t.tags || []).includes('Schneeschuh')); }
+  /** Eine Tour umstellen (Kopie): Sportart snowshoe, Schlagwort bleibt, Merker ssUm = 1 für Rückgängig. */
+  function schneeschuhUmstellen(t) { return Object.assign({}, t, { sport: 'snowshoe', ssUm: 1 }); }
+  /** Rückgängig: nur umgestellte Touren, die noch Schneeschuh sind, werden wieder Wandern. */
+  function schneeschuhZurueckKandidaten(tours) { return (tours || []).filter(t => t && t.ssUm === 1 && t.sport === 'snowshoe'); }
+  function schneeschuhZurueck(t) { const c = Object.assign({}, t, { sport: 'hike' }); delete c.ssUm; return c; }
+
   /* ---- Ski (Trennung der Wintersportarten) ---- */
   /** Wie viele Touren stehen noch als „Ski (allgemein)“ (ohne von Hand gewählte Sportart)? Die genaue Art kennt nur der Abgleich mit Meine Touren. */
   function skiOffen(tours) { return (tours || []).filter(t => t && t.sport === 'ski' && !t.sportMan && t.status !== 'planned').length; }
@@ -92,6 +106,6 @@
     return true;
   }
 
-  const api = { NAMEN, REIHENFOLGE, MIN_ABSTAND, MIN_VERSUCH, sterne, sterneUebernehmen, sterneSetzen, sterneZusammen, skiOffen, wann, neue, zeile, fehlerText, quellZeile, faellig };
+  const api = { NAMEN, REIHENFOLGE, MIN_ABSTAND, MIN_VERSUCH, sterne, sterneUebernehmen, sterneSetzen, sterneZusammen, skiOffen, BIS_2_18, sportGleich, schneeschuhKandidaten, schneeschuhUmstellen, schneeschuhZurueckKandidaten, schneeschuhZurueck, wann, neue, zeile, fehlerText, quellZeile, faellig };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Abgleich = api;
 })(typeof window !== 'undefined' ? window : globalThis);

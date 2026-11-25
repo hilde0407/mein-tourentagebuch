@@ -83,6 +83,25 @@ const ICONS = {
   skialpin: '<circle cx="15" cy="4.5" r="1.8"/><path d="M15 8l-3.5 3 2.5 3.5 2 1.5M3 20l18-6M11.5 11L7 12.5M13 8l4 3"/>',
   skitour: '<circle cx="9" cy="5" r="1.8"/><path d="M9 8.5l-1 4 3 2.5.5 4M3 18l15-5M8 12.5L5 10.5M14 21l3.5-7 3.5 7z"/>',
   nordic: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-1 4-4.5 4M11.5 12l4.5 3.5 4-1M3 20h8M13 18.5h8M12 8l5 3M8 10l4-2"/>',
+  snowshoe: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 4 2 3 .5 3.5M13 8l3 3 2 1M10 12l-2.5 5.5"/><ellipse cx="7" cy="20" rx="3.2" ry="1.4"/><ellipse cx="14" cy="20.5" rx="3.2" ry="1.4"/>',      // 2.19.0: Schneeschuh
+  // 2.19.0: Symbole der neuen Aktivitäten
+  wall: '<path d="M4 21V3h16v18"/><circle cx="9" cy="8" r="1"/><circle cx="15" cy="11" r="1"/><circle cx="10" cy="15" r="1"/><circle cx="14" cy="18" r="1"/><path d="M12 3v3"/>',
+  nwalk: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-2.5 4 2 3 1 5M12 8l3 3 2 1M9.5 12l-3 7M5 21l3-10M19 21l-2-9"/>',
+  trail: '<circle cx="15" cy="4.5" r="1.8"/><path d="M15 8l-4 3 1 4 2 5M11 11L7 13l-1 4M12 15l5 1M2 21l7-5 4 2 9-6"/>',
+  snowboard: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-3 4 4 2-1 4M12 8l4 3M9 12l-4-1M3 19.5l18-3"/>',
+  sled: '<path d="M4 14h13l2-3M6 14v3M15 14v3M3 19h15a3 3 0 0 0 3-3"/><circle cx="10" cy="6" r="1.8"/><path d="M10 9l-1 5M10 9l4 2"/>',
+  skate: '<path d="M6 4h5v8l7 2v3H5zM4 20h16M8 17v3M16 17v3"/>',
+  swim: '<circle cx="16" cy="6" r="1.8"/><path d="M4 13l5-4 3 3 4-2M2 17c2 0 2 1.5 4 1.5S8 17 10 17s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5"/>',
+  kayak: '<path d="M2 15c4 3 16 3 20 0M5 4l14 16"/><path d="M4 3l2 3M18 21l2-3"/><circle cx="12" cy="9" r="1.6"/>',
+  sup: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8v6l-2 4M12 14l2 4M12 9l5 2M17 4v14M3 19h18"/>',
+  row: '<path d="M2 16c4 3 16 3 20 0M3 9l18 6"/><circle cx="12" cy="8" r="1.6"/><path d="M12 10l-2 4h4"/>',
+  sail: '<path d="M12 3v14M12 3l7 12h-7M12 6L6 15h6M3 18c3 2 15 2 18 0"/>',
+  inline: '<path d="M6 3h5v8l7 2v3H5zM4 20h2M10 20h2M16 20h2"/><circle cx="7" cy="20" r="1"/><circle cx="13" cy="20" r="1"/>',
+  horse: '<path d="M6 21v-6l-2-3 3-5 4-2 3 1 3-2v4l2 3-2 1-2-2-2 2v3l2 6M10 15h5"/>',
+  golf: '<path d="M8 21V3l9 4-9 4M4 21h12"/><circle cx="17" cy="19" r="1.5"/>',
+  fish: '<path d="M3 12c3-4 9-5 13-2l4-3v10l-4-3c-4 3-10 2-13-2z"/><circle cx="8" cy="11" r=".8" fill="currentColor" stroke="none"/>',
+  bow: '<path d="M5 3c8 3 13 8 16 16M5 3c-1 6 1 12 6 16 4-1 8-3 10-0M3 21L19 5M15 5h4v4"/>',
+  moto: '<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l5-6h5l3 6M10 11l-2-3H5M15 11l2-4h3"/>',
   climb: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 3 1 5-2 5M13 8l4 2 2 5M10 11L6 13"/>',
   dot: '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>',
   pano: '<path d="M2.5 7c6.3-1.8 12.7-1.8 19 0v10c-6.3-1.8-12.7-1.8-19 0z"/><path d="M5.5 14.5l3.5-3.5 2.5 2.5 2-2 4.5 4"/>',      // 2.8.0: Panorama (breites, leicht gewölbtes Bild mit Bergen)
@@ -97,7 +116,8 @@ const ICON_CHARS = {
   '💻': 'laptop', '🖧': 'server', '☁': 'cloud', '👁': 'eye', '🙈': 'eyeoff', '📅': 'calendar', '🔊': 'speaker', '📡': 'signal', '🔋': 'battery', '🗺': 'map',
   '◎': 'locate', '⟲': 'loop', '⇄': 'swap', '🏁': 'flag', '🎯': 'target', '💬': 'chat', '🔥': 'flame', '🟢': 'dot', '🟠': 'dot', '🌄': 'pano',
   // Sportarten
-  '🥾': 'peak', '🚶': 'walk', '🚵': 'bike', '🚴': 'bike', '🚲': 'bike', '⚡': 'bolt', '🏃': 'run', '⛷': 'ski', '🏂': 'skialpin', '🎿': 'skitour', '❄': 'nordic', '🧗': 'climb',
+  '🥾': 'peak', '🚶': 'walk', '🚵': 'bike', '🚴': 'bike', '🚲': 'bike', '⚡': 'bolt', '🏃': 'run', '⛷': 'ski', '🏂': 'snowboard', '🎿': 'skitour', '❄': 'nordic', '🧗': 'climb', '🌨': 'snowshoe',
+  '🪨': 'wall', '🐕': 'walk', '🏙': 'bike', '🛞': 'bike', '🛻': 'sled', '🤿': 'swim', '🐉': 'row', '🚤': 'kayak', '🌊': 'sup', '🪁': 'sup', '🛹': 'inline', '🎣': 'fish', '🦌': 'bow', '🏹': 'bow', '🚙': 'moto', '🏍': 'moto', '🦯': 'nwalk', '🌲': 'trail', '🏔': 'skialpin', '🛷': 'sled', '⛸': 'skate', '🏊': 'swim', '🛶': 'kayak', '🏄': 'sup', '🚣': 'row', '⛵': 'sail', '🛼': 'inline', '🐎': 'horse', '⛳': 'golf',
 };
 const Ico = {
   /** Symbol als SVG-Text. `key` ist ein Name aus ICONS oder eines der Zeichen aus ICON_CHARS. */

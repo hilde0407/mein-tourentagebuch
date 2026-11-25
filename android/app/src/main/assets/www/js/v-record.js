@@ -191,10 +191,22 @@ Views['/rec'] = async root => {
     stop_(); box.innerHTML = '';
     if (st.state === 'finished' && sessionStorage.getItem('recAutoSave')) { sessionStorage.removeItem('recAutoSave'); return saveFinished(); }      // 2.12.0: „Als Tour speichern“ aus dem Hinweis
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) return unsaved(st);
-    let sport = sessionStorage.getItem('recSport') || 'hike';
+    let sport = Aktiv.aufnahme(Set_.get('favAkt'), sessionStorage.getItem('recSport') || Set_.get('recSport')).gewaehlt;      // 2.19.0: die zuletzt benutzte Aktivität bleibt vorgewählt
     const name = h('input', { type: 'text', placeholder: 'z. B. Hüttenrunde', value: sessionStorage.getItem('recName') || '' });
     const chips = h('div', { class: 'chips wrap' });
-    const drawChips = () => { chips.innerHTML = ''; Sports.list.filter(s => s[0] !== 'mountaineering' && (s[0] !== 'ski' || sport === 'ski')).forEach(s => chips.append(h('button', { class: 'chip' + (sport === s[0] ? ' on' : ''), onclick: () => { sport = s[0]; drawChips(); } }, s[2] + ' ' + s[1]))); };
+    /* 2.19.0: Favoriten-Aktivitäten als Chips (Einstellungen → Favoriten-Aktivitäten), dazu „Mehr …“ mit allen Aktivitäten nach Kategorien.
+       Bis 2.18 standen hier alle Sportarten außer Bergsteigen. */
+    const drawChips = () => {
+      chips.innerHTML = '';
+      Aktiv.aufnahme(Set_.get('favAkt'), sport).chips.forEach(k => chips.append(h('button', { class: 'chip' + (sport === k ? ' on' : ''), 'aria-pressed': sport === k ? 'true' : 'false', 'data-sport': k,
+        onclick: () => { sport = k; drawChips(); } }, Sports.icon(k) + ' ' + Sports.label(k))));
+      chips.append(h('button', { class: 'chip', id: 'rec-mehr', onclick: mehr }, 'Mehr …'));
+    };
+    const mehr = () => {
+      const s = sheet('Aktivität wählen', h('div', { id: 'rec-alle' }, Sports.kategorien(sport).map(([id, nm, list]) => [h('h3', { class: 'sub' }, nm),
+        UI.list(list.map(([k, l, ic]) => UI.row({ icon: ic, title: l, trail: k === sport ? 'gewählt' : null, id: 'rec-akt-' + k, onclick: () => { sport = k; s.close(); drawChips(); } })), { cls: 'menu' })]).flat(),
+        h('p', { class: 'muted small' }, 'Welche Aktivitäten oben als Knöpfe stehen, stellst du unter Einstellungen → Favoriten-Aktivitäten ein.')));
+    };
     drawChips();
     const planned = (await Tours.list()).filter(t => t.status === 'planned');
     const routeBox = h('div', { class: 'routebox' });
@@ -240,7 +252,7 @@ Views['/rec'] = async root => {
         if (!MTApp.hasPermission()) { MTApp.requestPermission(); return; }
         MTApp.setGuide(Set_.get('guide') !== false);
         DB.kvSet('recPins', []);
-        MTApp.startRecording(sport, name.value.trim());
+        MTApp.startRecording(sport, name.value.trim()); Set_.set('recSport', sport);      // 2.19.0: beim nächsten Mal vorgewählt
         TourHelp.lockPlan();
         sessionStorage.removeItem('recSport'); sessionStorage.removeItem('recName');
         setTimeout(() => Nav.render(), 400);

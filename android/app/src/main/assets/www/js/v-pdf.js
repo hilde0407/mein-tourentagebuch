@@ -318,8 +318,10 @@ const PdfUI = {
     sp.forEach((g, i) => {
       const lx = M + (i % 2) * (IW / 2), ly = 1150 + Math.floor(i / 2) * 48;
       ctx.fillStyle = JahrKarte.SHADES[Math.min(i, 4)]; JahrKarte.rr(ctx, lx, ly - 22, 24, 24, 5); ctx.fill();
-      PdfUI.txt(ctx, g.label, lx + 38, ly, PdfUI.font(600, 32), C.ink); ctx.font = PdfUI.font(600, 32);
-      PdfUI.txt(ctx, JahrUI.pct(g.anteil) + ' · ' + JahrUI.touren(g.n), lx + 38 + ctx.measureText(g.label).width + 14, ly, PdfUI.font(500, 30), C.muted);
+      const rest = JahrUI.pct(g.anteil) + ' · ' + JahrUI.touren(g.n); ctx.font = PdfUI.font(500, 30); const rw = ctx.measureText(rest).width;
+      const lab = Pdf.kuerzen(g.label, IW / 2 - 38 - 14 - rw - 12, PdfUI.measure(ctx, PdfUI.font(600, 32)));      // 2.19.0: eigene Gruppennamen bis 30 Zeichen
+      PdfUI.txt(ctx, lab, lx + 38, ly, PdfUI.font(600, 32), C.ink); ctx.font = PdfUI.font(600, 32);
+      PdfUI.txt(ctx, rest, lx + 38 + ctx.measureText(lab).width + 14, ly, PdfUI.font(500, 30), C.muted);
     });
     const ly2 = 1150 + Math.ceil(sp.length / 2) * 48;
     ctx.fillStyle = C.line; ctx.fillRect(M, ly2 + 8, IW, 2);

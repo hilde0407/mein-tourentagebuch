@@ -5,6 +5,7 @@
    Läuft im Browser (globale `Ziele`, `Serie`, `Bestwerte`, `Sicherung`) und in Node (tests/test_calc.js). */
 (function (root) {
   const PH = (typeof module !== 'undefined' && module.exports) ? require('./calc-planhilfe.js') : root.Planhilfe;
+  const SG = (typeof module !== 'undefined' && module.exports) ? require('./calc-statgruppen.js') : root.StatGruppen;      // 2.19.0: Statistik-Gruppen
   const METRIKEN = [['km', 'Strecke', 'km'], ['up', 'Aufstieg', 'm'], ['count', 'Touren', 'Touren'], ['hours', 'Zeit', 'h']];
   const MIN_TAG_PROGNOSE = 14;      // Prognose zum Jahresende gibt es ab dem 14. Tag des Jahres (wie im Vorbild)
   const KNAPP = 0.90;               // Prognose ab 90 % des Ziels: „knapp“, darunter „dahinter“
@@ -13,13 +14,12 @@
   const weekIdx = ms => Math.floor((dayNum(ms) + 3) / 7);      // Montag bis Sonntag; der 1.1.1970 war ein Donnerstag
 
   /* ---- Ziele ---- */
-  /** Sportauswahl eines Ziels: '' = alle, 'grp:bike' = Gruppe, sonst eine Sportart. */
-  function sportPasst(goal, sport) {
+  /** Sportauswahl eines Ziels: '' = alle, 'grp:bike' = feste Gruppe, 'sgrp:<id>' = eigene Statistik-Gruppe (2.19.0; gelöscht: zählt keine Tour), sonst eine Sportart.
+      gruppen: Liste der Statistik-Gruppen (Vorgabe: die gespeicherten, in Node leer). */
+  function sportPasst(goal, sport, gruppen) {
     const s = goal.sport || '';
-    if (!s) return true;
-    if (s.startsWith('grp:')) return (PH.SPORT_GRP[s.slice(4)] || []).includes(sport);
     if (s === 'ski') return (PH.SPORT_GRP.ski || []).includes(sport);      // ein Ziel „Ski“ aus der Zeit vor 2.2.0 zählt alle Skiarten
-    return s === sport;
+    return SG.passt(s, sport, gruppen === undefined ? SG.aktuell() : gruppen);
   }
   /** Ältere Jahresziele (kv „goals“: {Jahr: {km, up, n}}) als Liste neuer Ziele lesen. Die Kennungen sind fest, damit ein erneutes Einlesen nichts verdoppelt. */
   function legacy(old) {
@@ -48,16 +48,16 @@
   function wertEiner(goal, t) { return goal.metric === 'km' ? (t.dist || 0) / 1000 : goal.metric === 'up' ? (t.up || 0) : goal.metric === 'hours' ? (t.dur || 0) / 3600 : 1; }
   /** Stand eines Ziels zum Zeitpunkt now (Date). Rückgabe: {ist, target, anteil (0…), status, prognose, soll, restTage, text}.
       status Jahresziel: erreicht | im_plan | knapp | dahinter | offen (zu früh im Jahr oder Jahr noch nicht begonnen) | verfehlt (Jahr vorbei). Wochenziel: erreicht | offen. */
-  function stand(goal, tours, now) {
+  function stand(goal, tours, now, gruppen) {
     now = now || new Date();
     const yr = now.getFullYear();
     let ts, soll = null, prognose = null, restTage = null, status;
     if (goal.period === 'week') {
       const wi = weekIdx(now.getTime()), until = dayNum(now.getTime());
-      ts = tours.filter(t => t.start && weekIdx(t.start) === wi && dayNum(t.start) <= until && sportPasst(goal, t.sport));
+      ts = tours.filter(t => t.start && weekIdx(t.start) === wi && dayNum(t.start) <= until && sportPasst(goal, t.sport, gruppen));
       restTage = 6 - ((now.getDay() + 6) % 7);
     } else {
-      ts = tours.filter(t => t.start && new Date(t.start).getFullYear() === goal.year && sportPasst(goal, t.sport));
+      ts = tours.filter(t => t.start && new Date(t.start).getFullYear() === goal.year && sportPasst(goal, t.sport, gruppen));
     }
     const ist = ts.reduce((a, t) => a + wertEiner(goal, t), 0), anteil = ist / goal.target;
     if (ist >= goal.target) status = 'erreicht';
@@ -104,16 +104,19 @@
   /** 2.13.0: Bestwerte je Sportart (Rangliste): je Sportart mit mindestens min Touren (Vorgabe 2, nur Touren mit Strecke) die besten n (1 oder 3) für
       längste Strecke, größten Aufstieg, längste Dauer, höchsten Punkt und – wo sinnvoll – das schnellste Tempo. Tempo nur aus Zeit in Bewegung (über 10 min) und
       mindestens 1 km Strecke; bei Ski alpin und Ski allgemein nicht (Liftfahrten verfälschen das Tempo). Gleichstand: die frühere Tour zuerst.
-      Gibt [{ sport, n, strecke, aufstieg, dauer, hoehe, tempo }] zurück, die Sportart mit den meisten Touren zuerst. */
+      Gibt [{ sport, n, strecke, aufstieg, dauer, hoehe, tempo }] zurück, die Sportart mit den meisten Touren zuerst.
+      2.19.0: gruppen (Statistik-Gruppen, Vorgabe: die gespeicherten) fasst Mitglieder zu einer Zeile zusammen; sport ist dann 'sgrp:<id>' und
+      gruppe = true. Tempo gibt es dort nur, wenn keine Sportart der Gruppe ohne Tempo ist. */
   const OHNE_TEMPO = ['skialpin', 'ski'];
   const tempo = t => (t.moving > 600 && t.dist >= 1000 ? t.dist / t.moving : 0);
-  function jeSportart(tours, n, min) {
+  function jeSportart(tours, n, min, gruppen) {
     n = n === 3 ? 3 : 1; min = min || 2;
-    const real = (tours || []).filter(t => t && t.dist > 0), by = new Map();
-    real.forEach(t => { const k = t.sport || 'other'; if (!by.has(k)) by.set(k, []); by.get(k).push(t); });
+    const gr = gruppen === undefined ? SG.aktuell() : gruppen;
+    const real = (tours || []).filter(t => t && t.dist > 0), by = SG.aufteilen(real, gr);
     const top = (a, f) => a.filter(t => f(t) > 0).sort((x, y) => f(y) - f(x) || (x.start || 0) - (y.start || 0)).slice(0, n);
-    return [...by.entries()].filter(([, a]) => a.length >= min).map(([sport, a]) => ({ sport, n: a.length, strecke: top(a, t => t.dist), aufstieg: top(a, t => t.up || 0),
-      dauer: top(a, t => t.dur || 0), hoehe: top(a, t => t.maxAlt || 0), tempo: OHNE_TEMPO.includes(sport) ? [] : top(a, tempo) }))
+    const ohneTempo = k => { const g = SG.gruppe(k, gr); return g ? g.sports.some(s => OHNE_TEMPO.includes(s)) : OHNE_TEMPO.includes(k); };
+    return [...by.entries()].filter(([, a]) => a.length >= min).map(([sport, a]) => Object.assign({ sport, n: a.length, strecke: top(a, t => t.dist), aufstieg: top(a, t => t.up || 0),
+      dauer: top(a, t => t.dur || 0), hoehe: top(a, t => t.maxAlt || 0), tempo: ohneTempo(sport) ? [] : top(a, tempo) }, SG.istGruppe(sport) ? { gruppe: true } : {}))
       .sort((x, y) => y.n - x.n || (x.sport < y.sport ? -1 : 1));
   }
 

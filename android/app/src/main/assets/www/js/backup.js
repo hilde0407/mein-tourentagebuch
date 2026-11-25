@@ -3,6 +3,7 @@
    Eine Sicherung enthält Touren, Spuren, Foto-Einträge und die Merkliste (kv) ohne Zugangsdaten und ohne Zwischenspeicher.
    Beim Einspielen kommen auch die eigenen Angaben zurück: Ziele, Notizen und Links der Planung, Einstellungen (Geburtsjahr, Startseite …), Namen von Reisen.
    2.4.0: auch die Wanderführer (Bücher, Buchstrecken, Titelbilder; kv „guides“, „guidepts:…“, „guidecover:…“) – ohne den Zwischenspeicher des Abgleichs („guideMatch“).
+   2.19.0: Statistik-Gruppen („statGruppen“) und Favoriten-Aktivitäten („favAkt“) stehen in den Einstellungen; ältere App-Versionen übergehen die unbekannten Schlüssel.
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten (auch die Sitzung bei „Meine Touren“, kv „mt“) und Zwischenspeicher. */
@@ -68,7 +69,13 @@ const Backup = {
           let ch = 0;
           for (const k of Object.keys(e.v)) {
             if (!(k in Set_.defaults) || Backup.GERAET.includes(k)) continue;      // 2.10.0/2.15.0: Entscheidungen dieses Geräts – nicht mitnehmen
-            if (JSON.stringify(Set_.v[k]) === JSON.stringify(Set_.defaults[k]) && JSON.stringify(e.v[k]) !== JSON.stringify(Set_.defaults[k])) { Set_.v[k] = e.v[k]; ch++; }
+            if (k === 'statGruppen') {      // 2.19.0: Statistik-Gruppen bereinigt übernehmen – nur, wenn hier noch keine angelegt sind (calc-statgruppen.js)
+              const neu = StatGruppen.einspielen(Set_.v[k], e.v[k]);
+              if (JSON.stringify(neu) !== JSON.stringify(Set_.v[k])) { Set_.v[k] = neu; ch++; }
+              continue;
+            }
+            const wert = k === 'favAkt' ? Aktiv.favoriten(e.v[k]) : e.v[k];      // 2.19.0: Favoriten-Aktivitäten bereinigt (unbekannte Sportarten fallen weg)
+            if (JSON.stringify(Set_.v[k]) === JSON.stringify(Set_.defaults[k]) && JSON.stringify(wert) !== JSON.stringify(Set_.defaults[k])) { Set_.v[k] = wert; ch++; }
           }
           if (ch) { await DB.kvSet('settings', Set_.v); n++; }
         } else if (e.k === 'goals' || e.k === 'goals2') {

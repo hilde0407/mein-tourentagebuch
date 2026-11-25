@@ -16,8 +16,10 @@
   const round3 = x => Math.round(x * 1000) / 1000;
   function median(a) { const s = a.slice().sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; }
 
-  /* ---- Sportgruppen (wie SPORT_GRP in hinweise.py, auf die Sportarten dieser App übertragen) ---- */
-  const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike'], ski: ['ski', 'skialpin', 'skitour', 'nordic'], foot: ['hike', 'mountaineering'], run: ['run'] };
+  /* ---- Sportgruppen (wie SPORT_GRP in hinweise.py, auf die Sportarten dieser App übertragen; 2.19.0: Schneeschuh zu Fuß, Tempo wie Wandern) ---- */
+  const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike', 'gravel', 'emtb', 'commute', 'cyclocross'], ski: ['ski', 'skialpin', 'skitour', 'nordic', 'snowboard'], foot: ['hike', 'mountaineering', 'snowshoe', 'climbing', 'nordicwalking'], run: ['run', 'trailrun', 'orienteering'] };
+  /* 2.19.0: Die Gruppen dienen nur noch dem Vergleich ähnlicher Touren (Planungshilfe, „Wie ist es gelaufen?“) und älteren Zielen „grp:…“ – die Statistik fasst
+     nichts mehr fest zusammen (eigene Statistik-Gruppen: calc-statgruppen.js). Neue Sportarten stehen bei der Gruppe, zu der sie bis 2.18 gezählt wurden. */
   function gruppe(sport) { for (const k in SPORT_GRP) if (SPORT_GRP[k].includes(sport)) return k; return null; }
   function gleicheGruppe(a, b) { const g = gruppe(a); return g ? gruppe(b) === g : a === b; }
 
@@ -108,8 +110,8 @@
   }
   /* Annahmen: Tempo (km/h) und Aufstieg (m/h) je Sportart. Wie im Planer (v-plan.js). Skitour und „Ski (allgemein)“ wie bisher 5 km/h und 400 m/h; Langlauf zügiger,
      Ski alpin mit Liften: hohes Tempo, Aufstieg fast ohne Zeit (der Lift trägt). */
-  const TEMPO = { hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5, skitour: 5, nordic: 9, skialpin: 18 };
-  const AUFSTIEG = { hike: 500, walk: 500, run: 700, ski: 400, skitour: 400, nordic: 600, skialpin: 3000 };
+  const TEMPO = { snowshoe: 4.5, nordicwalking: 4.8, trailrun: 9, gravel: 16, emtb: 20, snowboard: 18, hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5, skitour: 5, nordic: 9, skialpin: 18 };
+  const AUFSTIEG = { snowshoe: 500, nordicwalking: 500, trailrun: 700, snowboard: 3000, hike: 500, walk: 500, run: 700, ski: 400, skitour: 400, nordic: 600, skialpin: 3000 };
   /** Grobe Dauer eines Plans in Stunden (Tempo je Sportart plus Aufstieg) – dieselbe Schätzung wie im Planer. */
   function schaetzDauer(sport, km, up) {
     const v = TEMPO[sport] || 5, r = AUFSTIEG[sport] || 900;

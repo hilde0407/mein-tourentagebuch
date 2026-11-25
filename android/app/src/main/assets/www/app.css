@@ -657,3 +657,13 @@ img.tile-off{visibility:hidden}
 .kp-f small{font-size:.74rem;line-height:1.2;color:var(--muted)}
 .kp-f small.kp-g{color:var(--danger);font-weight:600}
 .kp-zahl{font-weight:600}
+/* 2.19.0: Statistik-Gruppen (Einstellungen) */
+.sg-grp{border:1px solid var(--line);border-radius:12px;padding:6px 12px 10px;margin:10px 0}
+.sg-sports{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(140px,100%),1fr));column-gap:10px}
+.sg-sp{display:flex;align-items:center;gap:10px;min-width:0;min-height:48px;padding:2px 0;font-size:.96rem;cursor:pointer}
+.sg-sp span{display:flex;flex-direction:column;line-height:1.2;min-width:0;overflow-wrap:anywhere}
+.sg-sp small{color:var(--muted);font-size:.8rem}
+.sg-sp.off{cursor:default;color:var(--muted)}
+.sg-kat{margin:8px 0 0}
+.fav-row .li-r{display:flex;gap:6px}
+.fav-row .btn.sm{min-width:44px;padding:4px 10px}

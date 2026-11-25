@@ -9,8 +9,11 @@
   /** Sportarten des Tagebuchs → Kennungen, die Meine Touren beim Hochladen (POST /api/record/upload) annimmt. Was der Server nicht kennt („Sonstiges“, „Ski allgemein“), wird nicht gesendet –
       dort gilt dann die Vorgabe-Sportart des Servers. */
   const SPORT = { hike: 'hike', walk: 'hike', mountaineering: 'mountaineering', run: 'jogging', bike: 'touringbicycle', ebike: 'e_touringbicycle', racebike: 'racebike', mtb: 'mtb',
-    skialpin: 'skialpin', skitour: 'skitour', nordic: 'nordic' };
-  /** Kennung für den Server; Schneeschuhwandern (Wandern mit dem Schlagwort „Schneeschuh“) geht als „snowshoe“. null = nicht mitsenden. */
+    skialpin: 'skialpin', skitour: 'skitour', nordic: 'nordic', snowshoe: 'snowshoe',
+    // 2.19.0: neue Sportarten so, wie Meine Touren sie kennt bzw. am nächsten kommt; Wasser, Eis, Schneemobil, BMX, Reiten, Angeln, Golf, Motorrad … kennt der Server nicht (nicht mitsenden)
+    nordicwalking: 'nordicwalking', climbing: 'mountaineering', trailrun: 'jogging', gravel: 'touringbicycle', emtb: 'e_mtb', snowboard: 'skialpin',
+    dogwalk: 'hike', orienteering: 'jogging', commute: 'touringbicycle', cyclocross: 'racebike' };
+  /** Kennung für den Server; Schneeschuh (seit 2.19.0 eigene Sportart, davor Wandern mit dem Schlagwort „Schneeschuh“) geht als „snowshoe“. null = nicht mitsenden. */
   function sport(t) {
     const s = SPORT[t && t.sport] || null;
     if (s === 'hike' && (t.tags || []).includes('Schneeschuh')) return 'snowshoe';

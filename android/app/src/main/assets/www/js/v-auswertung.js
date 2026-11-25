@@ -69,7 +69,7 @@ const Ausw = {
     return box;
   },
   jeSportartFuellen(box, real) {
-    const n = +Set_.get('bestN') === 3 ? 3 : 1, groups = Bestwerte.jeSportart(real, n);
+    const gr = StatGruppen.aktuell(), n = +Set_.get('bestN') === 3 ? 3 : 1, groups = Bestwerte.jeSportart(real, n, 2, gr);
     if (!groups.length) return box;
     const M = [['strecke', 'Längste', t => F.km(t.dist)], ['aufstieg', 'Größter Aufstieg', t => F.m(t.up)], ['dauer', 'Längste Dauer', t => F.dur(t.dur)],
       ['hoehe', 'Höchster Punkt', t => F.m(t.maxAlt)], ['tempo', 'Schnellste', t => F.speed(t.dist, t.moving)]];
@@ -80,7 +80,7 @@ const Ausw = {
         return h('a', { class: 'li', href: '#/tour/' + b.id, 'data-m': k }, h('span', { class: 'li-i', html: Ico.svg('trophy', 22) }),
           h('span', { class: 'li-t' }, h('b', null, lab + ': ' + fm(b)), h('small', null, b.name + ' · ' + F.dshort(b.start)), mehr ? h('small', { class: 'bw-mehr' }, mehr) : null));
       });
-      kids.push(h('h3', { class: 'sub', 'data-sport': g.sport }, Sports.icon(g.sport) + ' ' + Sports.label(g.sport) + ' · ' + g.n + ' Touren'), h('div', { class: 'list' }, rows));
+      kids.push(h('h3', { class: 'sub', 'data-sport': g.sport }, StatGruppen.icon(g.sport, gr) + ' ' + StatGruppen.name(g.sport, gr) + ' · ' + g.n + ' Touren'), h('div', { class: 'list' }, rows));      // 2.19.0: Gruppe = eine Zeile mit ihrem Namen
     });
     box.append(...Ausw.sec('Bestwerte je Sportart', n === 3 ? 'Je Sportart der Bestwert, darunter Platz 2 und 3. Tempo aus der Zeit in Bewegung.' : 'Je Sportart der Bestwert (oben „Beste drei“ zeigt auch Platz 2 und 3). Tempo aus der Zeit in Bewegung.'), ...kids);
     return box;
@@ -188,11 +188,12 @@ const Ausw = {
   auswertung(body, ts, ctx) {
     if (!ts.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Touren in diesem Zeitraum.'))); return; }
     // Statistik nach Aktivität
-    const rows = Sports.list.map(s => [s[0], ts.filter(t => t.sport === s[0])]).filter(r => r[1].length).sort((a, b) => b[1].reduce((x, t) => x + t.dist, 0) - a[1].reduce((x, t) => x + t.dist, 0));
+    const gr = StatGruppen.aktuell();      // 2.19.0: Statistik-Gruppen als eine Zeile mit dem Gruppennamen
+    const rows = [...StatGruppen.aufteilen(ts, gr).entries()].sort((a, b) => b[1].reduce((x, t) => x + t.dist, 0) - a[1].reduce((x, t) => x + t.dist, 0));
     const sm = (a, k) => a.reduce((x, t) => x + (t[k] || 0), 0);
     body.append(...Ausw.sec('Statistik nach Aktivität'), h('div', { class: 'tblw' }, h('table', { class: 'cstat' },
       h('thead', null, h('tr', null, ['Aktivität', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
-      h('tbody', null, rows.map(([k, a]) => h('tr', null, h('td', null, Sports.icon(k) + ' ' + Sports.label(k)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
+      h('tbody', null, rows.map(([k, a]) => h('tr', { 'data-sport': k }, h('td', null, StatGruppen.icon(k, gr) + ' ' + StatGruppen.name(k, gr)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
     // Leistung über die Jahre
     const all = ctx.all.filter(t => Sports.passt(ctx.sport, t.sport));
     const perf = [];
@@ -202,7 +203,7 @@ const Ausw = {
       if (ys.length < 2) return;
       const spd = ys.map(y => sm(byY[y], 'dist') / sm(byY[y], 'moving') * 3.6), climb = ys.map(y => sm(byY[y], 'up') / (sm(byY[y], 'moving') / 3600));
       const bar = (vals, unit, dec) => { const mx = Math.max(...vals, 1); return h('div', { class: 'hbars' }, ys.map((y, i) => h('div', { class: 'hb' }, h('span', null, y), h('div', null, h('i', { style: { width: (vals[i] / mx * 100) + '%' } })), h('b', null, vals[i].toFixed(dec).replace('.', ',') + ' ' + unit)))); };
-      perf.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s)), h('p', { class: 'muted small' }, 'Ø Tempo (in Bewegung)'), bar(spd, 'km/h', 1), s !== 'bike' && s !== 'racebike' && s !== 'mtb' && s !== 'ebike' ? [h('p', { class: 'muted small' }, 'Aufstieg je Stunde'), bar(climb, 'm/h', 0)] : null);
+      perf.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s)), h('p', { class: 'muted small' }, 'Ø Tempo (in Bewegung)'), bar(spd, 'km/h', 1), !['bike', 'racebike', 'mtb', 'ebike', 'gravel', 'emtb'].includes(s) ? [h('p', { class: 'muted small' }, 'Aufstieg je Stunde'), bar(climb, 'm/h', 0)] : null);
     });
     if (perf.length) body.append(...Ausw.sec('Leistung über die Jahre', 'nur Jahre mit mindestens 2 Touren der Sportart'), ...perf.flat().filter(Boolean));
     // Neuland und Wetter

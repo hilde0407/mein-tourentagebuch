@@ -58,7 +58,7 @@ Views['/jahr'] = async (root, [param]) => {
     h('div', { class: 'jsp-h' }, h('b', null, g.label), h('span', null, JahrUI.pct(g.anteil))),
     h('div', { class: 'jsp-b', 'aria-hidden': 'true' }, h('i', { style: { width: Math.max(1.5, g.anteil * 100) + '%' } })),
     h('small', null, [JahrUI.touren(g.n), g.dist ? F.km(g.dist) : null, g.up ? '↑ ' + F.m(g.up) : null].filter(Boolean).join(' · '))));
-  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. Schneeschuhwandern zählt als Wandern.' }));
+  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Zusammengefasst nach deinen Statistik-Gruppen (Einstellungen).' : 'Jede Aktivität für sich – zusammenfassen lässt sich unter Einstellungen → Statistik.') }));
 
   // Höhepunkte
   const hp = d.hoehepunkte, rows = [];
@@ -184,7 +184,10 @@ const JahrKarte = {
     sp.forEach((g, i) => {
       const col = i % 2, row = Math.floor(i / 2), lx = M + col * (IW / 2), ly = 1006 + row * 48;
       ctx.fillStyle = JahrKarte.SHADES[Math.min(i, 4)]; JahrKarte.rr(ctx, lx, ly - 22, 24, 24, 5); ctx.fill();
-      ctx.fillStyle = C.ink; ctx.font = `600 32px ${JahrKarte.B}`; ctx.fillText(g.label, lx + 38, ly); const wl = ctx.measureText(g.label).width;
+      ctx.font = `500 32px ${JahrKarte.B}`; const pw = ctx.measureText(JahrUI.pct(g.anteil)).width;
+      ctx.fillStyle = C.ink; ctx.font = `600 32px ${JahrKarte.B}`;
+      let lab = g.label; while (ctx.measureText(lab).width > IW / 2 - 38 - 14 - pw - 12 && lab.length > 4) lab = lab.slice(0, -2) + '…';      // 2.19.0: eigene Gruppennamen bis 30 Zeichen
+      ctx.fillText(lab, lx + 38, ly); const wl = ctx.measureText(lab).width;
       ctx.fillStyle = C.muted; ctx.font = `500 32px ${JahrKarte.B}`; ctx.fillText(JahrUI.pct(g.anteil), lx + 38 + wl + 14, ly);
     });
     const ly2 = 1006 + Math.ceil(sp.length / 2) * 48;
