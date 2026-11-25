@@ -1789,7 +1789,7 @@ def winter(pg):
       const l = await Tours.list(); return { out, t: l.filter(t => /^W /.test(t.name)).map(t => [t.name, t.sport, t.tags || []]) }; }""")
     got = {n.split()[1]: [sp, tg] for n, sp, tg in r["t"]}
     assert r["out"] == {"snowshoe0": 1, "skitour1": 1, "skialpin2": 1, "nordic3": 1, "skiing4": 1, "Snowshoe5": 1}, r
-    assert got["snowshoe"] == ["snowshoe", ["Schneeschuh"]] and got["skitour"] == ["skitour", []] and got["skialpin"] == ["skialpin", []] and got["nordic"] == ["nordic", []] and got["skiing"] == ["ski", []] and got["Snowshoe"] == ["snowshoe", ["Schneeschuh"]], got      # 2.19.0: Schneeschuh eigene Sportart
+    assert got["snowshoe"] == ["snowshoe", ["Schneeschuh"]] and got["skitour"] == ["skitour", []] and got["skialpin"] == ["skialpin", []] and got["nordic"] == ["nordic", []] and got["skiing"] == ["skialpin", []] and got["Snowshoe"] == ["snowshoe", ["Schneeschuh"]], got      # 2.19.0: Schneeschuh eigene Sportart
     # 2. Abgleich mit Meine Touren: alte „ski“-Touren bekommen ihre Art, Schneeschuh wird Wandern + Schlagwort, Handwahl bleibt
     pg.evaluate("(fx) => { window.__mtFx = fx; }", fx); pg.evaluate(MT_FAKE, fx)
     o = pg.evaluate(WINTER_TOUREN, srv)
@@ -3386,7 +3386,9 @@ def mt_schalter_2150(pg):
 
     # --- Ausschalten im Betrieb (Einstellungen): sofort, mit Meldung, ohne Löschen der Sitzung; Zahlen: eigene Rechnung ---
     go(pg, "#/settings", "#set-mt"); leise()
-    assert pg.evaluate("document.querySelector('#view .pad').firstElementChild.id") == "set-mt-box", "Abschnitt ganz oben"
+    # 2.19.0: oben die Sprungleiste, dann als erster Bereich „Zusammenarbeit“ mit der Karte „Meine Touren“ als erster Karte
+    oben = pg.evaluate("(() => { const k = [...document.querySelector('#view .pad').children]; return [k[0].id, k[1].id, k[1].querySelector('.set-k').id, document.querySelector('#set-inhalt .chip').dataset.ziel]; })()")
+    assert oben == ["set-inhalt", "set-g-mt", "set-mt-box", "set-g-mt"], ("Abschnitt ganz oben", oben)
     assert pg.is_checked("#set-mt input") and "Ohne diese Option bleibt Mein Tourentagebuch ganz für sich." in pg.inner_text("#set-mt-box")
     pg.click("#set-mt"); assert "ganz für sich" in toast_text(pg, "für sich")
     pg.wait_for_function("() => !MT.aktiv() && Set_.get('mtWahl') === 'nein'")
