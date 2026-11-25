@@ -1381,7 +1381,7 @@ def meine_touren(pg):
         pub: ['http://touren.example.org', 'http://8.8.8.8', 'http://172.32.0.1', 'http://100.128.0.1', 'http://[2001:db8::1]'].map(M.privat),
         sp: ['hike', 'touringbicycle', 'e_touringbicycle', 'e_mtb', 'mtb', 'racebike', 'jogging', 'skialpin', 'skitour', 'snowshoe', 'nordic', 'nordicwalking', 'mountaineering', 'other', 'kitesurfen', ''].map(M.sport) }; }""")
     assert u["b"] == ["https://meine-touren.example.ts.net", "http://192.168.1.5:8080", "https://touren.example.org"] and all(u["bad"]) and all(u["priv"]) and not any(u["pub"]), u
-    assert u["sp"] == ["hike", "bike", "ebike", "emtb", "mtb", "racebike", "run", "skialpin", "skitour", "snowshoe", "nordic", "nordicwalking", "mountaineering", "other", "kitesurf", "other"], u["sp"]      # 2.19.0: Kitesurfen ist eine Aktivität
+    assert u["sp"] == ["hike", "bike", "ebike", "emtb", "mtb", "racebike", "run", "skialpin", "skitour", "snowshoe", "nordic", "nordicwalking", "mountaineering", "other", "other", "other"], u["sp"]      # 2.19.0 (endgültige Auswahl): Kitesurfen führt die App nicht → Sonstiges
     pre = pg.evaluate(MT_VORHANDEN, srv)
     # Blatt: unverschlüsselte Adresse außerhalb des eigenen Netzes → deutlicher Hinweis und Rückfrage; im eigenen Netz nur der Hinweis
     go = lambda: (pg.evaluate("location.hash = '#/import'"), pg.wait_for_selector("#imp-mt"), pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"), pg.wait_for_selector(".sheet", state="detached"), pg.click("#imp-mt"))
