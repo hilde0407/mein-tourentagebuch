@@ -27,12 +27,12 @@
     return v ? (vz === '-' || vz === '−' ? -v : v) : 0;
   }
 
-  /** „+1 h 30 min“, „−45 min“, „keine“. */
+  /** „+1 Std. 30 Min.“, „−45 Min.“, „keine“. */
   function versatzText(ms) {
     ms = Math.round((+ms || 0) / MIN) * MIN;
     if (!ms) return 'keine';
     const a = Math.abs(ms), hh = Math.floor(a / STD), mm = Math.round((a % STD) / MIN);
-    return (ms < 0 ? '−' : '+') + [hh ? hh + ' h' : '', mm ? mm + ' min' : ''].filter(Boolean).join(' ');
+    return (ms < 0 ? '−' : '+') + [hh ? hh + ' Std.' : '', mm ? mm + ' Min.' : ''].filter(Boolean).join(' ');
   }
 
   /** Spur vorbereiten: nur Punkte mit Zeit, zeitlich sortiert, mit kumulierter Strecke (m). Lücken (newSeg) zählen nicht zur Strecke. */
@@ -101,10 +101,10 @@
   /** „Foto 1 liegt dann bei km 3,2“ (Video: „Video 1 …“). */
   function beispiel(nr, km, video) { return (video ? 'Video ' : 'Foto ') + nr + ' liegt dann bei km ' + kmText(km); }
 
-  /** Abstand außerhalb: „12 min nach dem Ende“, „2 h 5 min vor dem Start“. */
+  /** Abstand außerhalb: „12 Min. nach dem Ende“, „2 Std. 5 Min. vor dem Start“ (2.20.0: Einheiten wie F.dur). */
   function abstandText(a) {
     if (a.min == null) return 'keine Spur mit Zeiten';
-    const m = Math.max(0, a.min), t = m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : m + ' min';
+    const m = Math.max(0, a.min), t = m >= 60 ? Math.floor(m / 60) + ' Std.' + (m % 60 ? ' ' + (m % 60) + ' Min.' : '') : m + ' Min.';
     return t + (a.seite === 'vor' ? ' vor dem Start' : ' nach dem Ende');
   }
 

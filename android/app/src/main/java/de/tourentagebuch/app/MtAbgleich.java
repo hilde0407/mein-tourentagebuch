@@ -45,7 +45,7 @@ final class MtAbgleich {
 
     /** {jobId, titel, wifiOnly, wlanFotos, cookie, tasks:[…]} → {started} oder {started:false, error}. */
     static synchronized JSONObject start(Context c, JSONObject a) throws Exception {
-        if (running) return new JSONObject().put("started", false).put("error", "Es läuft schon ein Abgleich.");
+        if (running) return new JSONObject().put("started", false).put("error", "Abgleich läuft schon");
         JSONArray tasks = a.optJSONArray("tasks");
         if (tasks == null || tasks.length() == 0) return new JSONObject().put("started", false).put("error", "Nichts zu tun.");
         for (int i = 0; i < tasks.length(); i++) tasks.getJSONObject(i).remove("cookie");
@@ -61,7 +61,7 @@ final class MtAbgleich {
 
     /** Unterbrochenen Auftrag weiterführen. {cookie, wifiOnly?}. */
     static synchronized JSONObject fortsetzen(Context c, JSONObject a) throws Exception {
-        if (running) return new JSONObject().put("started", false).put("error", "Es läuft schon ein Abgleich.");
+        if (running) return new JSONObject().put("started", false).put("error", "Abgleich läuft schon");
         String p = MtAuftrag.text(planDatei(c));
         if (p == null) return new JSONObject().put("started", false).put("error", "Es gibt keinen unterbrochenen Abgleich.");
         String e = MtAuftrag.text(endeDatei(c));

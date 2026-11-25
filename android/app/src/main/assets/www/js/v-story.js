@@ -68,7 +68,7 @@ Views['/story'] = async (root, [id]) => {
       list.innerHTML = '';
       const l = CM[p.id] || [];
       if (!l.length) list.append(h('p', { class: 'muted' }, 'Noch keine Kommentare.'));
-      l.forEach(c => list.append(h('div', { class: 'scm2' }, h('small', { class: 'muted' }, F.date(c.ts) + ' ' + F.time(c.ts) + ' '), h('button', { class: 'ico', 'aria-label': 'Löschen', onclick: async () => { await Comments.remove(p.id, c.id); CM = await Comments.all(); fill(); draw(); } }, '🗑'), h('div', null, c.text))));
+      l.forEach(c => list.append(h('div', { class: 'scm2' }, h('small', { class: 'muted' }, F.date(c.ts) + ' ' + F.time(c.ts) + ' '), h('button', { class: 'ico', 'aria-label': 'Kommentar löschen', onclick: async () => { if (!await confirmBox('Kommentar „' + (c.text.length > 40 ? c.text.slice(0, 40) + ' …' : c.text) + '“ löschen?', 'Der Kommentar wird gelöscht und lässt sich nicht zurückholen.', 'Löschen')) return; await Comments.remove(p.id, c.id);      /* 2.20.0: Löschen fragt nach */ CM = await Comments.all(); fill(); draw(); } }, '🗑'), h('div', null, c.text))));
     };
     const send = async () => {
       const v = inp.value.trim(); if (!v) return;

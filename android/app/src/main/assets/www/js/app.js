@@ -3,8 +3,8 @@
 const Views = {};
 const Nav = {
   cleanup: null, cur: '',
-  /* Fünf Reiter; „Aufnehmen“ sitzt in der Mitte. Was nicht hier steht, liegt unter „Mehr“ oder ist von Start/Touren aus erreichbar. */
-  tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufnehmen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
+  /* Fünf Reiter; „Aufzeichnen“ sitzt in der Mitte. Was nicht hier steht, liegt unter „Mehr“ oder ist von Start/Touren aus erreichbar. */
+  tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufzeichnen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
     '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/fotodoppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr', '/offline': '/mehr' },
@@ -42,17 +42,17 @@ const Nav = {
     $('#tabs').classList.toggle('hide', deep); root.classList.toggle('notabs', deep);
     Nav.syncRec();
     try { Nav.cleanup = await route(root, parts.slice(1).map(decodeURIComponent)); }
-    catch (e) { root.append(UI.empty({ title: 'Das hat nicht geklappt', text: String(e.message || e) })); console.error(e); }
+    catch (e) { root.append(UI.empty({ title: 'Anzeigen nicht möglich', text: String(e.message || e) })); console.error(e); }
     if (isBack && Nav.pos[raw] && Nav.raw === raw) root.scrollTop = Nav.pos[raw];
   },
   pos: {}, stack: [], raw: '',
-  /** Die Scheibe „Aufnehmen“ wird rot, solange eine Aufzeichnung läuft oder pausiert ist. */
+  /** Die Scheibe „Aufzeichnen“ wird rot, solange eine Aufzeichnung läuft oder pausiert ist. */
   syncRec() {
     const a = $('#tabs a.rec'); if (!a) return;
     let live = false;
     try { const st = window.MTApp ? JSON.parse(MTApp.status()) : {}; live = (st.state === 'recording' || st.state === 'paused') && !AufnahmeCalc.unterbrochen(st); } catch (e) { /* ohne Hülle */ }      // 2.12.0: unterbrochen ist keine laufende Aufnahme
     a.classList.toggle('live', live);
-    a.setAttribute('aria-label', live ? 'Aufnehmen – Aufzeichnung läuft' : 'Aufnehmen');
+    a.setAttribute('aria-label', live ? 'Aufzeichnen – Aufzeichnung läuft' : 'Aufzeichnen');
   },
 };
 /** Wegweiser-Zeichen – dasselbe Motiv wie bei „Meine Touren“. */
@@ -71,17 +71,17 @@ Views['/mehr'] = async root => {
   root.append(topbar('Mehr'), h('div', { class: 'pad' },
     UI.section('Unterwegs', UI.list([
       UI.row({ icon: 'route', title: 'Tour planen', sub: 'Wegpunkte setzen, Route auf Wegen, Höhenprofil', href: '#/plan', id: 'm-plan' }),
-      UI.row({ icon: 'map', title: 'Karte aller Touren', sub: 'Alle Strecken auf einer Karte', href: '#/map', id: 'm-map' }),
+      UI.row({ icon: 'map', title: 'Karte', sub: 'Alle Touren auf einer Karte', href: '#/map', id: 'm-map' }),
       UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Kartenausschnitt vor der Tour laden – für unterwegs ohne Netz', href: '#/offline', id: 'm-offline' }),
       UI.row({ icon: 'book', title: 'Wanderführer', sub: 'Bücher mit GPX-Dateien: welche Touren du schon gewandert bist', href: '#/fuehrer', id: 'm-fuehrer' })])),
     UI.section('Rückblick', UI.list([
-      UI.row({ icon: 'bag', title: 'Reisen & Alben', sub: 'Reisen automatisch erkannt, Alben aus Schlagworten', href: '#/reisen', id: 'm-reisen' }),
-      UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Rekorde, Kalender, Ziele', href: '#/stats', id: 'm-stats' }),
+      UI.row({ icon: 'bag', title: 'Reisen & Alben', sub: 'Reisen automatisch erkannt, Alben aus Schlagwörtern', href: '#/reisen', id: 'm-reisen' }),
+      UI.row({ icon: 'chart', title: 'Statistik', sub: 'Jahre, Sportarten, Bestwerte, Kalender, Ziele', href: '#/stats', id: 'm-stats' }),
       UI.row({ icon: 'calendar', title: 'Jahresrückblick', sub: 'Dein Jahr in Zahlen, Höhepunkte, Bild zum Teilen', href: '#/jahr', id: 'm-jahr' })])),
     UI.section('Daten', UI.list([
       UI.row({ icon: 'download', title: 'Touren importieren', sub: MTCalc.importSub(MT.aktiv()), href: '#/import', id: 'm-import' }),
       UI.row({ icon: 'photo', title: 'Foto-Quellen', sub: 'Galerie, Ordner, Netzwerkfreigabe, Nextcloud', href: '#/sources', id: 'm-sources' }),
-      UI.row({ icon: 'gear', title: 'Einstellungen & Sicherung', sub: 'Sportarten, Karte, Aufnahme, Persönliches, Datensicherung', href: '#/settings', id: 'm-settings' })])),
+      UI.row({ icon: 'gear', title: 'Einstellungen', sub: 'Sportarten, Karte, Aufzeichnung, Persönliches, Sicherung', href: '#/settings', id: 'm-settings' })])),
     h('p', { class: 'muted small', style: { marginTop: '20px' } }, `${nT} ${nT === 1 ? 'Tour' : 'Touren'} · ${nP} ${nP === 1 ? 'Foto' : 'Fotos'} · alles nur auf diesem Handy`)));
 };
 window.mtBack = function () {
@@ -131,7 +131,7 @@ async function autoAbgleich() {
     const last = await DB.kvGet('abgleich', null);
     const el = $('#lastsync'); if (el && last) el.textContent = Abgleich.zeile(last);
     const bad = r.items.filter(i => i.err);
-    if (r.neu || bad.length) toast('Abgeglichen: ' + (r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') : 'nichts Neues') + (bad.length ? ' · ' + bad.map(i => i.name).join(', ') + ': Fehler (Details unter „Alles abgleichen“)' : ''), 6000);
+    if (r.neu || bad.length) toast('Touren geholt: ' + (r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') : 'nichts Neues') + (bad.length ? ' · ' + bad.map(i => i.name).join(', ') + ': Fehler (Einzelheiten unter „Touren holen“)' : ''), 6000);
     if (r.neu && Nav.cur === '/start' && $('#view').scrollTop < 40) Nav.render();      // nicht mitten im Blättern
   } catch (e) { console.error('Automatischer Abgleich', e); }
 }
@@ -140,7 +140,7 @@ async function handleShared() {
   try {
     const files = JSON.parse(MTApp.takeShared() || '[]');
     const txt = JSON.parse(MTApp.takeSharedText() || '[]');
-    for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird geladen …'); try { toast(Import.describe(await Import.fromUrl(m[0]))); } catch (e) { toast(e.message); } } }
+    for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird importiert …'); try { toast(Import.describe(await Import.fromUrl(m[0]))); } catch (e) { toast(e.message); } } }
     if (!files.length) return;
     const photos = files.filter(f => /\.(jpe?g|png|heic|webp)$/i.test(f.name)), tracks = files.filter(f => !photos.includes(f));
     if (tracks.length) {
@@ -175,7 +175,7 @@ async function checkUnsaved() {
   try {
     const st = JSON.parse(MTApp.status());
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) { if (Nav.cur !== '/rec') { toast('Es gibt eine noch nicht gespeicherte Aufzeichnung.', 6000); Nav.go('/rec'); } }
-    else if (AufnahmeCalc.unterbrochen(st)) { if (Nav.cur !== '/rec' && Nav.cur !== '/start') toast('Eine Aufnahme wurde unterbrochen – Hinweis auf der Startseite.', 6000); }      // 2.12.0: nicht wegspringen; Startseite und Aufnahme zeigen den Hinweis
+    else if (AufnahmeCalc.unterbrochen(st)) { if (Nav.cur !== '/rec' && Nav.cur !== '/start') toast('Eine Aufzeichnung wurde unterbrochen – Hinweis auf der Startseite.', 6000); }      // 2.12.0: nicht wegspringen; Startseite und Aufnahme zeigen den Hinweis
     else if (st.state === 'recording' || st.state === 'paused') { if (Nav.cur !== '/rec') Nav.go('/rec'); }
   } catch (e) { /* ignorieren */ }
 }

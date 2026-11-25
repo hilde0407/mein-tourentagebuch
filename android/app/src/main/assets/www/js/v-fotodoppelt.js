@@ -98,7 +98,7 @@ const FotoDup = {
 Views['/fotodoppelt'] = async (root, [tid]) => {
   const tour = tid ? await DB.get('tours', tid) : null;
   const body = h('div', { class: 'pad fd' });
-  root.append(topbar(tour ? 'Doppelte Fotos der Tour' : 'Doppelte Fotos', { back: true }), body);
+  root.append(topbar('Doppelte Fotos prüfen', { back: true }), body);
   body.append(h('p', { class: 'muted', id: 'fd-intro' }, (tour ? '„' + tour.name + '“: ' : '') +
     'Gesucht werden gleiche Dateien (auch von einem anderen Rechner oder Weg), gleiche Namen mit gleicher Aufnahmezeit und Größe sowie fast gleiche Bilder derselben Aufnahmezeit. ' +
     'Bearbeitete oder zugeschnittene Fotos gelten nicht als doppelt. Gelöscht wird nur, was du bestätigst.'));

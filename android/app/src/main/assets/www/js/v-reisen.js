@@ -172,7 +172,7 @@ const Reisen = {
   },
   tags: all => { const m = new Map(); all.filter(t => !t.hidden).forEach(t => (t.tags || []).forEach(g => { const a = m.get(g) || []; a.push(t); m.set(g, a); })); return m; },
 
-  /** Tags einer Tour bearbeiten (Sheet). */
+  /** Schlagwörter einer Tour bearbeiten (Blatt „Schlagwörter & Alben“; intern „tags“). */
   editTags(t, done) {
     let tags = (t.tags || []).slice();
     const box = h('div'), inp = h('input', { type: 'text', placeholder: 'Neues Schlagwort, z. B. Urlaub Südtirol 2026', autocapitalize: 'sentences' });
@@ -184,9 +184,10 @@ const Reisen = {
       if (rest.length) box.append(h('p', { class: 'muted small' }, 'Vorhandene Alben:'), h('div', { class: 'chips wrap' }, rest.map(g => h('button', { class: 'chip', onclick: () => { tags.push(g); draw(); } }, g))));
     };
     const add = () => { const v = inp.value.trim(); if (v && !tags.includes(v)) { tags.push(v); } inp.value = ''; draw(); };
-    const s = sheet('Tags & Alben', h('div', null, box,
+    const s = sheet('Schlagwörter & Alben', h('div', null, box,
       h('div', { class: 'row' }, inp, h('button', { class: 'btn', onclick: add }, 'Hinzufügen')),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => { add(); t.tags = tags; await Tours.save(t); s.close(); if (done) done(); } }, 'Speichern'))));
+      h('div', { class: 'row end' }, h('button', { class: 'btn', id: 'tags-cancel', onclick: () => s.close() }, 'Abbrechen'),
+        h('button', { class: 'btn pri', id: 'tags-save', onclick: async () => { add(); t.tags = tags; await Tours.save(t); s.close(); toast('Schlagwörter gespeichert'); if (done) done(); } }, 'Speichern'))));
     Tours.list().then(all => { known = [...Reisen.tags(all).keys()].sort((a, b) => a.localeCompare(b, 'de')); draw(); });
     draw();
   },
@@ -220,7 +221,7 @@ Views['/reisen'] = async root => {
       body.append(h('details', null, h('summary', null, 'Erkennung anpassen'), num('days', 'Mindestzahl Tage einer Reise', 2)));
     } else {
       const m = Reisen.tags(all), list = [...m.entries()].map(([g, ts]) => [g, Reisen.sum(ts.slice().sort((a, b) => a.start - b.start))]).sort((a, b) => b[1].last - a[1].last);
-      body.append(h('p', { class: 'muted small' }, 'Alben entstehen aus Schlagworten, die du einer Tour gibst (Tour öffnen → ⋮ → „Tags & Alben“).'));
+      body.append(h('p', { class: 'muted small' }, 'Alben entstehen aus Schlagwörtern, die du einer Tour gibst (Tour öffnen → ⋮ → „Schlagwörter & Alben …“).'));
       if (!list.length) body.append(UI.empty({ icon: 'tag', title: 'Noch keine Alben', text: 'Gib einer Tour ein Schlagwort – alle Touren mit demselben Schlagwort bilden ein Album.' }));
       body.append(h('div', { class: 'list' }, list.map(([g, r]) => h('a', { class: 'li', href: '#/album/' + encodeURIComponent(g) },
         Reisen.icon(r, '🏷️'), h('span', { class: 'li-t' }, h('b', null, g), h('small', null, `${r.tours.length} Touren · ${F.km(r.km)} · ${Reisen.range(r.first, r.last)}`))))));
@@ -241,7 +242,7 @@ async function groupPage(root, title, tours, opts) {
   photos.sort((a, b) => a.ts - b.ts);
   const kpi = (v, l) => UI.fig(v, l);
   body.append(h('div', { class: 'sub' }, Reisen.range(r.first, r.last)),
-    h('div', { class: 'kpis' }, kpi(sorted.length, 'Touren'), kpi(r.days, r.days === 1 ? 'Tag' : 'Tage'), kpi(F.km(r.km), 'Strecke'), kpi(F.m(r.up), 'Aufstieg'), kpi(F.dur(r.dur), 'Zeit unterwegs'), kpi(photos.length, 'Fotos')));
+    h('div', { class: 'kpis' }, kpi(sorted.length, 'Touren'), kpi(r.days, r.days === 1 ? 'Tag' : 'Tage'), kpi(F.km(r.km), 'Strecke'), kpi(F.m(r.up), 'Aufstieg'), kpi(F.dur(r.dur), 'Dauer'), kpi(photos.length, 'Fotos')));
   body.append(h('div', { class: 'row' }, h('button', { class: 'btn', id: 'gflug', onclick: () => { Flug.title = title; Nav.go('/flug/set:' + sorted.map(t => t.id).join(',')); } }, '🚁 ' + (sorted.length > 1 ? 'Reiseflug' : '3D-Flug'))));
   if (photos.length) body.append(h('div', { class: 'row' }, h('h3', { class: 'grow' }, 'Fotos'), h('button', { class: 'btn sm', id: 'gshow', onclick: async () => Show.open(await Show.forTours(sorted)) }, '▶ Diashow')), h('div', { class: 'strip' }, photos.slice(0, 40).map((p, i) => h('button', { class: 'th', 'aria-label': (p.video ? VideoCalc.dauerText(p.dur) : 'Foto') + ' ' + (i + 1), onclick: () => Lightbox.open(photos, i) }, h('img', { src: Photos.thumb(p.id), alt: '', loading: 'lazy' }), UI.vidMark(p)))));
   // Touren je Tag
@@ -278,16 +279,17 @@ Views['/reise'] = async (root, [id]) => {
         const d = ms => { const x = new Date(ms); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
         const a = h('input', { type: 'date', value: d(r.first) }), b = h('input', { type: 'date', value: d(r.last) });
         const sh = sheet('Zeitraum der Reise', h('div', null, h('label', { class: 'fld' }, 'Von', a), h('label', { class: 'fld' }, 'Bis', b),
-          h('div', { class: 'row end' }, ed.period[id] ? h('button', { class: 'btn', onclick: async () => { delete ed.period[id]; await DB.kvSet('tripPeriod', ed.period); sh.close(); Nav.render(); } }, 'Zurücksetzen') : null,
-            h('button', { class: 'btn pri', onclick: async () => { const f = new Date(a.value + 'T00:00:00').getTime(), l = new Date(b.value + 'T00:00:00').getTime(); if (!(f <= l)) return toast('Das Ende liegt vor dem Anfang'); ed.period[id] = [f, l]; await DB.kvSet('tripPeriod', ed.period); sh.close(); Nav.render(); } }, 'Speichern'))));
-      } }, '📅 Zeitraum ändern'),
+          ed.period[id] ? h('div', { class: 'row' }, h('button', { class: 'btn', id: 'rz-standard', onclick: async () => { if (!await confirmBox('Standard wiederherstellen?', 'Die Reise bekommt wieder den automatisch erkannten Zeitraum.', 'Wiederherstellen')) return; delete ed.period[id]; await DB.kvSet('tripPeriod', ed.period); sh.close(); toast('Zeitraum wiederhergestellt'); Nav.render(); } }, 'Standard wiederherstellen')) : null,
+          h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => sh.close() }, 'Abbrechen'),
+            h('button', { class: 'btn pri', onclick: async () => { const f = new Date(a.value + 'T00:00:00').getTime(), l = new Date(b.value + 'T00:00:00').getTime(); if (!(f <= l)) return toast('Das Ende liegt vor dem Anfang'); ed.period[id] = [f, l]; await DB.kvSet('tripPeriod', ed.period); sh.close(); toast('Zeitraum gespeichert'); Nav.render(); } }, 'Speichern'))));
+      } }, '📅 Zeitraum ändern …'),
       r.multi ? null : h('button', { class: 'btn', onclick: async () => { if (ed.hidden[id]) delete ed.hidden[id]; else ed.hidden[id] = true; await DB.kvSet('tripHidden', ed.hidden); toast(ed.hidden[id] ? 'Reise ausgeblendet' : 'Reise wieder eingeblendet'); Nav.go('/reisen'); } }, ed.hidden[id] ? '👁 Wieder einblenden' : '🙈 Ausblenden'),
       h('button', { class: 'btn', onclick: async () => {
       const name = Reisen.title(r, names, places).trim();
-      if (!await confirmBox('Als Album speichern', `Allen ${r.tours.length} Touren wird das Schlagwort „${name}“ gegeben.`, 'Speichern')) return;
+      if (!await confirmBox(`Als Album „${name}“ speichern?`, `Allen ${r.tours.length} Touren wird das Schlagwort „${name}“ gegeben.`, 'Speichern')) return;
       for (const t of r.tours) { t.tags = [...new Set([...(t.tags || []), name])]; await Tours.save(t); }
-      toast('Album „' + name + '“ angelegt'); Nav.go('/album/' + encodeURIComponent(name));
-    } }, '🏷️ Als Album speichern')),
+      toast('Album „' + name + '“ gespeichert'); Nav.go('/album/' + encodeURIComponent(name));
+    } }, '🏷️ Als Album speichern …')),
   });
 };
 

@@ -191,9 +191,9 @@
     if (hatZeit(m) && grundName(m.name, m.id)) { const s = Math.round(m.ts / 1000); for (const k of [s - 1, s, s + 1]) if (ix.nz.has(nameKey(m, k))) return 'name'; }
     return null;
   }
-  /** „3 Foto(s) hinzugefügt · 2 schon vorhanden, übersprungen“ */
+  /** „3 Fotos hinzugefügt · 2 schon vorhanden, übersprungen“ (2.20.0: Mehrzahl ausgeschrieben) */
   function importText(n, skip, wort) {
-    return n + ' Foto(s) ' + (wort || 'hinzugefügt') + (skip ? ' · ' + skip + ' schon vorhanden, übersprungen' : '');
+    return n + (n === 1 ? ' Foto ' : ' Fotos ') + (wort || 'hinzugefügt') + (skip ? ' · ' + skip + ' schon vorhanden, übersprungen' : '');
   }
 
   const api = { SEK, HALB, H14, BILD_MAX, GRUND, abschnitte, abdruck, abdruckVon, raster, abstand, grundName, gleich, gruppen, brauchtBild, wert, behalten, vorschlag, uebernehmen, verweise, summe, summeText, mb, index, merke, bekannt, importText };

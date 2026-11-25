@@ -55,11 +55,11 @@ const TourBild = {
     ctx.fillStyle = C.ink; ctx.font = `700 ${tt.size}px ${D}`;
     tt.lines.forEach((l, i) => ctx.fillText(l, M - 2, L.titel.y[i]));
     ctx.fillStyle = C.muted; ctx.font = `500 ${fmt === 'quadrat' ? 30 : 34}px ${B}`;
-    const datum = t.start ? new Date(t.start).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+    const datum = t.start ? F.date(t.start) : '';
     ctx.fillText(Pdf.kuerzen([datum, Sports.label(t.sport)].filter(Boolean).join(' · '), L.IW, s => ctx.measureText(s).width), M, L.unter);
     // Kennzahlen
     const k = TeilenCalc.kennzahlen(t), zs = fmt === 'quadrat' ? 64 : 76;
-    [[k.dist != null ? F.km(k.dist) : '–', 'Strecke'], [k.up != null ? F.m(k.up) : '–', 'Aufstieg'], [k.zeit != null ? F.dur(k.zeit) : '–', 'Zeit']].forEach(([v, lab], i) => {
+    [[k.dist != null ? F.km(k.dist) : '–', 'Strecke'], [k.up != null ? F.m(k.up) : '–', 'Aufstieg'], [k.zeit != null ? F.dur(k.zeit) : '–', 'Dauer']].forEach(([v, lab], i) => {
       const c = L.zahlen.cols[i]; JahrKarte.num(ctx, v, c.x, L.zahlen.y, zs, c.w);
       ctx.fillStyle = C.muted; ctx.font = `500 ${fmt === 'quadrat' ? 26 : 28}px ${B}`; ctx.fillText(lab, c.x, L.zahlen.ly);
     });

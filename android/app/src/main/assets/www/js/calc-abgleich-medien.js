@@ -156,10 +156,11 @@
     const f = n => n + (n === 1 ? ' neues Foto' : ' neue Fotos');
     return f(plan.holen.length) + ' dort · ' + plan.senden.length + ' neu hier · ' + plan.vorhanden + ' schon vorhanden';
   }
-  /** Bestätigungstext für Videos: „2 Video(s) bis 180 MB, nur im WLAN“. */
+  /** Bestätigungstext für Videos: „2 Videos bis 180 MB, nur im WLAN“. */
   function videoFrage(liste) {
     const max = (liste || []).reduce((a, x) => Math.max(a, +x.size || 0), 0), sum = (liste || []).reduce((a, x) => a + (+x.size || 0), 0);
-    return (liste || []).length + ' Video(s) bis ' + mb(max) + ', zusammen ' + mb(sum) + ', nur im WLAN';
+    const n = (liste || []).length;
+    return n + (n === 1 ? ' Video' : ' Videos') + ' bis ' + mb(max) + ', zusammen ' + mb(sum) + ', nur im WLAN';
   }
   /** Antwort von POST /photo bzw. /video zählen. z: { neu, vorhanden, geloescht, fehler }. */
   function zaehle(z, antwort) {

@@ -1,5 +1,5 @@
 'use strict';
-/* Auswertung wie in „Meine Touren“: Rekorde, Kalender, Leistung über die Jahre, Sportarten, Neuland, Wetter und Jahresziele.
+/* Auswertung wie in „Meine Touren“: Bestwerte, Kalender, Leistung über die Jahre, Sportarten, Neuland, Wetter und Jahresziele.
    Jede Funktion bekommt das Element, die gefilterten Touren und {all, year, sport}. Alles rechnet auf dem Handy. */
 const Ausw = {
   day: ms => { const d = new Date(ms); return Math.floor((ms - d.getTimezoneOffset() * -60000 * -1) / 86400000); },
@@ -32,7 +32,7 @@ const Ausw = {
   /** Abschnitt „Wochen-Serie“: Wochen in Folge mit mindestens einer Tour (Montag bis Sonntag). */
   serie(tours) {
     const s = Serie.berechne(tours, new Date());
-    return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'aktuelle Serie'], [Ausw.wk(s.rekord), 'Rekord'], [s.wochenMit + ' von 26', 'Wochen mit Tour']]),
+    return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'aktuelle Serie'], [Ausw.wk(s.rekord), 'Bestwert'], [s.wochenMit + ' von 26', 'Wochen mit Tour']]),
       h('p', { class: 'muted small' }, s.offen ? 'Diese Woche fehlt noch eine Tour, damit die Serie weiterläuft.' : 'Eine Woche zählt, wenn sie mindestens eine Tour enthält (Montag bis Sonntag).')], { id: 'serie-sec' });
   },
 
@@ -82,7 +82,7 @@ const Ausw = {
       });
       kids.push(h('h3', { class: 'sub', 'data-sport': g.sport, title: StatGruppen.titel(g.sport, gr) || null }, StatGruppen.icon(g.sport, gr) + ' ' + StatGruppen.beschriftung(g.sport, gr) + ' · ' + g.n + ' Touren'), h('div', { class: 'list' }, rows));      // 2.19.0: Gruppe = eine Zeile mit ihrem Namen
     });
-    box.append(...Ausw.sec('Bestwerte je Sportart', n === 3 ? 'Je Sportart der Bestwert, darunter Platz 2 und 3. Tempo aus der Zeit in Bewegung.' : 'Je Sportart der Bestwert (oben „Beste drei“ zeigt auch Platz 2 und 3). Tempo aus der Zeit in Bewegung.'), ...kids);
+    box.append(...Ausw.sec('Bestwerte je Sportart', n === 3 ? 'Je Sportart der Bestwert, darunter Platz 2 und 3. Tempo aus der Bewegungszeit.' : 'Je Sportart der Bestwert (oben „Beste drei“ zeigt auch Platz 2 und 3). Tempo aus der Bewegungszeit.'), ...kids);
     return box;
   },
 
@@ -127,7 +127,7 @@ const Ausw = {
     const step = (() => { const raw = mx0 / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; })();
     const mx = Math.ceil(mx0 / step) * step, X = i => L + i * pw / 11, Y = v => T + ph - v / mx * ph;
     const tick = v => (k === 'dist' ? Math.round(v / 1000).toLocaleString('de-DE') : k === 'zeit' ? Math.round(v / 3600).toLocaleString('de-DE') : Math.round(v).toLocaleString('de-DE'));
-    const unit = k === 'dist' ? 'km' : k === 'up' ? 'm' : k === 'zeit' ? 'h' : '';
+    const unit = k === 'dist' ? 'km' : k === 'up' ? 'm' : k === 'zeit' ? 'Std.' : '';
     let g = '';
     for (let v = 0; v <= mx + 1e-9; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="vt">${tick(v)}</text>`;
     g += `<text x="${L - 6}" y="${T - 12}" text-anchor="end" class="vt">${unit}</text>`;
@@ -163,7 +163,7 @@ const Ausw = {
       const by = new Map(); all.filter(t => new Date(t.start).getFullYear() === y && Sports.passt(ctx.sport, t.sport)).forEach(t => { const k = Ausw.dkey(t.start); const a = by.get(k) || []; a.push(t); by.set(k, a); });
       const mx = Math.max(1, ...[...by.values()].map(a => a.reduce((s, t) => s + t.dist, 0)));
       const nav = h('div', { class: 'row' }, h('button', { class: 'btn sm', 'aria-label': 'Vorjahr', onclick: () => { y--; draw(); } }, '‹'), h('b', { class: 'calyear' }, String(y)), h('button', { class: 'btn sm', 'aria-label': 'Folgejahr', onclick: () => { y++; draw(); } }, '›'));
-      wrap.append(nav, h('p', { class: 'muted small' }, by.size + ' Tage mit Tour. Je dunkler, desto weiter. Tag antippen für die Touren.'));
+      wrap.append(nav, h('p', { class: 'muted small' }, (by.size === 1 ? '1 aktiver Tag' : by.size + ' aktive Tage') + '. Je dunkler, desto weiter. Tag antippen für die Touren.'));
       const grid = h('div', { class: 'cal' });
       for (let m = 0; m < 12; m++) {
         const first = new Date(y, m, 1), n = new Date(y, m + 1, 0).getDate(), off = (first.getDay() + 6) % 7;
@@ -192,7 +192,7 @@ const Ausw = {
     const rows = [...StatGruppen.aufteilen(ts, gr).entries()].sort((a, b) => b[1].reduce((x, t) => x + t.dist, 0) - a[1].reduce((x, t) => x + t.dist, 0));
     const sm = (a, k) => a.reduce((x, t) => x + (t[k] || 0), 0);
     body.append(...Ausw.sec('Statistik nach Sportart'), h('div', { class: 'tblw' }, h('table', { class: 'cstat' },
-      h('thead', null, h('tr', null, ['Sportart', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
+      h('thead', null, h('tr', null, ['Sportart', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Bewegungszeit'].map(x => h('th', null, x)))),
       h('tbody', null, rows.map(([k, a]) => h('tr', { 'data-sport': k }, h('td', { title: StatGruppen.titel(k, gr) || null }, StatGruppen.icon(k, gr) + ' ' + StatGruppen.beschriftung(k, gr)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
     // Leistung über die Jahre
     const all = ctx.all.filter(t => Sports.passt(ctx.sport, t.sport));
@@ -269,7 +269,7 @@ const Ausw = {
       const btn = h('button', { class: 'btn' + (have.length ? '' : ' pri'), onclick: async () => {
         btn.disabled = true; const batch = todo.slice(0, 150);
         try { const r = await Ausw.wetterLaden(batch, (i, n) => { btn.textContent = 'Lade ' + i + '/' + n + ' …'; }); toast(r.ok + ' Touren mit Wetter' + (r.fail ? ' · ' + r.fail + ' ohne Daten' : '')); } catch (e) { toast(e.message, 6000); }
-        const all2 = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden); ctx.all.splice(0, ctx.all.length, ...all2); draw(); } }, todo.length ? (have.length ? 'Weitere laden (' + Math.min(150, todo.length) + ' von ' + todo.length + ')' : 'Wetter laden') : 'Alles geladen');
+        const all2 = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden); ctx.all.splice(0, ctx.all.length, ...all2); draw(); } }, todo.length ? (have.length ? 'Weitere holen (' + Math.min(150, todo.length) + ' von ' + todo.length + ')' : 'Wetter holen') : 'Alles geholt');
       if (!todo.length) btn.disabled = true;
       if (!have.length) { el.append(btn); return; }
       const buckets = [['unter 0 °', t => t.wxT < 0], ['0 – 10 °', t => t.wxT >= 0 && t.wxT < 10], ['10 – 20 °', t => t.wxT >= 10 && t.wxT < 20], ['20 – 30 °', t => t.wxT >= 20 && t.wxT < 30], ['über 30 °', t => t.wxT >= 30]];

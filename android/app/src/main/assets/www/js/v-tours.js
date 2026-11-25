@@ -92,10 +92,10 @@ Views['/'] = async root => {
   }), { rootMargin: '300px' });
   const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Touren suchen', oninput: e => { F_.q = e.target.value; draw(); } });
   // Selten gebraucht (Jahr, Region): hinter „Filter“, der Zähler zeigt, wie viele davon gesetzt sind
-  const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
+  const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Gesamte Zeit'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
   const regSel = h('select', { 'aria-label': 'Region', onchange: e => { F_.region = e.target.value; draw(); } });
   const regFld = h('label', { class: 'fld' }, 'Region', regSel);
-  const starSel = h('select', { 'aria-label': 'Bewertung', id: 'filterstars', onchange: e => { F_.stars = e.target.value; draw(); } }, [['', 'Alle'], ['3', 'ab 3 Sternen'], ['4', 'ab 4 Sternen'], ['5', '5 Sterne']].map(([v, l]) => h('option', { value: v, selected: String(F_.stars) === v }, l)));
+  const starSel = h('select', { 'aria-label': 'Bewertung', id: 'filterstars', onchange: e => { F_.stars = e.target.value; draw(); } }, [['', 'Alle Bewertungen'], ['3', 'ab 3 Sternen'], ['4', 'ab 4 Sternen'], ['5', '5 Sterne']].map(([v, l]) => h('option', { value: v, selected: String(F_.stars) === v }, l)));
   const fbtn = h('button', { class: 'btn sm fbtn', id: 'filterbtn', onclick: filterSheet });
   const fillRegions = () => {
     const n = {}; all.forEach(t => { const r = Reisen.regionOf(t, cells); if (r) n[r] = (n[r] || 0) + 1; });
@@ -118,10 +118,9 @@ Views['/'] = async root => {
   const draw = () => {
     chips.innerHTML = '';
     const chip = (label, on, fn) => chips.append(UI.chip(label, on, fn));
-    chip('Alle', !F_.sport && !F_.fav && !F_.planned, () => { Object.assign(F_, { sport: '', fav: false, planned: false }); draw(); });
-    chip('★ Favoriten', F_.fav, () => { F_.fav = !F_.fav; draw(); });
+    chip('★ Lieblingstouren', F_.fav, () => { F_.fav = !F_.fav; draw(); });      // 2.20.0: „Favoriten“ heißen nur noch die Favoriten-Sportarten
     chip('Geplant', F_.planned, () => { F_.planned = !F_.planned; draw(); });
-    // 2.19.1: dieselbe Auswahl wie auf der Karte (StatGruppen.chipAuswahl): Statistik-Gruppen, dann Sportarten mit Touren nach Kategorien, mit Farbpunkt
+    // 2.19.1: dieselbe Auswahl wie auf der Karte (StatGruppen.chipAuswahl): „Alle Sportarten“, Statistik-Gruppen, dann Sportarten mit Touren nach Kategorien, mit Farbpunkt
     const grS = StatGruppen.aktuell();
     if (F_.sport && !StatGruppen.gueltig(F_.sport, grS)) F_.sport = '';
     chips.append(...UI.sportChips(StatGruppen.chipAuswahl(all.map(t => t.sport), grS), F_.sport, k => { F_.sport = k; draw(); }));
@@ -173,7 +172,7 @@ Views['/tour'] = async (root, [id]) => {
   const title = h('h1', null, t.name);
   // Die Knöpfe schweben auf der Karte; der Titel steht darunter auf dem Papier
   root.append(h('header', { class: 'top over' }, h('button', { class: 'ico', 'aria-label': 'Zurück', onclick: () => Nav.back() }, '←'), h('span', { class: 'sp' }),
-    h('button', { class: 'ico', 'aria-label': 'Favorit', 'aria-pressed': t.fav ? 'true' : 'false', onclick: async e => { t.fav = !t.fav; await Tours.save(t); fav.textContent = t.fav ? '★' : '☆'; e.currentTarget.setAttribute('aria-pressed', t.fav ? 'true' : 'false'); toast(t.fav ? 'Als Favorit gemerkt' : 'Kein Favorit mehr'); } }, h('span', { id: 'fav' }, t.fav ? '★' : '☆')),
+    h('button', { class: 'ico', 'aria-label': 'Lieblingstour', 'aria-pressed': t.fav ? 'true' : 'false', onclick: async e => { t.fav = !t.fav; await Tours.save(t); fav.textContent = t.fav ? '★' : '☆'; e.currentTarget.setAttribute('aria-pressed', t.fav ? 'true' : 'false'); toast(t.fav ? 'Als Lieblingstour gemerkt' : 'Keine Lieblingstour mehr'); } }, h('span', { id: 'fav' }, t.fav ? '★' : '☆')),
     h('button', { class: 'ico', 'aria-label': 'Aktionen', onclick: actions }, '⋮')), mapEl, body);
   const fav = $('#fav');
   async function rename() { const n = await askText('Name der Tour', 'Name', t.name, 'Speichern'); if (n && n.trim()) { t.name = n.trim(); await Tours.save(t); title.textContent = t.name; } }
@@ -217,7 +216,7 @@ Views['/tour'] = async (root, [id]) => {
   }
   // Die drei wichtigsten Zahlen groß, alles Weitere leise darunter
   const main = UI.figs([[F.km(t.dist), 'Strecke'], ['↑ ' + F.m(t.up), 'Aufstieg'], [t.dur ? F.dur(t.dur) : '–', 'Dauer']], { big: true, cls: 'tmain' });
-  const more = UI.facts([['Abstieg', F.m(t.down)], ['In Bewegung', t.moving ? F.dur(t.moving) : '–'], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : '–'],
+  const more = UI.facts([['Abstieg', F.m(t.down)], ['Bewegungszeit', t.moving ? F.dur(t.moving) : '–'], ['Ø Tempo', t.moving ? F.speed(t.dist, t.moving) : '–'],
     ['Höchster Punkt', t.maxAlt != null ? F.m(t.maxAlt) : '–'], ['Tiefster Punkt', t.minAlt != null ? F.m(t.minAlt) : '–'],
     t.hrAvg ? ['Ø Puls', t.hrAvg + ' bpm'] : null, t.hrAvg ? ['Höchster Puls', t.hrMax + ' bpm'] : null,
     t.upKomoot != null && t.upSrc !== 'komoot' ? ['Komoot nennt', F.m(t.upKomoot)] : null]);
@@ -259,7 +258,7 @@ Views['/tour'] = async (root, [id]) => {
     h('div', { class: 'sub' }, F.date(t.start) + (t.timed ? ' · ' + F.time(t.start) + '–' + F.time(t.end) : '') + ' · ' + Sports.label(t.sport), src ? h('span', { id: 'tsrc' }, ' · ' + src) : null),      // Quelle (ehrliche Herkunft, auch „Meine Touren“ bei Aus – ohne Verweis-Knöpfe)
     mtAn && t.mtSent && t.src !== 'mt' ? h('div', { class: 'sub muted small', id: 'mtsent' }, 'An Meine Touren gesendet am ' + F.date(t.mtSent)) : null,
     stageBox,
-    Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhen korrigieren')]) : null,
+    Fix.suspicious(t) && !t.elevFix && !t.elevSrc ? UI.banner('Der Aufstieg wirkt zu hoch (' + F.m(t.up) + ' auf ' + F.km(t.dist) + ').', [h('button', { class: 'btn pri sm', id: 'fixbanner', onclick: fixEle }, 'Höhe korrigieren')]) : null,
     t.status === 'planned' ? UI.banner('Geplante Tour', [h('a', { class: 'btn pri sm', href: '#/plan/' + t.id }, 'Im Planer öffnen'), h('button', { class: 'btn sm', onclick: () => startWith(t, pts) }, '● Mit Ansagen starten')]) : null,
     (t.tags || []).length ? h('div', { class: 'chips wrap' }, t.tags.map(g => h('a', { class: 'chip', href: '#/album/' + encodeURIComponent(g) }, g))) : null,
     t.status === 'planned' ? null : rateBox(), main, more, mtInfo(), imBuch,
@@ -299,43 +298,47 @@ Views['/tour'] = async (root, [id]) => {
   }
 
   async function addPhotos() { PhotoSources.sheet(t, async () => { photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); }); }
+  /* 2.20.0: Reihenfolge wie im Leitfaden (Regel 8) – Bearbeiten (mit „Schlagwörter & Alben …“), Strecke und Höhen, Ansehen, Teilen, Exportieren, Löschen zuletzt (rot);
+     Punkte, die einen weiteren Dialog öffnen, enden auf „ …“. */
   function actions() {
-    const it = (ico, tx, fn) => UI.row({ icon: ico, title: tx, onclick: () => { s.close(); fn(); } });
+    const it = (ico, tx, fn, sub, rid) => UI.row({ icon: ico, title: tx, sub, id: rid, onclick: () => { s.close(); fn(); } });
     const grp = (name, rows) => [h('h3', { class: 'sub' }, name), UI.list(rows.filter(Boolean), { cls: 'menu' })];
     const s = sheet(t.name, h('div', null,
-      grp('Ansehen und teilen', [
-        it('flight', '3D-Flug über die Tour', () => Nav.go('/flug/' + id)),
-        it('book', 'Erzählung', () => Nav.go('/story/' + id)),
-        photos.some(p => !p.video) ? it('film', 'Diashow teilen', () => Show.share(t, pts, photos)) : null,
-        it('link', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); }),
-        it('compass', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts)),
-        UI.row({ icon: 'photo', title: 'Als Bild teilen', id: 'tb-menu', onclick: () => { s.close(); TourBild.dialog(t); } }),
-        it('file', 'Als PDF', () => PdfUI.tour(t)),
-        it('share', 'Als GPX speichern', exportGpx),
-        UI.row({ icon: 'download', title: 'Komoot-Paket …', id: 'kp-menu', onclick: () => { s.close(); KomootPaket.dialog(t); } }),      // 2.18.0: Export zum Selbst-Hochladen – unabhängig von Meine Touren
-        SendenCalc.sichtbar(t, mtAcc) ? UI.row({ icon: 'server', title: 'An Meine Touren senden', id: 'mt-senden-tour', onclick: () => { s.close(); Senden.dialog(t, () => Nav.render()); } }) : null,
-        MedienAbgleich.sichtbar(t, mtAcc) ? UI.row({ icon: 'swap', title: 'Mit Meine Touren abgleichen …', id: 'mt-abgleich-tour', onclick: () => { s.close(); MedienAbgleich.tour(t, () => Nav.render()); } }) : null]),
       grp('Bearbeiten', [
-        it('pencil', 'Umbenennen', rename),
-        it('bulb', 'Namensvorschläge', suggestNames),
-        it('tag', 'Sportart ändern', changeSport),
-        t.status !== 'planned' && !t.plan ? it('route', 'Mit Plan vergleichen', () => TourHelp.linkSheet(t)) : null,
-        it('bag', 'Tags & Alben', () => Reisen.editTags(t, () => Nav.render())),
-        t.timed && t.status !== 'planned' ? UI.row({ icon: 'pin', title: 'Orte der Fotos aus der Tour ergänzen', id: 'fotoort-menu', onclick: () => { s.close(); fotoOrt(); } }) : null,
-        photos.length > 1 ? UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', id: 'fd-menu', onclick: () => { s.close(); Nav.go('/fotodoppelt/' + id); } }) : null,
-        it('camera', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n + ' Foto(s) gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); })]),
+        it('pencil', 'Umbenennen …', rename),
+        it('bulb', 'Namensvorschläge …', suggestNames),
+        it('tag', 'Sportart ändern …', changeSport),
+        it('bag', 'Schlagwörter & Alben …', () => Reisen.editTags(t, () => Nav.render())),
+        t.status !== 'planned' && !t.plan ? it('route', 'Mit Planung vergleichen …', () => TourHelp.linkSheet(t)) : null,
+        t.timed && t.status !== 'planned' ? it('pin', 'Orte der Fotos aus der Tour ergänzen …', fotoOrt, null, 'fotoort-menu') : null,
+        photos.length > 1 ? it('photo', 'Doppelte Fotos prüfen', () => Nav.go('/fotodoppelt/' + id), null, 'fd-menu') : null,
+        it('camera', 'Fotos aus der Galerie suchen', async () => { const n = await PhotoSources.galleryForTours([t]); toast(n === 1 ? '1 Foto gefunden' : n + ' Fotos gefunden'); photos = (await DB.byIndex('photos', 'tour', id)).sort((a, b) => a.ts - b.ts); drawStrip(); drawPhotos(); })]),
       grp('Strecke und Höhen', [
-        it('peak', t.elevFix ? 'Höhen neu aus Gelände berechnen' : 'Höhen korrigieren (Geländemodell)', fixEle),
-        it('watch', t.elevSrc ? 'Höhe aus Uhr (bereits abgeglichen) – erneut abgleichen' : 'Höhe aus Uhr abgleichen (Zepp)', zeppEle),
+        it('peak', 'Höhe korrigieren', fixEle, t.elevFix ? 'aus dem Geländemodell (schon korrigiert – neu berechnen)' : 'aus dem Geländemodell', 'ele-dem'),
+        it('watch', 'Höhe korrigieren', zeppEle, t.elevSrc ? 'aus der Uhr (Zepp, schon korrigiert – erneut holen)' : 'aus der Uhr (Zepp)', 'ele-uhr'),
         it('wrench', 'GPS-Track korrigieren', () => Nav.go('/fix/' + id)),
         t.elevFix || t.elevSrc ? it('undo', 'Originalhöhen wiederherstellen', async () => { Object.assign(t, await Fix.restoreEle(t)); toast('Originalhöhen wiederhergestellt'); Nav.render(); }) : null,
         it('refresh', 'Kennzahlen neu berechnen', async () => { Object.assign(t, await Tours.recalc(id, { eigen: true })); toast('Kennzahlen neu berechnet'); Nav.render(); })]),
-      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', onclick: async () => { s.close(); if (await confirmBox('Tour löschen?', `„${t.name}“ wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.`, 'Tour löschen')) { await Tours.remove(id); await DB.del('kv', 'pn:' + id).catch(() => {}); Nav.go('/'); } } }, '🗑️ Tour löschen'))));
+      grp('Ansehen', [
+        it('flight', '3D-Flug über die Tour', () => Nav.go('/flug/' + id)),
+        it('book', 'Erzählung', () => Nav.go('/story/' + id)),
+        it('compass', 'Als Route nachgehen (mit Ansagen)', () => startWith(t, pts))]),
+      grp('Teilen', [
+        it('photo', 'Als Bild teilen …', () => TourBild.dialog(t), null, 'tb-menu'),
+        photos.some(p => !p.video) ? it('film', 'Diashow teilen', () => Show.share(t, pts, photos)) : null,
+        it('link', 'Zusammenfassung teilen', () => { const txt = `${t.name}\n${F.date(t.start)} · ${F.km(t.dist)} · ↑ ${F.m(t.up)} · ${F.dur(t.dur)}`; if (window.MTApp) MTApp.shareText(txt); else navigator.clipboard && navigator.clipboard.writeText(txt); })]),
+      grp('Exportieren', [
+        it('file', 'Als PDF exportieren', () => PdfUI.tour(t)),
+        it('share', 'Als GPX exportieren', exportGpx),
+        it('download', 'Komoot-Paket …', () => KomootPaket.dialog(t), null, 'kp-menu'),      // 2.18.0: Export zum Selbst-Hochladen – unabhängig von Meine Touren
+        SendenCalc.sichtbar(t, mtAcc) ? it('server', 'An Meine Touren senden …', () => Senden.dialog(t, () => Nav.render()), null, 'mt-senden-tour') : null,
+        MedienAbgleich.sichtbar(t, mtAcc) ? it('swap', 'Mit Meine Touren abgleichen …', () => MedienAbgleich.tour(t, () => Nav.render()), null, 'mt-abgleich-tour') : null]),
+      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', id: 'tour-del', onclick: async () => { s.close(); if (await confirmBox('Tour „' + t.name + '“ löschen?', 'Die Tour wird von diesem Handy gelöscht. Die Fotos bleiben erhalten. Zurückholen lässt sie sich nur aus einer Sicherung.', 'Löschen')) { await Tours.remove(id); await DB.del('kv', 'pn:' + id).catch(() => {}); toast('Tour gelöscht'); Nav.go('/'); } } }, '🗑️ Tour löschen …'))));
   }
   async function suggestNames() {
     const box = h('div', { class: 'list menu' });
     const s = sheet('Namensvorschläge', box);
-    const pick = n => async () => { t.name = n; await Tours.save(t); s.close(); Nav.render(); toast('Umbenannt'); };
+    const pick = n => async () => { t.name = n; await Tours.save(t); s.close(); Nav.render(); toast('Name gespeichert'); };
     try {      // 2.4.0: folgt die Tour einer Buchstrecke, steht der Buchtitel oben
       (await Buecher.fuerTour(t, pts)).forEach(m => box.append(h('button', { class: 'li sugg', 'data-buch': '1', onclick: pick(m.title) }, h('span', { class: 'li-t' }, h('b', null, m.title), h('small', null, 'Aus dem Buch: ' + m.buch)))));
     } catch (e) { /* ohne Buchvorschlag weiter */ }
@@ -348,24 +351,28 @@ Views['/tour'] = async (root, [id]) => {
     } catch (e) { wait.remove(); if (!box.querySelector('[data-buch]')) box.append(h('p', { class: 'muted' }, 'Nicht möglich: ' + e.message + ' (Internet nötig).')); else box.append(h('p', { class: 'muted small' }, 'Ortsvorschläge brauchen Internet.')); }
   }
   async function fixEle() {
-    toast('Höhen werden aus dem Gelände berechnet …');
-    try { const o = t.up; Object.assign(t, await Fix.demFix(t)); toast(`Aufstieg ${F.m(o)} → ${F.m(t.up)}`); Nav.render(); }
-    catch (e) { toast('Nicht möglich: ' + e.message); }
+    toast('Höhe wird aus dem Geländemodell korrigiert …');
+    try { const o = t.up; Object.assign(t, await Fix.demFix(t)); toast(`Höhe korrigiert: Aufstieg ${F.m(o)} → ${F.m(t.up)}`); Nav.render(); }
+    catch (e) { toast('Höhe korrigieren nicht möglich: ' + e.message); }
   }
   async function zeppEle() {
-    toast('Höhen werden von der Uhr geholt …');
-    try { const o = t.up; Object.assign(t, await Fix.zeppEle(t)); toast(`Höhe aus Zepp übernommen: ↑ ${F.m(t.up)} (vorher ${F.m(o)})`); Nav.render(); }
-    catch (e) { toast(e.message); }
+    toast('Höhe wird aus der Uhr korrigiert …');
+    try { const o = t.up; Object.assign(t, await Fix.zeppEle(t)); toast(`Höhe korrigiert (aus der Uhr): ↑ ${F.m(t.up)} (vorher ${F.m(o)})`); Nav.render(); }
+    catch (e) { toast('Höhe korrigieren nicht möglich: ' + e.message); }
   }
   async function changeSport() {
     // 2.19.0: alle Sportarten nach Kategorien („Ski (allgemein)“ nur, wenn die Tour sie schon hat)
     const fremd = !Sports.bekannt(t.sport) ? h('p', { class: 'muted small', id: 'sp-fremd' }, 'Die gespeicherte Sportart dieser Tour („' + String(t.sport || '') + '“) steht nicht im Katalog. Sie zählt als „' + Sports.label(t.sport) + '“ und bleibt so, bis du hier eine Sportart wählst.') : null;
-    const s = sheet('Sportart', h('div', null, fremd, Sports.kategorien(t.sport).map(([kid, knm, list]) => [h('h3', { class: 'sub' }, knm), UI.list(list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; t.sportMan = 1; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' })]).flat()));
+    // 2.20.0: gemeinsames Muster „Sportart zuweisen“ (Favoriten-Sportarten, „Mehr …“), dazu Abbrechen und Speichern wie jedes Bearbeiten-Blatt
+    const wahl = UI.sportWahl(t.sport, { idp: 'tsp' });
+    const s = sheet('Sportart ändern', h('div', null, fremd, wahl,
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'),
+        h('button', { class: 'btn pri', id: 'tsp-save', onclick: async () => { const k = wahl.wert(); if (k !== t.sport) { t.sport = k; t.sportMan = 1; await Tours.save(t); toast('Sportart gespeichert'); } s.close(); Nav.render(); } }, 'Speichern'))));
   }
   async function exportGpx() {
     const wp = photos.filter(p => p.lat != null).map(p => ({ lat: p.lat, lon: p.lon, name: p.name }));
     const name = t.name.replace(/[^\wäöüÄÖÜß -]/g, '_') + '.gpx';
-    try { const r = await Native.json('saveFile', { name, mime: 'application/gpx+xml', text: Geo.gpx(t.name, t.sport, pts, wp) }); toast('Gespeichert: ' + r); }
+    try { const r = await Native.json('saveFile', { name, mime: 'application/gpx+xml', text: Geo.gpx(t.name, t.sport, pts, wp) }); toast('GPX exportiert: ' + r); }
     catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([Geo.gpx(t.name, t.sport, pts)], { type: 'application/gpx+xml' })), download: name }); document.body.append(a); a.click(); a.remove(); }
   }
   return () => window.removeEventListener('photos-changed', reloadPhotos);

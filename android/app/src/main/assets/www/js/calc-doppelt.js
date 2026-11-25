@@ -40,8 +40,8 @@
     if (String(t.note || '').trim()) o.push('Notiz');
     if (info.hand) o.push('von Hand benannt');
     if ((t.pins || []).length) o.push(t.pins.length === 1 ? '1 Pin' : t.pins.length + ' Pins');
-    if ((t.tags || []).length) o.push('Schlagworte');
-    if (t.fav) o.push('Favorit');
+    if ((t.tags || []).length) o.push('Schlagwörter');
+    if (t.fav) o.push('Lieblingstour');
     return o;
   }
 

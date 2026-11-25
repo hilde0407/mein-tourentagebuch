@@ -36,7 +36,7 @@ const Backup = {
       if (!(await DB.count('tours'))) return null;
       await DB.kvSet('autoBackupDay', SicherungCalc.tagKey(jetzt));      // auch bei Fehler: heute nicht noch einmal versuchen
       const f = await Native.json('mediaFolder');
-      if (!f || !f.tree || !f.ok) { toast('Automatische Sicherung: kein Zugriff auf den Sicherungsordner. Bitte unter Einstellungen → Datensicherung neu wählen.', 7000); return null; }
+      if (!f || !f.tree || !f.ok) { toast('Automatische Sicherung: kein Zugriff auf den Sicherungsordner. Bitte unter Mehr → Einstellungen → Sicherung neu wählen.', 7000); return null; }
       const { b64 } = await Backup.packB64();
       const r = await Native.json('autoBackup', { name: SicherungCalc.autoName(jetzt), b64, keep: 5 });
       await DB.kvSet('lastBackup', Date.now()); await DB.kvSet('backupSnooze', 0);
@@ -48,7 +48,7 @@ const Backup = {
     const { gz, b64 } = await Backup.packB64();
     const name = 'Tourentagebuch-Sicherung-' + new Date().toISOString().slice(0, 10) + '.mtl';
     let where;
-    try { where = await Native.json('saveFile', { name, mime: 'application/octet-stream', b64 }); toast('Gespeichert: ' + where, 6000); }
+    try { where = await Native.json('saveFile', { name, mime: 'application/octet-stream', b64 }); toast('Sicherung gespeichert: ' + where, 6000); }
     catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([gz])), download: name }); document.body.append(a); a.click(); a.remove(); where = name; }
     await DB.kvSet('lastBackup', Date.now()); await DB.kvSet('backupSnooze', 0);
     return where;
@@ -140,7 +140,7 @@ const Medien = {
     if (!await confirmBox('Fotos und Videos sichern?', txt, 'Sichern')) return null;
     let r;
     try { r = await Native.json('mediaBackup', { tree: f.tree }); } catch (e) { toast('Sichern nicht möglich: ' + e.message, 7000); return null; }
-    if (r && r.started === false) toast('Es läuft schon eine Sicherung.', 4000);
+    if (r && r.started === false) toast('Sicherung läuft schon', 4000);
     return Medien.follow();
   },
   async wiederherstellen() {
@@ -156,7 +156,7 @@ const Medien = {
     if (!await confirmBox('Fotos und Videos wiederherstellen?', txt, 'Wiederherstellen')) return null;
     let r;
     try { r = await Native.json('mediaRestore', { uris: l.map(x => x.uri) }); } catch (e) { toast('Wiederherstellen nicht möglich: ' + e.message, 7000); return null; }
-    if (r && r.started === false) toast('Es läuft schon eine Sicherung.', 4000);
+    if (r && r.started === false) toast('Sicherung läuft schon', 4000);
     return Medien.follow();
   },
   /** Fortschrittsblatt mit „Abbrechen“, bis der Lauf der Hülle fertig ist; danach eine Zusammenfassung. Schließen bricht nicht ab. */

@@ -10,8 +10,8 @@ android {
         applicationId 'de.tourentagebuch.app'
         minSdk 26
         targetSdk 34
-        versionCode 82
-        versionName '2.19.1'
+        versionCode 83
+        versionName '2.20.0'
     }
 
     signingConfigs {

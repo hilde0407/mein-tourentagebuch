@@ -6,7 +6,7 @@
 (function (root) {
   const PH = (typeof module !== 'undefined' && module.exports) ? require('./calc-planhilfe.js') : root.Planhilfe;
   const SG = (typeof module !== 'undefined' && module.exports) ? require('./calc-statgruppen.js') : root.StatGruppen;      // 2.19.0: Statistik-Gruppen
-  const METRIKEN = [['km', 'Strecke', 'km'], ['up', 'Aufstieg', 'm'], ['count', 'Touren', 'Touren'], ['hours', 'Zeit', 'h']];
+  const METRIKEN = [['km', 'Strecke', 'km'], ['up', 'Aufstieg', 'm'], ['count', 'Touren', 'Touren'], ['hours', 'Dauer', 'Std.']];
   const MIN_TAG_PROGNOSE = 14;      // Prognose zum Jahresende gibt es ab dem 14. Tag des Jahres (wie im Vorbild)
   const KNAPP = 0.90;               // Prognose ab 90 % des Ziels: „knapp“, darunter „dahinter“
 

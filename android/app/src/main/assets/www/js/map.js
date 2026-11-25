@@ -136,7 +136,7 @@ const MapKit = {
     const X = d => L_ + d / tot * (W - L_ - 6), Y = v => T + (1 - (v - mn) / (mx - mn)) * (H - T - B);
     g.strokeStyle = 'rgba(128,128,128,.25)'; g.fillStyle = ink; g.font = '11px sans-serif'; g.lineWidth = 1;
     for (let k = 0; k <= 3; k++) { const v = mn + (mx - mn) * k / 3, y = Y(v); g.beginPath(); g.moveTo(L_, y); g.lineTo(W - 6, y); g.stroke(); g.fillText(Math.round(v), 2, y + 4); }
-    g.fillText((tot / 1000).toFixed(1).replace('.', ',') + ' km', W - 52, H - 3);
+    g.fillText(F.km(tot), W - 52, H - 3);
     g.beginPath(); let first = true, lastX = L_;
     el.forEach((v, i) => { if (v == null) return; const x = X(xs[i]), y = Y(v); if (first) { g.moveTo(x, y); first = false; } else g.lineTo(x, y); lastX = x; });
     g.strokeStyle = acc; g.lineWidth = 2; g.stroke();

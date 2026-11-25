@@ -84,7 +84,7 @@
   /** Zeile auf der Startseite: „Zuletzt abgeglichen: heute 08:12 · 2 neue Touren“. last = { t, neu, fehler }. */
   function zeile(last, nowMs) {
     if (!last || !last.t) return '';
-    const p = ['Zuletzt abgeglichen: ' + wann(last.t, nowMs), last.neu ? (last.neu === 1 ? '1 neue Tour' : last.neu + ' neue Touren') : 'nichts Neues'];
+    const p = ['Zuletzt geholt: ' + wann(last.t, nowMs), last.neu ? (last.neu === 1 ? '1 neue Tour' : last.neu + ' neue Touren') : 'nichts Neues'];
     if (last.fehler) p.push(last.fehler === 1 ? '1 Quelle mit Fehler' : last.fehler + ' Quellen mit Fehler');
     return p.join(' · ');
   }

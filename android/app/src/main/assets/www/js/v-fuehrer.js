@@ -184,7 +184,7 @@ const Buecher = {
       (p > 0 ? `<circle class="fu-arc" cx="30" cy="30" r="${r}" fill="none" stroke-width="7" stroke-dasharray="${(p * c).toFixed(2)} ${(c + 1).toFixed(2)}" transform="rotate(-90 30 30)"/>` : '') +
       `<text class="fu-pct" x="30" y="30" text-anchor="middle" dominant-baseline="central">${pr} %</text></svg>`;
   },
-  datum: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',
+  datum: ms => F.dshort(ms),
   zahlen: bt => [F.km(bt.km * 1000), bt.up != null ? '↑ ' + F.m(bt.up) : null].filter(Boolean).map(x => x.replace(/ /g, '\u00a0')).join(' · '),      // Zahl und Einheit bleiben zusammen
 
   /** Blatt „Buch anlegen“ (id leer) bzw. „GPX-Dateien hinzufügen“ (id gesetzt). */
@@ -212,7 +212,7 @@ const Buecher = {
         toast(r.anzahl || id ? teile.join(' · ') : 'Keine Buchtour gefunden: ' + (r.bad.length ? r.bad.slice(0, 2).join(', ') + ' nicht lesbar' : 'die Dateien enthalten keine Strecke'), 6000);
         if (r.buch) Buecher.ui.offen.add(r.buch.id);
         if (fertig) fertig(r);
-      } catch (e) { s.close(); toast('Das hat nicht geklappt: ' + e.message, 6000); }
+      } catch (e) { s.close(); toast((id ? 'GPX-Dateien hinzufügen' : 'Buch anlegen') + ' nicht möglich: ' + e.message, 6000); }
     } }, 'GPX-Dateien wählen');
     box.append(...(id ? [] : [h('label', { class: 'fld' }, 'Name des Buchs', name)]), hinweis, err,
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), go));
@@ -226,11 +226,11 @@ const Buecher = {
     let mitCover = false;
     const go = h('button', { class: 'btn pri', id: 'fu-ex-go', onclick: async () => {
       go.disabled = true;
-      try { const r = await Buecher.exportieren({ mitCover }); s.close(); if (r) toast('Gespeichert: ' + r.ort + ' · ' + r.buecher + (r.buecher === 1 ? ' Buch' : ' Bücher'), 6000); }
+      try { const r = await Buecher.exportieren({ mitCover }); s.close(); if (r) toast('Wanderführer exportiert: ' + r.ort + ' · ' + r.buecher + (r.buecher === 1 ? ' Buch' : ' Bücher'), 6000); }
       catch (e) { go.disabled = false; toast('Export nicht möglich: ' + (e && e.message || e), 6000); }
     } }, 'Exportieren');
     const s = sheet('Wanderführer exportieren', h('div', { id: 'fu-ex' },
-      h('p', null, 'Speichert deine Bücher mit allen Buchtouren (Titel, Länge, Aufstieg, Strecke) als Datei – zum Übertragen auf ein anderes Gerät oder zum Aufheben. Dabei steht auch, welche Buchtouren du gewandert bist (Datum und Name der Tour).'),
+      h('p', null, 'Speichert deine Bücher mit allen Buchtouren (Titel, Strecke mit Linie auf der Karte, Aufstieg) als Datei – zum Übertragen auf ein anderes Gerät oder zum Aufheben. Dabei steht auch, welche Buchtouren du gewandert bist (Datum und Name der Tour).'),
       h('p', { class: 'muted small' }, 'Keine Spuren deiner Touren, keine Fotos, keine Zugangsdaten. Die Datei bleibt auf dem Handy (Download/Tourentagebuch); weitergegeben wird sie nur, wenn du sie selbst verschickst.'),
       UI.toggle('Titelbilder mitnehmen (deine eigenen Bilder, größere Datei)', false, v => { mitCover = !!v; }, { id: 'fu-ex-cover' }),
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), go)));
@@ -293,14 +293,15 @@ const Buecher = {
   },
   /** Rückfrage mit Zusammenfassung und Unterschieden, dann zusammenführen (nichts wird überschrieben). d: Ergebnis von FuehrerDatei.lies. */
   async zeigePlan(d, titel, fertig) {
+    const holen = /Meine Touren/.test(titel);
     const lokal = await Buecher.liste(), hat = {};
     for (const b of lokal) if (b.cover) hat[b.id] = true;
     const pl = FuehrerDatei.plane(lokal, d, hat, () => uid().slice(-9));
     const ok = h('button', { class: 'btn pri', id: 'fu-im-ok', disabled: !pl.nTouren && !pl.cover.length, onclick: async () => {
       ok.disabled = true;
-      try { await Buecher.zusammenfuehren(pl); s.close(); toast('Übernommen: ' + FuehrerDatei.zusammenfassung(pl), 6000); if (fertig) fertig(); }
-      catch (e) { ok.disabled = false; toast('Das hat nicht geklappt: ' + (e && e.message || e), 6000); }
-    } }, 'Übernehmen');
+      try { await Buecher.zusammenfuehren(pl); s.close(); toast((holen ? 'Geholt: ' : 'Importiert: ') + FuehrerDatei.zusammenfassung(pl), 6000); if (fertig) fertig(); }
+      catch (e) { ok.disabled = false; toast((holen ? 'Holen' : 'Importieren') + ' nicht möglich: ' + (e && e.message || e), 6000); }
+    } }, holen ? 'Holen' : 'Importieren');      // 2.20.0: die Hauptaktion nennt, was passiert (statt „Übernehmen“)
     const s = sheet(titel, h('div', { id: 'fu-im' },
       h('p', { id: 'fu-im-sum' }, FuehrerDatei.zusammenfassung(pl) + '.'),
       d.defekt ? h('p', { class: 'muted small', id: 'fu-im-defekt' }, d.defekt + (d.defekt === 1 ? ' Eintrag ist' : ' Einträge sind') + ' nicht lesbar und bleiben draußen.') : null,
@@ -339,10 +340,10 @@ const Buecher = {
         const r = await Tours.add({ name: bt.title, sport: 'hike', pts: pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })), status: 'planned', src: 'plan' });
         await PlanMeta.patch(r.tour.id, { quelle: { art: 'fuehrer', text: (b.name + ' – ' + bt.title).slice(0, Planhilfe.MAX_QTEXT) } });
         s.close(); toast('Als Planung übernommen'); Nav.go('/tour/' + r.tour.id);
-      } catch (e) { plan.disabled = false; toast('Das hat nicht geklappt: ' + e.message, 5000); }
+      } catch (e) { plan.disabled = false; toast('Als Planung übernehmen nicht möglich: ' + e.message, 5000); }
     } }, 'Als Planung übernehmen');
     const s = sheet(bt.title, h('div', { class: 'fu-kb' }, h('p', { class: 'muted small' }, 'Aus dem Buch: ' + b.name),
-      UI.figs([[F.km(bt.km * 1000), 'Länge'], bt.up != null ? ['↑ ' + F.m(bt.up), 'Aufstieg'] : null]), mapEl, h('div', { class: 'row end' }, plan)), { onclose: () => { try { if (map) map.remove(); } catch (e) { /* schon weg */ } } });
+      UI.figs([[F.km(bt.km * 1000), 'Strecke'], bt.up != null ? ['↑ ' + F.m(bt.up), 'Aufstieg'] : null]), mapEl, h('div', { class: 'row end' }, plan)), { onclose: () => { try { if (map) map.remove(); } catch (e) { /* schon weg */ } } });
     try {
       map = MapKit.create(mapEl);
       const layer = MapKit.line(pts, '#1565c0', 5).addTo(map);
@@ -370,7 +371,7 @@ Views['/fuehrer'] = async root => {
     const q = h('input', { type: 'search', id: 'fu-q', placeholder: 'Tour oder Buch suchen', 'aria-label': 'Buchtouren suchen', value: U.suche, oninput: e => { U.suche = e.target.value; drawList(); } });
     ctl.append(h('div', { class: 'row fu-find' }, q),
       UI.chips([['alle', 'Alle'], ['offen', 'Offen'], ['gewandert', 'Gewandert']].map(([k, tx]) => UI.chip(tx, U.filter === k, () => { U.filter = k; drawCtl(); drawList(); }, { id: 'fu-f-' + k }))),
-      UI.seg([['buch', 'Buchreihenfolge'], ['laenge', 'Nach Länge']], U.sort, k => { U.sort = k; drawCtl(); drawList(); }, { label: 'Reihenfolge der Touren im Buch' }));
+      UI.seg([['buch', 'Buchreihenfolge'], ['laenge', 'Nach Strecke']], U.sort, k => { U.sort = k; drawCtl(); drawList(); }, { label: 'Reihenfolge der Touren im Buch' }));
   }
   function drawSum() {
     const tot = buecher.length;
@@ -380,7 +381,7 @@ Views['/fuehrer'] = async root => {
   function drawSync() {
     sync.hidden = prog == null; sync.innerHTML = '';
     if (prog == null) return;
-    sync.append(h('span', null, 'Abgleich läuft … ' + Math.round(prog * 100) + ' %'), h('div', { class: 'prog' }, h('i', { style: { width: Math.round(prog * 100) + '%' } })));
+    sync.append(h('span', null, 'Buchtouren werden mit deinen Touren verglichen … ' + Math.round(prog * 100) + ' %'), h('div', { class: 'prog' }, h('i', { style: { width: Math.round(prog * 100) + '%' } })));
   }
   function row(b, bt) {
     const tm = tourMap(), hit = ((st.buecher[b.id] || { touren: {} }).touren[bt.id] || []).map(id => tm[id]).filter(Boolean).sort((x, y) => (y.start || 0) - (x.start || 0));
@@ -411,7 +412,7 @@ Views['/fuehrer'] = async root => {
         sec.append(h('div', { class: 'fu-body', id: 'fu-b-' + b.id },
           h('div', { class: 'fu-acts' },
             h('button', { class: 'btn sm', 'data-a': 'cover', onclick: () => Buecher.waehleCover(b, reload) }, b.cover ? 'Titelbild ändern' : 'Titelbild wählen'),
-            h('button', { class: 'btn sm', 'data-a': 'manage', onclick: () => verwalten(b) }, 'Verwalten')),
+            h('button', { class: 'btn sm', 'data-a': 'manage', onclick: () => verwalten(b) }, 'Aktionen …')),
           UI.list(touren.map(bt => row(b, bt)))));
       }
       list.append(sec);
@@ -419,12 +420,12 @@ Views['/fuehrer'] = async root => {
   }
   function verwalten(b) {
     UI.menu(b.name, [
-      ['pencil', 'Umbenennen', async () => { const n = await askText('Name des Buchs', 'Name', b.name, 'Speichern'); if (n && n.trim()) { await Buecher.umbenenne(b.id, n.trim()); await reload(); } }, null, 'fu-m-ren'],
-      ['photo', b.cover ? 'Titelbild ändern' : 'Titelbild wählen', () => Buecher.waehleCover(b, reload), 'Du wählst das Bild selbst aus deiner Galerie oder aus einer Datei.', 'fu-m-cov'],
+      ['pencil', 'Umbenennen …', async () => { const n = await askText('Name des Buchs', 'Name', b.name, 'Speichern'); if (n && n.trim()) { await Buecher.umbenenne(b.id, n.trim()); await reload(); } }, null, 'fu-m-ren'],
+      ['photo', b.cover ? 'Titelbild ändern …' : 'Titelbild wählen …', () => Buecher.waehleCover(b, reload), 'Du wählst das Bild selbst aus deiner Galerie oder aus einer Datei.', 'fu-m-cov'],
       b.cover ? ['trash', 'Titelbild entfernen', async () => { await Buecher.setzeCover(b.id, null); await reload(); }, null, 'fu-m-covdel'] : null,
-      ['plus', 'GPX-Dateien hinzufügen', () => Buecher.anlegen(b.id, reload), null, 'fu-m-add'],
-      ['trash', 'Buch entfernen', async () => {
-        if (await confirmBox('Buch entfernen?', '„' + b.name + '“ mit ' + b.touren.length + (b.touren.length === 1 ? ' Buchtour' : ' Buchtouren') + ' wird von diesem Handy entfernt. Deine Touren bleiben unverändert.', 'Entfernen')) { await Buecher.entferne(b.id); toast('Buch entfernt'); await reload(); }
+      ['plus', 'GPX-Dateien hinzufügen …', () => Buecher.anlegen(b.id, reload), null, 'fu-m-add'],
+      ['trash', 'Buch löschen …', async () => {      // 2.20.0: ehrlich „löschen“ – das Buch ist danach weg (bis 2.19 „Buch entfernen“)
+        if (await confirmBox('Buch „' + b.name + '“ löschen?', 'Das Buch mit ' + b.touren.length + (b.touren.length === 1 ? ' Buchtour' : ' Buchtouren') + ' wird von diesem Handy gelöscht. Deine Touren bleiben unverändert. Zurückholen lässt es sich aus einer Sicherung oder einer exportierten Wanderführer-Datei.', 'Löschen')) { await Buecher.entferne(b.id); toast('Buch gelöscht'); await reload(); }
       }, null, 'fu-m-del']]);
   }
   function drawAll() { drawCtl(); drawSum(); drawList(); }
@@ -437,7 +438,7 @@ Views['/fuehrer'] = async root => {
   function start() {
     if (!buecher.length) { prog = null; drawSync(); return; }
     if (st.fehlendePaare) { prog = 0; drawSync(); } else prog = null;
-    Buecher.sync(hoerer).catch(e => { console.error('Wanderführer-Abgleich', e); if (!gone) { prog = null; drawSync(); toast('Der Abgleich hat nicht geklappt: ' + e.message, 5000); } });
+    Buecher.sync(hoerer).catch(e => { console.error('Wanderführer-Abgleich', e); if (!gone) { prog = null; drawSync(); toast('Vergleich mit deinen Touren nicht möglich: ' + e.message, 5000); } });
   }
   // 2.13.0: Übertragen als Datei (zwischen Geräten). 2.15.0: „Aus Meine Touren holen“ nur bei „Mit Meine Touren zusammenarbeiten“ und bestehender Verbindung
   const mtKonto = await MT.konto();

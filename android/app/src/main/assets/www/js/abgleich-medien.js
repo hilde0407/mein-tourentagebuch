@@ -91,7 +91,7 @@ const MedienAbgleich = {
         vid.append(h('p', { class: 'muted small', id: 'ab-v-info' }, st.videos
           ? (plan.videosHolen.length + ' dort neu (' + MedienCalc.mb(plan.videoBytesHolen) + ') · ' + plan.videosSenden.length + ' hier neu (' + MedienCalc.mb(plan.videoBytesSenden) + '). Nur im WLAN, höchstens 200 MB je Video.')
           : nv + (nv === 1 ? ' Video' : ' Videos') + ' nicht dabei. Videos werden nur übertragen, wenn du das einschaltest.'),
-        plan.videosZuGross.length ? h('p', { class: 'muted small', id: 'ab-v-gross' }, plan.videosZuGross.length + ' Video(s) zu groß (über 200 MB je Video oder 1 GB je Tour) – bleiben, wo sie sind.') : null);
+        plan.videosZuGross.length ? h('p', { class: 'muted small', id: 'ab-v-gross' }, anz(plan.videosZuGross.length, 'Video ist', 'Videos sind') + ' zu groß (über 200 MB je Video oder 1 GB je Tour) – sie bleiben, wo sie sind.') : null);
       }
       if (o && o.change) o.change();
     };
@@ -104,7 +104,7 @@ const MedienAbgleich = {
     seg(); box.append(segBox);
     if (plan.geloescht.length && darf) box.append(UI.toggle('In Meine Touren gelöschte trotzdem senden (' + plan.geloescht.length + ')', false, v => { st.force = !!v; plan.senden = plan.senden.filter(p => !p.mtGeloescht).concat(v ? plan.geloescht : []); zeig(); }, { id: 'ab-force' }),
       h('p', { class: 'muted small' }, 'Diese Fotos wurden in Meine Touren gelöscht. Ohne diesen Schalter kommen sie nicht zurück.'));
-    if (plan.dortGeloescht.length) box.append(h('p', { class: 'muted small', id: 'ab-f-dortweg' }, plan.dortGeloescht.length + ' Foto(s) gibt es in Meine Touren nicht mehr – sie bleiben hier und werden nicht erneut gesendet.'));
+    if (plan.dortGeloescht.length) box.append(h('p', { class: 'muted small', id: 'ab-f-dortweg' }, anz(plan.dortGeloescht.length, 'Foto', 'Fotos') + ' gibt es in Meine Touren nicht mehr – sie bleiben hier und werden nicht erneut gesendet.'));
     box.append(vid); zeig();
     return { el: box, st, auswahl: () => MedienCalc.auswahl(plan, st.wahl, st) };
   },
@@ -113,7 +113,7 @@ const MedienAbgleich = {
   /* ---------------------------------------------------------------- Eine Tour ---------------------------------------------------------------- */
   async tour(t, after) {
     if (!MT.aktiv()) return null;
-    if (MedienAbgleich._busy) { toast('Es läuft schon ein Abgleich.'); return null; }
+    if (MedienAbgleich._busy) { toast('Abgleich läuft schon'); return null; }
     const id = MedienCalc.mtId(t); if (!id) return null;
     const acc = await MedienAbgleich.konto(); if (!acc) return null;
     const body = h('div', { id: 'ab-sheet' }, h('p', { class: 'muted', id: 'ab-laden' }, 'Stand in Meine Touren wird gelesen …'));
@@ -150,9 +150,9 @@ const MedienAbgleich = {
     const vids = items.flatMap(i => i.a.videosHolen.concat(i.a.videosSenden)), nn = items.filter(i => i.notiz !== 'nichts').length;
     const mb = items.reduce((x, i) => x + i.a.bytes + i.a.videoBytes, 0);
     const teile = [];
-    if (nn) teile.push(nn === 1 && items.length === 1 ? 'Notiz: ' + { holen: 'holen', senden: 'senden', beides: 'in beide Richtungen' }[items[0].notiz] : nn + ' Notiz(en)');
-    if (nh) teile.push(nh + ' Foto(s) holen');
-    if (ns) teile.push(ns + ' Foto(s) senden');
+    if (nn) teile.push(nn === 1 && items.length === 1 ? 'Notiz: ' + { holen: 'holen', senden: 'senden', beides: 'in beide Richtungen' }[items[0].notiz] : anz(nn, 'Notiz', 'Notizen'));
+    if (nh) teile.push(anz(nh, 'Foto', 'Fotos') + ' holen');
+    if (ns) teile.push(anz(ns, 'Foto', 'Fotos') + ' senden');
     if (vids.length) teile.push(MedienCalc.videoFrage(vids));
     return confirmBox(vids.length ? 'Auch Videos übertragen?' : 'Jetzt abgleichen?', teile.join(' · ') + (mb ? ' – etwa ' + MedienCalc.mb(mb) + '.' : '.'), vids.length ? 'Ja, mit Videos' : 'Abgleichen');
   },
@@ -166,7 +166,7 @@ const MedienAbgleich = {
   _ix: null, _frage: false,
   neuRes: () => ({ notiz: null, konflikt: false, holen: 0, uebersprungen: 0, gesendet: null, videos: 0, fehler: [], stopped: false }),
   async mitFortschritt(acc, items, after) {
-    if (MedienAbgleich._busy) { toast('Es läuft schon ein Abgleich.'); return null; }
+    if (MedienAbgleich._busy) { toast('Abgleich läuft schon'); return null; }
     if (!MT.aktiv()) return null;
     if (items.some(i => i.a.wlan) && Set_.get('mtWlan') !== false) {
       let wifi = true; try { wifi = !!(await Native.json('mtNetz')).wifi; } catch (e) { wifi = true; }      // ohne Hülle (Browser) keine Prüfung
@@ -194,7 +194,7 @@ const MedienAbgleich = {
     try { st = await Native.json('mtAbgleichStart', Object.assign({ cookie: MedienAbgleich.cookie(acc) }, job)); } catch (e) { st = { started: false, error: e.message }; }
     if (!st || !st.started) {
       MedienAbgleich._busy = false; await DB.del('kv', MedienAbgleich.LAUF);
-      toast('Abgleich nicht gestartet: ' + ((st && st.error) || 'unbekannter Fehler'), 9000); if (after) after(); return null;
+      toast('Abgleich nicht möglich: ' + ((st && st.error) || 'unbekannter Fehler'), 9000); if (after) after(); return null;
     }
     return MedienAbgleich.verfolgen(acc, after);
   },
@@ -228,7 +228,7 @@ const MedienAbgleich = {
       }
     } catch (e) { err = e; }
     finally { s.close(); MedienAbgleich._busy = false; }
-    if (err) { toast('Abgleich: ' + err.message, 9000); if (after) after(); return null; }
+    if (err) { toast('Abgleich nicht möglich: ' + err.message, 9000); if (after) after(); return null; }
     return MedienAbgleich.abschluss(acc, st, after);
   },
   /** Neue Ergebnisse aus der Hülle holen und übernehmen. Gibt den Stand zurück (st.lauf = { jobId, ab, res }). */
@@ -327,8 +327,8 @@ const MedienAbgleich = {
     if (MedienCalc.fortsetzbar(st)) return MedienAbgleich.fortsetzenFragen(acc, st, after);
     try { await Native.json('mtAbgleichVerwerfen'); } catch (e) { /* bleibt liegen, wird beim nächsten Start neu angelegt */ }
     await DB.del('kv', MedienAbgleich.LAUF);
-    if (st.ende === 'relogin') { const e = acc ? await Import.MT.expired(acc) : new Error('Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.'); toast('Abgleich nicht fertig: ' + e.message, 9000); if (after) after(); return null; }
-    if (st.ende === 'verboten') { toast('Abgleich nicht fertig: Dieses Konto darf nur ansehen. Senden ist damit nicht möglich.', 9000); if (after) after(); return null; }
+    if (st.ende === 'relogin') { const e = acc ? await Import.MT.expired(acc) : new Error('Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.'); toast('Abgleich nicht möglich: ' + e.message, 9000); if (after) after(); return null; }
+    if (st.ende === 'verboten') { toast('Abgleich nicht möglich: Dieses Konto darf nur ansehen, Senden geht damit nicht.', 9000); if (after) after(); return null; }
     if (st.ende === 'abgebrochen') res.stopped = true;
     return MedienAbgleich.ergebnis(res, after);
   },
@@ -363,7 +363,7 @@ const MedienAbgleich = {
     acc = acc || await MT.konto();
     if (!acc) { toast('Es besteht keine Verbindung zu Meine Touren. Bitte erst wieder anmelden – der Abgleich bleibt vorgemerkt.', 8000); return null; }
     let r; try { r = await Native.json('mtAbgleichFortsetzen', { cookie: MedienAbgleich.cookie(acc), wifiOnly: Set_.get('mtWlan') !== false }); } catch (e) { r = { started: false, error: e.message }; }
-    if (!r || !r.started) { toast('Abgleich nicht fortgesetzt: ' + ((r && r.error) || 'unbekannter Fehler'), 8000); return null; }
+    if (!r || !r.started) { toast('Abgleich fortsetzen nicht möglich: ' + ((r && r.error) || 'unbekannter Fehler'), 8000); return null; }
     return MedienAbgleich.verfolgen(acc, after);
   },
   /** Beim Öffnen und beim Zurückkehren in die App: läuft ein Auftrag noch (Fortschritt zeigen), liegen Ergebnisse bereit (übernehmen) oder wurde er unterbrochen (fragen)? */
@@ -391,7 +391,7 @@ const MedienAbgleich = {
   /* ---------------------------------------------------------------- Alle verbundenen Touren ---------------------------------------------------------------- */
   async alle(after) {
     if (!MT.aktiv()) return null;
-    if (MedienAbgleich._busy) { toast('Es läuft schon ein Abgleich.'); return null; }
+    if (MedienAbgleich._busy) { toast('Abgleich läuft schon'); return null; }
     const acc = await MedienAbgleich.konto(); if (!acc) return null;
     const tours = (await Tours.list()).filter(t => MedienCalc.mtId(t) && t.status !== 'planned');
     if (!tours.length) { toast('Keine Tour ist mit Meine Touren verbunden. Hol oder sende zuerst Touren.', 7000); return null; }
@@ -423,7 +423,7 @@ const MedienAbgleich = {
     };
     const zeig = () => {
       const l = items.map(fuer), n = l.reduce((x, i) => x + i.a.n, 0), mb = l.reduce((x, i) => x + i.a.bytes + i.a.videoBytes, 0);
-      sum.textContent = n || l.some(i => i.notiz !== 'nichts') ? 'Bei dieser Wahl: ' + l.filter(i => i.notiz !== 'nichts').length + ' Notiz(en), ' + n + ' Datei(en), etwa ' + MedienCalc.mb(mb) + '.' : 'Bei dieser Wahl wird nichts übertragen.';
+      sum.textContent = n || l.some(i => i.notiz !== 'nichts') ? 'Bei dieser Wahl: ' + anz(l.filter(i => i.notiz !== 'nichts').length, 'Notiz', 'Notizen') + ', ' + anz(n, 'Datei', 'Dateien') + ', etwa ' + MedienCalc.mb(mb) + '.' : 'Bei dieser Wahl wird nichts übertragen.';
       segBox.innerHTML = '';
       segBox.append(UI.seg([['holen', 'Holen'], ['senden', 'Senden'], ['beides', 'Beides']].filter(x => darf || x[0] === 'holen'), st.wahl, k => { st.wahl = k; zeig(); }, { label: 'Richtung', cls: 'ab-seg' }));
       const nv = items.reduce((x, i) => x + i.plan.videosHolen.length + i.plan.videosSenden.length, 0);

@@ -46,14 +46,14 @@ const TourHelp = {
       UI.row({ title: 'Strecke', trail: h('b', null, F.km(t.dist)), sub: 'geplant ' + F.km(p.dist) + diff(t.dist, p.dist, F.km) }),
       p.up != null && t.up != null ? UI.row({ title: 'Aufstieg', trail: h('b', null, F.m(t.up)), sub: 'geplant ' + F.m(p.up) + diff(t.up, p.up, F.m) }) : null,
       gelH != null ? UI.row({ title: 'Dauer', trail: h('b', null, F.dur(gelH * 3600)), sub: 'geschätzt ' + F.dur(estH * 3600) + diff(gelH, estH, v => F.dur(v * 3600)) }) : null].filter(Boolean);
-    return UI.section('Plan und Ergebnis', [UI.list(rows), h('div', { class: 'row wrap' }, h('a', { class: 'btn sm', href: '#/tour/' + p.id }, 'Zur Planung „' + p.name + '“'),
+    return UI.section('Planung und Ergebnis', [UI.list(rows), h('div', { class: 'row wrap' }, h('a', { class: 'btn sm', href: '#/tour/' + p.id }, 'Zur Planung „' + p.name + '“'),
       h('button', { class: 'btn sm', id: 'unlinkplan', onclick: async () => { const x = await DB.get('tours', t.id); delete x.plan; await Tours.save(x); delete t.plan; toast('Verknüpfung gelöst'); Nav.render(); } }, 'Verknüpfung lösen'))], { id: 'planergebnis' });
   },
   /** Blatt: geplante Tour derselben Sportgruppe wählen und verknüpfen („Mit Plan vergleichen“). */
   async linkSheet(t) {
     const cand = (await Tours.list()).filter(p => p.status === 'planned' && Planhilfe.gleicheGruppe(p.sport, t.sport));
     if (!cand.length) { toast('Es gibt keine geplante Tour dieser Sportart.'); return; }
-    const s = sheet('Mit Plan vergleichen', h('div', null, h('p', { class: 'muted' }, 'Welche Planung gehörte zu dieser Tour?'), UI.list(cand.map(p => UI.row({ icon: 'route', title: p.name, sub: F.km(p.dist) + (p.up ? ' · ↑ ' + F.m(p.up) : ''),
+    const s = sheet('Mit Planung vergleichen', h('div', null, h('p', { class: 'muted' }, 'Welche Planung gehörte zu dieser Tour?'), UI.list(cand.map(p => UI.row({ icon: 'route', title: p.name, sub: F.km(p.dist) + (p.up ? ' · ↑ ' + F.m(p.up) : ''),
       onclick: async () => { const x = await DB.get('tours', t.id); x.plan = p.id; await Tours.save(x); s.close(); toast('Mit der Planung verknüpft'); Nav.render(); } })), { cls: 'menu' })));
   },
   /** Aufzeichnung aus einer Planung: beim Start der Route merken, beim Aufzeichnen festhalten, beim Speichern verknüpfen. */

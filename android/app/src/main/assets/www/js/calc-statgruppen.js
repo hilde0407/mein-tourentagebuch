@@ -8,7 +8,7 @@
    Zwischenstand von 2.19.0), zählt überall als ihre Rückfall-Sportart (Sports.anzeige: Gassigehen → Spazieren / Gehen, sonst „Sonstiges“); solche
    Schlüssel in gespeicherten Gruppen fallen beim Bereinigen still weg.
    Kennung einer Gruppe in Filtern und Zielen: 'sgrp:<id>' (neben den festen Gruppen 'grp:ski', 'grp:bike' …). Eine gelöschte Gruppe passt auf keine Tour
-   und heißt „Gelöschte Gruppe“ – nie ein Fehler.
+   und heißt „Gelöschte Statistik-Gruppe“ – nie ein Fehler.
    Alle Stellen (Statistik, Bestwerte je Sportart, Auswertung, Jahresrückblick, Ziele, Startseite) rechnen hiermit (Jahresrückblick: rueckblick()).
    Läuft im Browser (globales `StatGruppen`) und in Node (tests/test_calc.js). */
 (function (root) {
@@ -118,17 +118,17 @@
   /** Schlüssel, unter dem eine Sportart in Aufteilungen steht: 'sgrp:<id>' für Gruppenmitglieder, sonst die Sportart selbst (nicht im Katalog: ihr Rückfall). */
   function schluessel(sport, gruppen) { const g = gruppeVon(sport, gruppen); return g ? PREFIX + g.id : S().anzeige(sport); }
 
-  /** Name eines Schlüssels: Gruppe → ihr Name (gelöscht → „Gelöschte Gruppe“), sonst die Sportart. */
+  /** Name eines Schlüssels: Gruppe → ihr Name (gelöscht → „Gelöschte Statistik-Gruppe“), sonst die Sportart. */
   function name(key, gruppen) {
-    if (istGruppe(key)) { const g = gruppe(key, gruppen); return g ? g.name : 'Gelöschte Gruppe'; }
+    if (istGruppe(key)) { const g = gruppe(key, gruppen); return g ? g.name : 'Gelöschte Statistik-Gruppe'; }
     return S().label(key);
   }
   /** 2.19.1: Beschriftung in Filtern, Zielen und Aufteilungen: Gruppe → „Name = A + B + C“ (mehr als 3 Mitglieder: „A + B + C + …“),
-      gelöschte Gruppe → „Gelöschte Gruppe“, sonst die Sportart. titel(): die volle Liste (für das title-Attribut), sonst ''. */
+      gelöschte Gruppe → „Gelöschte Statistik-Gruppe“, sonst die Sportart. titel(): die volle Liste (für das title-Attribut), sonst ''. */
   function beschriftung(key, gruppen) {
     if (!istGruppe(key)) return S().label(key);
     const g = gruppe(key, gruppen);
-    if (!g) return 'Gelöschte Gruppe';
+    if (!g) return 'Gelöschte Statistik-Gruppe';
     const l = g.sports.map(s => S().label(s));
     return g.name + ' = ' + (l.length > 3 ? l.slice(0, 3).join(' + ') + ' + …' : l.join(' + '));
   }

@@ -1,20 +1,20 @@
 'use strict';
-/* „Alles abgleichen“ (2.2.0): gemeinsames Fortschrittsblatt, am Ende eine Zusammenfassung mit einer Zeile je Quelle.
+/* „Touren holen“ (2.2.0 „Alles abgleichen“, 2.20.0 umbenannt): gemeinsames Fortschrittsblatt, am Ende eine Zusammenfassung mit einer Zeile je Quelle.
    Genutzt von der Importseite (ganz oben) und der Startseite (ruhige Zweitaktion). after(): danach, z. B. Seite neu zeichnen. */
 const AllesUI = {
   async start(after) {
-    if (Import.Alles.busy) { toast('Ein Abgleich läuft schon.'); return; }
+    if (Import.Alles.busy) { toast('Touren holen läuft schon'); return; }
     const qs = await Import.Alles.quellen();
     if (!qs.length) { toast(MTCalc.keineQuelle(MT.aktiv()), 6000); return; }
     let halt = false, r = null, err = null;
     try {
-      r = await PhotoSources.progress('Alles abgleichen', upd => Import.Alles.run({ stop: () => halt, onProgress: (text, frac) => upd(frac, 1, null, text) }), { cancel: () => { halt = true; } });
+      r = await PhotoSources.progress('Touren holen', upd => Import.Alles.run({ stop: () => halt, onProgress: (text, frac) => upd(frac, 1, null, text) }), { cancel: () => { halt = true; } });
     } catch (e) { err = e; }
     Tours.invalidate();
     const done = () => { if (after) after(); };
-    if (err || !r) { toast((err && err.message) || 'Der Abgleich ist fehlgeschlagen.', 7000); done(); return; }
+    if (err || !r) { toast((err && err.message) || 'Touren holen nicht möglich', 7000); done(); return; }
     const kopf = r.stopped ? 'Abgebrochen – der Rest kommt beim nächsten Mal.' : r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') + ' im Tagebuch.' : 'Das Tagebuch ist auf dem neuesten Stand.';
-    const s = sheet(r.stopped ? 'Abgleich abgebrochen' : 'Abgleich fertig', h('div', { id: 'sum' },
+    const s = sheet(r.stopped ? 'Touren holen abgebrochen' : 'Touren geholt', h('div', { id: 'sum' },
       h('p', { id: 'sum-head' }, kopf),
       UI.list(r.items.map(i => UI.row({ id: 'sum-' + i.id, title: i.name, sub: Abgleich.quellZeile(i, Import.describe), trail: i.err ? 'Fehler' : null }))),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'sum-ok', onclick: () => s.close() }, 'Fertig'))), { onclose: done });
@@ -26,7 +26,7 @@ Views['/import'] = async root => {
   root.append(topbar('Touren importieren', { back: true }), body);
   /** Import mit Fortschrittsblatt. opts.cancel: abbrechbar; opts.after(fehler): nach dem Lauf (z. B. Anmeldeblatt erneut zeigen). */
   const run = async (title, fn, opts) => {
-    if (Import.Alles.busy) { toast('Gerade läuft ein Abgleich – bitte kurz warten.'); return; }
+    if (Import.Alles.busy) { toast('Touren holen läuft schon'); return; }
     let err = null;
     try {
       const r = await PhotoSources.progress(title, (upd, txt) => fn(upd, txt), opts);
@@ -36,15 +36,15 @@ Views['/import'] = async root => {
     if (opts && opts.after) opts.after(err);
   };
   const card = (ico, t, sub, fn, id) => UI.row({ icon: ico, title: t, sub, onclick: fn, id });
-  /* Alles abgleichen: ganz oben, nur wenn mindestens eine Quelle verbunden ist */
+  /* Touren holen (alle Quellen): ganz oben, nur wenn mindestens eine Quelle verbunden ist */
   const allBox = h('div', { class: 'allbox', id: 'allbox', hidden: true });
   (async () => {
     const qs = await Import.Alles.quellen();
     if (!qs.length) return;
     const last = await DB.kvGet('abgleich', null);
-    allBox.append(h('button', { class: 'btn pri', id: 'all-go', html: Ico.svg('refresh') + '<span>Alles abgleichen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
+    allBox.append(h('button', { class: 'btn pri', id: 'all-go', html: Ico.svg('refresh') + '<span>Touren holen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
       h('p', { class: 'muted small', id: 'all-src' }, qs.map(q => q.name).join(' → ') + ' – verbundene Quellen nacheinander, mit den gespeicherten Einstellungen.' + (last && last.t ? ' ' + Abgleich.zeile(last) + '.' : '')),
-      UI.toggle('Beim Öffnen automatisch abgleichen', !!Set_.get('autoAbgleich'), v => Set_.set('autoAbgleich', !!v), { id: 'auto-sync' }),
+      UI.toggle('Beim Öffnen automatisch Touren holen', !!Set_.get('autoAbgleich'), v => Set_.set('autoAbgleich', !!v), { id: 'auto-sync' }),
       h('p', { class: 'muted small' }, 'Still im Hintergrund, höchstens einmal am Tag und nur, wenn gerade nichts aufgezeichnet wird. Neue Touren meldet die App kurz.'));
     allBox.hidden = false;
   })().catch(() => {});
@@ -58,20 +58,20 @@ Views['/import'] = async root => {
       card('bike', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
       card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
       card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)),
-    UI.section('Aufräumen', UI.list([UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus zwei Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' }), UI.row({ icon: 'photo', title: 'Doppelte Fotos suchen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
+    UI.section('Aufräumen', UI.list([UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus zwei Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' }), UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
 
   /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
   async function mt() {
     if (!MT.aktiv()) return;
     const M = Import.MT, c = await DB.kvGet('mt', null), on = !!(c && (c.token || c.open));
     const zahlen = UI.toggle('Zahlen aus Meine Touren übernehmen (Aufstieg, Strecke)', Set_.get('mtZahlen') !== false, v => Set_.set('mtZahlen', !!v), { id: 'mt-zahlen' });
-    const zHint = h('p', { class: 'muted small' }, 'Dann zeigen beide Apps für dieselbe Tour dieselben Zahlen. Korrigierst du eine Strecke in der App, gilt dort die eigene Rechnung – bis zum nächsten Abgleich.');
+    const zHint = h('p', { class: 'muted small' }, 'Dann zeigen beide Apps für dieselbe Tour dieselben Zahlen. Korrigierst du eine Strecke in der App, gilt dort die eigene Rechnung – bis du das nächste Mal Touren holst.');
     const sync = acc0 => {
       let halt = false;
       run('Meine Touren', async (upd, txt) => {
         let acc = acc0;
         if (typeof acc0 === 'function') { txt.textContent = 'Anmelden …'; acc = await acc0(); }
-        txt.textContent = 'Tourenliste laden …';
+        txt.textContent = 'Tourenliste holen …';
         return M.importAll(acc, { zahlen: Set_.get('mtZahlen') !== false, stop: () => halt }, upd);
       }, { cancel: () => { halt = true; }, after: e => { if (e && e.relogin) mt(); } });
     };
@@ -91,7 +91,7 @@ Views['/import'] = async root => {
         zahlen, zHint,
         h('div', { class: 'row end wrap' },
           h('button', { class: 'btn', id: 'mt-off', onclick: async () => { await M.logout(c); s.close(); toast('Verbindung getrennt'); mt(); } }, 'Verbindung trennen'),
-          h('button', { class: 'btn pri', id: 'mt-go', onclick: () => { s.close(); sync(c); } }, 'Abgleichen'))));
+          h('button', { class: 'btn pri', id: 'mt-go', onclick: () => { s.close(); sync(c); } }, 'Touren holen'))));
       return;
     }
     const url = h('input', { type: 'url', id: 'mt-url', value: c && c.base ? c.base : '', placeholder: 'https://meine-touren.example.ts.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
@@ -126,39 +126,39 @@ Views['/import'] = async root => {
           }
           return acc;
         });
-      } }, 'Verbinden & abgleichen'))));
+      } }, 'Verbinden & Touren holen'))));
   }
   async function komoot() {
     const c = await DB.kvGet('komoot', null);
     const em = h('input', { type: 'email', value: c ? c.email : '', autocomplete: 'off', placeholder: 'E-Mail' }), pw = h('input', { type: 'password', placeholder: 'Passwort', autocomplete: 'off' });
     const pl = h('input', { type: 'checkbox', checked: !!Set_.get('komootPlanned') });
     const s = sheet('Komoot', h('div', null,
-      h('p', { class: 'muted' }, 'Es wird dein Komoot-Zugang genutzt, um deine eigenen Touren zu laden. Das Passwort wird nicht gespeichert, nur ein Zugriffsschlüssel auf diesem Handy.'),
-      c ? h('p', null, '✓ Angemeldet als ' + c.email) : null,
+      h('p', { class: 'muted' }, 'Es wird dein Komoot-Zugang genutzt, um deine eigenen Touren zu holen. Das Passwort wird nicht gespeichert, nur ein Zugriffsschlüssel auf diesem Handy.'),
+      c ? h('p', null, '✓ Verbunden mit Komoot als ' + c.email) : null,
       c ? null : h('label', { class: 'fld' }, 'E-Mail', em), c ? null : h('label', { class: 'fld' }, 'Passwort', pw),
-      h('label', { class: 'sw' }, pl, h('span', null, 'Auch geplante Touren laden')),
-      h('div', { class: 'row end' }, c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'komoot'); s.close(); komoot(); } }, 'Abmelden') : null,
+      h('label', { class: 'sw' }, pl, h('span', null, 'Auch geplante Touren holen')),
+      h('div', { class: 'row end' }, c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'komoot'); s.close(); komoot(); } }, 'Verbindung trennen') : null,
         h('button', { class: 'btn pri', onclick: async () => {
-          s.close(); await Set_.set('komootPlanned', !!pl.checked);      // „Alles abgleichen“ nutzt dieselbe Wahl
+          s.close(); await Set_.set('komootPlanned', !!pl.checked);      // „Touren holen“ (alle Quellen) nutzt dieselbe Wahl
           await run('Komoot', async (upd, txt) => {
             let acc = c; if (!acc) { txt.textContent = 'Anmelden …'; acc = await Import.Komoot.login(em.value.trim(), pw.value); }
-            txt.textContent = 'Tourenliste laden …';
+            txt.textContent = 'Tourenliste holen …';
             return Import.Komoot.importAll(acc, { planned: pl.checked }, upd);
           });
-        } }, 'Touren laden'))));
+        } }, 'Touren holen'))));
   }
   async function strava() {
     const c = await DB.kvGet('strava', null), id = h('input', { inputmode: 'numeric', value: c ? c.id : Set_.get('stravaId') || '', placeholder: 'Client-ID' }), sec = h('input', { type: 'password', placeholder: 'Client-Secret', value: c ? c.secret : '' });
     const code = h('input', { placeholder: 'Adresse oder Code einfügen' });
     const s = sheet('Strava', h('div', null,
-      c ? h('div', null, h('p', null, '✓ Verbunden' + (c.name ? ' als ' + c.name : '')), h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'strava'); s.close(); strava(); } }, 'Trennen'),
-        h('button', { class: 'btn pri', onclick: () => { s.close(); run('Strava', upd => Import.Strava.importAll(c, upd)); } }, 'Aktivitäten laden'))) :
+      c ? h('div', null, h('p', null, '✓ Verbunden mit Strava' + (c.name ? ' als ' + c.name : '')), h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'strava'); s.close(); strava(); } }, 'Verbindung trennen'),
+        h('button', { class: 'btn pri', onclick: () => { s.close(); run('Strava', upd => Import.Strava.importAll(c, upd)); } }, 'Touren holen'))) :
       h('div', null,
         h('ol', { class: 'steps' }, h('li', null, 'Auf strava.com/settings/api eine eigene Anwendung anlegen (Domain für die Weiterleitung: ', h('code', null, 'localhost'), ').'), h('li', null, 'Client-ID und Client-Secret hier eintragen.'), h('li', null, '„Bei Strava erlauben“ tippen und zustimmen. Die Seite danach lässt sich nicht öffnen – das ist normal.'), h('li', null, 'Die Adresse dieser Seite (enthält code=…) hier einfügen.')),
         h('label', { class: 'fld' }, 'Client-ID', id), h('label', { class: 'fld' }, 'Client-Secret', sec),
         h('button', { class: 'btn', onclick: async () => { if (!id.value.trim()) { toast('Bitte Client-ID eintragen'); return; } await Set_.set('stravaId', id.value.trim()); Native.available() ? MTApp.openUrl(Import.Strava.authUrl(id.value.trim())) : window.open(Import.Strava.authUrl(id.value.trim())); } }, 'Bei Strava erlauben'),
         h('label', { class: 'fld' }, 'Adresse / Code', code),
-        h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => { try { const acc = await Import.Strava.exchange(id.value.trim(), sec.value.trim(), Import.Strava.parseCode(code.value)); s.close(); run('Strava', upd => Import.Strava.importAll(acc, upd)); } catch (e) { toast(e.message, 7000); } } }, 'Verbinden & laden'))),
+        h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => { try { const acc = await Import.Strava.exchange(id.value.trim(), sec.value.trim(), Import.Strava.parseCode(code.value)); s.close(); run('Strava', upd => Import.Strava.importAll(acc, upd)); } catch (e) { toast(e.message, 7000); } } }, 'Verbinden & Touren holen'))),
       h('p', { class: 'muted small' }, 'Tipp: Strava erlaubt 100 Abfragen je 15 Minuten. Bei sehr vielen Aktivitäten einfach später erneut starten. Alternativ den kompletten Strava-Export (ZIP) über „Dateien“ importieren.')));
   }
   async function zepp() {
@@ -170,17 +170,17 @@ Views['/import'] = async root => {
     const bm = "javascript:(function(){var m=document.cookie.match(/(?:^|; )apptoken=([^;]+)/);if(!m){alert('Kein apptoken gefunden - bitte zuerst bei Zepp anmelden.');return;}var t=decodeURIComponent(m[1]);try{navigator.clipboard.writeText(t);}catch(e){}prompt('Token (wurde kopiert):',t);})()";
     const zo = () => ({ ele: Set_.get('zeppEle') !== false });
     const eleSw = h('div', null, UI.toggle('Höhen der Uhr übernehmen', Set_.get('zeppEle') !== false, v => Set_.set('zeppEle', !!v), { id: 'zp-ele' }),
-      h('p', { class: 'muted small' }, 'Touren aus Komoot, Dateien oder eigener Aufzeichnung bekommen beim Laden die Barometerhöhen der Uhr. Rückholbar an der Tour: „Originalhöhen wiederherstellen“. Mit dem Geländemodell korrigierte Touren bleiben, wie sie sind.'));
-    const run0 = (acc0) => { s.close(); run('Zepp', async (upd, txt) => { let acc = acc0; txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd, zo()); }); };
-    const loggedIn = h('div', null, h('p', null, '✓ Angemeldet' + (c && c.viaToken ? ' (mit Token)' : '')),
+      h('p', { class: 'muted small' }, 'Touren aus Komoot, Dateien oder eigener Aufzeichnung bekommen beim Holen die Barometerhöhen der Uhr. Rückholbar an der Tour: „Originalhöhen wiederherstellen“. Mit dem Geländemodell korrigierte Touren bleiben, wie sie sind.'));
+    const run0 = (acc0) => { s.close(); run('Zepp', async (upd, txt) => { let acc = acc0; txt.textContent = 'Touren holen …'; return Import.Zepp.importAll(acc, upd, zo()); }); };
+    const loggedIn = h('div', null, h('p', null, '✓ Verbunden mit Zepp' + (c && c.viaToken ? ' (mit Token)' : '')),
       h('div', { class: 'row end wrap' },
-        h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Abmelden'),
+        h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Verbindung trennen'),
         h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert'); } catch (e) { toast(e.message, 8000); } } }, 'Zugang testen'),
-        h('button', { class: 'btn', onclick: () => { s.close(); run('Höhe aus Uhr', async (upd, txt) => { txt.textContent = 'Zepp-Trainings laden …'; const r = await Fix.zeppEleAll(c, upd); return `Höhe aus Uhr abgeglichen: ${r.done} von ${r.total} passenden Touren` + (r.none ? `, ${r.none} ohne brauchbare Höhendaten` : '') + (r.fail ? `, ${r.fail} fehlgeschlagen` : ''); }); } }, '⌚ Höhe für alle Touren abgleichen'),
-        h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Aktivitäten laden')));
+        h('button', { class: 'btn', onclick: () => { s.close(); run('Höhe korrigieren', async (upd, txt) => { txt.textContent = 'Touren aus Zepp holen …'; const r = await Fix.zeppEleAll(c, upd); return `Höhe korrigiert (aus der Uhr): ${r.done} von ${r.total} passenden Touren` + (r.none ? `, ${r.none} ohne brauchbare Höhendaten` : '') + (r.fail ? `, ${r.fail} nicht möglich` : ''); }); } }, '⌚ Höhe aller Touren korrigieren'),
+        h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Touren holen')));
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
       h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Aktivitäten laden …'; return Import.Zepp.importAll(acc, upd, zo()); }); } }, 'Anmelden & laden')));
+      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Touren holen …'; return Import.Zepp.importAll(acc, upd, zo()); }); } }, 'Anmelden & Touren holen')));
     const inApp = Native.available() ? h('div', null,
       h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort): Die App öffnet die Zepp-Anmeldeseite, du meldest dich wie gewohnt an, die App übernimmt das Zugangs-Token selbst.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
@@ -201,7 +201,7 @@ Views['/import'] = async root => {
       h('p', { class: 'muted small' }, 'Das Token wird nur auf diesem Handy gespeichert und läuft nach einiger Zeit ab; dann einfach ein neues holen. Es gibt Zugriff auf deine Zepp-Daten – nicht weitergeben.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
         let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(tk.value, hs.value); } catch (e) { toast(e.message, 9000); return; }
-        run0(acc); } }, 'Prüfen & laden')));
+        run0(acc); } }, 'Prüfen & Touren holen')));
     const sel = h('div', { class: 'row' }, ['Mit Token', 'E-Mail / Passwort'].map((n, i) => h('button', { class: 'btn' + (i ? '' : ' pri'), onclick: e => { tok.hidden = !!i; pass.hidden = !i; [...sel.children].forEach((b, j) => b.classList.toggle('pri', j === i)); } }, n)));
     pass.hidden = true;
     if (c) loggedIn.insertBefore(eleSw, loggedIn.lastChild);      // angemeldet: Schalter über den Knöpfen
@@ -218,15 +218,15 @@ Views['/import'] = async root => {
     const folders = await DB.kvGet('trackFolders', []);
     const s = sheet('Weitere Dienste', h('div', null,
       h('p', null, h('b', null, 'Teilen-Menü: '), 'In Garmin Connect, Suunto, Polar Flow, Wahoo, Coros, Outdooractive, Gipfelbuch … die Aktivität als GPX/FIT teilen und „Mein Tourentagebuch“ wählen.'),
-      h('p', null, h('b', null, 'Datenexport: '), 'Vollständige Exporte (ZIP) über „Dateien“ importieren. Alle Aktivitäten darin werden übernommen.'),
-      h('p', null, h('b', null, 'Überwachter Ordner: '), 'Ein Ordner, in den z. B. Syncthing, ein Cloud-Dienst oder die Garmin-Sync-App neue Dateien legt. Neue GPX/FIT/TCX-Dateien werden bei jedem Einlesen importiert.'),
-      folders.length ? h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Entfernen', onclick: async () => { folders.splice(i, 1); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, '✕')))) : null,
+      h('p', null, h('b', null, 'Datenexport: '), 'Vollständige Exporte (ZIP) über „Dateien“ importieren. Alle Touren darin werden übernommen.'),
+      h('p', null, h('b', null, 'Überwachter Ordner: '), 'Ein Ordner, in den z. B. Syncthing, ein Cloud-Dienst oder die Garmin-Sync-App neue Dateien legt. Neue GPX/FIT/TCX-Dateien werden mit „Jetzt importieren“ übernommen.'),
+      folders.length ? h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Ordner entfernen', onclick: async () => { if (!await confirmBox('Ordner „' + decodeURIComponent(f.name) + '“ entfernen?', 'Die App schaut dort nicht mehr nach neuen Dateien. Die Dateien im Ordner und die schon importierten Touren bleiben.', 'Entfernen')) return; folders.splice(i, 1); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, '✕')))) : null,
       h('div', { class: 'row end wrap' }, h('button', { class: 'btn', onclick: async () => { const f = await Native.json('pickFolder'); if (!f.tree) return; folders.push({ tree: f.tree, name: f.name, since: 0 }); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, 'Ordner hinzufügen'),
-        folders.length ? h('button', { class: 'btn pri', onclick: () => { s.close(); run('Ordner einlesen', upd => Import.scanFolders(upd)); } }, 'Jetzt einlesen') : null)));
+        folders.length ? h('button', { class: 'btn pri', onclick: () => { s.close(); run('Ordner importieren', upd => Import.scanFolders(upd)); } }, 'Jetzt importieren') : null)));
   }
   function link() {
     const u = h('input', { type: 'url', placeholder: 'https://…', autocapitalize: 'off' });
-    const s = sheet('Link importieren', h('div', null, h('label', { class: 'fld' }, 'Adresse der GPX-Datei', u), h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Link', async () => Import.fromUrl(u.value.trim())); } }, 'Laden'))));
+    const s = sheet('Link importieren', h('div', null, h('label', { class: 'fld' }, 'Adresse der GPX-Datei', u), h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Link', async () => Import.fromUrl(u.value.trim())); } }, 'Importieren'))));
   }
 };
 
@@ -241,7 +241,7 @@ const StatGrpUI = {
     const draw = () => {
       box.innerHTML = '';
       const hinweise = StatGruppen.pruefe(entwurf, Set_.get('statGruppen')), roh = StatGruppen.sauber(Set_.get('statGruppen'));
-      box.append(h('p', { class: 'muted small', id: 'sg-stand' }, (roh || []).length ? (roh.length === 1 ? '1 Gruppe' : roh.length + ' Gruppen') + ' – die übrigen Sportarten stehen für sich.' : 'Keine Gruppen: jede Sportart steht in der Statistik für sich.'));
+      box.append(h('p', { class: 'muted small', id: 'sg-stand' }, (roh || []).length ? (roh.length === 1 ? '1 Statistik-Gruppe' : roh.length + ' Statistik-Gruppen') + ' – die übrigen Sportarten stehen für sich.' : 'Keine Statistik-Gruppen: jede Sportart steht in der Statistik für sich.'));
       entwurf.forEach((g, i) => {
         const andere = new Map(); entwurf.forEach((o, j) => { if (j !== i) o.sports.forEach(sp => { if (!andere.has(sp)) andere.set(sp, o.name || 'Gruppe ' + (j + 1)); }); });
         const nameIn = h('input', { type: 'text', maxlength: String(StatGruppen.NAME_MAX), value: g.name, id: 'sg-name-' + i, 'aria-label': 'Name der Gruppe ' + (i + 1), placeholder: 'z. B. Bergtouren', autocapitalize: 'sentences',
@@ -255,15 +255,17 @@ const StatGrpUI = {
         }))]).flat());
         box.append(h('div', { class: 'sg-grp', id: 'sg-grp-' + i, 'data-id': g.id },
           h('div', { class: 'row' }, h('label', { class: 'fld', style: { flex: '1', margin: '6px 0' } }, 'Name', nameIn),
-            h('button', { class: 'btn sm danger', id: 'sg-del-' + i, 'aria-label': 'Gruppe ' + (g.name || i + 1) + ' löschen', onclick: async () => { entwurf.splice(i, 1); await speichern(); draw(); toast('Gruppe gelöscht – die Touren bleiben unverändert.'); } }, 'Löschen')),
+            h('button', { class: 'btn sm danger', id: 'sg-del-' + i, 'aria-label': 'Statistik-Gruppe ' + (g.name || i + 1) + ' löschen', onclick: async () => {
+              if (!await confirmBox('Statistik-Gruppe „' + (g.name || 'Gruppe ' + (i + 1)) + '“ löschen?', 'Die Gruppe verschwindet aus Statistik, Filtern und Zielen. Die Touren behalten ihre Sportart. Rückgängig nur durch neues Anlegen.', 'Löschen')) return;      // 2.20.0: Löschen fragt nach
+              entwurf.splice(i, 1); await speichern(); draw(); toast('Statistik-Gruppe gelöscht'); } }, 'Löschen')),
           sports, hinweise[i] ? h('p', { class: 'err small', role: 'status', id: 'sg-hinweis-' + i }, hinweise[i]) : null));
       });
       const vs = StatGruppen.vorschlaege(entwurf);
       box.append(h('div', { class: 'row wrap' },
-        h('button', { class: 'btn', id: 'sg-add', disabled: entwurf.length >= StatGruppen.MAX, onclick: () => { entwurf.push({ id: StatGruppen.neueId(entwurf), name: '', sports: [] }); draw(); const f = $('#sg-name-' + (entwurf.length - 1)); if (f) f.focus(); } }, 'Gruppe hinzufügen')),
+        h('button', { class: 'btn', id: 'sg-add', disabled: entwurf.length >= StatGruppen.MAX, onclick: () => { entwurf.push({ id: StatGruppen.neueId(entwurf), name: '', sports: [] }); draw(); const f = $('#sg-name-' + (entwurf.length - 1)); if (f) f.focus(); } }, 'Statistik-Gruppe hinzufügen')),
         vs.length ? h('div', { id: 'sg-vorschlaege' }, h('p', { class: 'muted small' }, 'Vorschläge (ein Klick legt die Gruppe an):'), h('div', { class: 'row wrap' }, vs.map(v =>
-          h('button', { class: 'btn', id: 'sg-vorschlag-' + v.id, onclick: async () => { entwurf.push({ id: v.id, name: v.name, sports: v.sports }); await speichern(); draw(); toast('Gruppe „' + v.name + '“ angelegt'); } }, 'Vorschlag: ' + v.knopf)))) : null,
-        entwurf.length >= StatGruppen.MAX ? h('p', { class: 'muted small' }, 'Höchstens ' + StatGruppen.MAX + ' Gruppen.') : null);
+          h('button', { class: 'btn', id: 'sg-vorschlag-' + v.id, onclick: async () => { entwurf.push({ id: v.id, name: v.name, sports: v.sports }); await speichern(); draw(); toast('Statistik-Gruppe „' + v.name + '“ gespeichert'); } }, 'Vorschlag: ' + v.knopf)))) : null,
+        entwurf.length >= StatGruppen.MAX ? h('p', { class: 'muted small' }, 'Höchstens ' + StatGruppen.MAX + ' Statistik-Gruppen.') : null);
     };
     draw();
     return box;
@@ -290,7 +292,7 @@ const StatGrpUI = {
   },
 };
 
-/* 2.19.0: Einstellungen → Sportarten → „Favoriten für „Tour aufnehmen““ – welche Sportarten „Tour aufnehmen“ als Knöpfe anbietet (Rechnung: js/calc-aktivitaeten.js). */
+/* 2.19.0: Einstellungen → Sportarten → „Favoriten-Sportarten“ (bis 2.19.1 „Favoriten für „Tour aufnehmen““) – welche Sportarten „Tour aufzeichnen“ als Knöpfe anbietet (Rechnung: js/calc-aktivitaeten.js). */
 const FavUI = {
   box() {
     const box = h('div', { id: 'fav-box' });
@@ -304,13 +306,13 @@ const FavUI = {
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' nach vorn', disabled: i === 0, onclick: () => setze(Aktiv.verschiebe(f, i, -1)) }, '↑'),
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' nach hinten', disabled: i === f.length - 1, onclick: () => setze(Aktiv.verschiebe(f, i, 1)) }, '↓'),
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' entfernen', onclick: () => setze(Aktiv.umschalten(f, k)) }, '✕')))), { id: 'fav-liste' })
-        : h('p', { class: 'muted small', id: 'fav-leer' }, 'Keine Favoriten – beim Aufnehmen steht dann nur die zuletzt benutzte Sportart und „Mehr …“.'),
+        : h('p', { class: 'muted small', id: 'fav-leer' }, 'Keine Favoriten-Sportarten – beim Aufzeichnen steht dann nur die zuletzt benutzte Sportart und „Mehr …“.'),
         h('p', { class: 'muted small', id: 'fav-zahl', 'aria-live': 'polite' }, f.length + ' von höchstens ' + Aktiv.MAX + ' gewählt.'),
-        ...Sports.kategorien().map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports', role: 'group', 'aria-label': 'Favoriten: ' + knm }, list.map(([k, l, ic]) =>
+        ...Sports.kategorien().map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports', role: 'group', 'aria-label': 'Favoriten-Sportarten: ' + knm }, list.map(([k, l, ic]) =>
           h('label', { class: 'sg-sp' + (!f.includes(k) && f.length >= Aktiv.MAX ? ' off' : ''), 'data-sport': k },
             h('input', { type: 'checkbox', id: 'fav-' + k, checked: f.includes(k), disabled: !f.includes(k) && f.length >= Aktiv.MAX, onchange: () => setze(Aktiv.umschalten(f, k)) }),
             h('span', null, ic + ' ' + l))))]).flat(),
-        h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'fav-standard', onclick: () => setze(Aktiv.STANDARD) }, 'Vorgabe wiederherstellen')));
+        h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'fav-standard', onclick: async () => { if (await confirmBox('Standard wiederherstellen?', 'Die Favoriten-Sportarten werden wieder: ' + Aktiv.STANDARD.map(Sports.label).join(', ') + '.', 'Wiederherstellen')) setze(Aktiv.STANDARD); } }, 'Standard wiederherstellen')));
     };
     draw();
     return box;
@@ -375,9 +377,9 @@ Views['/settings'] = async root => {
   const remind = h('div'), lastEl = () => $('#lastbk');
   const drawRemind = () => { remind.innerHTML = ''; remind.append(UI.chips([[7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage'], [0, 'Aus']].map(([d, l]) => UI.chip(l, +Set_.get('backupDays') === d, async () => { await Set_.set('backupDays', d); drawRemind(); })), { id: 'bk-days' })); };
   drawRemind();
-  const showLast = async () => { const t = await DB.kvGet('lastBackup', null); if (lastEl()) lastEl().textContent = 'Letzte Sicherung: ' + (t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'noch nie'); };
+  const showLast = async () => { const t = await DB.kvGet('lastBackup', null); if (lastEl()) lastEl().textContent = 'Letzte Sicherung: ' + (t ? F.dshort(t) : 'noch nie'); };
   // 2.10.0: Sicherung der Foto- und Videodateien (Medien) und automatische Tagessicherung in einen Ordner
-  const fmtTag = t => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const fmtTag = t => F.dshort(t);
   const mdStand = h('p', { class: 'muted small', id: 'md-stand' }, window.MTApp ? 'Wird gezählt …' : 'Nur in der Android-App.');
   const mdLast = h('p', { class: 'muted small', id: 'md-last' }, 'Zuletzt gesichert: –'), mdOrdner = h('p', { class: 'muted small', id: 'md-ordner' }, '');
   const showMedien = async () => {
@@ -396,22 +398,22 @@ Views['/settings'] = async root => {
   const nT = await DB.count('tours'), nP = await DB.count('photos');
   /* 2.19.0: Einstellungen neu geordnet – Bereiche (h2) mit einheitlichen Karten (h3, eine Erklärzeile, dann Schalter/Felder, Hinweise klein darunter).
      Gliederung wie die Verwaltung von „Meine Touren“: Zusammenarbeit · Sportarten (Katalog, Favoriten, Statistik-Gruppen) · Karte und Planung ·
-     Aufnahme, Fotos und Videos · Persönliches und Startseite · Datensicherung · Über die App. */
+     Aufzeichnung, Fotos und Videos · Persönliches und Startseite · Sicherung · Über die App (2.20.0: Namen nach docs/LEITFADEN-BEGRIFFE.md). */
   const hint = t => h('p', { class: 'muted small' }, t);
   const karte = (id, hid, titel, text, ...kids) => h('section', { class: 'card set-k', id }, h('h3', { id: hid }, titel), text ? h('p', { class: 'muted small set-t' }, text) : null, ...kids);
   const BEREICHE = [];
   const bereich = (id, titel, text, ...karten) => { BEREICHE.push([id, titel]); return h('section', { class: 'set-g', id }, h('h2', null, titel), text ? h('p', { class: 'muted small set-gt' }, text) : null, ...karten); };
   const gruppen = [
     bereich('set-g-mt', 'Zusammenarbeit', null, MT.einstellung()),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
-    bereich('set-g-akt', 'Sportarten', 'Welche Sportarten es gibt, welche beim Aufnehmen vorn stehen und welche die Statistik zusammen zählt.',
+    bereich('set-g-akt', 'Sportarten', 'Welche Sportarten es gibt, welche beim Aufzeichnen vorn stehen und welche die Statistik als Statistik-Gruppe zusammen zählt.',
       karte('akt-katalog', 'akt-katalog-h', 'Katalog', 'Alle ' + Sports.katalog.length + ' Sportarten nach Kategorien, mit Symbol und Kartenfarbe. Jede Tour behält ihre Sportart.',
         KatalogUI.box(),
         h('h4', { id: 'ss-h' }, 'Ältere Schneeschuh-Touren'),
         hint('Seit 2.19.0 ist Schneeschuhwandern eine eigene Sportart. Ältere Touren waren Wandern mit dem Schlagwort „Schneeschuh“ – sie lassen sich hier als Schneeschuhwandern führen (rückgängig machbar, das Schlagwort bleibt).'),
         StatGrpUI.schneeschuh()),
-      karte('akt-fav', 'fav-h', 'Favoriten für „Tour aufnehmen“', 'Diese Sportarten stehen bei „Tour aufnehmen“ als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
+      karte('akt-fav', 'fav-h', 'Favoriten-Sportarten', 'Für „Tour aufzeichnen“: Diese Sportarten stehen dort als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
         FavUI.box()),
-      karte('akt-sg', 'sg-h', 'Statistik-Gruppen', 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort als „Name = Sportart + Sportart …“. Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (alle)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Sportart.',
+      karte('akt-sg', 'sg-h', 'Statistik-Gruppen', 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Statistik-Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort als „Name = Sportart + Sportart …“. Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (alle)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Sportart.',
         StatGrpUI.box())),
     bereich('set-g-karte', 'Karte und Planung', null,
       karte('set-k-karte', 'set-karte-h', 'Karte', 'Wie Strecken und Karten aussehen und woher die Kacheln kommen.',
@@ -431,15 +433,15 @@ Views['/settings'] = async root => {
         hint('„Flüssig“ rechnet mit weniger Bildpunkten und einfacherem Gelände, damit der Flug auch auf Handys ruhig läuft. „Schön“ zeichnet schärfer und mit Geländeschatten. Ruckelt der Flug, schaltet die App von selbst eine Stufe herunter.')),
       karte('set-k-routing', 'set-routing-h', 'Routing', 'Server und Profil für „Wegen folgen“ in der Planung.',
         inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'))),
-    bereich('set-g-aufn', 'Aufnahme, Fotos und Videos', null,
+    bereich('set-g-aufn', 'Aufzeichnung, Fotos und Videos', null,
       // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
       karte('set-k-rec', 'set-rec-h', 'Aufzeichnung', null,
-        h('p', { class: 'muted small set-t', id: 'set-akku-txt' }, 'Manche Handys beenden Apps im Hintergrund, um Akku zu sparen – dann bricht eine lange Aufnahme ab. Öffne die Akku-Einstellungen, suche „Tourentagebuch“ und wähle „Nicht eingeschränkt“ (je nach Handy auch „Nicht optimieren“). Die App kann das nicht selbst einstellen. Bricht eine Aufnahme trotzdem ab, sind die Punkte bis dahin gesichert, und die App bietet beim nächsten Öffnen Fortsetzen oder Speichern an.'),
+        h('p', { class: 'muted small set-t', id: 'set-akku-txt' }, 'Manche Handys beenden Apps im Hintergrund, um Akku zu sparen – dann bricht eine lange Aufzeichnung ab. Öffne die Akku-Einstellungen, suche „Tourentagebuch“ und wähle „Nicht eingeschränkt“ (je nach Handy auch „Nicht optimieren“). Die App kann das nicht selbst einstellen. Bricht eine Aufzeichnung trotzdem ab, sind die Punkte bis dahin gesichert, und die App bietet beim nächsten Öffnen Fortsetzen oder Speichern an.'),
         window.MTApp ? h('p', { class: 'muted small', id: 'set-akku-stand' }, RecRescue.akkuZeile()) : null,
         window.MTApp ? h('button', { class: 'btn', id: 'set-akku', onclick: () => MTApp.openBatterySettings() }, 'Akku-Einstellungen öffnen') : hint('Nur in der Android-App.')),
       karte('set-k-fotos', 'set-fotos-h', 'Fotos', 'Welche Fotos zu einer Tour gehören.',
         sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
-        h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen')),
+        h('button', { class: 'btn', onclick: async () => { const n = await Photos.assignAll(true); toast((n === 1 ? '1 Foto' : n + ' Fotos') + ' neu zugeordnet'); } }, 'Alle Fotos neu zuordnen')),
       // 2.9.0: Videos aufnehmen – die Hülle bekommt die Werte über Videos.prefs()
       karte('set-k-video', 'set-video-h', 'Videos', 'Aufnahme, Galerie und Umwandeln von Videos.',
         h('label', { class: 'fld' }, 'Längste Video-Aufnahme', h('select', { id: 'set-vlimit', onchange: async e => { await Set_.set('videoLimit', e.target.value); Videos.prefs(); } },
@@ -454,13 +456,13 @@ Views['/settings'] = async root => {
       karte('set-k-puls', 'set-puls-h', 'Puls und Fitness', 'Bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.',
         inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
         hint('Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
-        FitUI.yearBox(null, { label: 'Geburtsjahr' }),
+        FitUI.yearBox(null, { label: 'Geburtsjahr', sofort: true }),      // 2.20.0: speichert wie der Maximalpuls beim Verlassen des Felds
         hint('Das Geburtsjahr braucht die Fitness-Einordnung in der Statistik (nur das Jahr).')),
-      karte('set-k-start', 'homeset-h', 'Startseite', 'Was unter den Hauptknöpfen steht. Die Reihenfolge ist fest. Den Hinweis auf die Sicherung stellst du unter Datensicherung ein.',
+      karte('set-k-start', 'homeset-h', 'Startseite', 'Was unter den Hauptknöpfen steht. Die Reihenfolge ist fest. Den Hinweis auf die Sicherung stellst du unter „Sicherung“ ein.',
         h('div', { id: 'homeset' }, Home.blocks.filter(b => b.meta).map(b => h('div', { class: 'hs-row' }, UI.toggle(b.meta.label, Home.shown(b), async on => {
           const m = Object.assign({}, Set_.get('homeShow') || {}); m[b.id] = !!on; await Set_.set('homeShow', m);
         }, { id: 'hs-' + b.id }), b.meta.sub ? hint(b.meta.sub) : null))))),
-    bereich('set-g-sich', 'Datensicherung', `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`,
+    bereich('set-g-sich', 'Sicherung', `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`,
       karte('set-k-bk', 'bk-h', 'Touren und Einstellungen sichern', null,
         h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
         h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“. Offline-Karten sind auch nicht enthalten – sie lassen sich jederzeit neu laden.'),
@@ -495,9 +497,9 @@ Views['/settings'] = async root => {
 
   showLast(); showMedien(); if (window.MTApp) zeigeVg();
   async function wipe() {
-    if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht.', 'Alles löschen')) return;
+    if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht. Zurückholen lassen sie sich nur aus einer Sicherung.', 'Löschen')) return;
     for (const s of ['tours', 'tracks', 'photos']) await DB.clear(s);
     for (const e of await DB.all('kv')) if (e.k.startsWith('pn:')) await DB.del('kv', e.k);      // Notizen und Links der gelöschten Planungen
-    Tours.invalidate(); toast('Gelöscht'); Nav.render();
+    Tours.invalidate(); toast('Alle Daten gelöscht'); Nav.render();
   }
 };

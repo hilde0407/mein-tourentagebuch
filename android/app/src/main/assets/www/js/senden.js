@@ -111,7 +111,7 @@ const Senden = {
       h('p', { id: 'send-grund-t' }, g.grund),
       h('div', { class: 'row end wrap' },
         g.code === 'betrachter' || g.code === 'verbindung' ? h('a', { class: 'btn', id: 'send-zu-mt', href: '#/import', onclick: () => s.close() }, 'Zu „Touren importieren“') : null,
-        h('button', { class: 'btn pri', id: 'send-ok', onclick: () => s.close() }, 'OK'))));
+        h('button', { class: 'btn pri', id: 'send-ok', onclick: () => s.close() }, 'Schließen'))));
   },
   /** Gemeinsame Vorabprüfung der Verbindung: gibt das Konto zurück oder null (dann wurde schon erklärt). */
   async konto(t) {
@@ -128,7 +128,7 @@ const Senden = {
   /** Tourseite: eine Tour senden – mit Rückfrage, Fortschritt und Ergebnis. after(): danach (z. B. Seite neu zeichnen). */
   async dialog(t, after) {
     if (!MT.aktiv()) return null;      // 2.15.0: bei Aus gibt es kein Senden
-    if (Senden._busy) { toast('Es läuft schon ein Senden.'); return null; }
+    if (Senden._busy) { toast('Senden läuft schon'); return null; }
     const acc = await Senden.konto(t); if (!acc) return null;
     if (!await Senden.httpOk(acc)) return null;
     const bits = [F.date(t.start), F.km(t.dist), t.up ? '↑ ' + F.m(t.up) : null].filter(Boolean).join(' · ');
@@ -184,7 +184,7 @@ const Senden = {
   },
   /** Auswahl senden: Fortschrittsblatt mit „Abbrechen“, dann eine Zusammenfassung in Worten. */
   async mitFortschritt(acc, ts, after) {
-    if (Senden._busy) { toast('Es läuft schon ein Senden.'); return null; }
+    if (Senden._busy) { toast('Senden läuft schon'); return null; }
     Senden._busy = true; let halt = false, r = null, err = null;
     try {
       r = await PhotoSources.progress('An Meine Touren senden', upd => Senden.mehrere(acc, ts, { stop: () => halt, onProgress: (i, n, name) => upd(i, n, name) }),
@@ -234,8 +234,8 @@ const Senden = {
         }
       }
       await DB.kvSet('mtOffen', q);
-      if (ok || vorh) { toast(ok ? 'Tour an Meine Touren gesendet.' : 'Die Tour war schon in Meine Touren.', 4000); Tours.invalidate(); }
-      else if (bad) toast(bad.wieder ? 'Senden an Meine Touren hat nicht geklappt – wird später noch einmal versucht.' : 'Nicht an Meine Touren gesendet: ' + bad.message, 8000);
+      if (ok || vorh) { toast(ok ? 'Tour an Meine Touren gesendet' : 'Die Tour war schon in Meine Touren', 4000); Tours.invalidate(); }
+      else if (bad) toast(bad.wieder ? 'Senden an Meine Touren nicht möglich – wird später noch einmal versucht' : 'Senden an Meine Touren nicht möglich: ' + bad.message, 8000);
     } finally { Senden._busy = false; }
   },
 };

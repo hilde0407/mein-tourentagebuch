@@ -73,7 +73,7 @@ Views['/offline'] = async root => {
   const O = OfflineCalc, body = h('div', { class: 'pad offline' });
   root.append(topbar('Offline-Karten', { back: true }), body);
   const quelle = O.QUELLEN[Offline.QUELLE];
-  const intro = h('p', { class: 'muted' }, 'Lade vor der Tour einen Kartenausschnitt. Dann zeigen Karte, Aufnahme und Tourenansicht die Karte auch ohne Netz. Offline gibt es die Wanderkarte (OpenTopoMap).');
+  const intro = h('p', { class: 'muted' }, 'Lade vor der Tour einen Kartenausschnitt. Dann zeigen Karte, Aufzeichnung und Tourenansicht die Karte auch ohne Netz. Offline gibt es die Wanderkarte (OpenTopoMap).');
   const merkenTeil = () => {
     const n = h('p', { class: 'muted small', id: 'off-merk-n' }, 'Wird gezählt …');
     const zaehle = () => MapKit.cacheCount().then(k => { n.textContent = O.tausend(k) + (k === 1 ? ' Kachel' : ' Kacheln') + ' gemerkt (höchstens ' + O.tausend(O.MERKEN_MAX) + ', etwa 150 MB)'; });
@@ -159,7 +159,7 @@ Views['/offline'] = async root => {
     est.textContent = O.umfang(Offline.QUELLE, plan.n, plan.mehr) + (p.ok ? '' : ' – ' + p.text);
     est.className = 'off-est' + (p.ok ? '' : ' warn');
     startBtn.disabled = !p.ok;
-    if (!nameIn.value || nameIn.dataset.auto) { if (art === 'karte') { nameIn.value = 'Ausschnitt ' + new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }); nameIn.dataset.auto = '1'; } }
+    if (!nameIn.value || nameIn.dataset.auto) { if (art === 'karte') { nameIn.value = 'Ausschnitt ' + F.dshort(Date.now()); nameIn.dataset.auto = '1'; } }
   }
   map.on('moveend', () => { if (art === 'karte') rechne(); });
 
@@ -177,7 +177,7 @@ Views['/offline'] = async root => {
     stand = l;
     belegt.textContent = 'Belegt: ' + O.mb(l.bytes) + ' von ' + O.mb(l.max || O.MAX_GESAMT);
     belegtBar.firstChild.style.width = Math.min(100, Math.round((l.bytes || 0) / (l.max || O.MAX_GESAMT) * 100)) + '%';
-    const datum = t => t ? new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–';
+    const datum = t => F.dshort(t);
     const rows = l.areas.slice().sort((a, b) => (b.date || 0) - (a.date || 0)).map(g => h('div', { class: 'li offli', 'data-id': g.id },
       h('span', { class: 'li-i', html: Ico.svg(g.kind === 'route' ? 'route' : 'map', 22) }),
       h('span', { class: 'li-t' }, h('b', null, g.name || 'Offline-Karte'),
@@ -201,7 +201,7 @@ Views['/offline'] = async root => {
     await Offline.follow(zeige);
   }
   async function loeschen(g) {
-    if (!await confirmBox('Offline-Karte löschen?', '„' + (g.name || 'Offline-Karte') + '“ (' + O.mb(g.bytes) + ') wird vom Handy gelöscht. Kacheln, die eine andere Offline-Karte auch braucht, bleiben.', 'Löschen')) return;
+    if (!await confirmBox('Offline-Karte „' + (g.name || 'Offline-Karte') + '“ löschen?', 'Die Offline-Karte (' + O.mb(g.bytes) + ') wird vom Handy gelöscht. Neu laden geht jederzeit. Kacheln, die eine andere Offline-Karte auch braucht, bleiben.', 'Löschen')) return;
     try { await Native.json('tilesDelete', { id: g.id }); toast('Offline-Karte gelöscht'); } catch (e) { toast(e.message, 6000); }
     zeige();
   }

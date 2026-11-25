@@ -78,8 +78,8 @@ const RecRescue = {
     if (!window.MTApp.hasPermission()) { MTApp.requestPermission(); return; }
     let ok = false;
     try { ok = MTApp.resumeInterrupted(); } catch (e) { ok = false; }
-    if (!ok) { toast('Fortsetzen ist nicht mehr möglich. Speichere die Aufnahme als Tour.', 6000); Nav.render(); return; }
-    toast('Aufnahme läuft weiter – die Lücke ist markiert.', 4000);
+    if (!ok) { toast('Fortsetzen nicht möglich: Die Aufzeichnung ist zu lange her. Speichere sie als Tour.', 6000); Nav.render(); return; }
+    toast('Aufzeichnung läuft weiter – die Lücke ist markiert', 4000);
     if (Nav.cur === '/rec') setTimeout(() => Nav.render(), 400); else Nav.go('/rec');
   },
   speichern() {
@@ -89,10 +89,10 @@ const RecRescue = {
     if (Nav.cur === '/rec') Nav.render(); else Nav.go('/rec');
   },
   async verwerfen(st) {
-    if (!await confirmBox('Unterbrochene Aufnahme verwerfen?', 'Die Aufnahme wird gelöscht. Eine Sicherungskopie bleibt unter „Gesicherte Aufzeichnungen“ (die letzten zehn).', 'Verwerfen')) return;
+    if (!await confirmBox('Unterbrochene Aufzeichnung verwerfen?', 'Die Aufzeichnung wird gelöscht. Eine Sicherungskopie bleibt unter „Gesicherte Aufzeichnungen“ (die letzten zehn).', 'Verwerfen')) return;
     await RecRoute.done(st.start);
     MTApp.discardRecording();
-    toast('Aufnahme verworfen – die Sicherungskopie bleibt.', 4000);
+    toast('Aufzeichnung verworfen – die Sicherungskopie bleibt', 4000);
     Nav.render();
   },
 };
@@ -193,21 +193,10 @@ Views['/rec'] = async root => {
     if (st.state === 'finished' || (st.unsent && st.state === 'idle')) return unsaved(st);
     let sport = Aktiv.aufnahme(Set_.get('favAkt'), sessionStorage.getItem('recSport') || Set_.get('recSport')).gewaehlt;      // 2.19.0: die zuletzt benutzte Sportart bleibt vorgewählt
     const name = h('input', { type: 'text', placeholder: 'z. B. Hüttenrunde', value: sessionStorage.getItem('recName') || '' });
-    const chips = h('div', { class: 'chips wrap' });
-    /* 2.19.0: Favoriten-Sportarten als Chips (Einstellungen → Sportarten → Favoriten), dazu „Mehr …“ mit allen Sportarten nach Kategorien.
-       Bis 2.18 standen hier alle Sportarten außer Bergsteigen. */
-    const drawChips = () => {
-      chips.innerHTML = '';
-      Aktiv.aufnahme(Set_.get('favAkt'), sport).chips.forEach(k => chips.append(h('button', { class: 'chip' + (sport === k ? ' on' : ''), 'aria-pressed': sport === k ? 'true' : 'false', 'data-sport': k,
-        onclick: () => { sport = k; drawChips(); } }, Sports.icon(k) + ' ' + Sports.label(k))));
-      chips.append(h('button', { class: 'chip', id: 'rec-mehr', onclick: mehr }, 'Mehr …'));
-    };
-    const mehr = () => {
-      const s = sheet('Sportart wählen', h('div', { id: 'rec-alle' }, Sports.kategorien(sport).map(([id, nm, list]) => [h('h3', { class: 'sub' }, nm),
-        UI.list(list.map(([k, l, ic]) => UI.row({ icon: ic, title: l, trail: k === sport ? 'gewählt' : null, id: 'rec-akt-' + k, onclick: () => { sport = k; s.close(); drawChips(); } })), { cls: 'menu' })]).flat(),
-        h('p', { class: 'muted small' }, 'Welche Sportarten oben als Knöpfe stehen, stellst du unter Einstellungen → Sportarten → Favoriten für „Tour aufnehmen“ ein.')));
-    };
-    drawChips();
+    /* 2.19.0: Favoriten-Sportarten als Chips (Mehr → Einstellungen → Sportarten → Favoriten-Sportarten), dazu „Mehr …“ mit allen Sportarten nach Kategorien.
+       2.20.0: über das gemeinsame Muster „Sportart zuweisen“ (UI.sportWahl), wie Tour, Ziel und Planung. */
+    const chips = UI.sportWahl(sport, { idp: 'rec', onpick: k => { sport = k; } });
+    const drawChips = () => chips.setze(sport);
     const planned = (await Tours.list()).filter(t => t.status === 'planned');
     const routeBox = h('div', { class: 'routebox' });
     let rr = await RecRoute.ensure(st);      // gemerkte Route wieder in die Hülle laden (nach Neustart, nach dem Beenden einer älteren Aufzeichnung)
@@ -217,7 +206,7 @@ Views['/rec'] = async root => {
       const info = RecRoute.native() || {};
       if (rr.gone && !info.has && !info.name) routeBox.append(RecRoute.goneBanner(rr.sel, () => { rr = {}; drawRoute(); }));
       if (info.has || info.name || info.points) routeBox.append(UI.list([UI.row({ icon: 'compass', title: info.name || 'Geplante Route', sub: 'Die App sagt Abbiegungen an und warnt, wenn du vom Weg abkommst.', id: 'rroutesel',
-          trail: h('button', { class: 'btn sm', onclick: async () => { await RecRoute.clear(); TourHelp.disarmPlan(); rr = {}; drawRoute(); } }, 'Entfernen') })]),
+          trail: h('button', { class: 'btn sm', id: 'rroute-del', onclick: async () => { if (!await confirmBox('Route „' + (info.name || 'Geplante Route') + '“ entfernen?', 'Die Ansagen für diese Route hören auf. Die geplante Tour oder Datei selbst bleibt erhalten.', 'Entfernen')) return; await RecRoute.clear(); TourHelp.disarmPlan(); rr = {}; drawRoute(); } }, 'Entfernen') })]),
         h('div', { class: 'row' }, UI.toggle('Wege ansagen', Set_.get('guide') !== false, async on => { await Set_.set('guide', on); MTApp.setGuide(on); }), h('span', { class: 'sp' }), h('button', { class: 'btn sm', onclick: () => MTApp.guideTest() }, '🔊 Ansage testen')));
       else routeBox.append(h('p', { class: 'muted' }, 'Mit einer Route sagt die App Abbiegungen an und warnt, wenn du vom Weg abkommst.'),
         h('div', { class: 'col' }, h('button', { class: 'btn', id: 'gpxroute', onclick: pickGpx }, '📂 GPX-Datei vom Handy wählen'),
@@ -283,7 +272,7 @@ Views['/rec'] = async root => {
         await Photos.assignAll();
         toast(r.dup ? 'Diese Tour gibt es schon.' : 'Tour wiederhergestellt ✓');
         Nav.go('/tour/' + r.tour.id);
-      } catch (e) { toast('Wiederherstellen fehlgeschlagen: ' + e.message, 6000); }
+      } catch (e) { toast('Wiederherstellen nicht möglich: ' + e.message, 6000); }
     } }, h('span', { class: 'li-i', html: Ico.svg('save', 22) }), h('span', { class: 'li-t' }, h('b', null, F.date(b.ts) + ' · ' + F.time(b.ts) + ' Uhr'), h('small', null, F.size(b.size))))));
     sh = sheet('Gesicherte Aufzeichnungen', body);
   }
@@ -330,7 +319,7 @@ Views['/rec'] = async root => {
     RecGest.keyClick(knob, async () => { if (await confirmBox('Aufzeichnung beenden?', 'Die Aufzeichnung wird beendet und als Tour gespeichert.', 'Beenden')) finish(); });
     const routeLine = h('div', { class: 'rroute', id: 'rroute', hidden: true });
     // 2.11.0: ohne Netz und ohne Offline-Karte für den Ort eine ruhige Zeile – die Aufnahme selbst braucht keine Karte
-    const offLine = h('p', { class: 'rec-off', id: 'rec-offline', role: 'status', hidden: true }, 'Keine Karte offline – Aufnahme läuft trotzdem');
+    const offLine = h('p', { class: 'rec-off', id: 'rec-offline', role: 'status', hidden: true }, 'Keine Karte offline – Aufzeichnung läuft trotzdem');
     let offGeprueft = false;
     const pruefeOffline = s => { if (offGeprueft || s.lat == null) return; offGeprueft = true; Offline.fehltHier(s.lat, s.lon).then(f => { offLine.hidden = !f; }, () => {}); };
     const onOnline = () => { offLine.hidden = true; };
@@ -445,11 +434,11 @@ Views['/rec'] = async root => {
         await handlePhotoQueue();
         await Photos.assignAll();
         MTApp.discardRecording();
-        toast('Tour gespeichert ✓');
+        toast('Tour gespeichert');
         Nav.go('/tour/' + r.tour.id);
         Senden.auto(r.tour);      // 2.5.0: nur wenn „Neue Aufzeichnungen automatisch senden“ eingeschaltet ist; still, im Hintergrund
       } catch (e) {
-        toast('Speichern fehlgeschlagen: ' + e.message + ' – die Aufzeichnung bleibt erhalten.', 7000);
+        toast('Speichern nicht möglich: ' + e.message + ' – die Aufzeichnung bleibt erhalten', 7000);
         Nav.render();
       }
     } finally { window.__saving = false; }
@@ -464,7 +453,7 @@ Views['/rec'] = async root => {
   /** 2.12.0: unterbrochen – Hinweis mit Fortsetzen / Speichern / Verwerfen; kommt der Dienst doch noch (Neustart durch Android), geht es normal weiter. */
   function rescue(st) {
     stop_(); box.innerHTML = '';
-    head.querySelector('h1').textContent = 'Aufnahme unterbrochen';
+    head.querySelector('h1').textContent = 'Aufzeichnung unterbrochen';
     box.append(h('div', { class: 'pad' }, RecRescue.box(st),
       h('p', { class: 'muted small', id: 'rr-why' }, 'Das passiert, wenn Android die App beendet (oft zum Akkusparen), der Akku leer war oder das Handy neu gestartet wurde. '
         + 'Damit es seltener vorkommt: unten „Akku-Einstellungen“ öffnen und für diese App „Nicht eingeschränkt“ wählen.'),

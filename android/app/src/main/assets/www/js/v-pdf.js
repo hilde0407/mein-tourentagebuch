@@ -301,15 +301,15 @@ const PdfUI = {
 
   /* ---------------------------------------------------------------- Jahr ---------------------------------------------------------------- */
   ROW: 66, ROWF: 140, HEAD: 92,
-  /** Deckblatt: Jahr, Kennzahlen, Sportarten, Kilometer je Monat. d = Ergebnis von Jahr.berechne (nicht leer). */
+  /** Deckblatt: Jahr, Kennzahlen, Sportarten, Strecke je Monat. d = Ergebnis von Jahr.berechne (nicht leer). */
   jahrDeckblatt(d, now) {
     const { W, H, M, IW, C } = PdfUI, { cv, ctx } = PdfUI.page('Jahresrückblick');
     PdfUI.txt(ctx, String(d.year), M - 8, 420, PdfUI.font(700, 280, 'D'), C.ink);
     PdfUI.txt(ctx, d.year === now.getFullYear() ? 'Mein Tourenjahr bis heute, ' + now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : 'Mein Tourenjahr', M, 482, PdfUI.font(500, 40), C.muted);
     const k = d.kennzahlen;
     JahrKarte.num(ctx, F.km(k.dist), M, 700, 190, IW);
-    PdfUI.txt(ctx, 'Kilometer', M, 748, PdfUI.font(500, 34), C.muted);
-    const cols = [[String(k.n), k.n === 1 ? 'Tour' : 'Touren'], [F.m(k.up), 'Höhenmeter'], [F.dur(k.zeit), 'Stunden unterwegs'], [String(k.tage), k.tage === 1 ? 'Tag mit Tour' : 'Tage mit Tour']], cw = (IW - 3 * 24) / 4;
+    PdfUI.txt(ctx, 'Strecke', M, 748, PdfUI.font(500, 34), C.muted);
+    const cols = [[String(k.n), k.n === 1 ? 'Tour' : 'Touren'], [F.m(k.up), 'Aufstieg'], [F.dur(k.zeit), 'Dauer'], [String(k.tage), k.tage === 1 ? 'Aktiver Tag' : 'Aktive Tage']], cw = (IW - 3 * 24) / 4;
     cols.forEach(([v, l], i) => { const x = M + i * (cw + 24); JahrKarte.num(ctx, v, x, 878, 66, cw - 8); PdfUI.txt(ctx, Pdf.kuerzen(l, cw, PdfUI.measure(ctx, PdfUI.font(500, 26))), x, 918, PdfUI.font(500, 26), C.muted); });
     ctx.fillStyle = C.line; ctx.fillRect(M, 970, IW, 2);
     PdfUI.txt(ctx, 'Sportarten', M, 1036, PdfUI.font(600, 42, 'D'), C.ink);
@@ -326,7 +326,7 @@ const PdfUI = {
     const ly2 = 1150 + Math.ceil(sp.length / 2) * 48;
     ctx.fillStyle = C.line; ctx.fillRect(M, ly2 + 8, IW, 2);
     const my = ly2 + 76;
-    PdfUI.txt(ctx, 'Kilometer je Monat', M, my, PdfUI.font(600, 42, 'D'), C.ink);
+    PdfUI.txt(ctx, 'Strecke je Monat', M, my, PdfUI.font(600, 42, 'D'), C.ink);
     const base = H - 190, top = my + 40, ch = Math.max(80, base - top), mv = d.monate.map(m => m.dist), mx = Math.max(...mv, 1), best = mv.indexOf(Math.max(...mv)), bw = IW / 12;
     d.monate.forEach((m, i) => {
       const bh = mv[i] > 0 ? Math.max(6, mv[i] / mx * ch) : 3, on = i === best && mv[i] > 0;
@@ -403,7 +403,7 @@ const PdfUI = {
   busy: false,
   /** Fortschrittsblatt mit „Abbrechen“, dann Ausgabe. make(writer, ctl) schreibt die Seiten und gibt die Seitenzahl zurück (0 = abgebrochen). Gibt { name, bytes, pages } oder null zurück. */
   async run(title, name, docTitle, make) {
-    if (PdfUI.busy) { toast('Es wird schon ein PDF erstellt.'); return null; }
+    if (PdfUI.busy) { toast('PDF-Export läuft schon'); return null; }
     PdfUI.busy = true;
     let halt = false, res = null;
     try {
@@ -414,10 +414,10 @@ const PdfUI = {
         if (halt || !pages) return null;
         return { pages, bytes: w.finish(), hinweis: ctl.hinweis || '' };
       }, { cancel: () => { halt = true; }, note: 'Das Tagebuch zeichnet die Seiten nacheinander und setzt sie zu einem PDF zusammen. Bitte die App so lange geöffnet lassen.' });
-    } catch (e) { console.error('PDF', e); toast('Das PDF konnte nicht erstellt werden: ' + (e && e.message || e), 7000); return null; }
+    } catch (e) { console.error('PDF', e); toast('PDF-Export nicht möglich: ' + (e && e.message || e), 7000); return null; }
     finally { PdfUI.busy = false; }
-    if (!res) { toast('Abgebrochen – es wurde nichts gespeichert.', 4000); return null; }
-    try { await PdfUI.ausgeben(res.bytes, name, title, res.pages, res.hinweis); } catch (e) { console.error('PDF speichern', e); toast('Das PDF konnte nicht gespeichert werden: ' + (e && e.message || e), 7000); return null; }
+    if (!res) { toast('Abgebrochen – nichts gespeichert', 4000); return null; }
+    try { await PdfUI.ausgeben(res.bytes, name, title, res.pages, res.hinweis); } catch (e) { console.error('PDF speichern', e); toast('PDF-Export nicht möglich: ' + (e && e.message || e), 7000); return null; }
     return { name, bytes: res.bytes, pages: res.pages };
   },
   /** Datei in den Zwischenspeicher der Hülle legen (stückweise, Base64). */
@@ -434,11 +434,11 @@ const PdfUI = {
     const info = pages + (pages === 1 ? ' Seite · ' : ' Seiten · ') + F.size(bytes.length);
     if (!Native.available()) {
       const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      toast('PDF gespeichert: ' + name + ' (' + info + ')' + (hinweis ? '. ' + hinweis + '.' : ''), hinweis ? 7000 : 6000); return;
+      toast('PDF exportiert: ' + name + ' (' + info + ')' + (hinweis ? '. ' + hinweis + '.' : ''), hinweis ? 7000 : 6000); return;
     }
     await PdfUI.zwischenspeichern(bytes, name);
     const ort = await Native.json('saveFile', { name, mime: 'application/pdf', path: name });
-    const s = sheet('PDF gespeichert', h('div', { id: 'pdf-fertig' },
+    const s = sheet('PDF exportiert', h('div', { id: 'pdf-fertig' },
       h('p', { id: 'pdf-ort' }, 'Gespeichert: ' + ort), h('p', { class: 'muted small' }, info + '. Du findest die Datei in der Dateien-App unter „Download“ und kannst sie von dort verschicken oder drucken.'),
       hinweis ? h('p', { class: 'muted small', id: 'pdf-hinweis' }, 'Karte nicht verfügbar – im PDF steht die Streckenskizze (kein Internet oder der Kartenserver antwortet nicht).') : null,
       h('div', { class: 'row end wrap' },
@@ -450,12 +450,12 @@ const PdfUI = {
         h('button', { class: 'btn pri', id: 'pdf-ok', onclick: () => s.close() }, 'Fertig'))));
   },
 
-  /** Tourseite → „Als PDF“. */
+  /** Tourseite → „Als PDF exportieren“. */
   async tour(t) {
     if (!t || (!t.dist && !t.start)) { toast('Diese Tour hat keine Daten für ein PDF.'); return null; }
     return PdfUI.run('Tour als PDF', Pdf.dateiname(t.name, 'Tour', 'pdf'), t.name, (w, ctl) => PdfUI.tourPdf(w, t, ctl));
   },
-  /** Jahresrückblick → „Als PDF“. d = Ergebnis von Jahr.berechne; all = alle Touren. */
+  /** Jahresrückblick → „Als PDF exportieren“. d = Ergebnis von Jahr.berechne; all = alle Touren. */
   async jahr(d, all, opts) {
     if (!d || d.leer) { toast('In diesem Jahr gibt es noch keine Touren.'); return null; }
     const ids = new Set(d.ids), tours = all.filter(t => ids.has(t.id));

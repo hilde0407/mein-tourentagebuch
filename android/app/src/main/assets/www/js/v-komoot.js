@@ -100,18 +100,18 @@ const KomootPaket = {
   },
   /** Speichern (Download/Tourentagebuch) und „Teilen …“ anbieten; im Browser: Download. */
   async ausgeben(r, t) {
-    const info = F.size(r.bytes.length) + (r.manifest.fotos.length ? ' · ' + r.manifest.fotos.length + ' Foto(s)' : ' · ohne Fotos') + (r.manifest.wegpunkte ? ' · ' + r.manifest.wegpunkte + ' Pin(s)' : '');
+    const info = F.size(r.bytes.length) + (r.manifest.fotos.length ? ' · ' + anz(r.manifest.fotos.length, 'Foto', 'Fotos') : ' · ohne Fotos') + (r.manifest.wegpunkte ? ' · ' + anz(r.manifest.wegpunkte, 'Pin', 'Pins') : '');
     if (!Native.available()) {
       const a = h('a', { href: URL.createObjectURL(new Blob([r.bytes], { type: 'application/zip' })), download: r.name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      toast('Gespeichert: ' + r.name + ' (' + info + ')', 6000); return;
+      toast('Komoot-Paket exportiert: ' + r.name + ' (' + info + ')', 6000); return;
     }
     const cache = 'komoot-paket-' + String(t.id).replace(/[^A-Za-z0-9_-]/g, '_') + '.zip';
     let ort;
     try { await PdfUI.zwischenspeichern(r.bytes, cache); ort = await Native.json('saveFile', { name: r.name, mime: 'application/zip', path: cache }); }
-    catch (e) { toast('Das Paket konnte nicht gespeichert werden: ' + (e && e.message || e), 7000); return; }
-    const s = sheet('Komoot-Paket gespeichert', h('div', { id: 'kp-fertig' },
+    catch (e) { toast('Komoot-Paket exportieren nicht möglich: ' + (e && e.message || e), 7000); return; }
+    const s = sheet('Komoot-Paket exportiert', h('div', { id: 'kp-fertig' },
       h('p', { id: 'kp-ort-t' }, 'Gespeichert: ' + ort), h('p', { class: 'muted small' }, info + '. In der README-Datei steht, wie du es in Komoot hochlädst. Die Sichtbarkeit wählst du dort selbst.'),
-      r.ohneOrt ? h('p', { class: 'muted small' }, r.ohneOrt + ' Pin(s) ohne Ort sind nicht in der GPX-Datei.') : null,
+      r.ohneOrt ? h('p', { class: 'muted small' }, anz(r.ohneOrt, 'Pin ohne Ort ist', 'Pins ohne Ort sind') + ' nicht in der GPX-Datei.') : null,
       h('div', { class: 'row end wrap' },
         h('button', { class: 'btn', id: 'kp-teilen', onclick: async e => {
           const b = e.currentTarget; b.disabled = true;

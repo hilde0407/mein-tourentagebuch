@@ -289,11 +289,11 @@ Views['/flug'] = async (root, [id]) => {
     const c = m.getCanvas(), W = Math.min(c.width, want), oc = document.createElement('canvas'); oc.width = W; oc.height = Math.round(W * c.height / c.width);
     const mr = new MediaRecorder(oc.captureStream(30), { mimeType: mime, videoBitsPerSecond: want >= 1920 ? 12e6 : want >= 1600 ? 9e6 : 6e6 }), chunks = [];
     mr.ondataavailable = e => e.data.size && chunks.push(e.data);
-    mr.onstop = () => { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern fehlgeschlagen: ' + e.message, 7000)); };
+    mr.onstop = () => { try { m.setPixelRatio(FlugCalc.pixelRatio(st, dpr())); } catch (e) { /* egal */ } saveRec(new Blob(chunks, { type: mime.split(';')[0] }), mime.includes('mp4') ? 'mp4' : 'webm').catch(e => toast('Speichern nicht möglich: ' + e.message, 7000)); };
     rec = { c: oc, x: oc.getContext('2d'), mr, ending: false, stall: 0 };
     u = 0; prevU = 0; playing = true; follow = true; blend = null; root.querySelector('#fc').value = 'follow'; last = performance.now(); pp.textContent = '❚❚ Pause';
     try { m.setLayoutProperty('pos', 'visibility', 'visible'); } catch (e) { /* egal */ }
-    mr.start(500); recB.textContent = '⏹ Aufnahme beenden';
+    mr.start(500); recB.textContent = '⏹ Schnellaufnahme beenden';
   };
   window.__flugRec = () => rec;
   /** Neigungstabelle ein Stück vor der Kamera füllen (eine Stützstelle je Aufruf; jede wird nur einmal gerechnet, sobald Höhendaten da sind). */

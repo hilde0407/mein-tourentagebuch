@@ -12,10 +12,10 @@ Views['/map'] = async root => {
   const drawChips = () => {
     chipBox.innerHTML = '';
     const aw = StatGruppen.chipAuswahl(all.map(t => t.sport), grS);
-    chipBox.append(UI.chip('Alle Sportarten', !sport, () => { sport = ''; drawChips(); draw(); }), ...UI.sportChips(aw, sport, k => { sport = k; drawChips(); draw(); }));
+    chipBox.append(...UI.sportChips(aw, sport, k => { sport = k; drawChips(); draw(); }));
     chipBox.hidden = !aw.kategorien.length;
   };
-  const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y }, y)));
+  const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { year = e.target.value; draw(); } }, h('option', { value: '' }, 'Gesamte Zeit'), years.map(y => h('option', { value: y }, y)));
   const phBtn = UI.chip('🖼 Fotos zeigen', false, () => { showPhotos = !showPhotos; phBtn.classList.toggle('on', showPhotos); phBtn.setAttribute('aria-pressed', showPhotos ? 'true' : 'false'); draw(); });
   // Die Karte ist die zweite Ansicht der Tourenliste: oben rechts geht es zurück zur Liste
   root.append(topbar('Karte', { actions: h('a', { class: 'btn sm hbtn', id: 'tolist', href: '#/', html: Ico.svg('list') + '<span>Liste</span>' }) }),

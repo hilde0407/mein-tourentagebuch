@@ -85,6 +85,7 @@ header.top.over .sp{pointer-events:none}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:6px 18px;border-radius:var(--r);border:1.5px solid var(--edge);background:transparent;cursor:pointer;text-decoration:none;color:var(--ink);font-weight:600;line-height:1.2;text-align:center}
 .btn.pri{background:var(--yellow);border-color:var(--yellow);color:var(--yellow-ink)}
 .btn.danger{color:var(--danger);border-color:currentColor}
+.btn.pri.danger{background:var(--danger-bg);border-color:var(--danger-bg);color:#fff}      /* 2.20.0: Hauptaktion bei Gefahr (Löschen) rot */
 .btn.sm{min-height:44px;padding:4px 14px;font-size:.94rem}
 .btn:active{filter:brightness(.93)}
 .btn:disabled,.btn[disabled]{opacity:1;color:var(--muted);background:var(--soft);border-color:var(--soft);cursor:default}

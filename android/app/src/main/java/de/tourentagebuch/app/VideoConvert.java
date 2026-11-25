@@ -313,7 +313,7 @@ final class VideoConvert {
             if (ctx == null || ctx == EGL14.EGL_NO_CONTEXT) throw new Exception("EGL-Kontext fehlt");
             surf = EGL14.eglCreateWindowSurface(dpy, cfg[0], encSurface, new int[]{EGL14.EGL_NONE}, 0);
             if (surf == null || surf == EGL14.EGL_NO_SURFACE) throw new Exception("EGL-Fläche fehlt");
-            if (!EGL14.eglMakeCurrent(dpy, surf, surf, ctx)) throw new Exception("EGL makeCurrent fehlgeschlagen");
+            if (!EGL14.eglMakeCurrent(dpy, surf, surf, ctx)) throw new Exception("EGL makeCurrent nicht möglich");
 
             prog = program(VS, FS);
             aPos = GLES20.glGetAttribLocation(prog, "aPos");
@@ -374,7 +374,7 @@ final class VideoConvert {
             GLES20.glUniformMatrix4fv(uST, 1, false, mtx, 0);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
             EGLExt.eglPresentationTimeANDROID(dpy, surf, ptsNs);
-            if (!EGL14.eglSwapBuffers(dpy, surf)) throw new Exception("eglSwapBuffers fehlgeschlagen");
+            if (!EGL14.eglSwapBuffers(dpy, surf)) throw new Exception("eglSwapBuffers nicht möglich");
         }
 
         private static int shader(int type, String src) throws Exception {

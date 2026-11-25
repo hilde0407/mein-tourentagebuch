@@ -19,15 +19,18 @@ function h(tag, attrs, ...kids) {
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** 2.20.0: Zahl mit ausgeschriebener Ein- oder Mehrzahl – „1 Foto“, „3 Fotos“ (statt „Foto(s)“). */
+const anz = (n, eins, viele) => n + ' ' + (n === 1 ? eins : viele);
 
+/* Zentrale Formate (2.20.0, Leitfaden Regel 10): km und m mit Komma, Dauer „1:05 Std.“ bzw. „45 Min.“, Datum TT.MM.JJJJ. Eigene Formate in Ansichten nicht neu erfinden. */
 const F = {
   km: m => m == null ? '–' : (m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 100000 ? 1 : 0).replace('.', ',') + ' km'),
   km2: m => m == null ? '–' : (m / 1000).toFixed(1).replace('.', ','),
   m: m => m == null || isNaN(m) ? '–' : Math.round(m).toLocaleString('de-DE') + ' m',
-  dur: s => { if (s == null || isNaN(s)) return '–'; s = Math.round(s); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60); return hh ? hh + ':' + String(mm).padStart(2, '0') + ' h' : mm + ' min'; },
+  dur: s => { if (s == null || isNaN(s)) return '–'; s = Math.round(s); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60); return hh ? hh + ':' + String(mm).padStart(2, '0') + ' Std.' : mm + ' Min.'; },
   clock: s => { s = Math.round(s || 0); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; return (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0'); },
   date: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',
-  dshort: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '–',
+  dshort: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',      // 2.20.0: TT.MM.JJJJ (bis 2.19 zweistellige Jahreszahl)
   time: ms => ms ? new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–',
   speed: (m, s) => s > 0 ? (m / s * 3.6).toFixed(1).replace('.', ',') + ' km/h' : '–',
   size: b => b > 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.round(b / 1024) + ' KB',
@@ -69,7 +72,7 @@ function confirmBox(title, text, okLabel) {
     let done = false;
     const s = sheet(title, h('div', null, h('p', null, text),
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { done = true; s.close(); res(false); } }, 'Abbrechen'),
-        h('button', { class: 'btn pri', onclick: () => { done = true; s.close(); res(true); } }, okLabel || 'OK'))), { onclose: () => { if (!done) res(false); } });
+        h('button', { class: 'btn pri' + (/^(Löschen|Verwerfen|Leeren)$/.test(okLabel || '') ? ' danger' : ''), onclick: () => { done = true; s.close(); res(true); } }, okLabel || 'Weiter'))), { onclose: () => { if (!done) res(false); } });      // 2.20.0: kein „OK“; Löschen rot (Leitfaden Regel 1)
   });
 }
 /** Von außen geöffnete Strecke: gemacht oder geplant? Gibt 'done', 'planned' oder null (Abbrechen) zurück. */
@@ -91,7 +94,7 @@ function askText(title, label, value, okLabel) {
     const inp = h('input', { type: 'text', value: value || '', placeholder: label });
     const s = sheet(title, h('div', null, h('label', { class: 'fld' }, label, inp),
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { done = true; s.close(); res(null); } }, 'Abbrechen'),
-        h('button', { class: 'btn pri', onclick: () => { done = true; s.close(); res(inp.value); } }, okLabel || 'OK'))), { onclose: () => { if (!done) res(null); } });
+        h('button', { class: 'btn pri', onclick: () => { done = true; s.close(); res(inp.value); } }, okLabel || 'Speichern'))), { onclose: () => { if (!done) res(null); } });
     setTimeout(() => inp.focus(), 250);
   });
 }

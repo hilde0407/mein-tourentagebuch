@@ -8,13 +8,14 @@ Views['/stats'] = async (root, [tab0]) => {
   root.append(topbar('Statistik', { back: true }), body);
   const draw = () => {
     body.innerHTML = '';
-    const sel = h('select', { 'aria-label': 'Zeitraum', onchange: e => { year = e.target.value === 'all' ? 'all' : +e.target.value; draw(); } }, h('option', { value: 'all', selected: year === 'all' }, 'Gesamt'), years.map(y => h('option', { value: y, selected: y === year }, y)));
+    const sel = h('select', { 'aria-label': 'Zeitraum', id: 'st-year', onchange: e => { year = e.target.value === 'all' ? 'all' : +e.target.value; draw(); } }, h('option', { value: 'all', selected: year === 'all' }, 'Gesamte Zeit'), years.map(y => h('option', { value: y, selected: y === year }, y)));
     // 2.19.0: jede Sportart einzeln (nach Kategorien), dazu die selbst angelegten Statistik-Gruppen; keine festen Gruppen mehr („Ski (alle Arten)“ entfällt)
-    const ss = h('select', { 'aria-label': 'Sportart', onchange: e => { sport = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Sportarten'),
-      gr.length ? h('optgroup', { label: 'Zusammengefasst' }, StatGruppen.auswahl(gr).map(([v, l, ti]) => h('option', { value: v, selected: v === sport, title: ti }, l))) : null,
-      Sports.kategorien(sport).map(([kid, knm, list]) => h('optgroup', { label: knm }, list.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])))));
-    if (tab === 'vergleich') body.append(h('div', { class: 'row' }, ss));      // 2.13.0: der Vergleich wählt seine zwei Jahre selbst; die Sportart gilt
-    else if (tab !== 'ziele' && tab !== 'fitness') body.append(h('div', { class: 'row' }, sel, ss));      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
+    // 2.20.0: Chips statt Auswahlliste – dasselbe Muster „Sportart filtern“ wie Karte und Tourenliste (UI.sportChips), nur Sportarten mit Touren
+    if (!StatGruppen.gueltig(sport, gr)) sport = '';
+    const ss = UI.chips(UI.sportChips(StatGruppen.chipAuswahl(all.map(t => t.sport), gr), sport, k => { sport = k; draw(); }), { id: 'st-sport-f' });
+    ss.setAttribute('role', 'group'); ss.setAttribute('aria-label', 'Sportart');
+    if (tab === 'vergleich') body.append(ss);      // 2.13.0: der Vergleich wählt seine zwei Jahre selbst; die Sportart gilt
+    else if (tab !== 'ziele' && tab !== 'fitness') body.append(h('div', { class: 'row' }, sel), ss);      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && Sports.passt(sport, t.sport, gr));
     body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Bestwerte'], ['vergleich', 'Vergleich'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele'], ['fitness', 'Fitness']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
     const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
@@ -22,7 +23,7 @@ Views['/stats'] = async (root, [tab0]) => {
     if (!ts.length) { body.append(UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' })); return; }
     const k = Jahr.kennzahlen(ts);
     body.append(h('div', { class: 'kpis' },
-      kpi(k.n, 'Touren'), kpi(F.km(k.dist), 'Strecke'), kpi(F.m(k.up), 'Aufstieg'), kpi(F.dur(k.zeit), 'Zeit unterwegs'), kpi(k.tage, 'Aktive Tage'),
+      kpi(k.n, 'Touren'), kpi(F.km(k.dist), 'Strecke'), kpi(F.m(k.up), 'Aufstieg'), kpi(F.dur(k.zeit), 'Dauer'), kpi(k.tage, 'Aktive Tage'),
       kpi(F.km(k.dist / k.n), 'Ø pro Tour')));
     // Monatsbalken
     const mon = Array(12).fill(0); ts.forEach(t => { if (year !== 'all') mon[new Date(t.start).getMonth()] += t.dist; });

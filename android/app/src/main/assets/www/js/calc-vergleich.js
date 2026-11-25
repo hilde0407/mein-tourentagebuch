@@ -6,7 +6,7 @@
 (function (root) {
   const node = typeof module !== 'undefined' && module.exports;
   const J = node ? require('./calc-jahr.js') : root.Jahr;
-  const METRIKEN = [['dist', 'Strecke'], ['up', 'Aufstieg'], ['zeit', 'Zeit'], ['n', 'Touren']];
+  const METRIKEN = [['dist', 'Strecke'], ['up', 'Aufstieg'], ['zeit', 'Dauer'], ['n', 'Touren']];
   const KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
   const tageImMonat = (y, m) => new Date(y, m + 1, 0).getDate();

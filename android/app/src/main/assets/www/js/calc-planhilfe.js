@@ -47,7 +47,7 @@
   function pruefeLinks(raw) {
     if (raw == null || raw === '') return [];
     if (!Array.isArray(raw)) throw new Error('Links: Liste erwartet');
-    if (raw.length > MAX_LINKS) throw new Error('Höchstens ' + MAX_LINKS + ' Links je Plan');
+    if (raw.length > MAX_LINKS) throw new Error('Höchstens ' + MAX_LINKS + ' Links je Planung');
     return raw.map((x, i) => {
       if (!x || typeof x !== 'object') throw new Error('Link ' + (i + 1) + ': ungültig');
       let url;

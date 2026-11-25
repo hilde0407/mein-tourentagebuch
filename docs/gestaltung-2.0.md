@@ -80,18 +80,18 @@ nur die Reiter und die Laufzeit der Aufzeichnung.
 
 ## Navigation
 
-Fünf Reiter in einer Petrol-Leiste, „Aufnehmen“ in der Mitte als gelbe Scheibe (rot, solange eine Aufzeichnung läuft):
+Fünf Reiter in einer Petrol-Leiste, „Aufzeichnen“ (bis 2.19 „Aufnehmen“) in der Mitte als gelbe Scheibe (rot, solange eine Aufzeichnung läuft):
 
 | Reiter     | Adresse   | Enthält                                                                    |
 |------------|-----------|----------------------------------------------------------------------------|
 | Start      | `#/start` | Letzte Tour, Aufzeichnen · Planen · Importieren, Sicherungs-Hinweis (nur wenn fällig), Dieses Jahr mit Zielen, Letzte Touren, An diesem Tag |
 | Touren     | `#/`      | Liste, oben rechts „Karte“ (`#/map`, dort „Liste“), Suche, Filter, ＋ (Planen, Importieren, Aufzeichnen) |
-| Aufnehmen  | `#/rec`   | Aufzeichnung, Route mit Ansagen                                            |
+| Aufzeichnen | `#/rec`  | Aufzeichnung, Route mit Ansagen                                            |
 | Fotos      | `#/photos`| Alle · Ohne Tour · Karte, Diashow, Fotos hinzufügen                         |
 | Mehr       | `#/mehr`  | Tour planen, Reisen & Alben, Statistik, Importieren, Foto-Quellen, Einstellungen |
 
 Unter „Mehr → Touren importieren“ stehen die Quellen (ab 2.1.0 auch „Meine Touren“) und der Abschnitt „Aufräumen“ mit „Doppelte Touren prüfen“ (`#/doppelt`).
-Ab 2.2.0: oben auf der Import-Seite die Hauptaktion „Alles abgleichen“ (gelb); auf der Startseite nur als leise Zweitaktion (kein Gelb) mit Zeile „Zuletzt abgeglichen“. Sterne der eigenen Bewertung in Tinte (`--ink`), nicht gelb, je 44 px.
+Ab 2.2.0: oben auf der Import-Seite die Hauptaktion „Touren holen“ (bis 2.19 „Alles abgleichen“, gelb); auf der Startseite nur als leise Zweitaktion (kein Gelb) mit Zeile „Zuletzt geholt“. Sterne der eigenen Bewertung in Tinte (`--ink`), nicht gelb, je 44 px.
 Ab 2.3.0: **Jahresrückblick** (`#/jahr`, `#/jahr/<Jahr>`; unter Mehr, Reiter „Mehr“ bleibt markiert, Leiste sichtbar). Aufbau wie die Tagebuchseite: Jahreschips, das Jahr als Titel (3,6rem), die Strecke als große Zahl (3,4rem), vier weitere Zahlen darunter, dann linierte Abschnitte (Vergleich, Sportarten mit Balken in `--acc`, Höhepunkte als Zeilen, Monate). Monatsdiagramm als Inline-SVG mit `var(--mark)`/`var(--ink)` (stärkster Monat in Tinte, wie der laufende Monat sonst), Buchstaben als HTML darunter, Zahlen als `aria-label` und als Tabelle hinter „Zahlen je Monat“. Gelb nur beim Knopf „Als Bild teilen“; der Startseiten-Eintrag ist ein ruhiger Listenpunkt, im Dezember/Januar „Dein Jahr 2026“ mit drei großen Zahlen und einem Knopf ohne Gelb. Die Bildkarte (Canvas 1080 × 1350) ist immer hell: Petrolband mit Wortmarke, Jahr 250 px, Strecke 160 px, Sportartenbalken in Petrol-Abstufungen mit Prozent im Text, Monatsbalken (stärkster in Tinte); kein Gelb, keine Namen, Orte oder Fotos.
 Die Seite der Doppelten trägt bewusst kein Gelb: Zusammenführen ist keine Hauptaktion, sondern eine Entscheidung je Paar – welche Tour bleibt, steht in Worten daneben.
 
@@ -138,7 +138,7 @@ Tourenliste – ruhig, eine Zeile je Tour, keine Kästen:
 ```
 │ Touren            [Karte]  ＋ │
 │ [ Suchen …            ] [Filter 1]
-│ (Alle) (★ Favoriten) (Geplant) (Wandern) …
+│ (★ Lieblingstouren) (Geplant) (Alle Sportarten) (Wandern) …
 │ 5 Touren · 34,5 km · ↑ 1.593 m
 │                              │
 │ September 2026     3 Touren · 15,9 km
@@ -161,7 +161,7 @@ Tourseite – Karte oben, darunter Titel und die drei Zahlen, alles Weitere leis
 │ 3,7 km     ↑ 168 m    0:29 h │
 │ Strecke    Aufstieg   Dauer  │
 │ ──────────────────────────── │
-│ Abstieg 0 m      In Bewegung 29 min
+│ Abstieg 0 m      Bewegungszeit 29 Min.
 │ Ø Tempo 7,6 km/h Höchster Punkt 877 m
 │                              │
 │ Höhenprofil                  │
@@ -183,12 +183,13 @@ ein Etikett. Das wäre jede beliebige Fitness-App gewesen. Geändert:
 - **Karten gestrichen.** Listen sind linierte Zeilen, Kennzahlen stehen frei. Das ist ruhiger, in der Sonne besser
   lesbar (keine blassen Rahmen) und passt zum Tagebuch.
 - **Etiketten gestrichen, wo die Einheit reicht** (Aufmacher, Liste). Auf der Tourseite bleiben sie, weil dort auch
-  „In Bewegung“ und „Höchster Punkt“ stehen.
+  „Bewegungszeit“ und „Höchster Punkt“ stehen.
 - **Kein Verlauf als Schmuck.** Der einzige Verlauf liegt unter Schrift auf Fotos, damit sie lesbar bleibt. Ohne Foto
   zeigt der Aufmacher echte Daten: die Strecke und das Höhenprofil der Tour.
-- **Symbole gezeichnet**, keine Emojis (auch nicht in Menüs und Überschriften).
+- **Symbole gezeichnet**, keine Emojis (auch nicht in Menüs und Überschriften). Ein Bildzeichen am Anfang eines Knopftexts muss in `ICON_CHARS` (js/icons.js) stehen; das prüft `tests/test_begriffe.js`.
+- **Wörter und Bedienmuster** nach [LEITFADEN-BEGRIFFE.md](LEITFADEN-BEGRIFFE.md) (ab 2.20.0).
 - **Mut an einer Stelle:** der Kopf der Startseite (randloser Aufmacher, Wegweiserschild). Das Schild kehrt nur dort
-  wieder, wo dieselbe Handlung steht: auf der Seite „Aufnehmen“. Alles andere bleibt Papier, Tinte, Linie.
+  wieder, wo dieselbe Handlung steht: auf der Seite „Aufzeichnen“. Alles andere bleibt Papier, Tinte, Linie.
 - **Rundungen und Schatten nach Rang** statt einer Rundung für alles.
 
 ## Bausteine für weitere Arbeit (`js/ui.js`, Klassen in `app.css`)

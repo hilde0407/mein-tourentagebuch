@@ -29,14 +29,14 @@ const Dup = {
     return { tour: t, fotos: ph.length };
   },
   async ignore(key) { const l = (await DB.kvGet('dupIgnore', [])) || []; if (!l.includes(key)) l.push(key); await DB.kvSet('dupIgnore', l); },
-  GRUND: { start: 'gleiche Startzeit', zeit: 'gleiche Zeitspanne', versatz: 'gleiche Länge und Dauer, Uhrzeit versetzt' },
+  GRUND: { start: 'gleiche Startzeit', zeit: 'gleiche Zeitspanne', versatz: 'gleiche Strecke und Dauer, Uhrzeit versetzt' },
 };
 
 Views['/doppelt'] = async root => {
   const body = h('div', { class: 'pad' });
-  root.append(topbar('Doppelte Touren', { back: true }), body);
+  root.append(topbar('Doppelte Touren prüfen', { back: true }), body);
   const { pairs, fotos, ign } = await Dup.find();
-  body.append(h('p', { class: 'muted' }, 'Gesucht werden Touren mit gleicher Startzeit oder Zeitspanne und ähnlicher Länge – zum Beispiel dieselbe Tour aus Komoot und von der Uhr. Du entscheidest bei jedem Paar selbst; von allein wird nichts zusammengeführt.'));
+  body.append(h('p', { class: 'muted' }, 'Gesucht werden Touren mit gleicher Startzeit oder Zeitspanne und ähnlicher Strecke – zum Beispiel dieselbe Tour aus Komoot und von der Uhr. Du entscheidest bei jedem Paar selbst; von allein wird nichts zusammengeführt.'));
   const reset = ign.length ? h('button', { class: 'btn', id: 'dup-reset', onclick: async () => { await DB.kvSet('dupIgnore', []); Nav.render(); } }, 'Gemerkte Paare wieder zeigen') : null;
   if (!pairs.length) {
     body.append(UI.empty({ icon: 'check', title: 'Keine doppelten Touren gefunden',

@@ -231,8 +231,8 @@ final class TileDownload {
      */
     static JSONObject start(Context c0, JSONObject a, String version) throws Exception {
         final Context c = c0.getApplicationContext();
-        if (running) return new JSONObject().put("started", false).put("error", "Es wird schon eine Offline-Karte geladen.");
-        if (MediaBackup.isRunning()) return new JSONObject().put("started", false).put("error", "Gerade läuft eine Sicherung der Fotos und Videos. Bitte danach laden.");
+        if (running) return new JSONObject().put("started", false).put("error", "Offline-Karte laden läuft schon");
+        if (MediaBackup.isRunning()) return new JSONObject().put("started", false).put("error", "Sicherung der Fotos und Videos läuft schon – bitte danach laden");
         final boolean wifiOnly = a.optBoolean("wifiOnly", true);
         if (wifiOnly && !onWifi(c)) return new JSONObject().put("started", false).put("error", "Kein WLAN. Bitte mit einem WLAN verbinden oder „Nur über WLAN“ ausschalten.");
         final boolean refresh = a.has("refresh");
@@ -281,7 +281,7 @@ final class TileDownload {
         }
         final JSONObject ar = area;
         final long[] ks = keys;
-        if (!begin(ar.getString("id"), ar.optString("name"), ks.length)) return new JSONObject().put("started", false).put("error", "Es wird schon eine Offline-Karte geladen.");
+        if (!begin(ar.getString("id"), ar.optString("name"), ks.length)) return new JSONObject().put("started", false).put("error", "Offline-Karte laden läuft schon");
         Thread t = new Thread(() -> run(c, ar, ks, refresh, wifiOnly, version), "Offline-Karte");
         t.start();
         return new JSONObject().put("started", true).put("id", ar.getString("id"));

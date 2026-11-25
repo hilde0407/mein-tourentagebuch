@@ -20,11 +20,11 @@
   const km = m => ((+m || 0) / 1000).toFixed(1).replace('.', ',') + ' km';
   const zwei = n => String(n).padStart(2, '0');
 
-  /** „Aufnahme vom 22.11.2026, 09:14 Uhr wurde unterbrochen (1.234 Punkte, 12,3 km)“ – Datum in Ortszeit. */
+  /** „Aufzeichnung vom 22.11.2026, 09:14 Uhr wurde unterbrochen (1.234 Punkte, 12,3 km)“ – Datum in Ortszeit. */
   function zeile(st) {
     const d = new Date(+st.start || +st.last_ts || 0), n = +st.count || 0;
     const wann = zwei(d.getDate()) + '.' + zwei(d.getMonth() + 1) + '.' + d.getFullYear() + ', ' + zwei(d.getHours()) + ':' + zwei(d.getMinutes()) + ' Uhr';
-    return 'Aufnahme vom ' + wann + ' wurde unterbrochen (' + (n === 1 ? '1 Punkt' : zahl(n) + ' Punkte') + ', ' + km(st.dist_m) + ')';
+    return 'Aufzeichnung vom ' + wann + ' wurde unterbrochen (' + (n === 1 ? '1 Punkt' : zahl(n) + ' Punkte') + ', ' + km(st.dist_m) + ')';
   }
 
   /** Wie lange ist das letzte Lebenszeichen her? „vor 25 Minuten“, „vor 3 Stunden“, „vor 2 Tagen“. */

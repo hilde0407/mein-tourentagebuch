@@ -340,7 +340,7 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(D.paare([t('n', T0, 10000, 180, { created: 2000 }), t('m', T0, 10000, 180, { created: 1000 })])[0].keep.id === 'm', 'Gleichstand: die ältere bleibt');
   ok(D.paare([t('n', T0, 10000, 180, { note: ' ' }), t('m', T0, 10000, 180, { note: 'Schön', created: 5000 })])[0].keep.id === 'm', 'Notiz zählt, Leerzeichen nicht');
   ok(D.wert(t('w', T0, 1, 1, { hrAvg: 100, note: 'x', pins: [{}], tags: ['a'], fav: true, plan: 'p', elevSrc: 'zepp' }), { fotos: 2, hand: true }) === 15, 'alle Punkte');
-  ok(D.hat(t('w', T0, 1, 1, { hrAvg: 100, note: 'x', pins: [{}, {}], fav: true }), { fotos: 1, hand: true }).join() === 'Puls,1 Foto,Notiz,von Hand benannt,2 Pins,Favorit', 'in Worten');
+  ok(D.hat(t('w', T0, 1, 1, { hrAvg: 100, note: 'x', pins: [{}, {}], fav: true }), { fotos: 1, hand: true }).join() === 'Puls,1 Foto,Notiz,von Hand benannt,2 Pins,Lieblingstour', 'in Worten');      // 2.20.0: „Lieblingstour“ statt „Favorit“
   // Zusammenlegen: Spur und Zahlen von keep; Notiz, Pins, Schlagworte, Favorit, Name und Zuordnungen von drop
   const keep = t('z', T0, 10300, 178, { src: 'zepp', srcId: 'zepp:111', name: 'Wandern am Morgen · 14.08.26', note: 'Von der Uhr', hrAvg: 120, up: 600, pins: [{ id: 'p1', ts: 5, text: 'A' }], tags: ['Alpen'] });
   const drop = t('k', T0, 10000, 180, { src: 'komoot', srcId: 'komoot:777', name: 'Kramerspitz', nameKomoot: 'Kramerspitz', note: 'Schöne Runde', upKomoot: 640, downKomoot: 630, fav: true, plan: 'plan1',
@@ -408,13 +408,13 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   const nowT = day(2026, 11, 20, 12);
   ok(AB.wann(day(2026, 11, 20, 8) + 12 * 60000, nowT) === 'heute 08:12' && AB.wann(day(2026, 11, 19, 12), nowT) === 'gestern 12:00' && AB.wann(day(2026, 11, 3, 7), nowT) === '03.11. 07:00' && AB.wann(day(2025, 12, 24, 18), nowT) === '24.12.2025 18:00' && AB.wann(0, nowT) === '', 'Zeitangabe');
   ok(AB.wann(new Date(2026, 10, 20, 0, 5).getTime(), new Date(2026, 10, 20, 23, 0).getTime()) === 'heute 00:05' && AB.wann(new Date(2026, 10, 19, 23, 59).getTime(), new Date(2026, 10, 20, 0, 1).getTime()) === 'gestern 23:59', 'um Mitternacht');
-  ok(AB.zeile({ t: day(2026, 11, 20, 8) + 12 * 60000, neu: 2, fehler: 0 }, nowT) === 'Zuletzt abgeglichen: heute 08:12 · 2 neue Touren', 'Zeile 2 neue');
-  ok(AB.zeile({ t: day(2026, 11, 20, 8), neu: 1 }, nowT) === 'Zuletzt abgeglichen: heute 08:00 · 1 neue Tour' && AB.zeile({ t: day(2026, 11, 20, 8), neu: 0 }, nowT) === 'Zuletzt abgeglichen: heute 08:00 · nichts Neues', 'Zeile 1 / 0');
+  ok(AB.zeile({ t: day(2026, 11, 20, 8) + 12 * 60000, neu: 2, fehler: 0 }, nowT) === 'Zuletzt geholt: heute 08:12 · 2 neue Touren', 'Zeile 2 neue');
+  ok(AB.zeile({ t: day(2026, 11, 20, 8), neu: 1 }, nowT) === 'Zuletzt geholt: heute 08:00 · 1 neue Tour' && AB.zeile({ t: day(2026, 11, 20, 8), neu: 0 }, nowT) === 'Zuletzt geholt: heute 08:00 · nichts Neues', 'Zeile 1 / 0');
   ok(AB.zeile({ t: day(2026, 11, 20, 8), neu: 3, fehler: 1 }, nowT).endsWith('· 3 neue Touren · 1 Quelle mit Fehler') && AB.zeile({ t: day(2026, 11, 20, 8), neu: 0, fehler: 2 }, nowT).endsWith('2 Quellen mit Fehler') && AB.zeile(null) === '' && AB.zeile({}) === '', 'Zeile mit Fehlern / leer');
   ok(AB.neue([{ res: { added: 2 } }, { err: new Error('x') }, { res: { added: 1 } }, { skipped: true }, null]) === 3 && AB.neue(null) === 0, 'neue Touren zählen');
   const er = x => Object.assign(new Error('x'), x);
   ok(/Meine Touren neu anmelden/.test(AB.fehlerText('mt', er({ relogin: true }))) && /Mehr → Touren importieren → Meine Touren/.test(AB.fehlerText('mt', er({ relogin: true }))), 'Anmeldung abgelaufen: Meine Touren, mit Ort');
-  ok(/Komoot neu anmelden/.test(AB.fehlerText('komoot', new Error('Tourenliste: HTTP 401'))) && /Zepp neu anmelden/.test(AB.fehlerText('zepp', new Error('Zepp-Anfrage fehlgeschlagen (403). Zugang abgelaufen? Bitte neu anmelden.'))), 'Anmeldung abgelaufen: Komoot, Zepp');
+  ok(/Komoot neu anmelden/.test(AB.fehlerText('komoot', new Error('Tourenliste: HTTP 401'))) && /Zepp neu anmelden/.test(AB.fehlerText('zepp', new Error('Zepp-Anfrage nicht möglich (403). Zugang abgelaufen? Bitte neu anmelden.'))), 'Anmeldung abgelaufen: Komoot, Zepp');
   ok(AB.fehlerText('mt', new Error('Meine Touren ist unter https://x nicht erreichbar. Bitte Adresse und Verbindung prüfen (WLAN, Tailscale).')).startsWith('Meine Touren ist unter') && AB.fehlerText('komoot', new Error('Tourenliste: HTTP 500')) === 'Tourenliste: HTTP 500' && AB.fehlerText('zepp', null) === 'Unbekannter Fehler', 'andere Fehler im Wortlaut');
   const desc = r => (r.added ? r.added + ' neu' : 'Nichts gefunden');
   ok(AB.quellZeile({ id: 'zepp', res: { added: 2 } }, desc) === '2 neu' && AB.quellZeile({ id: 'zepp', res: {} }, desc) === 'Nichts Neues' && AB.quellZeile({ id: 'mt', skipped: true }, desc) === 'Nicht ausgeführt (abgebrochen)' && /Komoot neu anmelden/.test(AB.quellZeile({ id: 'komoot', err: new Error('HTTP 401') }, desc)), 'Zeile je Quelle');
@@ -631,7 +631,7 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(FD.bekannt(ix, f('n', { name: 'IMG_a.JPG', ts: T + 900 })) === 'name' && FD.bekannt(ix, f('n', { name: 'IMG_a.JPG', ts: T + 5000 })) === null, 'Import: Name+Zeit+Größe (± 1 s)');
   ok(FD.bekannt(ix, f('n', { name: 'Kamera.jpg', ts: T + 7e6 })) === null, 'Import: allgemeiner Name nicht');
   FD.merke(ix, f('n2', { fp: 'p1:1:n2' })); ok(FD.bekannt(ix, f('n3', { fp: 'p1:1:n2', name: 'q.jpg' })) === 'datei', 'Import: innerhalb desselben Imports');
-  ok(FD.importText(3, 2) === '3 Foto(s) hinzugefügt · 2 schon vorhanden, übersprungen' && FD.importText(1, 0, 'empfangen') === '1 Foto(s) empfangen', 'Importtext');
+  ok(FD.importText(3, 2) === '3 Fotos hinzugefügt · 2 schon vorhanden, übersprungen' && FD.importText(1, 0, 'empfangen') === '1 Foto empfangen', 'Importtext');
 })();
 
 /* ---------- Wanderführer (2.4.0): Buchtouren lesen, Abgleich „folgt der Tour der Buchstrecke?“, Zwischenspeicher, Blöcke, Anzeige ---------- */
@@ -1099,8 +1099,8 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(AU.unterbrochen({ state: 'recording', interrupted: true }) && !AU.unterbrochen({ state: 'recording', interrupted: false }) && !AU.unterbrochen({ state: 'recording' }), 'unterbrochen nur mit Meldung der Hülle');
   ok(!AU.unterbrochen({ state: 'paused', interrupted: true }) && !AU.unterbrochen(null) && !AU.unterbrochen({ state: 'idle' }), 'Pause/nichts ist nicht unterbrochen');
   const z = AU.zeile({ start: day(2026, 11, 22, 9) + 14 * 60000, count: 1234, dist_m: 12345 });
-  ok(z === 'Aufnahme vom 22.11.2026, 09:14 Uhr wurde unterbrochen (1.234 Punkte, 12,3 km)', z);
-  ok(AU.zeile({ start: day(2026, 3, 29, 3), count: 1, dist_m: 40 }) === 'Aufnahme vom 29.03.2026, 03:00 Uhr wurde unterbrochen (1 Punkt, 0,0 km)', 'Sommerzeit-Tag, ein Punkt');
+  ok(z === 'Aufzeichnung vom 22.11.2026, 09:14 Uhr wurde unterbrochen (1.234 Punkte, 12,3 km)', z);
+  ok(AU.zeile({ start: day(2026, 3, 29, 3), count: 1, dist_m: 40 }) === 'Aufzeichnung vom 29.03.2026, 03:00 Uhr wurde unterbrochen (1 Punkt, 0,0 km)', 'Sommerzeit-Tag, ein Punkt');
   ok(AU.alter(now - 20000, now) === 'gerade eben' && AU.alter(now - 60000, now) === 'vor 1 Minute' && AU.alter(now - 25 * 60000, now) === 'vor 25 Minuten', 'Alter Minuten');
   ok(AU.alter(now - 3 * H, now) === 'vor 3 Stunden' && AU.alter(now - H, now) === 'vor 1 Stunde' && AU.alter(now - 50 * H, now) === 'vor 2 Tagen', 'Alter Stunden/Tage');
 }
@@ -1128,14 +1128,14 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   // Verschiebung
   ok(FO.versatz('+', 1, 30) === 90 * MIN && FO.versatz('-', 0, 45) === -45 * MIN && FO.versatz('+', 0, 0) === 0 && FO.versatz('-', 'x', '') === 0, 'Verschiebung');
   ok(FO.versatz('+', 99, 99) === (48 * 60 + 59) * MIN, 'Verschiebung begrenzt');
-  ok(FO.versatzText(90 * MIN) === '+1 h 30 min' && FO.versatzText(-45 * MIN) === '−45 min' && FO.versatzText(-2 * H) === '−2 h' && FO.versatzText(0) === 'keine', 'Verschiebung als Text');
+  ok(FO.versatzText(90 * MIN) === '+1 Std. 30 Min.' && FO.versatzText(-45 * MIN) === '−45 Min.' && FO.versatzText(-2 * H) === '−2 Std.' && FO.versatzText(0) === 'keine', 'Verschiebung als Text');
   // Vorschlag: Fotos im Fenster, knapp davor (in der Toleranz), außerhalb, ohne Zeit
   const fotos = [{ id: 'a', ts: T0 + 20 * MIN }, { id: 'b', ts: T0 - 5 * MIN }, { id: 'c', ts: tEnd + 25 * MIN }, { id: 'd', ts: 0 }, { id: 'e', ts: T0 - 2 * H - 5 * MIN }];
   let v = FO.vorschlag(fotos, pts, {});
   ok(v.spur && v.treffer.map(x => x.id).join() === 'a,b' && v.ausserhalb.map(x => x.id).join() === 'c,e' && v.ohneZeit.join() === 'd', 'Vorschlag mit 10 min Toleranz: ' + JSON.stringify(v.treffer.map(x => x.id)));
   ok(Math.abs(v.treffer[0].km - 20 * 0.11119) < 0.01, 'km des ersten Fotos: ' + v.treffer[0].km);
-  ok(v.ausserhalb[0].min === 25 && v.ausserhalb[0].seite === 'nach' && FO.abstandText(v.ausserhalb[0]) === '25 min nach dem Ende', 'Abstand außerhalb');
-  ok(FO.abstandText(v.ausserhalb[1]) === '2 h 5 min vor dem Start', FO.abstandText(v.ausserhalb[1]));
+  ok(v.ausserhalb[0].min === 25 && v.ausserhalb[0].seite === 'nach' && FO.abstandText(v.ausserhalb[0]) === '25 Min. nach dem Ende', 'Abstand außerhalb');
+  ok(FO.abstandText(v.ausserhalb[1]) === '2 Std. 5 Min. vor dem Start', FO.abstandText(v.ausserhalb[1]));
   ok(FO.zusammenfassung(v) === '2 Fotos bekommen einen Ort · 3 liegen außerhalb', FO.zusammenfassung(v));
   // Toleranz 30 min: c kommt dazu (Endpunkt); Toleranz 0: b fällt weg
   ok(FO.vorschlag(fotos, pts, { tolMin: 30 }).treffer.map(x => x.id).join() === 'a,b,c' && FO.vorschlag(fotos, pts, { tolMin: 0 }).treffer.map(x => x.id).join() === 'a', 'Toleranz einstellbar');
@@ -1564,7 +1564,7 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   // Tourgrenze 1 GB: belegt 900 MB dort → ein 150-MB-Video passt nicht mehr
   const P3 = M.fotoPlan([{ id: 'w1v', ts: T, video: true, size: 150e6 }], { fotos: [], videos: [{ id: 9, taken_ts: T / 1000 + 5000, size: 900 * 1048576, ref: 'zz' }] }, { videos: true });
   ok(P3.videosZuGross.filter(v => v.wo === 'hier').length === 1 && P3.videosSenden.length === 0, 'Tourgrenze');
-  ok(M.videoFrage([{ size: 180 * 1048576 }, { size: 20 * 1048576 }]) === '2 Video(s) bis 180 MB, zusammen 200 MB, nur im WLAN', M.videoFrage([{ size: 180 * 1048576 }, { size: 20 * 1048576 }]));
+  ok(M.videoFrage([{ size: 180 * 1048576 }, { size: 20 * 1048576 }]) === '2 Videos bis 180 MB, zusammen 200 MB, nur im WLAN', M.videoFrage([{ size: 180 * 1048576 }, { size: 20 * 1048576 }]));
   ok(M.mb(412345) === '0,4 MB' && M.mb(48e6) === '46 MB' && M.mb(1.5 * 1073741824) === '1,5 GB', 'mb');
   // Zählen und Ergebnis
   let z = null; for (const st of ['neu', 'neu', 'vorhanden', 'geloescht', 'x']) z = M.zaehle(z, { status: st });
@@ -1689,7 +1689,7 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   // Filter
   const G = [{ id: 'berg', name: 'Bergtouren', sports: ['hike', 'mountaineering'] }];
   ok(SG.passt('', 'run', G) && SG.passt('sgrp:berg', 'mountaineering', G) && SG.passt('sgrp:berg', 'hike', G) && !SG.passt('sgrp:berg', 'walk', G), 'Gruppe im Filter');
-  ok(!SG.passt('sgrp:weg', 'hike', G) && !SG.gueltig('sgrp:weg', G) && SG.gueltig('sgrp:berg', G) && SG.gueltig('hike', G) && SG.name('sgrp:weg', G) === 'Gelöschte Gruppe', 'gelöschte Gruppe: passt auf nichts, kein Fehler');
+  ok(!SG.passt('sgrp:weg', 'hike', G) && !SG.gueltig('sgrp:weg', G) && SG.gueltig('sgrp:berg', G) && SG.gueltig('hike', G) && SG.name('sgrp:weg', G) === 'Gelöschte Statistik-Gruppe', 'gelöschte Gruppe: passt auf nichts, kein Fehler');
   ok(SG.passt('grp:ski', 'nordic', G) && !SG.passt('grp:ski', 'hike', G) && SG.passt('grp:bike', 'ebike', G) && SG.passt('hike', 'hike', G) && !SG.passt('hike', 'snowshoe', G), 'feste Gruppen und einzelne Sportarten wie bisher');
   ok(Sports.passt('grp:ski', 'ski', []) && Sports.passt('sgrp:berg', 'hike', G) && !Sports.passt('sgrp:berg', 'run', G) && !Sports.passt('sgrp:wandern', 'hike') && Sports.passt('snowshoe', 'snowshoe'), 'Sports.passt nutzt dieselbe Regel (Vorgabe: keine Gruppen)');
   eq(SG.auswahl(G), [['sgrp:berg', 'Bergtouren = Wandern + Bergsteigen', 'Bergtouren = Wandern + Bergsteigen']]);      // 2.19.1 (bis 2.19.0 „… (zusammengefasst)“)
@@ -1825,7 +1825,7 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   eq(SG.zumSpeichern([{ id: 'n', name: 'Skitour', sports: ['skitour', 'nordic'] }, { id: 'r', name: 'Rad fahren', sports: ['bike', 'mtb'] }], []).map(g => g.id), ['r'], 'neue Gruppe mit Namen wie eine Sportart wird nicht gespeichert');
   const VG = [{ id: 'r', name: 'Rad fahren', sports: ['bike', 'mtb', 'gravel', 'ebike'] }, { id: 's', name: 'Ski (alle)', sports: ['skialpin', 'skitour'] }];
   ok(SG.beschriftung('sgrp:r', VG) === 'Rad fahren = Radtour + Mountainbike + Gravelbike + …' && SG.titel('sgrp:r', VG) === 'Rad fahren = Radtour + Mountainbike + Gravelbike + E-Bike', 'mehr als 3: gekürzt, volle Liste als Titel');
-  ok(SG.beschriftung('sgrp:s', VG) === 'Ski (alle) = Ski alpin + Skitour' && SG.beschriftung('sgrp:weg', VG) === 'Gelöschte Gruppe' && SG.titel('sgrp:weg', VG) === '' && SG.beschriftung('hike', VG) === 'Wandern' && SG.titel('hike', VG) === '', 'Beschriftung');
+  ok(SG.beschriftung('sgrp:s', VG) === 'Ski (alle) = Ski alpin + Skitour' && SG.beschriftung('sgrp:weg', VG) === 'Gelöschte Statistik-Gruppe' && SG.titel('sgrp:weg', VG) === '' && SG.beschriftung('hike', VG) === 'Wandern' && SG.titel('hike', VG) === '', 'Beschriftung');
   eq(SG.auswahl(VG).map(x => x[0]), ['sgrp:r', 'sgrp:s'], 'Kennung sgrp:<id> unverändert');
   eq(SG.rueckblickZeile('skitour', VG), ['sgrp:s', 'Ski (alle) = Ski alpin + Skitour'], 'Jahresrückblick: Zeile mit Mitgliedern');
 

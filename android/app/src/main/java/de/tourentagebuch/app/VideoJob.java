@@ -298,7 +298,7 @@ final class VideoJob {
             ex.release();
             if (!ok) out.delete();
         }
-        if (!ok) throw new Exception("Zuschneiden fehlgeschlagen");
+        if (!ok) throw new Exception("Zuschneiden nicht möglich");
     }
 
     /* ---------- Vorhandene Videos in die Galerie ---------- */

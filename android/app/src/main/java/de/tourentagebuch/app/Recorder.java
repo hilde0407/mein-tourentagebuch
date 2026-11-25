@@ -224,7 +224,7 @@ public final class Recorder {
             meta = null;
         } catch (IOException e) {
             // GPX nicht schreibbar (Speicher voll?): Aufzeichnung bleibt als Pause mit allen Punkten erhalten statt verloren zu gehen
-            AppLog.log("GPX schreiben fehlgeschlagen: " + e + " – Aufzeichnung bleibt erhalten");
+            AppLog.log("GPX schreiben nicht möglich: " + e + " – Aufzeichnung bleibt erhalten");
             setState(PAUSED);
             saveMeta();
         }
@@ -253,7 +253,7 @@ public final class Recorder {
             try { w.write(store.gpx(name(), sport())); } finally { w.close(); }
             backupFinished();
         } catch (IOException e) {
-            AppLog.log("Sicherung der laufenden Aufzeichnung fehlgeschlagen: " + e);
+            AppLog.log("Sicherung der laufenden Aufzeichnung nicht möglich: " + e);
         }
     }
 
@@ -279,7 +279,7 @@ public final class Recorder {
             }
             AppLog.log("Sicherung angelegt: " + to.getName());
         } catch (Exception e) {
-            AppLog.log("Sicherung fehlgeschlagen: " + e.getClass().getSimpleName());
+            AppLog.log("Sicherung nicht möglich: " + e.getClass().getSimpleName());
         }
     }
 

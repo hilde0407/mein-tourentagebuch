@@ -69,7 +69,7 @@ const Import = {
     async login(email, pass) {
       const r = await Native.http({ url: Import.Komoot.base + '/v006/account/email/' + encodeURIComponent(email) + '/', headers: Import.Komoot.auth(email, pass) });
       if (r.status === 401) throw new Error('Komoot hat die Anmeldung abgelehnt (E-Mail oder Passwort falsch?)');
-      if (r.status !== 200) throw new Error('Komoot-Anmeldung fehlgeschlagen (HTTP ' + r.status + ')');
+      if (r.status !== 200) throw new Error('Komoot-Anmeldung nicht möglich (HTTP ' + r.status + ')');
       const j = JSON.parse(r.body);
       const acc = { user: String(j.username), token: j.password, email };
       await DB.kvSet('komoot', acc);
@@ -246,7 +246,7 @@ const Import = {
       if (!String(name || '').trim() || !pw) throw new Error('Bitte Name und Passwort eintragen.');
       const r = await Import.MT.http(base, '/api/login', { method: 'POST', json: { name: String(name).trim(), password: pw } });
       if (r.status === 401 || r.status === 429) throw new Error(Import.MT.detail(r, 'Name oder Passwort stimmt nicht'));
-      if (r.status !== 200) throw new Error(Import.MT.detail(r, 'Anmeldung fehlgeschlagen (HTTP ' + r.status + ')'));
+      if (r.status !== 200) throw new Error(Import.MT.detail(r, 'Anmeldung nicht möglich (HTTP ' + r.status + ')'));
       const j = JSON.parse(r.body);
       if (j.need_2fa) return { need2fa: true, ticket: j.ticket, base };
       return Import.MT.finish(base, r);
@@ -514,7 +514,7 @@ const Import = {
         third_name: 'huami', source: 'com.huami.watch.hmwatchmanager:9.12.5:151689', app_name: 'com.huami.midong', country_code: 'US', grant_type: 'access_token', allow_registration: 'false', lang: 'en', countryState: 'US-NY' }).toString();
       const r2 = await Native.http({ method: 'POST', url: 'https://api-mifit-us2.zepp.com/v2/client/login', body, contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
         headers: { app_name: 'com.huami.webapp', appname: 'com.huami.webapp', origin: 'https://user.zepp.com', referer: 'https://user.zepp.com/', accept: 'application/json' } });
-      if (r2.status !== 200) throw new Error('Zepp-Login fehlgeschlagen (HTTP ' + r2.status + ')');
+      if (r2.status !== 200) throw new Error('Zepp-Anmeldung nicht möglich (HTTP ' + r2.status + ')');
       const ti = (JSON.parse(r2.body).token_info) || {};
       if (!ti.app_token) throw new Error('Zepp: kein App-Token in der Antwort');
       const acc = { token: ti.app_token, user: String(ti.user_id || '') };
@@ -541,7 +541,7 @@ const Import = {
           if (r.status === 200) { const j = JSON.parse(r.body); if ((j.code === 1 || j.code == null) && 'data' in j) { acc.host = h0; return j; } }
         } catch (e) { last = e.message; }
       }
-      throw new Error('Zepp-Anfrage fehlgeschlagen (' + last + '). ' + (acc.viaToken ? 'Das Token ist abgelaufen oder gehört zu einem anderen Server – bitte ein neues holen (Abmelden, dann neu einfügen).' : 'Zugang abgelaufen? Bitte neu anmelden.'));
+      throw new Error('Zepp-Anfrage nicht möglich (' + last + '). ' + (acc.viaToken ? 'Das Token ist abgelaufen oder gehört zu einem anderen Server – bitte ein neues holen („Verbindung trennen“, dann neu einfügen).' : 'Zugang abgelaufen? Bitte neu anmelden.'));
     },
     col(s, idx, defOne) { return (s || '').split(';').filter(Boolean).map(v => { if (idx != null) v = v.split(',')[idx]; return parseInt(v || (defOne ? 1 : 0), 10) || 0; }); },
     cum: a => { let s = 0; return a.map(v => s += v); },
@@ -666,7 +666,7 @@ const Import = {
         items: [{ id, name, res | err | skipped }]. Merkt Zeitpunkt und Ergebnis (kv „abgleich“). */
     async run(o) {
       o = o || {};
-      if (Import.Alles.busy) throw new Error('Ein Abgleich läuft schon.');
+      if (Import.Alles.busy) throw new Error('Touren holen läuft schon');
       Import.Alles.busy = true;
       const t0 = Date.now(), items = [];
       try {

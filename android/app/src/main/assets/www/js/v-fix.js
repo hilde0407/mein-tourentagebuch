@@ -82,7 +82,7 @@ const Fix = {
       sum = (j.data.summary || []).find(s => Z.match(s, [t]));
       nxt = j.data.next; if (sum || nxt == null || nxt === -1) break;
     }
-    if (!sum) throw new Error('Kein passendes Zepp-Training zu dieser Tour gefunden');
+    if (!sum) throw new Error('Keine passende Zepp-Tour zu dieser Tour gefunden');
     return Fix.zeppEleWith(t, trk, acc, sum, { eigen: true });
   },
   /** Kern des Abgleichs für ein bereits gefundenes Zepp-Training (wird auch vom Sammel-Abgleich und vom Zepp-Import genutzt).
@@ -97,7 +97,7 @@ const Fix = {
     const shift = t0 != null ? Math.round((t0 - parseInt(sum.trackid, 10) * 1000) / 1800000) * 1800000 : 0;
     const zp = Z.decode(sum, dj.data).filter(p => p.ele != null).map(p => ({ t: p.t + shift, alt: p.ele }));
     const ele = Geo.alignAlt(trk.lat.map((_, i) => ({ t: trk.t[i], ele: trk.ele[i] })), zp);
-    if (!ele) throw new Error('Zepp-Training hat keine brauchbaren Höhendaten');
+    if (!ele) throw new Error('Die Zepp-Tour hat keine brauchbaren Höhendaten');
     if (!trk.origEle) { trk.origEle = trk.ele.slice(); t.origUp = t.up; t.origDown = t.down; }
     trk.ele = ele;
     await DB.put('tracks', trk);
@@ -182,14 +182,14 @@ const Fix = {
 
 Views['/fix'] = async (root, [id]) => {
   const t = await DB.get('tours', id);
-  if (!t) { root.append(topbar('Track korrigieren', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr' })); return; }
+  if (!t) { root.append(topbar('GPS-Track korrigieren', { back: true }), UI.empty({ title: 'Diese Tour gibt es nicht mehr' })); return; }
   const pts = await Tours.points(id);
   const trk = await DB.get('tracks', id);
   const found = Fix.detect(pts, t.sport);
   const skipped = pts.filter(p => p.skip).length;
   const mapEl = h('div', { class: 'map fixmap' });
   const info = h('div', { class: 'pad' });
-  root.append(topbar('Track korrigieren', { back: true }), mapEl, info);
+  root.append(topbar('GPS-Track korrigieren', { back: true }), mapEl, info);
   const map = MapKit.create(mapEl);
   const layer = MapKit.line(pts, MapKit.routeColor(t.sport, '#2e7d32'), 4).addTo(map);
   if (pts.length) map.fitBounds(layer.getBounds(), { padding: [20, 20] });

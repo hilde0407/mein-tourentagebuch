@@ -26,18 +26,23 @@ const FitUI = {
   async setYear(v) { const y = Fitness.pruefeJahr(v, new Date().getFullYear()); await Set_.set('birthYear', y); return y; },
   KLASSE: { sehr_aktiv: 'sehr aktiv', gut: 'gut', solide: 'solide', ausbaufaehig: 'ausbaufähig' },
   TREND: { up: 'steigend gegenüber den 12 Wochen davor', down: 'sinkend gegenüber den 12 Wochen davor', flat: 'gleichbleibend gegenüber den 12 Wochen davor' },
-  /** Eingabe des Geburtsjahres (Statistik und Einstellungen). done() nach dem Speichern. */
+  /** Eingabe des Geburtsjahres (Statistik und Einstellungen). done() nach dem Speichern.
+      2.20.0: opts.sofort (Einstellungen) – speichert wie der Maximalpuls darüber beim Verlassen des Felds, ohne eigene Knöpfe; leeres Feld = kein Geburtsjahr. */
   yearBox(done, opts) {
     const box = h('div', { id: 'fit-yearbox' });
+    const sofort = !!(opts && opts.sofort);
     const after = () => { if (done) done(); else draw(); };      // ohne eigene Fortsetzung (Einstellungen) zeichnet sich das Feld selbst neu
     const draw = () => {
       const err = h('p', { class: 'err small', role: 'alert' }), inp = h('input', { type: 'text', inputmode: 'numeric', maxlength: 4, id: 'fit-year', placeholder: 'z. B. 1975', value: FitUI.year() || '', 'aria-label': 'Geburtsjahr',
-        onkeydown: e => { if (e.key === 'Enter') save(); } });
-      const save = async () => { try { await FitUI.setYear(inp.value); err.textContent = ''; toast('Geburtsjahr gespeichert'); after(); } catch (e) { err.textContent = e.message; } };
+        onkeydown: e => { if (e.key === 'Enter') { if (sofort) inp.blur(); else save(); } }, onchange: () => { if (sofort) save(); } });
+      const save = async () => {
+        if (sofort && !inp.value.trim()) { if (FitUI.year()) { await Set_.set('birthYear', ''); toast('Geburtsjahr gelöscht'); } err.textContent = ''; return; }
+        try { await FitUI.setYear(inp.value); err.textContent = ''; toast('Geburtsjahr gespeichert'); if (!sofort) after(); } catch (e) { err.textContent = e.message; }
+      };
       box.innerHTML = '';
       box.append(h('label', { class: 'fld' }, (opts && opts.label) || 'Geburtsjahr', inp), err,
-        h('div', { class: 'row' }, h('button', { class: 'btn pri', id: 'fit-save', onclick: save }, 'Speichern'),
-          FitUI.year() ? h('button', { class: 'btn', id: 'fit-del', onclick: async () => { await Set_.set('birthYear', ''); toast('Geburtsjahr entfernt'); after(); } }, 'Entfernen') : null));
+        sofort ? null : h('div', { class: 'row' }, h('button', { class: 'btn pri', id: 'fit-save', onclick: save }, 'Speichern'),
+          FitUI.year() ? h('button', { class: 'btn', id: 'fit-del', onclick: async () => { await Set_.set('birthYear', ''); toast('Geburtsjahr gelöscht'); after(); } }, 'Löschen') : null));
     };
     draw();
     return box;
@@ -67,7 +72,7 @@ Ausw.fitness = async function (body, ts, ctx) {
       } else sec.push(h('p', { id: 'fit-total' }, 'Für eine Gesamtbewertung fehlen Daten: Es braucht mindestens zwei Teilwerte. Die vorhandenen stehen unten.'));
       const rows = [], val = (x) => (x && x.wert != null ? h('b', null, x.wert) : 'keine Daten');
       const u = r.umfang, g = r.regel, i = r.intensitaet;
-      rows.push([UI.row({ title: 'Umfang', trail: val(u), sub: u.wert != null ? Goals.nf(u.min_woche, 0) + ' min pro Woche · empfohlen sind ' + u.who_min + ' bis ' + u.who_max + ' min' + (u.ohne_dauer ? ' · ' + u.ohne_dauer + ' Tour(en) ohne Dauer nicht gezählt' : '') : 'Die Touren haben keine Dauer.' }), u.wert != null ? UI.bar(u.wert / 100) : null]);
+      rows.push([UI.row({ title: 'Umfang', trail: val(u), sub: u.wert != null ? Goals.nf(u.min_woche, 0) + ' Min. pro Woche · empfohlen sind ' + u.who_min + ' bis ' + u.who_max + ' Min.' + (u.ohne_dauer ? ' · ' + u.ohne_dauer + (u.ohne_dauer === 1 ? ' Tour' : ' Touren') + ' ohne Dauer nicht gezählt' : '') : 'Die Touren haben keine Dauer.' }), u.wert != null ? UI.bar(u.wert / 100) : null]);
       rows.push([UI.row({ title: 'Regelmäßigkeit', trail: val(g), sub: g.wert != null ? g.wochen_aktiv + ' von ' + g.wochen + ' Wochen mit mindestens einer Tour · ' + g.touren + (g.touren === 1 ? ' Tour' : ' Touren') : '' }), g.wert != null ? UI.bar(g.wert / 100) : null]);
       rows.push([UI.row({ title: 'Intensität', trail: val(i), sub: i.wert == null ? 'Weder Puls noch Aufstieg mit mindestens einer Stunde Dauer vorhanden.' : i.quelle === 'puls'
         ? 'Mit Puls: ' + i.zone_pct + ' % der Zeit bei 60 bis 90 % von HFmax ' + i.hfmax + ' · Ø Puls ' + i.mittel_bpm + ' (' + i.mittel_pct + ' %)' : 'Ohne Puls: ' + i.m_h + ' m Aufstieg pro Stunde · Richtwert für dein Alter ' + i.ref_m_h + ' m/h' }), i.wert != null ? UI.bar(i.wert / 100) : null]);

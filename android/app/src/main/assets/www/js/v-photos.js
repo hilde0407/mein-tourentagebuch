@@ -130,7 +130,7 @@ const Lightbox = {
         if (useView(p)) { vid.src = Photos.url(p.id) + '?c=' + Date.now(); vid.poster = Photos.thumb(p.id) + '?c=' + Date.now(); }
         else { vpImg.src = Photos.thumb(p.id) + '?c=' + Date.now(); vpDur.textContent = VideoCalc.dauer(p.dur); vpDur.hidden = !vpDur.textContent; }
       }
-      else if (!err.hidden) showErr(p, d.cancel ? 'Umwandlung abgebrochen – das Original ist unverändert.' : 'Umwandeln hat nicht geklappt (' + (d.msg || 'Fehler') + '). Das Original bleibt erhalten.');
+      else if (!err.hidden) showErr(p, d.cancel ? 'Umwandlung abgebrochen – das Original ist unverändert.' : 'Umwandeln nicht möglich: ' + (d.msg || 'Fehler') + '. Das Original bleibt erhalten.');
     };
     window.addEventListener('video-state', onState); window.addEventListener('video-converted', onDone);
     /** <video>-Element statt eigenem Player: ohne Hülle oder nach einem Fehler des Players */
@@ -392,7 +392,7 @@ const VideoTrim = {
       if (quelle !== 'a') tA.value = VideoCalc.zeitText(st.a);
       if (quelle !== 'e') tE.value = VideoCalc.zeitText(st.e);
       rA.value = st.a; rE.value = st.e;
-      info.textContent = 'Schnitt bei ' + VideoCalc.zeitText(a) + (a !== st.a ? ' (nächstes Schlüsselbild davor)' : a ? ' (Schlüsselbild)' : ' (Anfang)') + ' · Ende bei ' + VideoCalc.zeitText(e) + ' · neue Länge ' + VideoCalc.zeitText(Math.max(0, e - a));
+      info.textContent = 'Schnitt bei ' + VideoCalc.zeitText(a) + (a !== st.a ? ' (nächstes Schlüsselbild davor)' : a ? ' (Schlüsselbild)' : ' (Anfang)') + ' · Ende bei ' + VideoCalc.zeitText(e) + ' · neue Dauer ' + VideoCalc.zeitText(Math.max(0, e - a));
       warn.textContent = okS ? '' : e - a < VideoCalc.SCHNITT_MIN_MS || e <= a ? 'Der Ausschnitt muss mindestens 1 Sekunde lang sein.' : 'Nichts weggeschnitten – Anfang oder Ende verschieben.';
       go.disabled = !okS;
       setArt();
@@ -423,7 +423,7 @@ const VideoTrim = {
       const j = await VideoJobUI.follow('Video zuschneiden', q => 'Wird zugeschnitten … ' + (+q.pct || 0) + ' %');
       const res = j && j.result;
       if (j && j.cancelled) { toast('Zuschneiden abgebrochen – das Original ist unverändert.', 5000); return; }
-      if (!res || !res.ok) { toast('Zuschneiden hat nicht geklappt (' + ((j && j.error) || 'Fehler') + '). Das Original ist unverändert.', 7000); return; }
+      if (!res || !res.ok) { toast('Zuschneiden nicht möglich: ' + ((j && j.error) || 'Fehler') + '. Das Original ist unverändert.', 7000); return; }
       const orig = await DB.get('photos', p.id) || p;
       if (res.replaced) {
         Object.assign(orig, { w: res.w || orig.w, h: res.h || orig.h, dur: res.dur || orig.dur, ts: orig.ts ? orig.ts + (+res.startMs || 0) : orig.ts, trimmed: true });
@@ -486,7 +486,7 @@ const FotoOrt = {
     const tol = h('select', { id: 'fo-tol' }, FotoOrtCalc.TOLERANZEN.map(m => h('option', { value: m, selected: m === st.tol }, m ? '± ' + m + ' Minuten' : 'genau (ohne Toleranz)')));
     const bspImg = h('img', { alt: '', class: 'fo-th' }), bspTxt = h('p', { id: 'fo-bsp', role: 'status' }), sum = h('p', { class: 'muted small', id: 'fo-sum' });
     const list = h('div', { class: 'list', id: 'fo-list' }), raus = h('div', { id: 'fo-raus' });
-    const okB = h('button', { class: 'btn pri', id: 'fo-ok', onclick: () => uebernehmen() }, 'Übernehmen');
+    const okB = h('button', { class: 'btn pri', id: 'fo-ok', onclick: () => uebernehmen() }, 'Orte speichern');
     const undoB = undo ? h('button', { class: 'btn', id: 'fo-undo', onclick: () => rueck() }, 'Rückgängig') : null;
     const versatz = () => FotoOrtCalc.versatz(st.vz, st.std, st.min);
     let v = null;
@@ -535,13 +535,13 @@ const FotoOrt = {
     async function uebernehmen() {
       const n = v.treffer.length;
       if (!n) return;
-      if (!await confirmBox('Orte übernehmen?', (n === 1 ? '1 Foto bekommt' : n + ' Fotos bekommen') + ' einen Ort aus der Tour' + (versatz() ? ' (Uhrzeit ' + FotoOrtCalc.versatzText(versatz()) + ')' : '') + '. Das lässt sich danach mit „Rückgängig“ in diesem Fenster zurücknehmen.', 'Übernehmen')) return;
+      if (!await confirmBox('Orte speichern?', (n === 1 ? '1 Foto bekommt' : n + ' Fotos bekommen') + ' einen Ort aus der Tour' + (versatz() ? ' (Uhrzeit ' + FotoOrtCalc.versatzText(versatz()) + ')' : '') + '. Das lässt sich danach mit „Rückgängig“ in diesem Fenster zurücknehmen.', 'Speichern')) return;
       const byId = Object.fromEntries(fotos.map(p => [p.id, p])), alt = [], neu = [];
       for (const tr of v.treffer) { const p = await DB.get('photos', tr.id) || byId[tr.id]; alt.push(p); neu.push(FotoOrtCalc.anwenden(p, tr, t.id, versatz())); }
       await DB.kvSet(FotoOrt.undoKey(t.id), { ts: Date.now(), list: FotoOrtCalc.sichern(alt) });
       await DB.putMany('photos', neu);
       s.close();
-      toast((n === 1 ? '1 Ort ergänzt' : n + ' Orte ergänzt') + ' – Rückgängig über „Orte aus der Tour ergänzen“.', 5000);
+      toast((n === 1 ? '1 Ort gespeichert' : n + ' Orte gespeichert') + ' – Rückgängig über „Orte aus der Tour ergänzen“', 5000);
       window.dispatchEvent(new Event('photos-changed'));
       if (after) after();
     }
@@ -636,7 +636,7 @@ const PhotoSources = {
   async scanFolders() {
     await PhotoSources.needPerm().catch(() => {});
     const list = await DB.kvGet('photoFolders', []); let n = 0;
-    await PhotoSources.progress('Ordner einlesen', async (upd) => {
+    await PhotoSources.progress('Ordner importieren', async (upd) => {
       for (const f of list) {
         const items = (await Native.json('folderScan', { tree: f.tree, since: f.since || 0 })).filter(i => i.kind === 'photo');
         for (let i = 0; i < items.length; i += 6) {
@@ -675,7 +675,7 @@ const PhotoSources = {
       try {
         const r = await Native.json('uploadPoll');
         if (r.photos && r.photos.length) { total += await Photos.addMeta(r.photos); window.dispatchEvent(new Event('photos-changed')); }
-        cnt.textContent = total || skip() ? FotoDoppeltCalc.importText(total, skip(), 'empfangen') + (r.failed ? ' · ' + r.failed + ' nicht lesbar' : '') : (r.failed ? r.failed + ' Datei(en) nicht lesbar' : 'Wartet auf Fotos …');
+        cnt.textContent = total || skip() ? FotoDoppeltCalc.importText(total, skip(), 'empfangen') + (r.failed ? ' · ' + r.failed + ' nicht lesbar' : '') : (r.failed ? anz(r.failed, 'Datei', 'Dateien') + ' nicht lesbar' : 'Wartet auf Fotos …');
       } catch (e) { /* nächster Versuch */ }
     }, 1500);
   },
@@ -733,12 +733,12 @@ const PhotoSources = {
     const list = h('div', { class: 'list' }), sel = new Set();
     const head = h('div', { class: 'crumb' });
     const btn = h('button', { class: 'btn pri', onclick: importSel }, 'Importieren');
-    const s = sheet(st.kind === 'smb' ? 'Netzwerkfreigabe' : 'Nextcloud / WebDAV', h('div', null, head, list, h('div', { class: 'row end sticky' }, h('button', { class: 'btn', onclick: allHere }, 'Alle Bilder hier'), btn)));
+    const s = sheet(st.kind === 'smb' ? 'Netzwerkfreigabe' : 'Nextcloud / WebDAV', h('div', null, head, list, h('div', { class: 'row end sticky' }, h('button', { class: 'btn', onclick: allHere }, 'Alle Fotos hier'), btn)));
     let items = [];
     async function load(path) {
       st.path = path; sel.clear(); list.innerHTML = ''; list.append(h('p', { class: 'muted pad' }, 'Lade …'));
       try { items = st.kind === 'smb' ? await Native.json('smbList', Object.assign({}, st.a, { path })) : await PhotoSources.davList(st.a, path); }
-      catch (e) { list.innerHTML = ''; list.append(h('p', { class: 'err pad' }, 'Verbindung fehlgeschlagen: ' + e.message)); return; }
+      catch (e) { list.innerHTML = ''; list.append(h('p', { class: 'err pad' }, 'Verbindung nicht möglich: ' + e.message)); return; }
       items.sort((x, y) => (y.dir - x.dir) || x.name.localeCompare(y.name, 'de'));
       draw();
     }
@@ -759,7 +759,7 @@ const PhotoSources = {
       const files = Array.from(sel); if (!files.length) { toast('Bitte Fotos ankreuzen'); return; }
       s.close(); let n = 0; const s0 = Photos.skipCount;
       try {
-        await PhotoSources.progress('Fotos laden', async (upd) => {
+        await PhotoSources.progress('Fotos importieren', async (upd) => {
           for (let i = 0; i < files.length; i += (st.kind === 'smb' ? 4 : 1)) {
             const part = files.slice(i, i + (st.kind === 'smb' ? 4 : 1));
             upd(Math.min(i + part.length, files.length), files.length, part[0].name);
@@ -826,8 +826,8 @@ Views['/sources'] = async root => {
   body.append(h('p', { class: 'muted' }, 'Fotos werden verkleinert (max. 2400 Pixel) in den privaten Speicher der App kopiert. Originale bleiben unverändert.'),
     h('div', { class: 'list' },
       h('button', { class: 'li', onclick: () => PhotoSources.sheet(null, null) }, h('span', { class: 'li-i' }, '＋'), h('span', { class: 'li-t' }, h('b', null, 'Fotos hinzufügen'), h('small', null, 'Galerie, Ordner, SMB, Nextcloud'))),
-      h('button', { class: 'li', onclick: async () => { try { const s0 = Photos.skipCount, n = await PhotoSources.scanFolders(), sk = Photos.skipCount - s0; toast(n + ' neue Foto(s)' + (sk ? ' · ' + sk + ' schon vorhanden, übersprungen' : '')); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt einlesen'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
-      h('a', { class: 'li', id: 'src-dup', href: '#/fotodoppelt' }, h('span', { class: 'li-i', html: Ico.svg('swap', 20) }), h('span', { class: 'li-t' }, h('b', null, 'Doppelte Fotos suchen'), h('small', null, 'Gleiche Fotos und Videos finden und aufräumen'))),
+      h('button', { class: 'li', onclick: async () => { try { const s0 = Photos.skipCount, n = await PhotoSources.scanFolders(), sk = Photos.skipCount - s0; toast(anz(n, 'neues Foto', 'neue Fotos') + (sk ? ' · ' + sk + ' schon vorhanden, übersprungen' : '')); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt importieren'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
+      h('a', { class: 'li', id: 'src-dup', href: '#/fotodoppelt' }, h('span', { class: 'li-i', html: Ico.svg('swap', 20) }), h('span', { class: 'li-t' }, h('b', null, 'Doppelte Fotos prüfen'), h('small', null, 'Gleiche Fotos und Videos finden und aufräumen'))),
       window.MTApp ? h('button', { class: 'li', id: 'src-vconv', onclick: () => Videos.alle() }, h('span', { class: 'li-i' }, '🎬'), h('span', { class: 'li-t' }, h('b', null, 'Vorhandene Videos umwandeln'), h('small', null, 'HEVC-Videos in H.264, damit sie hier abspielen'))) : null));
   // 2.9.0: Speicher getrennt nach Fotos und Videos; darunter die Videos einzeln (antippen = ansehen, Papierkorb = löschen)
   const sto = VideoCalc.speicher(await Native.json('storage').catch(() => null));
@@ -848,5 +848,5 @@ Views['/sources'] = async root => {
     body.append(h('h3', { id: 'src-vh' }, 'Videos (' + vids.length + ')'), h('div', { class: 'list', id: 'src-vlist' }, vids.slice(0, 200).map(zeile)),
       vids.length > 200 ? h('p', { class: 'muted small' }, 'Die ältesten ' + (vids.length - 200) + ' Videos stehen im Fotoraster.') : null);
   }
-  if (folders.length) body.append(h('h3', null, 'Gemerkte Ordner'), h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Entfernen', onclick: async () => { folders.splice(i, 1); await DB.kvSet('photoFolders', folders); Nav.render(); } }, '✕')))));
+  if (folders.length) body.append(h('h3', null, 'Gemerkte Ordner'), h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Ordner entfernen', onclick: async () => { if (!await confirmBox('Ordner „' + decodeURIComponent(f.name) + '“ entfernen?', 'Die App schaut dort nicht mehr nach neuen Fotos. Die Dateien im Ordner und die schon übernommenen Fotos bleiben.', 'Entfernen')) return; folders.splice(i, 1); await DB.kvSet('photoFolders', folders); Nav.render(); } }, '✕')))));
 };

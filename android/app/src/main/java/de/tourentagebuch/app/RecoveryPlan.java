@@ -130,7 +130,7 @@ public final class RecoveryPlan {
         }
         if (!tmp.renameTo(f)) {
             f.delete();
-            if (!tmp.renameTo(f)) throw new IOException("Umbenennen fehlgeschlagen");
+            if (!tmp.renameTo(f)) throw new IOException("Umbenennen nicht möglich");
         }
     }
 

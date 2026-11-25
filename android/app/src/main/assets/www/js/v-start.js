@@ -77,7 +77,7 @@ Home.add('actions', 10, async () => {
     h('div', { class: 'acts' },
       h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
       h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' })),
-    qs.length ? h('div', { class: 'sync' }, h('button', { class: 'btn sm', id: 'startsync', html: Ico.svg('refresh', 18) + '<span>Alles abgleichen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
+    qs.length ? h('div', { class: 'sync' }, h('button', { class: 'btn sm', id: 'startsync', html: Ico.svg('refresh', 18) + '<span>Touren holen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
       h('small', { class: 'muted', id: 'lastsync' }, Abgleich.zeile(last) || 'Noch nicht abgeglichen')) : null);
 });
 
@@ -137,8 +137,8 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
     chips.innerHTML = ''; box.innerHTML = '';
     chips.hidden = used.length < 2;      // bei nur einer Sportart gäbe es nichts zu wählen
     if (used.length > 1) {
-      chips.append(UI.chip('Alle', !sport, () => { sport = ''; draw(); }));
-      used.forEach(k => chips.append(UI.chip(StatGruppen.beschriftung(k, gr), sport === k, () => { sport = sport === k ? '' : k; draw(); })));
+      // 2.20.0: dasselbe Muster „Sportart filtern“ wie Karte, Tourenliste und Statistik (UI.sportChips)
+      chips.append(...UI.sportChips(StatGruppen.chipAuswahl(usedSp, gr), sport, k => { sport = k; draw(); }));
     }
     const mon = Array(12).fill(0);
     cur.forEach(t => { mon[new Date(t.start).getMonth()] += t.dist; });
@@ -149,12 +149,12 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
       box.append(h('div', { class: 'bars', role: 'img', 'aria-label': 'Strecke je Monat' }, mon.map((v, i) => h('div', { class: 'bar' + (i === nowM ? ' now' : '') },
         h('i', { style: { height: Math.max(v ? 6 : 2, v / mx * 100) + '%' }, title: F.km(v) }), h('small', null, 'JFMAMJJASOND'[i])))));
     } else box.append(h('p', { class: 'muted' }, yr + ' steht noch keine Tour im Tagebuch.'));
-    // Ziele folgen der Auswahl: „Alle“ zeigt alle Ziele, eine Sportart nur Ziele, die genau für sie (oder ihre Gruppe) gelten – ein Ziel „Alle Sportarten“ zählt auch andere Touren und würde neben den Zahlen oben falsch wirken
+    // Ziele folgen der Auswahl: „Alle Sportarten“ zeigt alle Ziele, eine Sportart nur Ziele, die genau für sie (oder ihre Gruppe) gelten – ein Ziel „Alle Sportarten“ zählt auch andere Touren und würde neben den Zahlen oben falsch wirken
     goalBox.innerHTML = '';
     const grp = StatGruppen.gruppe(sport, gr);      // Gruppen-Chip: Ziele genau für die Gruppe oder solche, die alle ihre Sportarten zählen
     const shown = sport ? mine.filter(g => g.sport && (grp ? g.sport === sport || grp.sports.every(m => Ziele.sportPasst(g, m, gr)) : Ziele.sportPasst(g, sport, gr))) : mine;
     if (shown.length) goalBox.append(...shown.slice(0, 3).map(g => Goals.row(g, all, now)), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, shown.length > 3 ? 'Alle ' + shown.length + ' Ziele' : 'Ziele ändern'));
-    else if (mine.length) goalBox.append(h('p', { class: 'muted small', id: 'ynogoal' }, 'Kein Ziel nur für diese Sportart. Die Ziele für alle Sportarten siehst du unter „Alle“.'), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, 'Ziele ändern'));
+    else if (mine.length) goalBox.append(h('p', { class: 'muted small', id: 'ynogoal' }, 'Kein Ziel nur für diese Sportart. Die Ziele für alle Sportarten siehst du unter „Alle Sportarten“.'), h('a', { class: 'ylink', id: 'ylink', href: '#/stats/ziele' }, 'Ziele ändern'));
     else goalBox.append(h('a', { class: 'ylink', id: 'yset', href: '#/stats/ziele' }, 'Ziele für ' + yr + ' festlegen'));
   };
   mine = Ziele.fuerJahr(await Goals.list(), yr, yr).sort((a, b) => (a.period === 'week') - (b.period === 'week'));
@@ -165,7 +165,7 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
 /* ---- Wochen-Serie: Wochen in Folge mit mindestens einer Tour (standardmäßig aus; einschaltbar unter Einstellungen → Persönliches und Startseite → Startseite) ---- */
 Home.add('serie', 30, async ({ all, now }) => {
   const s = Serie.berechne(all, now);
-  return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'in Folge'], [Ausw.wk(s.rekord), 'Rekord']]),
+  return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'aktuelle Serie'], [Ausw.wk(s.rekord), 'Bestwert']]),
     h('p', { class: 'muted small' }, s.offen ? 'Diese Woche fehlt noch eine Tour.' : s.aktuell ? 'Diese Woche ist geschafft.' : 'Keine laufende Serie. Eine Tour diese Woche beginnt eine neue.')],
     { id: 'serie', link: '#/stats/bestwerte', linkText: 'Bestwerte' });
 }, { label: 'Wochen-Serie', sub: 'Wochen in Folge mit mindestens einer Tour', def: false });
@@ -189,7 +189,7 @@ Home.add('memo', 50, async ({ all, now, year }) => {
 Views['/start'] = async root => {
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   if (!all.length) {      // noch nichts im Tagebuch: sagen, wie es losgeht
-    root.append(topbar('Tourentagebuch', { logo: true }), h('div', { class: 'pad' }, welcomeHero(), MT.frageBox()));      // 2.15.0: beim Erststart die Frage unter dem Willkommen
+    root.append(topbar('Start', { logo: true }), h('div', { class: 'pad' }, welcomeHero(), MT.frageBox()));      // 2.20.0: Seitentitel = Name des Reiters      // 2.15.0: beim Erststart die Frage unter dem Willkommen
     return;
   }
   const body = h('div', { class: 'home' });

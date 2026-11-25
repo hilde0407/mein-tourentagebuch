@@ -77,14 +77,18 @@ Views['/plan'] = async (root, [editId]) => {
   map.on('click', e => addWp(e.latlng));
 
   const hint = h('p', { class: 'muted' }, 'Tippe auf die Karte, um Start, Zwischenpunkte und Ziel zu setzen. Punkte lassen sich verschieben; langes Drücken löscht einen Punkt.');
-  const sel = h('select', { 'aria-label': 'Sportart', onchange: async e => { sport = e.target.value; if (snap && wps.length > 1) await rebuild(); } }, (Sports.bekannt(sport) ? [] : [[sport, Sports.label(sport)]]).concat(Sports.list.filter(s => Sports.KAT[0][2].concat(Sports.KAT[1][2], ['skitour', 'skialpin', 'nordic', 'snowboard', 'snowshoe', 'inline', 'horse']).includes(s[0]) || s[0] === sport))      /* 2.19.0: alle Sportarten zu Fuß und mit dem Rad, die Winterarten mit Strecke; ein Schlüssel außerhalb des Katalogs bleibt wählbar (unter dem Namen seines Rückfalls), bis man ändert */.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])));
+  // 2.20.0: gemeinsames Muster „Sportart zuweisen“ (UI.sportWahl) – nur Sportarten, für die es eine Wegeplanung gibt (zu Fuß, Rad, Winter mit Strecke);
+  // ein Schlüssel außerhalb des Katalogs bleibt gewählt (unter dem Namen seines Rückfalls), bis man ändert. Neue Planung: die zuletzt benutzte Sportart ist vorgewählt.
+  const planbar = Sports.KAT[0][2].concat(Sports.KAT[1][2], ['skitour', 'skialpin', 'nordic', 'snowboard', 'snowshoe', 'inline', 'horse']);
+  if (!editing) { const z = Set_.get('recSport'); if (z && planbar.includes(z)) sport = z; }
+  const sel = UI.sportWahl(sport, { idp: 'plsport', nur: planbar, onpick: async k => { sport = k; if (snap && wps.length > 1) await rebuild(); } });
   const snapCb = h('input', { type: 'checkbox', checked: true, onchange: async e => { snap = e.target.checked; if (wps.length > 1) await rebuild(); } });
-  panel.append(h('div', { class: 'row' }, sel, h('label', { class: 'sw' }, snapCb, h('span', null, 'Wegen folgen'))), info, prof, hint,
+  panel.append(sel, h('label', { class: 'sw' }, snapCb, h('span', null, 'Wegen folgen')), info, prof, hint,
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn sm', onclick: async () => { if (wps.length > 1) { wps.push({ lat: wps[0].lat, lon: wps[0].lon }); await routeLeg(wps.length - 2); redraw(); } } }, '⟲ Rundtour'),
       h('button', { class: 'btn sm', onclick: async () => { wps.reverse(); await rebuild(); } }, '⇄ Umkehren'),
       h('button', { class: 'btn sm', onclick: async () => { if (await confirmBox('Planung leeren?', 'Alle gesetzten Punkte werden entfernt.', 'Leeren')) { wps = []; legs = []; redraw(); } } }, '🗑 Leeren'),
-      h('button', { class: 'btn sm', onclick: exportGpx }, '📤 GPX')),
+      h('button', { class: 'btn sm', onclick: exportGpx }, '📤 Als GPX exportieren')),
     h('div', { class: 'row' }, h('button', { class: 'btn pri grow', onclick: save }, editing ? 'Änderungen speichern' : 'Tour speichern'), h('button', { class: 'btn grow', onclick: saveAndGo }, '● Speichern & starten')));
   void chips; void profileName;
 
@@ -102,7 +106,7 @@ Views['/plan'] = async (root, [editId]) => {
   async function exportGpx() {
     const pts = await pointsOrWarn(); if (!pts) return;
     const nm = (name || 'Planung ' + F.dshort(Date.now())).replace(/[^\wäöüÄÖÜß -]/g, '_') + '.gpx';
-    try { toast('Gespeichert: ' + await Native.json('saveFile', { name: nm, mime: 'application/gpx+xml', text: Geo.gpx(name || 'Planung', sport, pts) })); } catch (e) { toast(e.message); }
+    try { toast('GPX exportiert: ' + await Native.json('saveFile', { name: nm, mime: 'application/gpx+xml', text: Geo.gpx(name || 'Planung', sport, pts) })); } catch (e) { toast(e.message); }
   }
   if (wps.length > 1) await rebuild(); else redraw();
   if (editing && wps.length) map.fitBounds(L.latLngBounds(wps.map(w => [w.lat, w.lon])), { padding: [40, 40] });

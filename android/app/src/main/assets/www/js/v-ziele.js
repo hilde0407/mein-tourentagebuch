@@ -23,7 +23,7 @@ const Goals = {
   /** Zahl mit Einheit: „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
   dec: g => (g.metric === 'hours' || (g.metric === 'km' && g.target < 50) ? 1 : 0),
   fmt(v, g) {
-    return Goals.nf(v, Goals.dec(g)) + ({ km: ' km', up: ' m', count: Math.round(v) === 1 ? ' Tour' : ' Touren', hours: ' h' }[g.metric]);
+    return Goals.nf(v, Goals.dec(g)) + ({ km: ' km', up: ' m', count: Math.round(v) === 1 ? ' Tour' : ' Touren', hours: ' Std.' }[g.metric]);
   },
   /** Satz zum Stand: in Worten, nie nur Farbe. */
   text(g, s) {
@@ -32,7 +32,7 @@ const Goals = {
     if (g.period === 'week') return s.restTage === 0 ? 'Heute ist der letzte Tag der Woche.' : 'Noch ' + f(g.target - s.ist) + ' in ' + (s.restTage === 1 ? '1 Tag' : s.restTage + ' Tagen');
     if (s.status === 'verfehlt') return 'Nicht erreicht · es fehlten ' + f(g.target - s.ist);
     if (s.status === 'offen') return g.year > new Date().getFullYear() ? 'Dieses Jahr hat noch nicht begonnen.' : 'Prognose ab dem 14. Tag des Jahres';
-    const w = { im_plan: 'Im Plan', knapp: 'Knapp', dahinter: 'Dahinter' }[s.status];
+    const w = { im_plan: 'Im Soll', knapp: 'Knapp', dahinter: 'Dahinter' }[s.status];
     return w + ' · Prognose zum Jahresende: ' + f(s.prognose);
   },
   /** Zeile mit Name, „740 / 800 km“, Balken und Satz. opts.onclick macht sie antippbar (Ändern). */
@@ -47,7 +47,7 @@ const Goals = {
     const nowY = new Date().getFullYear(), g = Object.assign({ period: 'year', year: nowY, metric: 'km', target: '', sport: '' }, pre || {}, goal || {});
     if (g.sport === 'ski') g.sport = 'grp:ski';      // altes Ziel „Ski“ (vor 2.2.0): Gruppe aller Skiarten
     const err = h('p', { class: 'err small', role: 'alert' }), val = h('input', { type: 'text', inputmode: 'decimal', id: 'goalval', 'aria-label': 'Zielwert', value: g.target === '' ? '' : String(g.target).replace('.', ','), placeholder: 'z. B. 800' });
-    const unit = h('span', { class: 'muted' }), yearSel = h('select', { id: 'goalyear', 'aria-label': 'Jahr', onchange: e => { g.year = +e.target.value; } }, [nowY - 1, nowY, nowY + 1].map(y => h('option', { value: y, selected: y === g.year }, y)));
+    const unit = h('span', { class: 'muted' }), yearSel = h('select', { id: 'goalyear', 'aria-label': 'Jahr', onchange: e => { g.year = +e.target.value; } }, [nowY + 1, nowY, nowY - 1].map(y => h('option', { value: y, selected: y === g.year }, y)));
     const segBox = h('div'), metBox = h('div'), yearBox = h('label', { class: 'fld' }, 'Jahr', yearSel);
     const draw = () => {
       segBox.innerHTML = ''; metBox.innerHTML = '';
@@ -56,23 +56,25 @@ const Goals = {
       yearBox.hidden = g.period === 'week';
       unit.textContent = ({ km: 'km', up: 'Meter Aufstieg', count: 'Touren', hours: 'Stunden' }[g.metric]) + (g.period === 'week' ? ' pro Woche' : ' im Jahr');
     };
-    const opt = ([v, l, ti]) => h('option', { value: v, selected: v === g.sport, title: ti || null }, l), gr = StatGruppen.aktuell();
-    const sportSel = h('select', { id: 'goalsport', 'aria-label': 'Sportart', onchange: e => { g.sport = e.target.value; } }, opt(['', 'Alle Sportarten']),
-      // 2.19.0: feste Gruppen nur noch für vorhandene Ziele; eigene Statistik-Gruppen; ein Ziel mit gelöschter Gruppe bleibt sichtbar (zählt keine Tour); jede Sportart nach Kategorien
-      [['grp:bike', 'Rad (alle Arten)'], ['grp:foot', 'Wandern und Bergsteigen'], ['grp:ski', 'Ski (alle Arten)'], ['grp:run', 'Laufen (alle Arten)']].filter(([v]) => v === g.sport).map(opt),
-      gr.length || (StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr)) ? h('optgroup', { label: 'Zusammengefasst' }, StatGruppen.auswahl(gr).map(opt),
-        StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr) ? opt([g.sport, 'Gelöschte Gruppe']) : null) : null,
-      // ein Ziel mit einem Schlüssel außerhalb des Katalogs (z. B. aus einem Zwischenstand) bleibt, wie es ist, und zählt über den Rückfall
-      g.sport && !g.sport.includes(':') && !Sports.bekannt(g.sport) ? opt([g.sport, Sports.label(g.sport) + ' (älteres Ziel)']) : null,
-      Sports.kategorien(g.sport).map(([kid, knm, list]) => h('optgroup', { label: knm }, list.map(s => opt([s[0], s[1]])))));
+    const gr = StatGruppen.aktuell();
+    // 2.20.0: gemeinsames Muster „Sportart zuweisen“ (UI.sportWahl): vorn „Alle Sportarten“ und die Statistik-Gruppen, dann die Favoriten-Sportarten, „Mehr …“ für alle.
+    // 2.19.0: feste Gruppen nur noch für vorhandene Ziele; ein Ziel mit gelöschter Statistik-Gruppe bleibt sichtbar (zählt keine Tour);
+    // ein Ziel mit einem Schlüssel außerhalb des Katalogs (z. B. aus einem Zwischenstand) bleibt, wie es ist, und zählt über den Rückfall
+    const extra = [['', 'Alle Sportarten']].concat(
+      [['grp:bike', 'Rad (alle Arten)'], ['grp:foot', 'Wandern und Bergsteigen'], ['grp:ski', 'Ski (alle Arten)'], ['grp:run', 'Laufen (alle Arten)']].filter(([v]) => v === g.sport),
+      StatGruppen.auswahl(gr),
+      StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr) ? [[g.sport, 'Gelöschte Statistik-Gruppe']] : [],
+      g.sport && !g.sport.includes(':') && !Sports.bekannt(g.sport) ? [[g.sport, Sports.label(g.sport) + ' (älteres Ziel)']] : []);
+    const sportSel = UI.sportWahl(g.sport, { idp: 'goalsport', extra, onpick: k => { g.sport = k; } });
     draw();
-    const s = sheet(goal ? 'Ziel ändern' : 'Neues Ziel', h('div', null, segBox, yearBox, h('div', { class: 'fld' }, 'Messgröße', metBox), h('label', { class: 'fld' }, 'Sportart', sportSel),
+    const s = sheet(goal ? 'Ziel ändern' : 'Neues Ziel', h('div', null, segBox, yearBox, h('div', { class: 'fld' }, 'Messgröße', metBox), h('div', { class: 'fld' }, 'Sportart', sportSel),
       h('label', { class: 'fld' }, 'Zielwert', val), h('p', { class: 'muted small', style: { marginTop: '-8px' } }, unit), err,
       h('div', { class: 'row end wrap' },
         goal ? h('button', { class: 'btn danger', id: 'goaldel', onclick: async () => {
-          if (!await confirmBox('Ziel löschen?', Goals.name(goal) + (goal.period === 'year' ? ' ' + goal.year : '') + ' wird gelöscht. Deine Touren bleiben.', 'Löschen')) return;
+          if (!await confirmBox('Ziel „' + Goals.name(goal) + (goal.period === 'year' ? ' ' + goal.year : '') + '“ löschen?', 'Das Ziel wird gelöscht. Deine Touren bleiben.', 'Löschen')) return;
           await Goals.save((await Goals.list()).filter(x => x.id !== goal.id)); s.close(); toast('Ziel gelöscht'); done && done();
         } }, 'Löschen') : null,
+        h('span', { class: 'sp' }), h('button', { class: 'btn', id: 'goalcancel', onclick: () => s.close() }, 'Abbrechen'),
         h('button', { class: 'btn pri', id: 'goalsave', onclick: async () => {
           const t = parseFloat(String(val.value).replace(/\./g, '').replace(',', '.').trim());
           const ng = Ziele.sauber({ id: goal ? goal.id : 'g' + uid(), period: g.period, year: g.period === 'week' ? 0 : g.year, metric: g.metric, target: t, sport: g.sport });
@@ -80,7 +82,7 @@ const Goals = {
           const list = await Goals.list(), same = list.find(x => x.id !== ng.id && x.period === ng.period && x.year === ng.year && x.metric === ng.metric && x.sport === ng.sport);
           if (same) ng.id = same.id;      // dasselbe Ziel gibt es schon: es wird geändert, nicht doppelt angelegt
           const out = list.filter(x => x.id !== ng.id && x.id !== (goal && goal.id)); out.push(ng);
-          await Goals.save(out); s.close(); toast(same ? 'Das Ziel gab es schon – es wurde geändert.' : 'Ziel gespeichert'); done && done();
+          await Goals.save(out); s.close(); toast(same ? 'Ziel gespeichert (das gleiche Ziel gab es schon – es wurde geändert)' : 'Ziel gespeichert'); done && done();
         } }, 'Speichern'))));
     setTimeout(() => val.focus(), 250);
     return s;
@@ -94,7 +96,7 @@ Ausw.ziele = async function (body, ts, ctx) {
   const wrap = h('div', { id: 'goals' }); body.append(wrap);
   const draw = async () => {
     wrap.innerHTML = '';
-    wrap.append(UI.seg([nowY - 1, nowY, nowY + 1].map(v => [v, String(v)]), y, v => { y = v; draw(); }, { label: 'Jahr' }));
+    wrap.append(UI.seg([nowY + 1, nowY, nowY - 1].map(v => [v, String(v)]), y,      /* 2.20.0: Jahre absteigend wie überall (Leitfaden Regel 7) */ v => { y = v; draw(); }, { label: 'Jahr' }));
     const goals = await Goals.list(), mine = Ziele.fuerJahr(goals, y, nowY), yr = mine.filter(g => g.period === 'year'), wk = mine.filter(g => g.period === 'week');
     const edit = g => () => Goals.edit(g, { year: y }, draw);
     if (!mine.length) {

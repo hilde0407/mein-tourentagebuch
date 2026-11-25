@@ -37,19 +37,19 @@ Views['/jahr'] = async (root, [param]) => {
   if (d.leer) {
     const frueher = Jahr.jahre(all).filter(y => y < year)[0] || Jahr.jahre(all)[0];
     body.append(UI.empty({ icon: 'chart', cls: 'jahr-leer', title: all.length ? 'Im Jahr ' + year + ' steht noch keine Tour im Tagebuch' : 'Noch keine Touren im Tagebuch',
-      text: all.length ? 'Sobald du eine Tour aufzeichnest oder importierst, erscheint hier dein Rückblick. Du kannst oben auch ein anderes Jahr wählen.' : 'Zeichne die erste Tour auf oder hol die bisherigen herein – dann gibt es hier einen Rückblick auf dein Jahr.',
+      text: all.length ? 'Sobald du eine Tour aufzeichnest oder importierst, erscheint hier dein Jahresrückblick. Du kannst oben auch ein anderes Jahr wählen.' : 'Zeichne die erste Tour auf oder hol die bisherigen herein – dann gibt es hier einen Jahresrückblick.',
       actions: all.length && frueher ? [h('a', { class: 'btn', id: 'jahr-frueher', href: '#/jahr/' + frueher }, 'Jahr ' + frueher + ' ansehen')] : [h('a', { class: 'btn', href: '#/import', html: Ico.svg('download') + '<span>Touren importieren</span>' }), h('a', { class: 'btn', href: '#/rec', html: Ico.svg('rec') + '<span>Tour aufzeichnen</span>' })] }));
     return;
   }
 
   // Überblick: die große Zahl ist die Strecke
   const k = d.kennzahlen;
-  body.append(UI.figs([[F.km(k.dist), 'Kilometer']], { big: true, cls: 'jahr-hero', id: 'jahr-km' }),
-    UI.figs([[String(k.n), k.n === 1 ? 'Tour' : 'Touren'], [F.m(k.up), 'Höhenmeter im Aufstieg'], [F.dur(k.zeit), 'Stunden unterwegs'], [String(k.tage), k.tage === 1 ? 'Tag mit Tour' : 'Tage mit Tour']], { big: true, cols: 2, id: 'jahr-zahlen' }));
+  body.append(UI.figs([[F.km(k.dist), 'Strecke']], { big: true, cls: 'jahr-hero', id: 'jahr-km' }),
+    UI.figs([[String(k.n), k.n === 1 ? 'Tour' : 'Touren'], [F.m(k.up), 'Aufstieg'], [F.dur(k.zeit), 'Dauer'], [String(k.tage), k.tage === 1 ? 'Aktiver Tag' : 'Aktive Tage']], { big: true, cols: 2, id: 'jahr-zahlen' }));
   if (d.vorjahr) {
     const v = d.vorjahr, df = v.diff;
     body.append(UI.section('Gegenüber ' + v.year, UI.facts([
-      ['Touren', JahrUI.delta(df.n)], ['Kilometer', JahrUI.delta(df.dist, F.km)], ['Höhenmeter', JahrUI.delta(df.up, F.m)], ['Stunden', JahrUI.delta(df.zeit, F.dur)], ['Tage mit Tour', JahrUI.delta(df.tage)]]),
+      ['Touren', JahrUI.delta(df.n)], ['Strecke', JahrUI.delta(df.dist, F.km)], ['Aufstieg', JahrUI.delta(df.up, F.m)], ['Dauer', JahrUI.delta(df.zeit, F.dur)], ['Aktive Tage', JahrUI.delta(df.tage)]]),
       { id: 'jahr-vorjahr', cls: 'jahr-vj', sub: v.bisHeute ? v.year + ' bis zum gleichen Tag, ' + JahrUI.touren(v.kennzahlen.n) + ' und ' + F.km(v.kennzahlen.dist) + '.' : v.year + ': ' + JahrUI.touren(v.kennzahlen.n) + ' und ' + F.km(v.kennzahlen.dist) + '.' }));
   }
 
@@ -58,7 +58,7 @@ Views['/jahr'] = async (root, [param]) => {
     h('div', { class: 'jsp-h' }, h('b', null, g.label), h('span', null, JahrUI.pct(g.anteil))),
     h('div', { class: 'jsp-b', 'aria-hidden': 'true' }, h('i', { style: { width: Math.max(1.5, g.anteil * 100) + '%' } })),
     h('small', null, [JahrUI.touren(g.n), g.dist ? F.km(g.dist) : null, g.up ? '↑ ' + F.m(g.up) : null].filter(Boolean).join(' · '))));
-  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Zusammengefasst nach deinen Statistik-Gruppen (Einstellungen → Sportarten).' : 'Jede Sportart für sich – zusammenfassen lässt sich unter Einstellungen → Sportarten → Statistik-Gruppen.') }));
+  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Nach deinen Statistik-Gruppen (Mehr → Einstellungen → Sportarten → Statistik-Gruppen).' : 'Jede Sportart für sich – zusammenfassen lässt sich unter Mehr → Einstellungen → Sportarten → Statistik-Gruppen.') }));
 
   // Höhepunkte
   const hp = d.hoehepunkte, rows = [];
@@ -117,12 +117,12 @@ Views['/jahr'] = async (root, [param]) => {
   btn.onclick = async () => {
     const label = btn.querySelector('span'); btn.disabled = true; label.textContent = 'Bild wird erstellt …';
     try { const cv = await JahrKarte.render(d, { now }); await JahrKarte.teilen(cv, year); }
-    catch (e) { console.error('Jahr: Teilen', e); toast('Das Bild konnte nicht erstellt werden: ' + (e && e.message || e), 6000); }
+    catch (e) { console.error('Jahr: Teilen', e); toast('Bild erstellen nicht möglich: ' + (e && e.message || e), 6000); }
     finally { btn.disabled = false; label.textContent = 'Als Bild teilen'; }
   };
   // 2.5.0: das ganze Jahr als PDF (Deckblatt, eine Zeile je Tour); die Fotos je Tour sind abschaltbar, weil sie die Datei groß machen
   let pdfFotos = false;
-  const pdfBtn = h('button', { class: 'btn', id: 'jahr-pdf', html: Ico.svg('file') + '<span>Als PDF</span>' });
+  const pdfBtn = h('button', { class: 'btn', id: 'jahr-pdf', html: Ico.svg('file') + '<span>Als PDF exportieren</span>' });
   pdfBtn.onclick = async () => { pdfBtn.disabled = true; try { await PdfUI.jahr(d, all, { mitFotos: pdfFotos }); } finally { pdfBtn.disabled = false; } };
   body.append(UI.section('Teilen', [h('p', { class: 'muted' }, 'Eine Karte mit den wichtigsten Zahlen deines Jahres als Bild – ohne Tournamen und Orte.'), btn,
     h('p', { class: 'muted jahr-pdf-t' }, 'Oder das ganze Jahr als PDF zum Aufheben: ein Deckblatt mit den Zahlen, dann eine Zeile je Tour mit Datum, Name, Strecke und Aufstieg.'), pdfBtn,
@@ -170,8 +170,8 @@ const JahrKarte = {
     // Kernzahlen: die Strecke groß, vier weitere in einer Reihe
     const k = d.kennzahlen;
     JahrKarte.num(ctx, F.km(k.dist), M, 590, 160, IW);
-    ctx.fillStyle = C.muted; ctx.font = `500 32px ${JahrKarte.B}`; ctx.fillText('Kilometer', M, 636);
-    const cols = [[String(k.n), k.n === 1 ? 'Tour' : 'Touren'], [F.m(k.up), 'Höhenmeter'], [F.dur(k.zeit), 'Stunden unterwegs'], [String(k.tage), k.tage === 1 ? 'Tag mit Tour' : 'Tage mit Tour']], cw = (IW - 3 * 24) / 4;
+    ctx.fillStyle = C.muted; ctx.font = `500 32px ${JahrKarte.B}`; ctx.fillText('Strecke', M, 636);
+    const cols = [[String(k.n), k.n === 1 ? 'Tour' : 'Touren'], [F.m(k.up), 'Aufstieg'], [F.dur(k.zeit), 'Dauer'], [String(k.tage), k.tage === 1 ? 'Aktiver Tag' : 'Aktive Tage']], cw = (IW - 3 * 24) / 4;
     cols.forEach(([v, l], i) => {
       const x = M + i * (cw + 24); JahrKarte.num(ctx, v, x, 748, 62, cw - 8);
       ctx.fillStyle = C.muted; ctx.font = `500 25px ${JahrKarte.B}`; let t = l; while (ctx.measureText(t).width > cw && t.length > 4) t = t.slice(0, -2) + '…'; ctx.fillText(t, x, 786);
@@ -194,7 +194,7 @@ const JahrKarte = {
     ctx.fillStyle = C.line; ctx.fillRect(M, ly2 + 6, IW, 2);
     // Monate: Strecke je Monat; der stärkste Monat in Tinte
     const my = ly2 + 66;
-    ctx.fillStyle = C.ink; ctx.font = `600 40px ${JahrKarte.D}`; ctx.fillText('Kilometer je Monat', M, my);
+    ctx.fillStyle = C.ink; ctx.font = `600 40px ${JahrKarte.D}`; ctx.fillText('Strecke je Monat', M, my);
     const base = H - 92, top = my + 36, ch = base - top, mv = d.monate.map(m => m.dist), mx = Math.max(...mv, 1), best = mv.indexOf(Math.max(...mv)), bw = IW / 12;
     d.monate.forEach((m, i) => {
       const bh = mv[i] > 0 ? Math.max(6, mv[i] / mx * ch) : 3;

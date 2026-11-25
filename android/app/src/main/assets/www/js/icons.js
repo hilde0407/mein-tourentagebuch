@@ -99,6 +99,8 @@ const ICONS = {
   boat: '<path d="M3 15h18l-3 5H6z"/><path d="M8 15V9h7l3 6M11 9V5"/>',      // 2.19.0: Bootfahren
   climb: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 3 1 5-2 5M13 8l4 2 2 5M10 11L6 13"/>',
   dot: '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>',
+  cut: '<circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="M8.2 8.3L20 18M8.2 15.7L20 6"/>',      // 2.20.0: Zuschneiden (statt ✂)
+  extern: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/>',      // 2.20.0: in einer anderen App öffnen (statt ⤴)
   pano: '<path d="M2.5 7c6.3-1.8 12.7-1.8 19 0v10c-6.3-1.8-12.7-1.8-19 0z"/><path d="M5.5 14.5l3.5-3.5 2.5 2.5 2-2 4.5 4"/>',      // 2.8.0: Panorama (breites, leicht gewölbtes Bild mit Bergen)
 };
 /* Zeichen, die in Texten der Ansichten vorkommen → Name des Symbols. Längere Folgen zuerst. */
@@ -109,7 +111,7 @@ const ICON_CHARS = {
   '■': 'stop', '⏹': 'stop', '▶': 'play', '＋': 'plus', '←': 'back', '‹': 'prev', '›': 'next', '⋮': 'dots', 'ⓘ': 'info', '⬆': 'up',
   '🧳': 'bag', '📁': 'folder', '📂': 'folder', '📄': 'file', '⌚': 'watch', '💡': 'bulb', '🛠': 'wrench', '🚁': 'flight', '🎞': 'film', '✨': 'spark',
   '💻': 'laptop', '🖧': 'server', '☁': 'cloud', '👁': 'eye', '🙈': 'eyeoff', '📅': 'calendar', '🔊': 'speaker', '📡': 'signal', '🔋': 'battery', '🗺': 'map',
-  '◎': 'locate', '⟲': 'loop', '⇄': 'swap', '🏁': 'flag', '🎯': 'target', '💬': 'chat', '🔥': 'flame', '🟢': 'dot', '🟠': 'dot', '🌄': 'pano',
+  '◎': 'locate', '⟲': 'loop', '⇄': 'swap', '🏁': 'flag', '🎯': 'target', '💬': 'chat', '🔥': 'flame', '🟢': 'dot', '🟠': 'dot', '🌄': 'pano', '🎬': 'film', '✂': 'cut', '⤴': 'extern',
   // Sportarten
   '🥾': 'peak', '🚶': 'walk', '🚵': 'bike', '🚴': 'bike', '🚲': 'bike', '⚡': 'bolt', '🏃': 'run', '⛷': 'ski', '🏂': 'snowboard', '🎿': 'skitour', '❄': 'nordic', '🧗': 'climb', '🌨': 'snowshoe',
   '🪨': 'wall', '🐉': 'row', '🚤': 'boat', '🌊': 'raft', '🎒': 'bikepack', '🪂': 'paraglide', '🛹': 'inline', '🦯': 'nwalk', '🌲': 'trail', '🏔': 'skialpin', '🛶': 'kayak', '🚣': 'row', '🛼': 'inline', '🐎': 'horse',

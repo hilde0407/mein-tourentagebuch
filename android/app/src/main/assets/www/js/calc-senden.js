@@ -76,7 +76,7 @@
     if (status === 404) return 'Auf diesem Server gibt es das Hochladen nicht. Ist Meine Touren auf dem neuesten Stand?';
     if (status === 409 || status === 429) return 'Meine Touren ist gerade beschäftigt. Bitte später noch einmal versuchen.';
     if (status >= 500) return 'Meine Touren hat einen Fehler gemeldet (HTTP ' + status + ')' + (detail ? ': ' + detail : '') + '.';
-    return 'Senden fehlgeschlagen (HTTP ' + status + ')' + (detail ? ': ' + detail : '') + '.';
+    return 'Senden nicht möglich (HTTP ' + status + ')' + (detail ? ': ' + detail : '') + '.';
   }
   /** Lohnt ein neuer Versuch? Dauerhafte Gründe (Rechte, Anmeldung, die Strecke selbst) nicht; Netz und Serverfehler schon. */
   const WIEDER = status => status == null || status === 0 || status === 409 || status === 429 || status >= 500;

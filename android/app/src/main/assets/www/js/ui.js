@@ -52,17 +52,49 @@ const UI = {
   chip(label, on, onclick, opts) {
     return h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false', id: opts && opts.id, onclick }, label);
   },
-  /** 2.19.1: Sportart-Chips aus StatGruppen.chipAuswahl (Karte, Tourenliste): Gruppen zuerst, dann je Kategorie eine kleine Überschrift und die Sportarten,
-      jeder Chip mit dem Farbpunkt seiner Kartenfarbe (Gruppe: die Punkte ihrer Mitglieder, höchstens 3). sel: gewählter Schlüssel; onpick(key) – nochmal tippen hebt auf.
-      Gibt eine Liste von Elementen zurück (zum Einhängen in eine .chips-Leiste). */
+  /** 2.19.1: Sportart-Chips aus StatGruppen.chipAuswahl – DAS Muster „Sportart filtern“ (Leitfaden Regel 6; Karte, Tourenliste, Statistik, Startseite):
+      zuerst „Alle Sportarten“ (2.20.0), dann die Statistik-Gruppen, dann je Kategorie eine kleine Überschrift und die Sportarten mit Touren,
+      jeder Chip mit dem Farbpunkt seiner Kartenfarbe (Gruppe: die Punkte ihrer Mitglieder, höchstens 3). sel: gewählter Schlüssel; onpick(key) – nochmal tippen hebt auf,
+      „Alle Sportarten“ liefert ''. Gibt eine Liste von Elementen zurück (zum Einhängen in eine .chips-Leiste). */
   sportChips(auswahl, sel, onpick) {
     const dot = k => h('i', { class: 'sdot', 'aria-hidden': 'true', style: { background: MapKit.routeColor(k, '#2e7d32') } });
     const chip = (key, label, dots, ti) => h('button', { class: 'chip schip' + (sel === key ? ' on' : ''), 'aria-pressed': sel === key ? 'true' : 'false', 'data-sport': key, title: ti || null,
       onclick: () => onpick(sel === key ? '' : key) }, dots, label);
-    const out = [];
-    if (auswahl.gruppen.length) out.push(h('span', { class: 'skat' }, 'Gruppen'), ...auswahl.gruppen.map(g => chip(g.key, g.label, g.sports.slice(0, 3).map(dot), g.titel)));
+    const out = [h('button', { class: 'chip salle', 'aria-pressed': sel ? 'false' : 'true', onclick: () => onpick('') }, 'Alle Sportarten')];
+    if (!sel) out[0].classList.add('on');
+    if (auswahl.gruppen.length) out.push(h('span', { class: 'skat' }, 'Statistik-Gruppen'), ...auswahl.gruppen.map(g => chip(g.key, g.label, g.sports.slice(0, 3).map(dot), g.titel)));
     auswahl.kategorien.forEach(k => out.push(h('span', { class: 'skat', 'data-kat': k.id }, k.name), ...k.items.map(it => chip(it.key, it.label, [dot(it.key)]))));
     return out;
+  },
+  /** 2.20.0: DAS Muster „Sportart zuweisen“ (Leitfaden Regel 6; Aufzeichnen, Tour bearbeiten, Ziel, Planung): die Favoriten-Sportarten als Chips
+      (die gewählte steht – falls kein Favorit – vorn dabei), dann „Mehr …“ mit allen Sportarten nach Kategorien. Rückgabe: Element mit .wert() und .setze(k).
+      opts: extra – [[schlüssel, text, titel], …] vor den Favoriten (z. B. „Alle Sportarten“ und Statistik-Gruppen bei Zielen);
+            nur – erlaubte Schlüssel (Planung); idp – Präfix der IDs (idp-mehr, idp-alle, idp-akt-<k>); onpick(k) – nach jeder Wahl. */
+  sportWahl(sel, opts) {
+    opts = opts || {};
+    const idp = opts.idp || 'sw', extra = opts.extra || [], erlaubt = k => !opts.nur || opts.nur.includes(k);
+    let wert = sel;
+    const box = h('div', { class: 'chips wrap swahl', id: idp + '-wahl', role: 'group', 'aria-label': opts.label || 'Sportart' });
+    const istSport = k => !!k && !extra.some(e => e[0] === k);
+    const chip = (k, text, ti) => h('button', { class: 'chip' + (wert === k ? ' on' : ''), 'aria-pressed': wert === k ? 'true' : 'false', 'data-sport': k, title: ti || null, onclick: () => setze(k) }, text);
+    const draw = () => {
+      box.innerHTML = '';
+      extra.forEach(([k, l, ti]) => box.append(chip(k, l, ti)));
+      const favs = Aktiv.favoriten(Set_.get('favAkt')).filter(erlaubt);
+      const liste = istSport(wert) && !favs.includes(wert) ? [wert].concat(favs) : favs;
+      liste.forEach(k => box.append(chip(k, Sports.icon(k) + ' ' + Sports.label(k))));
+      box.append(h('button', { class: 'chip', id: idp + '-mehr', onclick: mehr }, 'Mehr …'));
+    };
+    const setze = k => { wert = k; draw(); if (opts.onpick) opts.onpick(k); };
+    const mehr = () => {
+      const s = sheet('Sportart wählen', h('div', { id: idp + '-alle' },
+        Sports.kategorien(wert).map(([id, nm, list]) => { const l = list.filter(x => erlaubt(x[0])); return l.length ? [h('h3', { class: 'sub' }, nm),
+          UI.list(l.map(([k, lb, ic]) => UI.row({ icon: ic, title: lb, trail: k === wert ? 'gewählt' : null, id: idp + '-akt-' + k, onclick: () => { s.close(); setze(k); } })), { cls: 'menu' })] : []; }).flat(),
+        h('p', { class: 'muted small' }, 'Welche Sportarten vorn als Knöpfe stehen, stellst du unter Mehr → Einstellungen → Sportarten → Favoriten-Sportarten ein.')));
+    };
+    draw();
+    box.wert = () => wert; box.setze = setze;
+    return box;
   },
   chips(kids, opts) { return h('div', { class: 'chips' + (opts && opts.wrap ? ' wrap' : ''), id: opts && opts.id }, kids); },
   /** Umschalter mit zwei bis vier Segmenten. options: [[schlüssel, text, href?], …]. */
@@ -138,7 +170,7 @@ const UI = {
       opts.photos ? h('span', { class: 'ph', title: 'Fotos' }, h('span', { html: Ico.svg('photo', 14) }), opts.photos) : null);
     return h('a', { class: 'tour', href: '#/tour/' + t.id },
       pv, h('span', { class: 'tb' },
-        h('b', null, t.name, t.fav ? h('span', { class: 'favm', title: 'Favorit', html: Ico.svg('star', 15) }) : null),
+        h('b', null, t.name, t.fav ? h('span', { class: 'favm', title: 'Lieblingstour', html: Ico.svg('star', 15) }) : null),
         h('small', null, (opts.year ? F.date(t.start) : UI.day(t.start)) + ' · ' + Sports.label(t.sport) + (t.status === 'planned' ? ' · geplant' : '') + (Abgleich.sterne(t) ? ' · ★ ' + Abgleich.sterne(t) : '')),
         opts.stage ? h('small', { class: 'stage' }, opts.stage) : null, k));
   },
