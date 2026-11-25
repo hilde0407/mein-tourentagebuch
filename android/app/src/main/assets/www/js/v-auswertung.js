@@ -1,5 +1,5 @@
 'use strict';
-/* Auswertung wie in „Meine Touren“: Rekorde, Kalender, Leistung über die Jahre, Aktivitäten, Neuland, Wetter und Jahresziele.
+/* Auswertung wie in „Meine Touren“: Rekorde, Kalender, Leistung über die Jahre, Sportarten, Neuland, Wetter und Jahresziele.
    Jede Funktion bekommt das Element, die gefilterten Touren und {all, year, sport}. Alles rechnet auf dem Handy. */
 const Ausw = {
   day: ms => { const d = new Date(ms); return Math.floor((ms - d.getTimezoneOffset() * -60000 * -1) / 86400000); },
@@ -80,7 +80,7 @@ const Ausw = {
         return h('a', { class: 'li', href: '#/tour/' + b.id, 'data-m': k }, h('span', { class: 'li-i', html: Ico.svg('trophy', 22) }),
           h('span', { class: 'li-t' }, h('b', null, lab + ': ' + fm(b)), h('small', null, b.name + ' · ' + F.dshort(b.start)), mehr ? h('small', { class: 'bw-mehr' }, mehr) : null));
       });
-      kids.push(h('h3', { class: 'sub', 'data-sport': g.sport }, StatGruppen.icon(g.sport, gr) + ' ' + StatGruppen.name(g.sport, gr) + ' · ' + g.n + ' Touren'), h('div', { class: 'list' }, rows));      // 2.19.0: Gruppe = eine Zeile mit ihrem Namen
+      kids.push(h('h3', { class: 'sub', 'data-sport': g.sport, title: StatGruppen.titel(g.sport, gr) || null }, StatGruppen.icon(g.sport, gr) + ' ' + StatGruppen.beschriftung(g.sport, gr) + ' · ' + g.n + ' Touren'), h('div', { class: 'list' }, rows));      // 2.19.0: Gruppe = eine Zeile mit ihrem Namen
     });
     box.append(...Ausw.sec('Bestwerte je Sportart', n === 3 ? 'Je Sportart der Bestwert, darunter Platz 2 und 3. Tempo aus der Zeit in Bewegung.' : 'Je Sportart der Bestwert (oben „Beste drei“ zeigt auch Platz 2 und 3). Tempo aus der Zeit in Bewegung.'), ...kids);
     return box;
@@ -184,16 +184,16 @@ const Ausw = {
     const s = sheet(F.date(list[0].start), h('div', { class: 'list' }, list.map(t => h('a', { class: 'li', href: '#/tour/' + t.id, onclick: () => s.close() }, h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, t.name), h('small', null, F.km(t.dist) + ' · ' + F.m(t.up) + ' · ' + F.dur(t.moving || t.dur)))))));
   },
 
-  /* ---------- Auswertung: Aktivitäten, Leistung, Neuland, Wetter ---------- */
+  /* ---------- Auswertung: Sportarten, Leistung, Neuland, Wetter ---------- */
   auswertung(body, ts, ctx) {
     if (!ts.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Touren in diesem Zeitraum.'))); return; }
-    // Statistik nach Aktivität
+    // Statistik nach Sportart
     const gr = StatGruppen.aktuell();      // 2.19.0: Statistik-Gruppen als eine Zeile mit dem Gruppennamen
     const rows = [...StatGruppen.aufteilen(ts, gr).entries()].sort((a, b) => b[1].reduce((x, t) => x + t.dist, 0) - a[1].reduce((x, t) => x + t.dist, 0));
     const sm = (a, k) => a.reduce((x, t) => x + (t[k] || 0), 0);
-    body.append(...Ausw.sec('Statistik nach Aktivität'), h('div', { class: 'tblw' }, h('table', { class: 'cstat' },
-      h('thead', null, h('tr', null, ['Aktivität', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
-      h('tbody', null, rows.map(([k, a]) => h('tr', { 'data-sport': k }, h('td', null, StatGruppen.icon(k, gr) + ' ' + StatGruppen.name(k, gr)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
+    body.append(...Ausw.sec('Statistik nach Sportart'), h('div', { class: 'tblw' }, h('table', { class: 'cstat' },
+      h('thead', null, h('tr', null, ['Sportart', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Zeit'].map(x => h('th', null, x)))),
+      h('tbody', null, rows.map(([k, a]) => h('tr', { 'data-sport': k }, h('td', { title: StatGruppen.titel(k, gr) || null }, StatGruppen.icon(k, gr) + ' ' + StatGruppen.beschriftung(k, gr)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
     // Leistung über die Jahre
     const all = ctx.all.filter(t => Sports.passt(ctx.sport, t.sport));
     const perf = [];

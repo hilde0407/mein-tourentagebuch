@@ -688,3 +688,11 @@ img.tile-off{visibility:hidden}
 .akt-n{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.95rem}
 .akt-f{flex:none;width:14px;height:14px;border-radius:50%;border:1px solid var(--line)}
 .akt-altl{margin:4px 0;padding-left:20px;font-size:.92rem}
+/* 2.19.1: Sportart-Chips (Karte, Tourenliste) mit Farbpunkt und Kategorie-Überschriften */
+.skat{flex:none;align-self:center;font-size:.78rem;font-weight:600;color:var(--muted);padding:0 2px 0 6px;white-space:nowrap}
+.chip .sdot{flex:none;width:11px;height:11px;border-radius:50%;margin-left:-4px;box-shadow:0 0 0 1.5px var(--bg)}
+.chip .sdot+.sdot{margin-left:-8px}
+.chip.on .sdot{box-shadow:0 0 0 1.5px var(--bg)}
+.mapchips{display:flex;align-items:center;gap:8px;padding:0 var(--gut) 10px;overflow-x:auto;scrollbar-width:none}
+.mapchips[hidden]{display:none}
+.mapchips:not([hidden])+.map.full{height:calc(100vh - var(--tab) - 168px)}

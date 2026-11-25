@@ -6,12 +6,21 @@ Views['/map'] = async root => {
   const mapEl = h('div', { class: 'map full' });
   const all = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden);
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
-  let year = '', showPhotos = false;
+  let year = '', showPhotos = false, sport = '';      // 2.19.1: Sportart-Filter (Sportart oder Statistik-Gruppen-Kennung sgrp:<id>)
+  const grS = StatGruppen.aktuell();
+  const chipBox = h('div', { class: 'mapchips', id: 'mapsport', role: 'group', 'aria-label': 'Sportart' });
+  const drawChips = () => {
+    chipBox.innerHTML = '';
+    const aw = StatGruppen.chipAuswahl(all.map(t => t.sport), grS);
+    chipBox.append(UI.chip('Alle Sportarten', !sport, () => { sport = ''; drawChips(); draw(); }), ...UI.sportChips(aw, sport, k => { sport = k; drawChips(); draw(); }));
+    chipBox.hidden = !aw.kategorien.length;
+  };
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { year = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Jahre'), years.map(y => h('option', { value: y }, y)));
   const phBtn = UI.chip('🖼 Fotos zeigen', false, () => { showPhotos = !showPhotos; phBtn.classList.toggle('on', showPhotos); phBtn.setAttribute('aria-pressed', showPhotos ? 'true' : 'false'); draw(); });
   // Die Karte ist die zweite Ansicht der Tourenliste: oben rechts geht es zurück zur Liste
   root.append(topbar('Karte', { actions: h('a', { class: 'btn sm hbtn', id: 'tolist', href: '#/', html: Ico.svg('list') + '<span>Liste</span>' }) }),
-    h('div', { class: 'maptools' }, yearSel, phBtn, h('button', { class: 'chip', id: 'tooffline', onclick: offline }, '⬇ Offline-Karte')), mapEl);
+    h('div', { class: 'maptools' }, yearSel, phBtn, h('button', { class: 'chip', id: 'tooffline', onclick: offline }, '⬇ Offline-Karte')), chipBox, mapEl);
+  drawChips();
   const map = MapKit.create(mapEl);
   const g = L.layerGroup().addTo(map);            // Fotos
   const linien = L.layerGroup().addTo(map);       // Strecken (nur nah genug und im Ausschnitt)
@@ -27,7 +36,7 @@ Views['/map'] = async root => {
     if (!s) { try { cache[t.id] = Geo.simplify(await Tours.points(t.id), 30); s = KP.startpunkt(null, cache[t.id]); } catch (e) { s = null; } }
     if (s) start[t.id] = s;
   }
-  const sichtbar = () => KP.jahrFilter(all, year).filter(t => start[t.id]);
+  const sichtbar = () => KP.jahrFilter(all, year).filter(t => start[t.id] && StatGruppen.passt(sport, t.sport, grS));
   const color = t => MapKit.routeColor(t.sport, '#2e7d32');
   const popupHtml = t => `<b>${esc(t.name)}</b><br>${F.dshort(t.start)} · ${F.km(t.dist)}<br><a href="#/tour/${t.id}">Öffnen</a>`;
   const popup = t => L.popup().setLatLng([start[t.id].lat, start[t.id].lon]).setContent(popupHtml(t)).openOn(map);

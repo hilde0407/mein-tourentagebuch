@@ -1,47 +1,47 @@
 'use strict';
 /* Einlesen von GPX, TCX, FIT (auch aus ZIP/GZ). Ergebnis: [{name, sport, pts:[{lat,lon,ele,t,newSeg}], srcId?}] */
-/* 2.19.0: Aktivitäten-Katalog als Tabelle – die endgültige Auswahl (29 Aktivitäten in 5 Kategorien, gleich wie in „Meine Touren“). Jede Zeile ist eine
-   eigene Sportart: [Kategorie, Schlüssel, Name, Zeichen (wird zum Symbol, js/icons.js), Kartenfarbe]. Weitere Aktivitäten: eine Zeile ergänzen (Symbol in
+/* 2.19.0: Sportarten-Katalog als Tabelle – die endgültige Auswahl (29 Sportarten in 5 Kategorien, gleich wie in „Meine Touren“). Jede Zeile ist eine
+   eigene Sportart: [Kategorie, Schlüssel, Name, Zeichen (wird zum Symbol, js/icons.js), Kartenfarbe]. Weitere Sportarten: eine Zeile ergänzen (Symbol in
    ICON_CHARS, Zuordnung in Sports.norm, ggf. Senden in calc-senden.js). Die Schlüssel bis 2.18 bleiben (hike, walk, mtb, bike …).
    Zusammengefasst wird nur über selbst angelegte Statistik-Gruppen (calc-statgruppen.js).
    Schlüssel, die nicht (mehr) im Katalog stehen (aus einem Zwischenstand von 2.19.0, einer Sicherung oder einer anderen App), bleiben an der Tour unverändert;
-   Anzeige, Filter, Statistik und Ziele nehmen dafür die Rückfall-Aktivität (Sports.RUECKFALL, sonst „Sonstiges“) – siehe Sports.anzeige. */
+   Anzeige, Filter, Statistik und Ziele nehmen dafür die Rückfall-Sportart (Sports.RUECKFALL, sonst „Sonstiges“) – siehe Sports.anzeige. */
 const KATEGORIEN = [['fuss', 'Zu Fuß'], ['rad', 'Rad'], ['winter', 'Winter'], ['wasser', 'Wasser'], ['sonst', 'Outdoor und Sonstige']];
 const KATALOG = [
   ['fuss', 'hike', 'Wandern', '🥾', '#2e7d32'],
-  ['fuss', 'walk', 'Spazieren / Gehen', '🚶', '#43a047'],
+  ['fuss', 'walk', 'Spazieren / Gehen', '🚶', '#6b8e23'],
   ['fuss', 'mountaineering', 'Bergsteigen', '🧗', '#4e342e'],
-  ['fuss', 'climbing', 'Klettern / Klettersteig', '🪨', '#795548'],
-  ['fuss', 'nordicwalking', 'Nordic Walking', '🦯', '#558b2f'],
+  ['fuss', 'climbing', 'Klettern / Klettersteig', '🪨', '#7b3f00'],
+  ['fuss', 'nordicwalking', 'Nordic Walking', '🦯', '#5e7a5a'],
   ['fuss', 'run', 'Laufen', '🏃', '#c62828'],
-  ['fuss', 'trailrun', 'Trailrunning', '🌲', '#ad2121'],
+  ['fuss', 'trailrun', 'Trailrunning', '🌲', '#880e4f'],
   ['rad', 'bike', 'Radtour', '🚴', '#1565c0'],
   ['rad', 'racebike', 'Rennrad', '🚴', '#6a1b9a'],
-  ['rad', 'mtb', 'Mountainbike', '🚵', '#e65100'],
-  ['rad', 'gravel', 'Gravelbike', '🚲', '#8d6e63'],
+  ['rad', 'mtb', 'Mountainbike', '🚵', '#d84315'],
+  ['rad', 'gravel', 'Gravelbike', '🚲', '#8d6e00'],
   ['rad', 'ebike', 'E-Bike', '⚡', '#00838f'],
-  ['rad', 'emtb', 'E-Mountainbike', '🚵', '#00695c'],
-  ['rad', 'bikepacking', 'Bikepacking', '🎒', '#5d4037'],
-  ['winter', 'skialpin', 'Ski alpin', '🏔️', '#3949ab'],
+  ['rad', 'emtb', 'E-Mountainbike', '🚵', '#263238'],
+  ['rad', 'bikepacking', 'Bikepacking', '🎒', '#a1665e'],
+  ['winter', 'skialpin', 'Ski alpin', '🏔️', '#303f9f'],
   ['winter', 'skitour', 'Skitour', '🎿', '#ad1457'],
-  ['winter', 'nordic', 'Langlauf', '❄️', '#00796b'],
-  ['winter', 'snowboard', 'Snowboard', '🏂', '#283593'],
+  ['winter', 'nordic', 'Langlauf', '❄️', '#00695c'],
+  ['winter', 'snowboard', 'Snowboard', '🏂', '#8e6bbf'],
   ['winter', 'snowshoe', 'Schneeschuhwandern', '🌨️', '#0277bd'],
   ['wasser', 'kayak', 'Kajak / Kanu', '🛶', '#00897b'],
-  ['wasser', 'rowing', 'Rudern', '🚣', '#006064'],
-  ['wasser', 'dragonboat', 'Drachenboot', '🐉', '#2e7d6b'],
-  ['wasser', 'rafting', 'Rafting', '🌊', '#0277a8'],
-  ['wasser', 'boat', 'Bootfahren', '🚤', '#0d47a1'],
-  ['sonst', 'skateboard', 'Skateboard', '🛹', '#fb8c00'],
-  ['sonst', 'inline', 'Inlineskaten / Rollschuh', '🛼', '#f57c00'],
-  ['sonst', 'horse', 'Reiten', '🐎', '#6d4c41'],
-  ['sonst', 'paraglide', 'Gleitschirm', '🪂', '#7b1fa2'],
-  ['sonst', 'other', 'Sonstiges', '📍', '#546e7a'],
+  ['wasser', 'rowing', 'Rudern', '🚣', '#1a237e'],
+  ['wasser', 'dragonboat', 'Drachenboot', '🐉', '#9a3412'],
+  ['wasser', 'rafting', 'Rafting', '🌊', '#2962ff'],
+  ['wasser', 'boat', 'Bootfahren', '🚤', '#455a64'],
+  ['sonst', 'skateboard', 'Skateboard', '🛹', '#b45309'],
+  ['sonst', 'inline', 'Inlineskaten / Rollschuh', '🛼', '#9c27b0'],
+  ['sonst', 'horse', 'Reiten', '🐎', '#795548'],
+  ['sonst', 'paraglide', 'Gleitschirm', '🪂', '#e91e63'],
+  ['sonst', 'other', 'Sonstiges', '📍', '#607d8b'],
 ];
 /* Nur für ältere Touren (nicht im Katalog, in Auswahllisten nur, wenn die Tour sie schon hat): 2.2.0 „Ski (allgemein)“, wenn die genaue Art unbekannt ist. */
 const ALTE = [['winter', 'ski', 'Ski (allgemein)', '⛷️', '#37474f']];
 const Sports = {
-  /** Der Katalog: [Schlüssel, Name, Zeichen] je Aktivität, in seiner Reihenfolge (29). */
+  /** Der Katalog: [Schlüssel, Name, Zeichen] je Sportart, in seiner Reihenfolge (29). */
   katalog: KATALOG.map(r => [r[1], r[2], r[3]]),
   /** Katalog und Altschlüssel (für Namen, Symbole, Farben gespeicherter Touren). */
   list: KATALOG.concat(ALTE).map(r => [r[1], r[2], r[3]]),
@@ -55,7 +55,7 @@ const Sports = {
   },
   /** Nur noch für ältere Touren gedacht – in Auswahllisten nur, wenn die Tour sie schon hat. */
   ALT: ALTE.map(r => r[1]),
-  /** Schlüssel, die nicht (mehr) im Katalog stehen → Aktivität, als die sie zählen (Regeln der endgültigen Auswahl vom 25.11.2026). Alles andere: „Sonstiges“.
+  /** Schlüssel, die nicht (mehr) im Katalog stehen → Sportart, als die sie zählen (Regeln der endgültigen Auswahl vom 25.11.2026). Alles andere: „Sonstiges“.
       Gilt beim Import (Sports.norm) und für Anzeige, Filter, Statistik, Ziele und Senden gespeicherter Touren (Sports.anzeige) – die Tour selbst bleibt unverändert. */
   RUECKFALL: { dogwalk: 'walk', orienteering: 'run', pilgrimage: 'hike', commute: 'bike', cyclocross: 'racebike', bmx: 'other', splitboard: 'skitour',
     snowmobile: 'other', sled: 'other', iceskate: 'other', sup: 'kayak', sailing: 'other', swim: 'other', snorkel: 'other', diving: 'other', surf: 'other',
@@ -84,7 +84,7 @@ const Sports = {
   /** Schlagworte, die eine Sportangabe mitbringt: Schneeschuh bekommt (wie seit 2.2.0) das Schlagwort „Schneeschuh“. */
   tags: s => (Sports.isSnowshoe(s) ? [Sports.SCHNEESCHUH] : []),
   /** Verschiedene Bezeichnungen (Komoot, Strava, Garmin, Bosch, GPX-Typ, Meine Touren) auf die Aktivitäten des Katalogs abbilden. Ergebnis ist immer ein Katalog-Schlüssel;
-      was die App nicht führt, bekommt die Rückfall-Aktivität (Sports.RUECKFALL) oder „Sonstiges“. Reihenfolge: genauere Muster vor allgemeineren („bik“, „ski“, „boot“ …). */
+      was die App nicht führt, bekommt die Rückfall-Sportart (Sports.RUECKFALL) oder „Sonstiges“. Reihenfolge: genauere Muster vor allgemeineren („bik“, „ski“, „boot“ …). */
   norm(s) {
     s = String(s || '').toLowerCase().replace(/[\s_-]+/g, '');
     if (!s) return 'other';
@@ -254,7 +254,7 @@ const Parse = {
     // FIT-Sportnummern (wie in Meine Touren, app/fitfile.py): 12 Langlauf, 13 Ski alpin, 14 Snowboard (bis 2.18 Ski alpin), 35 Schneeschuh (seit 2.19.0 eigene Sportart, mit Schlagwort);
     // Untersportart 37 = Backcountry: Skitour. 2.2.0: 19 (Paddeln) ist nicht mehr „Ski“.
     // 2.19.0: 14 Snowboard, 31 Klettern, 15 Rudern, 19 Paddeln, 41 Kajak, 37 Stand-up-Paddling (→ Kajak / Kanu), 42 Rafting, 23 Bootfahren, 26 Gleitschirm (Hängegleiten),
-    // 27 Reiten, 30 Inlineskaten, 21 E-Bike – Aktivitäten des Katalogs; was die App nicht führt (Schwimmen, Golf, Segeln, Eislaufen …), wird „Sonstiges“.
+    // 27 Reiten, 30 Inlineskaten, 21 E-Bike – Sportarten des Katalogs; was die App nicht führt (Schwimmen, Golf, Segeln, Eislaufen …), wird „Sonstiges“.
     const names = { 1: 'run', 2: 'bike', 11: 'walk', 17: 'hike', 12: 'nordic', 13: 'skialpin', 14: 'snowboard', 35: 'snowshoe', 31: 'climbing', 16: 'mountaineering', 15: 'rowing', 19: 'kayak', 37: 'kayak',
       41: 'kayak', 42: 'rafting', 23: 'boat', 26: 'paraglide', 27: 'horse', 30: 'inline', 21: 'ebike' };
     let sp = names[sport] || 'other';

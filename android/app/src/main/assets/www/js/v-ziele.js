@@ -18,7 +18,7 @@ const Goals = {
     if (merged.length === cur.length) return false;
     await Goals.save(merged); return true;
   },
-  sportName(s) { return !s ? '' : StatGruppen.istGruppe(s) ? StatGruppen.name(s, StatGruppen.aktuell()) + (StatGruppen.gueltig(s, StatGruppen.aktuell()) ? ' (zusammengefasst)' : '') : s === 'grp:bike' ? 'Rad (alle Arten)' : s === 'grp:foot' ? 'Wandern und Bergsteigen' : s === 'grp:ski' || s === 'ski' ? 'Ski (alle Arten)' : s === 'grp:run' ? 'Laufen (alle Arten)' : Sports.label(s); },
+  sportName(s) { return !s ? '' : StatGruppen.istGruppe(s) ? StatGruppen.beschriftung(s, StatGruppen.aktuell()) : s === 'grp:bike' ? 'Rad (alle Arten)' : s === 'grp:foot' ? 'Wandern und Bergsteigen' : s === 'grp:ski' || s === 'ski' ? 'Ski (alle Arten)' : s === 'grp:run' ? 'Laufen (alle Arten)' : Sports.label(s); },
   name(g) { const m = Ziele.METRIKEN.find(x => x[0] === g.metric); return m[1] + (g.period === 'week' ? ' pro Woche' : '') + ' · ' + (g.sport ? Goals.sportName(g.sport) : 'Alle Sportarten'); },
   /** Zahl mit Einheit: „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
   dec: g => (g.metric === 'hours' || (g.metric === 'km' && g.target < 50) ? 1 : 0),
@@ -56,9 +56,9 @@ const Goals = {
       yearBox.hidden = g.period === 'week';
       unit.textContent = ({ km: 'km', up: 'Meter Aufstieg', count: 'Touren', hours: 'Stunden' }[g.metric]) + (g.period === 'week' ? ' pro Woche' : ' im Jahr');
     };
-    const opt = ([v, l]) => h('option', { value: v, selected: v === g.sport }, l), gr = StatGruppen.aktuell();
+    const opt = ([v, l, ti]) => h('option', { value: v, selected: v === g.sport, title: ti || null }, l), gr = StatGruppen.aktuell();
     const sportSel = h('select', { id: 'goalsport', 'aria-label': 'Sportart', onchange: e => { g.sport = e.target.value; } }, opt(['', 'Alle Sportarten']),
-      // 2.19.0: feste Gruppen nur noch für vorhandene Ziele; eigene Statistik-Gruppen; ein Ziel mit gelöschter Gruppe bleibt sichtbar (zählt keine Tour); jede Aktivität nach Kategorien
+      // 2.19.0: feste Gruppen nur noch für vorhandene Ziele; eigene Statistik-Gruppen; ein Ziel mit gelöschter Gruppe bleibt sichtbar (zählt keine Tour); jede Sportart nach Kategorien
       [['grp:bike', 'Rad (alle Arten)'], ['grp:foot', 'Wandern und Bergsteigen'], ['grp:ski', 'Ski (alle Arten)'], ['grp:run', 'Laufen (alle Arten)']].filter(([v]) => v === g.sport).map(opt),
       gr.length || (StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr)) ? h('optgroup', { label: 'Zusammengefasst' }, StatGruppen.auswahl(gr).map(opt),
         StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr) ? opt([g.sport, 'Gelöschte Gruppe']) : null) : null,

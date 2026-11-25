@@ -103,9 +103,9 @@ def main():
             go("#/stats/ziele", "#goals .ygoal"); scan("Ziele"); pg.click("#goaladd"); pg.wait_for_selector("#goalsave"); pg.click("#goalsave"); pg.wait_for_timeout(250); scan("Ziele, Blatt"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             go("#/stats/rekorde", "#bestwerte .li"); pg.click("#bestwerte .seg button:has-text('Beste drei')"); pg.wait_for_timeout(300); scan("Bestwerte, beste drei"); pg.click("#bestwerte .seg button:text-is('Beste')"); pg.wait_for_timeout(200)
             go("#/settings", "#homeset"); scan("Einstellungen, Startseite")
-            go("#/settings", "#akt-box"); pg.locator("#akt-katalog").scroll_into_view_if_needed(); scan("Einstellungen, Aktivitäten-Katalog (2.19.0)")
+            go("#/settings", "#akt-box"); pg.locator("#akt-katalog").scroll_into_view_if_needed(); scan("Einstellungen, Sportarten-Katalog (2.19.0)")
             go("#/settings", "#sg-vorschlag-berg"); pg.click("#sg-vorschlag-berg"); pg.wait_for_selector("#sg-grp-0"); pg.click("#sg-add"); pg.wait_for_timeout(250); scan("Einstellungen, Statistik-Gruppen und Favoriten (2.19.0)")      # gesperrte Sportarten, Hinweis einer unfertigen Gruppe
-            pg.evaluate("Set_.set('statGruppen', [])"); go("#/rec", ".bigstart"); pg.click("#rec-mehr"); pg.wait_for_selector("#rec-alle"); scan("Aufnehmen, alle Aktivitäten (2.19.0)"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
+            pg.evaluate("Set_.set('statGruppen', [])"); go("#/rec", ".bigstart"); pg.click("#rec-mehr"); pg.wait_for_selector("#rec-alle"); scan("Aufnehmen, alle Sportarten (2.19.0)"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(250)
             # 2.11.0: Offline-Karten (Liste mit unvollständiger Karte, Schätzung über der Grenze)
             pg.evaluate(T.OFF_MOCK)
             pg.evaluate("""() => { __off.areas = [{ id: 'a1', name: 'Karwendel', src: 'topo', kind: 'rect', zmin: 10, zmax: 15, tiles: 1234, have: 1200, bytes: 29e6, date: Date.now(), complete: false },

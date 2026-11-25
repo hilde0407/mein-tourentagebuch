@@ -56,9 +56,9 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     flugVideo: {},      // 2.17.0: letzte Wahl in „Video erzeugen“ (Auflösung, Format, Länge, Bildrate, Darstellung, Einblendungen; js/v-flugvideo.js)
     flugStufe: '',      // 2.16.0: Darstellung des 3D-Flugs ('fluessig' | 'normal' | 'schoen'; leer = Vorgabe, auf Handys „Flüssig“, js/calc-flug.js)
     pdfKarte: true,      // 2.6.0: Karte (OpenStreetMap-Kacheln) im Tour-PDF; aus = Streckenskizze wie in 2.5.0
-    statGruppen: [],      // 2.19.0: Statistik-Gruppen [{id, name, sports}] – selbst angelegte Zusammenfassungen; leer = jede Aktivität für sich (js/calc-statgruppen.js)
-    favAkt: ['hike', 'run', 'bike', 'skitour', 'mtb'],      // 2.19.0: Favoriten-Aktivitäten für „Tour aufnehmen“ (geordnet, höchstens 12; js/calc-aktivitaeten.js)
-    recSport: '',      // 2.19.0: zuletzt beim Aufnehmen gewählte Aktivität (bleibt vorgewählt)
+    statGruppen: [],      // 2.19.0: Statistik-Gruppen [{id, name, sports}] – selbst angelegte Zusammenfassungen; leer = jede Sportart für sich (js/calc-statgruppen.js)
+    favAkt: ['hike', 'run', 'bike', 'skitour', 'mtb'],      // 2.19.0: Favoriten-Sportarten für „Tour aufnehmen“ (geordnet, höchstens 12; js/calc-aktivitaeten.js)
+    recSport: '',      // 2.19.0: zuletzt beim Aufnehmen gewählte Sportart (bleibt vorgewählt)
   },
   async load() {
     this.v = Object.assign({}, this.defaults, await DB.kvGet('settings', {}));

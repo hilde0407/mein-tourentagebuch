@@ -3,15 +3,15 @@ Views['/stats'] = async (root, [tab0]) => {
   const all = (await Tours.list()).filter(Jahr.zaehlt);      // gleiche Filterregel und Kennzahlen wie der Jahresrückblick (calc-jahr.js)
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
   let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'vergleich', 'kalender', 'auswertung', 'ziele', 'fitness'].includes(tab0) ? tab0 : tab0 === 'bestwerte' ? 'rekorde' : 'ueber';
-  const gr = StatGruppen.aktuell();      // 2.19.0: eigene Statistik-Gruppen (Einstellungen → Aktivitäten → Statistik-Gruppen)
+  const gr = StatGruppen.aktuell();      // 2.19.0: eigene Statistik-Gruppen (Einstellungen → Sportarten → Statistik-Gruppen)
   const body = h('div', { class: 'pad' });
   root.append(topbar('Statistik', { back: true }), body);
   const draw = () => {
     body.innerHTML = '';
     const sel = h('select', { 'aria-label': 'Zeitraum', onchange: e => { year = e.target.value === 'all' ? 'all' : +e.target.value; draw(); } }, h('option', { value: 'all', selected: year === 'all' }, 'Gesamt'), years.map(y => h('option', { value: y, selected: y === year }, y)));
-    // 2.19.0: jede Aktivität einzeln (nach Kategorien), dazu die selbst angelegten Statistik-Gruppen; keine festen Gruppen mehr („Ski (alle Arten)“ entfällt)
+    // 2.19.0: jede Sportart einzeln (nach Kategorien), dazu die selbst angelegten Statistik-Gruppen; keine festen Gruppen mehr („Ski (alle Arten)“ entfällt)
     const ss = h('select', { 'aria-label': 'Sportart', onchange: e => { sport = e.target.value; draw(); } }, h('option', { value: '' }, 'Alle Sportarten'),
-      gr.length ? h('optgroup', { label: 'Zusammengefasst' }, StatGruppen.auswahl(gr).map(([v, l]) => h('option', { value: v, selected: v === sport }, l))) : null,
+      gr.length ? h('optgroup', { label: 'Zusammengefasst' }, StatGruppen.auswahl(gr).map(([v, l, ti]) => h('option', { value: v, selected: v === sport, title: ti }, l))) : null,
       Sports.kategorien(sport).map(([kid, knm, list]) => h('optgroup', { label: knm }, list.map(s => h('option', { value: s[0], selected: s[0] === sport }, s[1])))));
     if (tab === 'vergleich') body.append(h('div', { class: 'row' }, ss));      // 2.13.0: der Vergleich wählt seine zwei Jahre selbst; die Sportart gilt
     else if (tab !== 'ziele' && tab !== 'fitness') body.append(h('div', { class: 'row' }, sel, ss));      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
@@ -36,7 +36,7 @@ Views['/stats'] = async (root, [tab0]) => {
     }
     const bs = {}; ts.forEach(t => { const k = StatGruppen.schluessel(t.sport, gr); bs[k] = (bs[k] || 0) + t.dist; });      // 2.19.0: Gruppenmitglieder in einer Zeile
     const tot = Object.values(bs).reduce((a, b) => a + b, 0) || 1;
-    body.append(h('h3', null, 'Sportarten'), h('div', { class: 'hbars', id: 'st-sport' }, Object.entries(bs).sort((a, b) => b[1] - a[1]).map(([k, v]) => h('div', { class: 'hb', 'data-sport': k }, h('span', null, StatGruppen.icon(k, gr) + ' ' + StatGruppen.name(k, gr)), h('div', null, h('i', { style: { width: (v / tot * 100) + '%', background: MapKit.sportColor[StatGruppen.farbSport(k, gr)] } })), h('b', null, F.km(v))))));
+    body.append(h('h3', null, 'Sportarten'), h('div', { class: 'hbars', id: 'st-sport' }, Object.entries(bs).sort((a, b) => b[1] - a[1]).map(([k, v]) => h('div', { class: 'hb', 'data-sport': k, title: StatGruppen.titel(k, gr) || null }, h('span', null, StatGruppen.icon(k, gr) + ' ' + StatGruppen.beschriftung(k, gr)), h('div', null, h('i', { style: { width: (v / tot * 100) + '%', background: MapKit.sportColor[StatGruppen.farbSport(k, gr)] } })), h('b', null, F.km(v))))));
     // Puls: Mittelwerte und die Zeit in den Pulszonen über alle Touren des Zeitraums
     const hts = ts.filter(t => t.hrAvg);
     if (hts.length) {

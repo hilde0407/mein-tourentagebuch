@@ -3,7 +3,7 @@
    Eine Sicherung enthält Touren, Spuren, Foto-Einträge und die Merkliste (kv) ohne Zugangsdaten und ohne Zwischenspeicher.
    Beim Einspielen kommen auch die eigenen Angaben zurück: Ziele, Notizen und Links der Planung, Einstellungen (Geburtsjahr, Startseite …), Namen von Reisen.
    2.4.0: auch die Wanderführer (Bücher, Buchstrecken, Titelbilder; kv „guides“, „guidepts:…“, „guidecover:…“) – ohne den Zwischenspeicher des Abgleichs („guideMatch“).
-   2.19.0: Statistik-Gruppen („statGruppen“) und Favoriten-Aktivitäten („favAkt“) stehen in den Einstellungen; ältere App-Versionen übergehen die unbekannten Schlüssel.
+   2.19.0: Statistik-Gruppen („statGruppen“) und Favoriten-Sportarten („favAkt“) stehen in den Einstellungen; ältere App-Versionen übergehen die unbekannten Schlüssel.
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten (auch die Sitzung bei „Meine Touren“, kv „mt“) und Zwischenspeicher. */
@@ -74,7 +74,7 @@ const Backup = {
               if (JSON.stringify(neu) !== JSON.stringify(Set_.v[k])) { Set_.v[k] = neu; ch++; }
               continue;
             }
-            const wert = k === 'favAkt' ? Aktiv.favoriten(e.v[k]) : e.v[k];      // 2.19.0: Favoriten-Aktivitäten bereinigt (unbekannte Sportarten fallen weg)
+            const wert = k === 'favAkt' ? Aktiv.favoriten(e.v[k]) : e.v[k];      // 2.19.0: Favoriten-Sportarten bereinigt (unbekannte Sportarten fallen weg)
             if (JSON.stringify(Set_.v[k]) === JSON.stringify(Set_.defaults[k]) && JSON.stringify(wert) !== JSON.stringify(Set_.defaults[k])) { Set_.v[k] = wert; ch++; }
           }
           if (ch) { await DB.kvSet('settings', Set_.v); n++; }

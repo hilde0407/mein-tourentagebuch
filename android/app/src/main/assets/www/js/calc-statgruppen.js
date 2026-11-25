@@ -2,10 +2,10 @@
 /* 2.19.0: Rechenlogik ohne Oberfläche für die „Statistik-Gruppen“ – Sportarten, die die Statistik zusammengefasst führt (z. B. Wandern + Bergsteigen).
    Eine Gruppe ist {id, name, sports: [Sportart-Schlüssel aus Sports.list]}; die Liste steht in der Einstellung „statGruppen“ (Set_, kv „settings“) und
    reist mit der Sicherung. Grenzen: höchstens 8 Gruppen, Name 1–30 Zeichen, mindestens 2 Sportarten je Gruppe, jede Sportart höchstens in einer Gruppe,
-   nur bekannte Sportarten. Vorgabe: leer – jede Aktivität steht für sich (es gibt keine festen Zusammenfassungen mehr; jeder entscheidet selbst).
+   nur bekannte Sportarten. Vorgabe: leer – jede Sportart steht für sich (es gibt keine festen Zusammenfassungen mehr; jeder entscheidet selbst).
    Ein-Klick-Vorschläge (Wandern + Bergsteigen + Schneeschuh, alle Rad-Arten, alle Ski-Arten) legen nur auf Wunsch eine Gruppe an.
    Die Touren selbst ändern sich nie – nur die Auswertung fasst zusammen. Eine Tour mit einem Schlüssel, der nicht im Katalog steht (z. B. aus einem
-   Zwischenstand von 2.19.0), zählt überall als ihre Rückfall-Aktivität (Sports.anzeige: Gassigehen → Spazieren / Gehen, sonst „Sonstiges“); solche
+   Zwischenstand von 2.19.0), zählt überall als ihre Rückfall-Sportart (Sports.anzeige: Gassigehen → Spazieren / Gehen, sonst „Sonstiges“); solche
    Schlüssel in gespeicherten Gruppen fallen beim Bereinigen still weg.
    Kennung einer Gruppe in Filtern und Zielen: 'sgrp:<id>' (neben den festen Gruppen 'grp:ski', 'grp:bike' …). Eine gelöschte Gruppe passt auf keine Tour
    und heißt „Gelöschte Gruppe“ – nie ein Fehler.
@@ -17,7 +17,7 @@
   const MAX = 8, NAME_MAX = 30, MIN_SPORTS = 2, PREFIX = 'sgrp:';
   /** Ein-Klick-Vorschläge in den Einstellungen – nur Vorschläge, nie automatisch. */
   const VORSCHLAEGE = [
-    { id: 'berg', name: 'Wandern + Berg + Schneeschuh', knopf: 'Wandern + Bergsteigen + Schneeschuh', sports: ['hike', 'mountaineering', 'snowshoe'] },
+    { id: 'berg', name: 'Bergtouren', knopf: 'Wandern + Bergsteigen + Schneeschuh', sports: ['hike', 'mountaineering', 'snowshoe'] },
     { id: 'rad', name: 'Rad', knopf: 'Alle Rad-Arten', sports: ['bike', 'racebike', 'mtb', 'gravel', 'ebike', 'emtb', 'bikepacking'] },
     { id: 'ski', name: 'Ski', knopf: 'Alle Ski-Arten', sports: ['skialpin', 'skitour', 'nordic', 'snowboard', 'ski'] },
   ];
@@ -64,15 +64,43 @@
     return out;
   }
 
+  /* 2.19.1: Ein Gruppenname darf nicht wie eine Sportart des Katalogs heißen („Wandern (zusammengefasst)“ neben „Wandern“ war verwirrend).
+     Verglichen wird ohne Groß-/Kleinschreibung und Leerzeichen. Bestehende Gruppen mit so einem Namen bleiben gültig (sauber() ändert und verwirft nichts,
+     auch nicht beim Einspielen einer Sicherung); der Editor bittet ums Umbenennen und speichert einen neuen solchen Namen nicht (zumSpeichern). */
+  const vergleich = n => String(n == null ? '' : n).toLowerCase().replace(/\s+/g, '');
+  /** Name der Sportart, wie die der Gruppenname heißt, oder ''. */
+  function nameWieAktivitaet(n) {
+    const v = vergleich(nameSauber(n));
+    if (!v) return '';
+    const t = S().katalog.find(x => vergleich(x[1]) === v);
+    return t ? t[1] : '';
+  }
+  /** Was gespeichert wird: der Entwurf, aber eine Gruppe mit einem Namen wie eine Sportart nur, wenn sie schon so gespeichert war
+      (dann bleibt ihr bisheriger Name); eine neue oder so umbenannte Gruppe wird erst nach dem Umbenennen gespeichert (bis dahin: bisheriger Name). */
+  function zumSpeichern(entwurf, gespeichert) {
+    const alt = sauber(gespeichert);
+    const out = [];
+    for (const g of Array.isArray(entwurf) ? entwurf : []) {
+      if (!g || typeof g !== 'object') continue;
+      if (!nameWieAktivitaet(g.name)) { out.push(g); continue; }
+      const vorher = alt.find(x => x.id === g.id);
+      if (vorher) out.push(Object.assign({}, g, { name: vorher.name }));
+    }
+    return sauber(out);
+  }
+
   /** Prüfung für die Oberfläche: je Gruppe (in der Reihenfolge des Entwurfs) ein Hinweis oder ''. Ein Entwurf darf unfertige Gruppen haben;
-      gespeichert wird nur, was sauber() übrig lässt. */
-  function pruefe(list) {
-    const belegt = new Set(), ok = new Set(bekannt());
+      gespeichert wird nur, was zumSpeichern()/sauber() übrig lässt. gespeichert (optional): die gespeicherten Gruppen – für den Hinweis bei älteren Namen. */
+  function pruefe(list, gespeichert) {
+    const belegt = new Set(), ok = new Set(bekannt()), alt = sauber(gespeichert);
     return (Array.isArray(list) ? list : []).map((g, i) => {
       if (i >= MAX) return 'Höchstens ' + MAX + ' Gruppen.';
       const sports = (g && Array.isArray(g.sports) ? g.sports : []).filter(s => ok.has(s) && !belegt.has(s));
       sports.forEach(s => belegt.add(s));
       if (!nameSauber(g && g.name)) return 'Bitte einen Namen eingeben (1 bis ' + NAME_MAX + ' Zeichen).';
+      const wie = nameWieAktivitaet(g.name);
+      if (wie) return 'Name wie eine Sportart („' + wie + '“) – bitte umbenennen, z. B. „' + wie + ' (alle)“. '
+        + (alt.some(x => x.id === g.id) ? 'Bis dahin zählt die Gruppe weiter unter ihrem bisherigen Namen.' : 'Vorher wird die Gruppe nicht gespeichert.');
       if (sports.length < MIN_SPORTS) return 'Mindestens ' + MIN_SPORTS + ' Sportarten wählen – vorher zählt die Gruppe nicht.';
       return '';
     });
@@ -95,6 +123,19 @@
     if (istGruppe(key)) { const g = gruppe(key, gruppen); return g ? g.name : 'Gelöschte Gruppe'; }
     return S().label(key);
   }
+  /** 2.19.1: Beschriftung in Filtern, Zielen und Aufteilungen: Gruppe → „Name = A + B + C“ (mehr als 3 Mitglieder: „A + B + C + …“),
+      gelöschte Gruppe → „Gelöschte Gruppe“, sonst die Sportart. titel(): die volle Liste (für das title-Attribut), sonst ''. */
+  function beschriftung(key, gruppen) {
+    if (!istGruppe(key)) return S().label(key);
+    const g = gruppe(key, gruppen);
+    if (!g) return 'Gelöschte Gruppe';
+    const l = g.sports.map(s => S().label(s));
+    return g.name + ' = ' + (l.length > 3 ? l.slice(0, 3).join(' + ') + ' + …' : l.join(' + '));
+  }
+  function titel(key, gruppen) {
+    const g = istGruppe(key) ? gruppe(key, gruppen) : null;
+    return g ? g.name + ' = ' + g.sports.map(s => S().label(s)).join(' + ') : '';
+  }
   /** Symbol eines Schlüssels: Gruppe → Symbol der ersten Sportart, sonst das der Sportart. */
   function icon(key, gruppen) {
     if (istGruppe(key)) { const g = gruppe(key, gruppen); return S().icon(g ? g.sports[0] : 'other'); }
@@ -105,7 +146,7 @@
 
   /** Passt eine Tour dieser Sportart zur Auswahl sel? '' = alle, 'sgrp:<id>' = eigene Gruppe (gelöscht: keine), 'grp:<x>' = feste Gruppe
       (grp:ski, grp:bike, grp:foot, grp:run wie in calc-planhilfe.js), sonst genau die Sportart. Schlüssel außerhalb des Katalogs (an der Tour oder in der
-      Auswahl, z. B. ein älteres Ziel) zählen als ihre Rückfall-Aktivität. */
+      Auswahl, z. B. ein älteres Ziel) zählen als ihre Rückfall-Sportart. */
   function passt(sel, sport, gruppen) {
     if (!sel) return true;
     const k = S().anzeige(sport);
@@ -116,8 +157,21 @@
   /** Gibt es die Auswahl noch? (Für gespeicherte Filter: sonst zurück auf „Alle“.) */
   const gueltig = (sel, gruppen) => !istGruppe(sel) || !!gruppe(sel, gruppen);
 
-  /** Einträge für Auswahllisten (Sportartfilter, Ziele): [['sgrp:g1', 'Wandern und Bergsteigen (zusammengefasst)'], …]. */
-  function auswahl(gruppen) { return (gruppen || []).map(g => [PREFIX + g.id, g.name + ' (zusammengefasst)']); }
+  /** Einträge für Auswahllisten (Sportartfilter, Ziele): [['sgrp:g1', 'Bergtouren = Wandern + Bergsteigen', volle Liste], …] (2.19.1, bis 2.19.0 „… (zusammengefasst)“). */
+  function auswahl(gruppen) { return (gruppen || []).map(g => [PREFIX + g.id, beschriftung(PREFIX + g.id, gruppen), titel(PREFIX + g.id, gruppen)]); }
+
+  /** 2.19.1: Die eine Auswahl für Sportart-Chips (Karte, Tourenliste): nur Sportarten, die in den Touren vorkommen (Schlüssel außerhalb des Katalogs
+      über ihren Rückfall), in Katalog-Reihenfolge nach Kategorien; davor die Statistik-Gruppen, von denen mindestens ein Mitglied vorkommt.
+      sports: die Sportarten der Touren. Rückgabe { gruppen: [{ key, label, titel, sports }], kategorien: [{ id, name, items: [{ key, label, icon }] }] }.
+      Gewählt wird mit passt(key, tour.sport, gruppen). */
+  function chipAuswahl(sports, gruppen) {
+    const da = new Set((sports || []).map(x => S().anzeige(x)));
+    const gr = (gruppen || []).filter(g => g.sports.some(x => da.has(x)))
+      .map(g => ({ key: PREFIX + g.id, label: beschriftung(PREFIX + g.id, gruppen), titel: titel(PREFIX + g.id, gruppen), sports: g.sports.slice() }));
+    const kategorien = S().kategorien(da.has('ski') ? 'ski' : undefined).map(([id, name, list]) => ({ id, name, items: list.filter(x => da.has(x[0])).map(x => ({ key: x[0], label: x[1], icon: x[2] })) }))
+      .filter(k => k.items.length);
+    return { gruppen: gr, kategorien };
+  }
 
   /** Touren nach Schlüssel aufteilen (Gruppen zusammengefasst): Map Schlüssel → Touren, in der Reihenfolge des ersten Auftretens. */
   function aufteilen(ts, gruppen) {
@@ -130,7 +184,7 @@
       jede andere Sportart steht für sich (2.19.0: keine festen Gruppen mehr). */
   function rueckblickZeile(sport, gruppen) {
     const g = gruppeVon(sport, gruppen);
-    if (g) return [PREFIX + g.id, g.name];
+    if (g) return [PREFIX + g.id, beschriftung(PREFIX + g.id, gruppen)];
     const k = S().anzeige(sport);
     if (k === 'other') return ['sonst', 'Sonstiges'];
     return [k, S().label(k)];
@@ -166,7 +220,7 @@
     return cacheWert;
   }
 
-  const api = { MAX, NAME_MAX, MIN_SPORTS, PREFIX, VORSCHLAEGE, nameSauber, neueId, sauber, pruefe, gruppeVon, gruppe, istGruppe, schluessel, name, icon, farbSport,
+  const api = { MAX, NAME_MAX, MIN_SPORTS, PREFIX, VORSCHLAEGE, nameSauber, neueId, sauber, pruefe, nameWieAktivitaet, zumSpeichern, beschriftung, titel, chipAuswahl, gruppeVon, gruppe, istGruppe, schluessel, name, icon, farbSport,
     passt, gueltig, auswahl, aufteilen, rueckblickZeile, vorschlaege, einspielen, ausSicherung, aktuell };
   if (node) module.exports = api; else root.StatGruppen = api;
 })(typeof window !== 'undefined' ? window : globalThis);

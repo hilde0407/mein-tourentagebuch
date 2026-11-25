@@ -54,11 +54,11 @@ Views['/jahr'] = async (root, [param]) => {
   }
 
   // Nach Sportart
-  const spr = d.sportarten.map(g => h('div', { class: 'jsp', 'data-sport': g.key },
+  const spr = d.sportarten.map(g => h('div', { class: 'jsp', 'data-sport': g.key, title: StatGruppen.titel(g.key, StatGruppen.aktuell()) || null },
     h('div', { class: 'jsp-h' }, h('b', null, g.label), h('span', null, JahrUI.pct(g.anteil))),
     h('div', { class: 'jsp-b', 'aria-hidden': 'true' }, h('i', { style: { width: Math.max(1.5, g.anteil * 100) + '%' } })),
     h('small', null, [JahrUI.touren(g.n), g.dist ? F.km(g.dist) : null, g.up ? '↑ ' + F.m(g.up) : null].filter(Boolean).join(' · '))));
-  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Zusammengefasst nach deinen Statistik-Gruppen (Einstellungen → Aktivitäten).' : 'Jede Aktivität für sich – zusammenfassen lässt sich unter Einstellungen → Aktivitäten → Statistik-Gruppen.') }));
+  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Zusammengefasst nach deinen Statistik-Gruppen (Einstellungen → Sportarten).' : 'Jede Sportart für sich – zusammenfassen lässt sich unter Einstellungen → Sportarten → Statistik-Gruppen.') }));
 
   // Höhepunkte
   const hp = d.hoehepunkte, rows = [];

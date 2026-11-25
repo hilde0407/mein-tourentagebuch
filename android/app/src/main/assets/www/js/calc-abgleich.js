@@ -50,7 +50,7 @@
       gelten als gleich – so stellt ein Abgleich nie still um und zeigt keinen Unterschied. Umstellen geht nur auf Knopfdruck (Schneeschuh) oder von Hand. */
   function sportGleich(a, b) {
     if (a === b || BIS_2_18[a] === b || BIS_2_18[b] === a) return true;
-    // Schlüssel außerhalb des Katalogs (z. B. Gassigehen aus einem Zwischenstand) gelten als gleich mit ihrer Rückfall-Aktivität – die Tour bleibt unverändert.
+    // Schlüssel außerhalb des Katalogs (z. B. Gassigehen aus einem Zwischenstand) gelten als gleich mit ihrer Rückfall-Sportart – die Tour bleibt unverändert.
     const S = typeof module !== 'undefined' && module.exports ? require('./parse.js').Sports : (typeof Sports !== 'undefined' ? Sports : root.Sports);      // eslint-disable-line no-undef
     if (!S || !S.anzeige || (S.bekannt(a) && S.bekannt(b))) return false;
     const x = S.anzeige(a), y = S.anzeige(b);

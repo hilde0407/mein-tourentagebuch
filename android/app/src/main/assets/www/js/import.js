@@ -1,7 +1,7 @@
 'use strict';
 /* Import aus Dateien und Diensten (Komoot, Strava, Zepp/Amazfit, Dateien, Link, Ordner). */
 const Import = {
-  /** Gemeinsamer Abschluss: parst Daten und speichert alle Aktivitäten. */
+  /** Gemeinsamer Abschluss: parst Daten und speichert alle Sportarten. */
   async fromData(name, data, src, extra) {
     const acts = await Parse.any(name, data);
     const res = { added: 0, dup: 0, fail: 0 };
@@ -573,7 +573,7 @@ const Import = {
         return { lat: LA[i] / 1e8, lon: LO[i] / 1e8, ele: e > -500 && e < 9000 ? e : null, t: (start + t) * 1000, hr: HR ? Parse.hr(HR[i]) : null };
       });
     },
-    /** Gleiche Aktivität wie eine vorhandene Tour (auch aus Komoot oder Datei)? Gleicher Start (±5 min) oder gleiche Strecke und Dauer. */
+    /** Gleiche Sportart wie eine vorhandene Tour (auch aus Komoot oder Datei)? Gleicher Start (±5 min) oder gleiche Strecke und Dauer. */
     match(s, tours) {
       const st = parseInt(s.trackid, 10) * 1000, dist = parseFloat(s.dis) || 0, dur = parseFloat(s.run_time) || 0;
       for (const t of tours) {
@@ -586,7 +586,7 @@ const Import = {
       }
       return null;
     },
-    /** opts.ele (Vorgabe an, 2.1.0): Passt eine Aktivität zu einer vorhandenen Tour aus anderer Quelle (Komoot, Datei, Aufzeichnung), bekommt deren Spur
+    /** opts.ele (Vorgabe an, 2.1.0): Passt eine Sportart zu einer vorhandenen Tour aus anderer Quelle (Komoot, Datei, Aufzeichnung), bekommt deren Spur
         die Barometerhöhen der Uhr (wie „Höhe aus Uhr abgleichen“, rückholbar über „Originalhöhen wiederherstellen“) – aber nur, wenn die Tour noch keine
         Uhr-Höhen hat, nicht mit dem Geländemodell korrigiert wurde und es nicht schon einmal versucht wurde (Tour.zele). */
     async importAll(acc, onProgress, opts) {

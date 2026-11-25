@@ -84,7 +84,7 @@ const ICONS = {
   skitour: '<circle cx="9" cy="5" r="1.8"/><path d="M9 8.5l-1 4 3 2.5.5 4M3 18l15-5M8 12.5L5 10.5M14 21l3.5-7 3.5 7z"/>',
   nordic: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-1 4-4.5 4M11.5 12l4.5 3.5 4-1M3 20h8M13 18.5h8M12 8l5 3M8 10l4-2"/>',
   snowshoe: '<circle cx="13" cy="4.5" r="1.8"/><path d="M13 8l-3 4 2 3 .5 3.5M13 8l3 3 2 1M10 12l-2.5 5.5"/><ellipse cx="7" cy="20" rx="3.2" ry="1.4"/><ellipse cx="14" cy="20.5" rx="3.2" ry="1.4"/>',      // 2.19.0: Schneeschuh
-  // 2.19.0: Symbole der neuen Aktivitäten
+  // 2.19.0: Symbole der neuen Sportarten
   wall: '<path d="M4 21V3h16v18"/><circle cx="9" cy="8" r="1"/><circle cx="15" cy="11" r="1"/><circle cx="10" cy="15" r="1"/><circle cx="14" cy="18" r="1"/><path d="M12 3v3"/>',
   nwalk: '<circle cx="12" cy="4.5" r="1.8"/><path d="M12 8l-2.5 4 2 3 1 5M12 8l3 3 2 1M9.5 12l-3 7M5 21l3-10M19 21l-2-9"/>',
   trail: '<circle cx="15" cy="4.5" r="1.8"/><path d="M15 8l-4 3 1 4 2 5M11 11L7 13l-1 4M12 15l5 1M2 21l7-5 4 2 9-6"/>',

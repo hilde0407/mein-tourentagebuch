@@ -230,18 +230,18 @@ Views['/import'] = async root => {
   }
 };
 
-/* 2.19.0: Einstellungen → Aktivitäten → „Statistik-Gruppen“ – die Statistik-Gruppen bearbeiten (Rechnung und Grenzen: js/calc-statgruppen.js).
+/* 2.19.0: Einstellungen → Sportarten → „Statistik-Gruppen“ – die Statistik-Gruppen bearbeiten (Rechnung und Grenzen: js/calc-statgruppen.js).
    Der Entwurf darf unfertige Gruppen enthalten (ohne Namen, unter 2 Sportarten); gespeichert wird nach jeder Änderung, was StatGruppen.sauber() übrig lässt.
    Dazu „Schneeschuh umstellen“: Wandern-Touren mit dem Schlagwort „Schneeschuh“ einmalig auf die Sportart Schneeschuh – nur auf Knopfdruck, rückgängig machbar. */
 const StatGrpUI = {
   box() {
     const box = h('div', { id: 'sg-box' });
     let entwurf = StatGruppen.aktuell().map(g => ({ id: g.id, name: g.name, sports: g.sports.slice() }));
-    const speichern = async () => { await Set_.set('statGruppen', StatGruppen.sauber(entwurf)); };
+    const speichern = async () => { await Set_.set('statGruppen', StatGruppen.zumSpeichern(entwurf, Set_.get('statGruppen'))); };      // 2.19.1: kein neuer Name wie eine Sportart
     const draw = () => {
       box.innerHTML = '';
-      const hinweise = StatGruppen.pruefe(entwurf), roh = StatGruppen.sauber(Set_.get('statGruppen'));
-      box.append(h('p', { class: 'muted small', id: 'sg-stand' }, (roh || []).length ? (roh.length === 1 ? '1 Gruppe' : roh.length + ' Gruppen') + ' – die übrigen Aktivitäten stehen für sich.' : 'Keine Gruppen: jede Aktivität steht in der Statistik für sich.'));
+      const hinweise = StatGruppen.pruefe(entwurf, Set_.get('statGruppen')), roh = StatGruppen.sauber(Set_.get('statGruppen'));
+      box.append(h('p', { class: 'muted small', id: 'sg-stand' }, (roh || []).length ? (roh.length === 1 ? '1 Gruppe' : roh.length + ' Gruppen') + ' – die übrigen Sportarten stehen für sich.' : 'Keine Gruppen: jede Sportart steht in der Statistik für sich.'));
       entwurf.forEach((g, i) => {
         const andere = new Map(); entwurf.forEach((o, j) => { if (j !== i) o.sports.forEach(sp => { if (!andere.has(sp)) andere.set(sp, o.name || 'Gruppe ' + (j + 1)); }); });
         const nameIn = h('input', { type: 'text', maxlength: String(StatGruppen.NAME_MAX), value: g.name, id: 'sg-name-' + i, 'aria-label': 'Name der Gruppe ' + (i + 1), placeholder: 'z. B. Bergtouren', autocapitalize: 'sentences',
@@ -279,7 +279,7 @@ const StatGrpUI = {
           kand.length ? h('button', { class: 'btn', id: 'ss-um', onclick: async () => {
             if (!await confirmBox('Auf Schneeschuh umstellen?', kand.length + (kand.length === 1 ? ' Tour bekommt' : ' Touren bekommen') + ' die Sportart Schneeschuh. Das Schlagwort bleibt. Von Hand gewählte Sportarten bleiben unverändert. Rückgängig machbar.', 'Umstellen')) return;
             for (const t of kand) await DB.put('tours', Abgleich.schneeschuhUmstellen(t));
-            Tours.invalidate(); toast(kand.length + (kand.length === 1 ? ' Tour' : ' Touren') + ' umgestellt'); draw(); } }, 'Schneeschuh-Touren als Aktivität Schneeschuh führen') : null,
+            Tours.invalidate(); toast(kand.length + (kand.length === 1 ? ' Tour' : ' Touren') + ' umgestellt'); draw(); } }, 'Schneeschuh-Touren als Sportart Schneeschuh führen') : null,
           zur.length ? h('button', { class: 'btn', id: 'ss-zurueck', onclick: async () => {
             if (!await confirmBox('Umstellung rückgängig machen?', zur.length + (zur.length === 1 ? ' Tour wird' : ' Touren werden') + ' wieder Wandern (mit dem Schlagwort „Schneeschuh“).', 'Rückgängig')) return;
             for (const t of zur) await DB.put('tours', Abgleich.schneeschuhZurueck(t));
@@ -290,7 +290,7 @@ const StatGrpUI = {
   },
 };
 
-/* 2.19.0: Einstellungen → Aktivitäten → „Favoriten für „Tour aufnehmen““ – welche Aktivitäten „Tour aufnehmen“ als Knöpfe anbietet (Rechnung: js/calc-aktivitaeten.js). */
+/* 2.19.0: Einstellungen → Sportarten → „Favoriten für „Tour aufnehmen““ – welche Sportarten „Tour aufnehmen“ als Knöpfe anbietet (Rechnung: js/calc-aktivitaeten.js). */
 const FavUI = {
   box() {
     const box = h('div', { id: 'fav-box' });
@@ -304,7 +304,7 @@ const FavUI = {
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' nach vorn', disabled: i === 0, onclick: () => setze(Aktiv.verschiebe(f, i, -1)) }, '↑'),
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' nach hinten', disabled: i === f.length - 1, onclick: () => setze(Aktiv.verschiebe(f, i, 1)) }, '↓'),
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' entfernen', onclick: () => setze(Aktiv.umschalten(f, k)) }, '✕')))), { id: 'fav-liste' })
-        : h('p', { class: 'muted small', id: 'fav-leer' }, 'Keine Favoriten – beim Aufnehmen steht dann nur die zuletzt benutzte Aktivität und „Mehr …“.'),
+        : h('p', { class: 'muted small', id: 'fav-leer' }, 'Keine Favoriten – beim Aufnehmen steht dann nur die zuletzt benutzte Sportart und „Mehr …“.'),
         h('p', { class: 'muted small', id: 'fav-zahl', 'aria-live': 'polite' }, f.length + ' von höchstens ' + Aktiv.MAX + ' gewählt.'),
         ...Sports.kategorien().map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports', role: 'group', 'aria-label': 'Favoriten: ' + knm }, list.map(([k, l, ic]) =>
           h('label', { class: 'sg-sp' + (!f.includes(k) && f.length >= Aktiv.MAX ? ' off' : ''), 'data-sport': k },
@@ -317,8 +317,8 @@ const FavUI = {
   },
 };
 
-/* 2.19.0: Einstellungen → Aktivitäten → „Katalog“: die Aktivitäten nach Kategorien, mit Symbol und Kartenfarbe (nur zum Ansehen; Tabelle in js/parse.js).
-   Darunter, falls vorhanden: Touren mit einer Aktivität, die nicht (mehr) im Katalog steht – sie bleiben unverändert und zählen als ihre Rückfall-Aktivität. */
+/* 2.19.0: Einstellungen → Sportarten → „Katalog“: die Sportarten nach Kategorien, mit Symbol und Kartenfarbe (nur zum Ansehen; Tabelle in js/parse.js).
+   Darunter, falls vorhanden: Touren mit einer Sportart, die nicht (mehr) im Katalog steht – sie bleiben unverändert und zählen als ihre Rückfall-Sportart. */
 const KatalogUI = {
   box() {
     const farben = Sports.farben();
@@ -334,10 +334,10 @@ const KatalogUI = {
       for (const t of await DB.all('tours')) if (t && !Sports.bekannt(t.sport)) zahl[t.sport] = (zahl[t.sport] || 0) + 1;
       const ks = Object.keys(zahl).sort();
       if (!ks.length) return;
-      alt.append(h('h4', null, 'Ältere Aktivitäten in deinen Touren'),
-        h('p', { class: 'muted small' }, 'Diese Touren tragen eine Aktivität, die nicht im Katalog steht. Sie bleiben, wie sie sind, und zählen in Anzeige, Statistik und Zielen als:'),
+      alt.append(h('h4', null, 'Ältere Sportarten in deinen Touren'),
+        h('p', { class: 'muted small' }, 'Diese Touren tragen eine Sportart, die nicht im Katalog steht. Sie bleiben, wie sie sind, und zählen in Anzeige, Statistik und Zielen als:'),
         h('ul', { class: 'akt-altl' }, ks.map(k => h('li', { 'data-sport': k }, '„' + k + '“ (' + zahl[k] + (zahl[k] === 1 ? ' Tour' : ' Touren') + ') → ' + Sports.label(k)))),
-        h('p', { class: 'muted small' }, 'Ändern kannst du die Aktivität an der Tour (Aktionen → Sportart ändern).'));
+        h('p', { class: 'muted small' }, 'Ändern kannst du die Sportart an der Tour (Aktionen → Sportart ändern).'));
     })().catch(e => console.error('Katalog', e));
     return box;
   },
@@ -395,7 +395,7 @@ Views['/settings'] = async root => {
   const zeigeVg = async () => { const sc = await VideoGalerie.stand(); vgStand.textContent = VideoGalerie.zeile(sc); const b = $('#set-vgalcopy'); if (b) b.disabled = !(sc && sc.supported && sc.n); };
   const nT = await DB.count('tours'), nP = await DB.count('photos');
   /* 2.19.0: Einstellungen neu geordnet – Bereiche (h2) mit einheitlichen Karten (h3, eine Erklärzeile, dann Schalter/Felder, Hinweise klein darunter).
-     Gliederung wie die Verwaltung von „Meine Touren“: Zusammenarbeit · Aktivitäten (Katalog, Favoriten, Statistik-Gruppen) · Karte und Planung ·
+     Gliederung wie die Verwaltung von „Meine Touren“: Zusammenarbeit · Sportarten (Katalog, Favoriten, Statistik-Gruppen) · Karte und Planung ·
      Aufnahme, Fotos und Videos · Persönliches und Startseite · Datensicherung · Über die App. */
   const hint = t => h('p', { class: 'muted small' }, t);
   const karte = (id, hid, titel, text, ...kids) => h('section', { class: 'card set-k', id }, h('h3', { id: hid }, titel), text ? h('p', { class: 'muted small set-t' }, text) : null, ...kids);
@@ -403,15 +403,15 @@ Views['/settings'] = async root => {
   const bereich = (id, titel, text, ...karten) => { BEREICHE.push([id, titel]); return h('section', { class: 'set-g', id }, h('h2', null, titel), text ? h('p', { class: 'muted small set-gt' }, text) : null, ...karten); };
   const gruppen = [
     bereich('set-g-mt', 'Zusammenarbeit', null, MT.einstellung()),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
-    bereich('set-g-akt', 'Aktivitäten', 'Welche Aktivitäten es gibt, welche beim Aufnehmen vorn stehen und welche die Statistik zusammen zählt.',
-      karte('akt-katalog', 'akt-katalog-h', 'Katalog', 'Alle ' + Sports.katalog.length + ' Aktivitäten nach Kategorien, mit Symbol und Kartenfarbe. Jede Tour behält ihre Aktivität.',
+    bereich('set-g-akt', 'Sportarten', 'Welche Sportarten es gibt, welche beim Aufnehmen vorn stehen und welche die Statistik zusammen zählt.',
+      karte('akt-katalog', 'akt-katalog-h', 'Katalog', 'Alle ' + Sports.katalog.length + ' Sportarten nach Kategorien, mit Symbol und Kartenfarbe. Jede Tour behält ihre Sportart.',
         KatalogUI.box(),
         h('h4', { id: 'ss-h' }, 'Ältere Schneeschuh-Touren'),
-        hint('Seit 2.19.0 ist Schneeschuhwandern eine eigene Aktivität. Ältere Touren waren Wandern mit dem Schlagwort „Schneeschuh“ – sie lassen sich hier als Schneeschuhwandern führen (rückgängig machbar, das Schlagwort bleibt).'),
+        hint('Seit 2.19.0 ist Schneeschuhwandern eine eigene Sportart. Ältere Touren waren Wandern mit dem Schlagwort „Schneeschuh“ – sie lassen sich hier als Schneeschuhwandern führen (rückgängig machbar, das Schlagwort bleibt).'),
         StatGrpUI.schneeschuh()),
-      karte('akt-fav', 'fav-h', 'Favoriten für „Tour aufnehmen“', 'Diese Aktivitäten stehen bei „Tour aufnehmen“ als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
+      karte('akt-fav', 'fav-h', 'Favoriten für „Tour aufnehmen“', 'Diese Sportarten stehen bei „Tour aufnehmen“ als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
         FavUI.box()),
-      karte('akt-sg', 'sg-h', 'Statistik-Gruppen', 'Jede Aktivität steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen („… (zusammengefasst)“). Jede Aktivität kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Aktivität.',
+      karte('akt-sg', 'sg-h', 'Statistik-Gruppen', 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort als „Name = Sportart + Sportart …“. Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (alle)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Sportart.',
         StatGrpUI.box())),
     bereich('set-g-karte', 'Karte und Planung', null,
       karte('set-k-karte', 'set-karte-h', 'Karte', 'Wie Strecken und Karten aussehen und woher die Kacheln kommen.',

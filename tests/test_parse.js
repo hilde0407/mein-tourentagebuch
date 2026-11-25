@@ -13,7 +13,7 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  for (const [s,e] of [['Skifahren','skialpin'],['ski','skialpin'],['Snow','skialpin'],['AlpineSki','skialpin'],['BackcountrySki','skitour'],['NordicSki','nordic'],['Snowshoe','snowshoe'],['Snowboard','snowboard'],['downhill_skiing','skialpin'],
    ['resort_skiing','skialpin'],['backcountry_skiing','skitour'],['cross_country_skiing','nordic'],['Skitouren','skitour'],['ski_mountaineering','skitour'],['Langlauf','nordic'],['Schneeschuhwandern','snowshoe'],
    ['snow_shoe','snowshoe'],['skate skiing','nordic'],['Nordic Walking','nordicwalking'],['nordicwalking','nordicwalking'],['Mountaineering','mountaineering'],['Kitesurf','other'],['Yoga','other']]) A.strictEqual(Sports.norm(s),e,s);
- // 2.19.0: Aktivitäten-Katalog (endgültige Auswahl, 29) – Zuordnungen aus Strava, Garmin, Komoot, Meine Touren; was die App nicht führt, bekommt den Rückfall der Auswahl
+ // 2.19.0: Sportarten-Katalog (endgültige Auswahl, 29) – Zuordnungen aus Strava, Garmin, Komoot, Meine Touren; was die App nicht führt, bekommt den Rückfall der Auswahl
  for (const [s,e] of [['TrailRun','trailrun'],['GravelRide','gravel'],['EMountainBikeRide','emtb'],['InlineSkate','inline'],['Kayaking','kayak'],['Canoeing','kayak'],['Rowing','rowing'],
    ['RockClimbing','climbing'],['Klettersteig','climbing'],['Reiten','horse'],['Dragonboat','dragonboat'],['Skateboard','skateboard'],['Ride','bike'],['e_touringbicycle','ebike'],
    ['Bikepacking','bikepacking'],['bike_packing','bikepacking'],['Paragliding','paraglide'],['Gleitschirmfliegen','paraglide'],['Rafting','rafting'],['Whitewater rafting','rafting'],['Boating','boat'],['Motorboot','boat'],['Bergtour','mountaineering'],
@@ -23,8 +23,8 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
    ['Splitboard','skitour'],['splitboard','skitour'],['Snowmobile','other'],['Rodeln','other'],['sled','other'],['IceSkate','other'],['iceskate','other'],['StandUpPaddling','kayak'],['sup','kayak'],
    ['Sail','other'],['sailing','other'],['Swim','other'],['swim','other'],['Snorkeling','other'],['Scuba diving','other'],['Tauchen','other'],['Surfing','other'],['Wakesurf','other'],['WaterSki','other'],['waterski','other'],
    ['Golf','other'],['Fishing','other'],['Archery','other'],['quad','other'],['atv','other'],['Motorcycle','other'],['motorbike','other'],['Workout','other']]) A.strictEqual(Sports.norm(s),e,s);
- for (const s of ['dogwalk','commute','sup','golf','x','',null,'ski','Snow','Rodeln']) A.ok(Sports.katalog.some(x=>x[0]===Sports.norm(s)),'norm liefert immer eine Katalog-Aktivität: '+s);
- A.ok(Sports.KAT.flatMap(k=>k[2]).sort().join()===Sports.katalog.map(x=>x[0]).sort().join(),'jede Aktivität des Katalogs in genau einer Kategorie');
+ for (const s of ['dogwalk','commute','sup','golf','x','',null,'ski','Snow','Rodeln']) A.ok(Sports.katalog.some(x=>x[0]===Sports.norm(s)),'norm liefert immer eine Katalog-Sportart: '+s);
+ A.ok(Sports.KAT.flatMap(k=>k[2]).sort().join()===Sports.katalog.map(x=>x[0]).sort().join(),'jede Sportart des Katalogs in genau einer Kategorie');
  A.ok(!Sports.kategorien().flatMap(k=>k[2]).some(x=>x[0]==='ski') && Sports.kategorien('ski').flatMap(k=>k[2]).some(x=>x[0]==='ski'),'„Ski (allgemein)“ nur, wenn gewählt');
  A.strictEqual(Sports.label('bike'),'Radtour');A.strictEqual(Sports.katalog.length,29);A.strictEqual(Sports.list.length,30);A.deepStrictEqual(Sports.KAT.map(k=>k[1]),['Zu Fuß','Rad','Winter','Wasser','Outdoor und Sonstige']);A.strictEqual(Sports.label('mountaineering'),'Bergsteigen');A.strictEqual(Sports.label('snowshoe'),'Schneeschuhwandern');
  // 2.19.0: genau die endgültige Auswahl (Reihenfolge je Kategorie wie in aktivitaeten-final.md)
@@ -32,6 +32,12 @@ const gpx=Geo.gpx('Test','hike',[{lat:47,lon:11,ele:500,t:1e12},{lat:47.001,lon:
  A.deepStrictEqual(['walk','climbing','mtb','snowshoe','inline','paraglide','bikepacking','rafting','boat','dragonboat'].map(Sports.label),['Spazieren / Gehen','Klettern / Klettersteig','Mountainbike','Schneeschuhwandern','Inlineskaten / Rollschuh','Gleitschirm','Bikepacking','Rafting','Bootfahren','Drachenboot']);
  {const f=Sports.farben();for(const [k] of Sports.list)A.ok(/^#[0-9a-f]{6}$/.test(f[k]),'Farbe '+k);
   const ICO=require('fs').readFileSync(__dirname+'/../android/app/src/main/assets/www/js/icons.js','utf8');for(const [k,,z] of Sports.list)A.ok(ICO.includes("'"+z.replace(/\ufe0f/g,'')+"':"),'Symbol für '+k+' '+z);}
+ // 2.19.1: Kartenfarben deutlich unterscheidbar (ΔE CIE76 innerhalb einer Kategorie ≥ 20, insgesamt ≥ 12) und auf der hellen Karte mit Kontrast ≥ 3:1
+ {const lin=c=>(c/=255)<=0.04045?c/12.92:((c+0.055)/1.055)**2.4,rgb=x=>[1,3,5].map(i=>parseInt(x.slice(i,i+2),16)),Y=x=>{const [r,g,b]=rgb(x).map(lin);return 0.2126*r+0.7152*g+0.0722*b;};
+  const lab=x=>{const [r,g,b]=rgb(x).map(lin),f=t=>t>0.008856?Math.cbrt(t):7.787*t+16/116,X=(0.4124*r+0.3576*g+0.1805*b)/0.95047,YY=0.2126*r+0.7152*g+0.0722*b,Z=(0.0193*r+0.1192*g+0.9505*b)/1.08883;return [116*f(YY)-16,500*(f(X)-f(YY)),200*(f(YY)-f(Z))];};
+  const de=(a,b)=>Math.hypot(...lab(a).map((v,i)=>v-lab(b)[i])),f=Sports.farben(),kat=k=>Sports.KAT.find(x=>x[2].includes(k))[0],ks=Sports.katalog.map(x=>x[0]);
+  for(const k of ks){const c=(Math.max(Y(f[k]),Y('#f2efe9'))+0.05)/(Math.min(Y(f[k]),Y('#f2efe9'))+0.05);A.ok(c>=3,'Kontrast auf der Karte: '+k+' '+c.toFixed(2));}
+  for(let i=0;i<ks.length;i++)for(let j=i+1;j<ks.length;j++){const d=de(f[ks[i]],f[ks[j]]);A.ok(d>=(kat(ks[i])===kat(ks[j])?20:12),'Farben unterscheidbar: '+ks[i]+'/'+ks[j]+' '+d.toFixed(1));}}
  // Altdaten: entfernte Schlüssel bleiben an der Tour, zählen aber als ihr Rückfall (sonst Sonstiges)
  A.deepStrictEqual(['dogwalk','orienteering','commute','cyclocross','sup','splitboard','bmx','golf','sailing','gibtsnicht',undefined,'ski','hike'].map(Sports.anzeige),['walk','run','bike','racebike','kayak','skitour','other','other','other','other','other','ski','hike']);
  A.strictEqual(Sports.label('dogwalk'),'Spazieren / Gehen');A.strictEqual(Sports.label('sup'),'Kajak / Kanu');A.strictEqual(Sports.label('golf'),'Sonstiges');A.strictEqual(Sports.icon('commute'),Sports.icon('bike'));

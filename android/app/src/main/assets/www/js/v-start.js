@@ -138,7 +138,7 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
     chips.hidden = used.length < 2;      // bei nur einer Sportart gäbe es nichts zu wählen
     if (used.length > 1) {
       chips.append(UI.chip('Alle', !sport, () => { sport = ''; draw(); }));
-      used.forEach(k => chips.append(UI.chip(StatGruppen.name(k, gr), sport === k, () => { sport = sport === k ? '' : k; draw(); })));
+      used.forEach(k => chips.append(UI.chip(StatGruppen.beschriftung(k, gr), sport === k, () => { sport = sport === k ? '' : k; draw(); })));
     }
     const mon = Array(12).fill(0);
     cur.forEach(t => { mon[new Date(t.start).getMonth()] += t.dist; });

@@ -12,7 +12,7 @@ const MapKit = {
     topo: { name: 'Wanderkarte (OpenTopoMap)', url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png', max: 17, attr: '© OpenStreetMap-Mitwirkende, SRTM | © OpenTopoMap (CC-BY-SA)' },
     custom: { name: 'Eigener Kartenserver', url: '', max: 19, attr: 'Kartendaten: siehe Anbieter' },
   },
-  sportColor: Sports.farben(),      // 2.19.0: Kartenfarben aus dem Aktivitäten-Katalog (js/parse.js)
+  sportColor: Sports.farben(),      // 2.19.0: Kartenfarben aus dem Sportarten-Katalog (js/parse.js)
   /** Streckenfarbe: eigene Wahl (Einstellungen) oder die Farbe der Sportart. */
   routeColor(sport, fb) { const c = Set_.get('routeColor'); return /^#[0-9a-f]{6}$/i.test(c || '') ? c : (MapKit.sportColor[sport] || fb || '#2e7d32'); },
   cacheName: 'tiles-v1',

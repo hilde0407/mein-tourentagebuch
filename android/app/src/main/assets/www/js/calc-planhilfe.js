@@ -20,7 +20,7 @@
   const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike', 'gravel', 'emtb', 'bikepacking'], ski: ['ski', 'skialpin', 'skitour', 'nordic', 'snowboard'], foot: ['hike', 'mountaineering', 'snowshoe', 'climbing', 'nordicwalking'], run: ['run', 'trailrun'] };
   /* 2.19.0: Die Gruppen dienen nur noch dem Vergleich ähnlicher Touren (Planungshilfe, „Wie ist es gelaufen?“) und älteren Zielen „grp:…“ – die Statistik fasst
      nichts mehr fest zusammen (eigene Statistik-Gruppen: calc-statgruppen.js). Neue Sportarten stehen bei der Gruppe, zu der sie bis 2.18 gezählt wurden. */
-  /** Schlüssel außerhalb des Katalogs (z. B. Radpendeln aus einem Zwischenstand) wie ihre Rückfall-Aktivität (Sports.anzeige; ohne parse.js unverändert). */
+  /** Schlüssel außerhalb des Katalogs (z. B. Radpendeln aus einem Zwischenstand) wie ihre Rückfall-Sportart (Sports.anzeige; ohne parse.js unverändert). */
   function anz(sport) {
     const S = typeof module !== 'undefined' && module.exports ? require('./parse.js').Sports : (typeof Sports !== 'undefined' ? Sports : root.Sports);      // eslint-disable-line no-undef
     return S && S.anzeige ? S.anzeige(sport) : sport;

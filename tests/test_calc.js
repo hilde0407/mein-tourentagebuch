@@ -481,13 +481,13 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(J.berechne([T('a', 'hike', day(2025, 3, 1), 1000, 0), T('c', 'hike', day(2026, 1, 5), 1000, 0)], 2026, new Date(2026, 1, 1, 12)).vorjahr === null, 'Vorjahr ohne Touren bis zum Stichtag: kein Vergleich');
   ok(J.berechne([T('a', 'hike', day(2025, 12, 1), 1000, 0), T('c', 'hike', day(2026, 1, 5), 1000, 0)], 2026, new Date(2026, 0, 10)).vorjahr === null, 'Vorjahr hat erst später im Jahr Touren: kein Vergleich im Januar');
 
-  // Sportarten (2.19.0): ohne eigene Gruppen steht jede Aktivität für sich; mit den drei Vorschlägen (Wandern+Bergsteigen+Schneeschuh, Rad, Ski) wie die festen Gruppen bis 2.18
+  // Sportarten (2.19.0): ohne eigene Gruppen steht jede Sportart für sich; mit den drei Vorschlägen (Wandern+Bergsteigen+Schneeschuh, Rad, Ski) wie die festen Gruppen bis 2.18
   const S = [T('w1', 'hike', day(2026, 1, 10), 10000, 300, { tags: ['Schneeschuh'] }), T('w2', 'walk', day(2026, 1, 11), 2000, 10), T('w3', 'mountaineering', day(2026, 1, 12), 6000, 900),
     T('r1', 'mtb', day(2026, 5, 1), 40000, 800), T('r2', 'ebike', day(2026, 5, 2), 20000, 200), T('l1', 'run', day(2026, 6, 1), 10000, 50),
     T('s1', 'skitour', day(2026, 2, 1), 9000, 1200), T('s2', 'nordic', day(2026, 2, 2), 3000, 20), T('s3', 'ski', day(2026, 2, 3), 1000, 0), T('o1', 'other', day(2026, 7, 1), 1000, 0), T('o2', 'unbekannt', day(2026, 7, 2), 1000, 0)];
   const sp0 = J.nachSportart(S);
   eq(sp0.map(g => [g.key, g.label, g.n]), [['mtb', 'Mountainbike', 1], ['ebike', 'E-Bike', 1], ['hike', 'Wandern', 1], ['run', 'Laufen', 1], ['skitour', 'Skitour', 1], ['mountaineering', 'Bergsteigen', 1],
-    ['nordic', 'Langlauf', 1], ['sonst', 'Sonstiges', 2], ['walk', 'Spazieren / Gehen', 1], ['ski', 'Ski (allgemein)', 1]], 'ohne Gruppen: jede Aktivität einzeln, nach Strecke');
+    ['nordic', 'Langlauf', 1], ['sonst', 'Sonstiges', 2], ['walk', 'Spazieren / Gehen', 1], ['ski', 'Ski (allgemein)', 1]], 'ohne Gruppen: jede Sportart einzeln, nach Strecke');
   const SGm = require(W + 'calc-statgruppen.js'), vor = SGm.vorschlaege([]);
   const sp = J.nachSportart(S.concat([T('w4', 'snowshoe', day(2026, 1, 13), 0, 0, { tags: ['Schneeschuh'] })]), vor);
   eq(sp.map(g => [g.key, g.n]), [['sgrp:rad', 2], ['sgrp:berg', 3], ['sgrp:ski', 3], ['run', 1], ['sonst', 2], ['walk', 1]], 'mit den Vorschlägen: zusammengefasst nach Strecke');
@@ -1692,7 +1692,7 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(!SG.passt('sgrp:weg', 'hike', G) && !SG.gueltig('sgrp:weg', G) && SG.gueltig('sgrp:berg', G) && SG.gueltig('hike', G) && SG.name('sgrp:weg', G) === 'Gelöschte Gruppe', 'gelöschte Gruppe: passt auf nichts, kein Fehler');
   ok(SG.passt('grp:ski', 'nordic', G) && !SG.passt('grp:ski', 'hike', G) && SG.passt('grp:bike', 'ebike', G) && SG.passt('hike', 'hike', G) && !SG.passt('hike', 'snowshoe', G), 'feste Gruppen und einzelne Sportarten wie bisher');
   ok(Sports.passt('grp:ski', 'ski', []) && Sports.passt('sgrp:berg', 'hike', G) && !Sports.passt('sgrp:berg', 'run', G) && !Sports.passt('sgrp:wandern', 'hike') && Sports.passt('snowshoe', 'snowshoe'), 'Sports.passt nutzt dieselbe Regel (Vorgabe: keine Gruppen)');
-  eq(SG.auswahl(G), [['sgrp:berg', 'Bergtouren (zusammengefasst)']]);
+  eq(SG.auswahl(G), [['sgrp:berg', 'Bergtouren = Wandern + Bergsteigen', 'Bergtouren = Wandern + Bergsteigen']]);      // 2.19.1 (bis 2.19.0 „… (zusammengefasst)“)
   ok(SG.schluessel('hike', G) === 'sgrp:berg' && SG.schluessel('run', G) === 'run' && SG.icon('sgrp:berg', G) === Sports.icon('hike') && SG.farbSport('sgrp:berg', G) === 'hike', 'Schlüssel, Symbol, Farbe');
 
   // Vorgabe: keine Gruppen (jeder entscheidet selbst); Vorschläge nur auf Wunsch
@@ -1706,12 +1706,12 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(SG.vorschlaege(Array.from({ length: 8 }, (_, i) => ({ id: 'x' + i, name: 'x', sports: [] }))).length === 0, 'keine Vorschläge bei 8 Gruppen');
   const ST = VS;
 
-  // Jahresrückblick: ohne Gruppen jede Aktivität für sich; mit Vorschlägen bzw. eigenen Gruppen zusammengefasst
+  // Jahresrückblick: ohne Gruppen jede Sportart für sich; mit Vorschlägen bzw. eigenen Gruppen zusammengefasst
   const Y = [T('h', 'hike', day(2026, 1, 10), 10000, 300), T('ss', 'snowshoe', day(2026, 1, 11), 5000, 200, { tags: ['Schneeschuh'] }), T('w', 'walk', day(2026, 1, 12), 2000, 10),
     T('m', 'mountaineering', day(2026, 1, 13), 6000, 900), T('b1', 'mtb', day(2026, 5, 1), 30000, 500), T('b2', 'ebike', day(2026, 5, 2), 20000, 200), T('r', 'run', day(2026, 6, 1), 8000, 50), T('st', 'skitour', day(2026, 2, 1), 9000, 1200)];
-  eq(J.nachSportart(Y).map(g => g.key), ['mtb', 'ebike', 'hike', 'skitour', 'run', 'mountaineering', 'snowshoe', 'walk'], 'ohne Gruppen: jede Aktivität für sich (Skitour, Bergsteigen, Schneeschuh sichtbar)');
+  eq(J.nachSportart(Y).map(g => g.key), ['mtb', 'ebike', 'hike', 'skitour', 'run', 'mountaineering', 'snowshoe', 'walk'], 'ohne Gruppen: jede Sportart für sich (Skitour, Bergsteigen, Schneeschuh sichtbar)');
   eq(J.nachSportart(Y, []), J.nachSportart(Y), 'leere Einstellung = Vorgabe');
-  eq(J.nachSportart(Y, ST).map(g => [g.key, g.label, g.n]), [['sgrp:rad', 'Rad', 2], ['sgrp:berg', 'Wandern + Berg + Schneeschuh', 3], ['sgrp:ski', 'Ski', 1], ['run', 'Laufen', 1], ['walk', 'Spazieren / Gehen', 1]], 'mit den Vorschlägen');
+  eq(J.nachSportart(Y, ST).map(g => [g.key, g.label, g.n]), [['sgrp:rad', 'Rad = Radtour + Rennrad + Mountainbike + …', 2], ['sgrp:berg', 'Bergtouren = Wandern + Bergsteigen + Schneeschuhwandern', 3], ['sgrp:ski', 'Ski = Ski alpin + Skitour + Langlauf + …', 1], ['run', 'Laufen', 1], ['walk', 'Spazieren / Gehen', 1]], 'mit den Vorschlägen');
   const eigene = [{ id: 'berg', name: 'Bergtouren', sports: ['hike', 'mountaineering', 'snowshoe'] }];
   const yr = J.nachSportart(Y, eigene);
   ok(yr.find(g => g.key === 'sgrp:berg').n === 3 && yr.find(g => g.key === 'sgrp:berg').dist === 21000 && yr.some(g => g.key === 'walk' && g.label === 'Spazieren / Gehen') && yr.some(g => g.key === 'mtb') && !yr.some(g => g.key === 'sgrp:rad'), 'eigene Gruppe, der Rest einzeln');
@@ -1768,7 +1768,7 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
     ['e_mtb', 'nordicwalking', 'mountaineering', 'jogging', 'touringbicycle', 'skialpin', 'touringbicycle', null, null, null, null, null], 'neue Sportarten beim Senden');
   eq(['dogwalk', 'orienteering', 'commute', 'cyclocross', 'splitboard', 'sup', 'golf', 'gibtsnicht'].map(k => SE.sport(T('s', k, 0, 1, 0))), ['hike', 'jogging', 'touringbicycle', 'racebike', 'skitour', null, null, null], 'Altschlüssel beim Senden über den Rückfall');
 
-  // Favoriten-Aktivitäten (calc-aktivitaeten.js)
+  // Favoriten-Sportarten (calc-aktivitaeten.js)
   const AK = require(W + 'calc-aktivitaeten.js');
   eq(AK.STANDARD, ['hike', 'run', 'bike', 'skitour', 'mtb']); eq(AK.favoriten(undefined), AK.STANDARD); eq(AK.favoriten('x'), AK.STANDARD); eq(AK.favoriten([]), []);
   eq(AK.favoriten(['hike', 'hike', 'quatsch', 'ski', 'snowshoe', 3]), ['hike', 'snowshoe'], 'bereinigt: bekannt, ohne Doppel, ohne „Ski (allgemein)“');
@@ -1781,13 +1781,13 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   eq(AK.aufnahme(['run', 'mtb'], ''), { chips: ['run', 'mtb'], gewaehlt: 'run' }); eq(AK.aufnahme([], 'gibtsnicht'), { chips: ['hike'], gewaehlt: 'hike' });
   ok(PH.gleicheGruppe('snowshoe', 'hike') && PH.TEMPO.snowshoe === PH.TEMPO.hike && PH.AUFSTIEG.snowshoe === PH.AUFSTIEG.hike, 'Planungshilfe: Schneeschuh wie Wandern');
 
-  // 2.19.0 endgültige Auswahl (29 Aktivitäten): Altdaten mit entfernten Schlüsseln – Touren bleiben unverändert, gezählt wird über den Rückfall (sonst „Sonstiges“)
-  eq(Sports.katalog.length, 29, 'genau 29 Aktivitäten');
+  // 2.19.0 endgültige Auswahl (29 Sportarten): Altdaten mit entfernten Schlüsseln – Touren bleiben unverändert, gezählt wird über den Rückfall (sonst „Sonstiges“)
+  eq(Sports.katalog.length, 29, 'genau 29 Sportarten');
   const AD = [T('d1', 'dogwalk', day(2026, 3, 1), 3000, 10), T('d2', 'walk', day(2026, 3, 2), 2000, 10), T('c1', 'commute', day(2026, 3, 3), 12000, 50), T('c2', 'cyclocross', day(2026, 3, 4), 20000, 300),
     T('g1', 'golf', day(2026, 3, 5), 5000, 20), T('u1', 'sup', day(2026, 3, 6), 4000, 0), T('o1', 'orienteering', day(2026, 3, 7), 8000, 100), T('b1', 'bike', day(2026, 3, 8), 30000, 200)];
   const adKopie = JSON.stringify(AD);
-  eq(J.nachSportart(AD, []).map(g => [g.key, g.n]).sort(), [['bike', 2], ['kayak', 1], ['racebike', 1], ['run', 1], ['sonst', 1], ['walk', 2]], 'Jahresrückblick: Rückfall-Aktivitäten');
-  eq([...SG.aufteilen(AD, []).keys()].sort(), ['bike', 'kayak', 'other', 'racebike', 'run', 'walk'], 'Übersicht: Rückfall-Aktivitäten, Unbekanntes als Sonstiges');
+  eq(J.nachSportart(AD, []).map(g => [g.key, g.n]).sort(), [['bike', 2], ['kayak', 1], ['racebike', 1], ['run', 1], ['sonst', 1], ['walk', 2]], 'Jahresrückblick: Rückfall-Sportarten');
+  eq([...SG.aufteilen(AD, []).keys()].sort(), ['bike', 'kayak', 'other', 'racebike', 'run', 'walk'], 'Übersicht: Rückfall-Sportarten, Unbekanntes als Sonstiges');
   ok(SG.passt('walk', 'dogwalk', []) && SG.passt('other', 'golf', []) && SG.passt('grp:bike', 'commute', []) && SG.passt('grp:run', 'orienteering', []) && !SG.passt('hike', 'dogwalk', []), 'Filter über den Rückfall');
   const AG = [{ id: 'spaz', name: 'Spazieren', sports: ['walk', 'hike'] }];
   ok(SG.passt('sgrp:spaz', 'dogwalk', AG) && SG.schluessel('dogwalk', AG) === 'sgrp:spaz' && SG.rueckblickZeile('dogwalk', AG)[0] === 'sgrp:spaz', 'Gruppenmitglied über den Rückfall');
@@ -1804,10 +1804,38 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   eq(AK.favoriten(['hike', 'dogwalk', 'golf', 'sup', 'paraglide', 'bikepacking']), ['hike', 'paraglide', 'bikepacking'], 'Favoriten: entfernte Schlüssel fallen still weg');
   eq(SG.sauber([{ id: 'a', name: 'Rad', sports: ['bike', 'commute', 'cyclocross', 'mtb'] }, { id: 'b', name: 'Wasser', sports: ['sup', 'sailing'] }]), [{ id: 'a', name: 'Rad', sports: ['bike', 'mtb'] }], 'Statistik-Gruppen: entfernte Schlüssel fallen still weg (unter 2 → Gruppe fällt weg)');
   eq(SG.ausSicherung([{ k: 'settings', v: { statGruppen: [{ id: 'w', name: 'Fuß', sports: ['hike', 'dogwalk', 'orienteering', 'walk'] }] } }]), [{ id: 'w', name: 'Fuß', sports: ['hike', 'walk'] }], 'Sicherung: bereinigt');
-  eq(AK.aufnahme(AK.STANDARD, 'dogwalk').gewaehlt, 'hike', 'zuletzt benutzte entfernte Aktivität: erste der Favoriten');
+  eq(AK.aufnahme(AK.STANDARD, 'dogwalk').gewaehlt, 'hike', 'zuletzt benutzte entfernte Sportart: erste der Favoriten');
   // Abgleich: Altschlüssel und sein Rückfall sind gleich (kein stilles Umstellen)
   ok(AB.sportGleich('dogwalk', 'walk') && AB.sportGleich('commute', 'bike') && AB.sportGleich('sup', 'kayak') && !AB.sportGleich('dogwalk', 'hike') && !AB.sportGleich('hike', 'walk'), 'Abgleich: Altschlüssel ↔ Rückfall');
   ok(PH.gleicheGruppe('commute', 'mtb') && PH.gleicheGruppe('orienteering', 'trailrun') && PH.gruppe('bikepacking') === 'bike', 'Planungshilfe vergleicht Altschlüssel über den Rückfall');
+
+  // 2.19.1: Gruppenname nicht wie eine Sportart; Beschriftung „Name = A + B + …“
+  ok(SG.nameWieAktivitaet('Wandern') === 'Wandern' && SG.nameWieAktivitaet('  wAN dern ') === 'Wandern' && SG.nameWieAktivitaet('Spazieren/Gehen') === 'Spazieren / Gehen' && SG.nameWieAktivitaet('E-Bike') === 'E-Bike', 'Kollision ohne Groß-/Kleinschreibung und Leerzeichen');
+  ok(SG.nameWieAktivitaet('Wandern (alle)') === '' && SG.nameWieAktivitaet('Rad fahren') === '' && SG.nameWieAktivitaet('Ski (alle)') === '' && SG.nameWieAktivitaet('') === '' && SG.nameWieAktivitaet('Rad') === '', 'andere Namen sind frei');
+  ok(SG.VORSCHLAEGE.every(v => !SG.nameWieAktivitaet(v.name)), 'Vorschläge kollidieren nicht');
+  const KG = [{ id: 'w', name: 'Wandern', sports: ['hike', 'mountaineering', 'snowshoe'] }];
+  eq(SG.sauber(KG), KG, 'bestehende Gruppe mit Namen wie eine Sportart bleibt (nichts still geändert)');
+  eq(SG.ausSicherung([{ k: 'settings', v: { statGruppen: KG } }]), KG, 'Sicherung: nichts verworfen'); eq(SG.einspielen([], KG), KG);
+  ok(SG.passt('sgrp:w', 'snowshoe', KG) && SG.schluessel('hike', KG) === 'sgrp:w', 'sie zählt weiter');
+  const ph = SG.pruefe([{ id: 'w', name: 'Wandern', sports: ['hike', 'mountaineering'] }, { id: 'n', name: 'skitour', sports: ['skitour', 'nordic'] }, { id: 'o', name: 'Ski (alle)', sports: ['skialpin', 'snowboard'] }], KG);
+  ok(/Name wie eine Sportart \(„Wandern“\) – bitte umbenennen/.test(ph[0]) && /bisherigen Namen/.test(ph[0]) && /„Skitour“/.test(ph[1]) && /nicht gespeichert/.test(ph[1]) && ph[2] === '', 'Hinweise im Editor');
+  eq(SG.zumSpeichern([{ id: 'w', name: 'Wandern', sports: ['hike', 'mountaineering'] }], KG), [{ id: 'w', name: 'Wandern', sports: ['hike', 'mountaineering'] }], 'ältere Gruppe: Mitglieder änderbar, Name bleibt');
+  eq(SG.zumSpeichern([{ id: 'w', name: 'Wandern (alle)', sports: ['hike', 'mountaineering'] }], KG)[0].name, 'Wandern (alle)', 'umbenannt: gespeichert');
+  eq(SG.zumSpeichern([{ id: 'w', name: 'Laufen', sports: ['hike', 'mountaineering'] }], KG)[0].name, 'Wandern', 'auf eine andere Sportart umbenannt: bisheriger Name bleibt');
+  eq(SG.zumSpeichern([{ id: 'n', name: 'Skitour', sports: ['skitour', 'nordic'] }, { id: 'r', name: 'Rad fahren', sports: ['bike', 'mtb'] }], []).map(g => g.id), ['r'], 'neue Gruppe mit Namen wie eine Sportart wird nicht gespeichert');
+  const VG = [{ id: 'r', name: 'Rad fahren', sports: ['bike', 'mtb', 'gravel', 'ebike'] }, { id: 's', name: 'Ski (alle)', sports: ['skialpin', 'skitour'] }];
+  ok(SG.beschriftung('sgrp:r', VG) === 'Rad fahren = Radtour + Mountainbike + Gravelbike + …' && SG.titel('sgrp:r', VG) === 'Rad fahren = Radtour + Mountainbike + Gravelbike + E-Bike', 'mehr als 3: gekürzt, volle Liste als Titel');
+  ok(SG.beschriftung('sgrp:s', VG) === 'Ski (alle) = Ski alpin + Skitour' && SG.beschriftung('sgrp:weg', VG) === 'Gelöschte Gruppe' && SG.titel('sgrp:weg', VG) === '' && SG.beschriftung('hike', VG) === 'Wandern' && SG.titel('hike', VG) === '', 'Beschriftung');
+  eq(SG.auswahl(VG).map(x => x[0]), ['sgrp:r', 'sgrp:s'], 'Kennung sgrp:<id> unverändert');
+  eq(SG.rueckblickZeile('skitour', VG), ['sgrp:s', 'Ski (alle) = Ski alpin + Skitour'], 'Jahresrückblick: Zeile mit Mitgliedern');
+
+  // 2.19.1: eine zentrale Auswahl für Sportart-Chips (Karte, Tourenliste)
+  const CA = SG.chipAuswahl(['snowshoe', 'hike', 'mtb', 'dogwalk', 'kayak', 'skitour', 'hike', 'ski', 'golf'], VG);
+  eq(CA.kategorien.map(k => [k.name, k.items.map(i => i.key)]), [['Zu Fuß', ['hike', 'walk']], ['Rad', ['mtb']], ['Winter', ['skitour', 'snowshoe', 'ski']], ['Wasser', ['kayak']], ['Outdoor und Sonstige', ['other']]],
+    'nur Sportarten mit Touren, Katalog-Reihenfolge, nach Kategorien; Altschlüssel über den Rückfall');
+  eq(CA.gruppen.map(g => [g.key, g.label]), [['sgrp:r', 'Rad fahren = Radtour + Mountainbike + Gravelbike + …'], ['sgrp:s', 'Ski (alle) = Ski alpin + Skitour']], 'Gruppen mit mindestens einem vorkommenden Mitglied');
+  ok(SG.passt('sgrp:r', 'mtb', VG) && !SG.passt('sgrp:r', 'hike', VG) && SG.passt('walk', 'dogwalk', VG), 'Auswahl über passt()');
+  eq(SG.chipAuswahl([], VG), { gruppen: [], kategorien: [] }, 'ohne Touren: nichts');
 })();
 
 (async () => {

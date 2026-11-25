@@ -52,6 +52,18 @@ const UI = {
   chip(label, on, onclick, opts) {
     return h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false', id: opts && opts.id, onclick }, label);
   },
+  /** 2.19.1: Sportart-Chips aus StatGruppen.chipAuswahl (Karte, Tourenliste): Gruppen zuerst, dann je Kategorie eine kleine Überschrift und die Sportarten,
+      jeder Chip mit dem Farbpunkt seiner Kartenfarbe (Gruppe: die Punkte ihrer Mitglieder, höchstens 3). sel: gewählter Schlüssel; onpick(key) – nochmal tippen hebt auf.
+      Gibt eine Liste von Elementen zurück (zum Einhängen in eine .chips-Leiste). */
+  sportChips(auswahl, sel, onpick) {
+    const dot = k => h('i', { class: 'sdot', 'aria-hidden': 'true', style: { background: MapKit.routeColor(k, '#2e7d32') } });
+    const chip = (key, label, dots, ti) => h('button', { class: 'chip schip' + (sel === key ? ' on' : ''), 'aria-pressed': sel === key ? 'true' : 'false', 'data-sport': key, title: ti || null,
+      onclick: () => onpick(sel === key ? '' : key) }, dots, label);
+    const out = [];
+    if (auswahl.gruppen.length) out.push(h('span', { class: 'skat' }, 'Gruppen'), ...auswahl.gruppen.map(g => chip(g.key, g.label, g.sports.slice(0, 3).map(dot), g.titel)));
+    auswahl.kategorien.forEach(k => out.push(h('span', { class: 'skat', 'data-kat': k.id }, k.name), ...k.items.map(it => chip(it.key, it.label, [dot(it.key)]))));
+    return out;
+  },
   chips(kids, opts) { return h('div', { class: 'chips' + (opts && opts.wrap ? ' wrap' : ''), id: opts && opts.id }, kids); },
   /** Umschalter mit zwei bis vier Segmenten. options: [[schlüssel, text, href?], …]. */
   seg(options, active, onpick, opts) {
