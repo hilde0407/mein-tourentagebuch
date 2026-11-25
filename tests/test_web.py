@@ -1829,7 +1829,7 @@ def winter(pg):
     pg.evaluate("id => { location.hash = '#/tour/' + id }", o["s4"]); pg.wait_for_selector(".tourp"); pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
     pg.locator("header.top button[aria-label=Aktionen]").click(); pg.get_by_text("Sportart ändern").click(); pg.wait_for_selector(".sheet[aria-label='Sportart'] .li")
     names = pg.locator(".sheet[aria-label='Sportart'] .li .li-t b").all_inner_texts()
-    for want in ("Ski alpin", "Skitour", "Langlauf", "Wandern", "Bergsteigen", "Schneeschuh", "Snowboard"): assert want in names, names
+    for want in ("Ski alpin", "Skitour", "Langlauf", "Wandern", "Bergsteigen", "Schneeschuhwandern", "Snowboard"): assert want in names, names
     assert "Ski (allgemein)" not in names, names      # 2.19.0: nur noch für Touren, die sie schon haben
     pg.locator(".sheet .li", has_text="Skitour").click(); pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_function("() => document.querySelector('.tourp .sub') && /Skitour/.test(document.querySelector('.tourp .sub').textContent)")
     t4 = pg.evaluate("id => DB.get('tours', id)", o["s4"]); assert t4["sport"] == "skitour" and t4["sportMan"] == 1, t4
@@ -1852,7 +1852,7 @@ def winter(pg):
     pg.evaluate("location.hash = '#/rec'"); pg.wait_for_selector(".bigstart"); rc = pg.locator(".chips .chip").all_inner_texts()
     assert any("Skitour" in c for c in rc) and any("Mehr" in c for c in rc) and not any("allgemein" in c for c in rc), rc      # 2.19.0: Favoriten als Chips, alle übrigen unter „Mehr …“
     pg.click("#rec-mehr"); pg.wait_for_selector("#rec-alle"); ma = pg.locator("#rec-alle .li-t b").all_inner_texts(); pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
-    assert "Langlauf" in ma and "Ski alpin" in ma and "Bergsteigen" in ma and "Schneeschuh" in ma and "Ski (allgemein)" not in ma, ma
+    assert "Langlauf" in ma and "Ski alpin" in ma and "Bergsteigen" in ma and "Schneeschuhwandern" in ma and "Ski (allgemein)" not in ma, ma
     # Symbole und Farben für alle Arten (kein leeres Symbol, jede Skiart eine eigene Kartenfarbe)
     ic = pg.evaluate("() => Sports.list.map(s => [s[0], Ico.svg(s[2]).length > 50, /^#[0-9a-f]{6}$/i.test(MapKit.sportColor[s[0]] || '')])")
     assert all(a and b for _, a, b in ic), ic
@@ -4334,7 +4334,8 @@ def statgruppen_2190(pg):
     rows = pg.eval_on_selector_all("#st-sport .hb", "els => els.map(e => e.dataset.sport)")
     assert {"hike", "mountaineering", "mtb", "ebike", "kayak"} <= set(rows) and not any(r.startswith("sgrp:") for r in rows), rows
     opts = pg.locator("select[aria-label=Sportart] option").all_inner_texts()
-    for want in ("Bergsteigen", "Schneeschuh", "Skitour", "Snowboard", "Kajak / Kanu", "Gassigehen", "Orientierungslauf", "Schneemobil", "Angeln", "E-Mountainbike", "Gravelbike"): assert want in opts, (want, opts)
+    for want in ("Bergsteigen", "Schneeschuhwandern", "Skitour", "Snowboard", "Kajak / Kanu", "Rafting", "Bikepacking", "Gleitschirm", "Drachenboot", "E-Mountainbike", "Gravelbike"): assert want in opts, (want, opts)
+    for weg in ("Gassigehen", "Orientierungslauf", "Schneemobil", "Angeln", "Segeln", "Stand-up-Paddling", "Golf"): assert weg not in opts, (weg, opts)      # endgültige Auswahl: 29
     assert "Ski (alle Arten)" not in opts and not any("zusammengefasst" in o for o in opts), opts
     # Einstellungen: Vorschläge, keine Gruppe
     go("#/settings", "#sg-box")
@@ -4400,7 +4401,7 @@ def statgruppen_2190(pg):
     assert pg.evaluate("Set_.get('favAkt')") == ["run", "hike", "bike", "skitour", "mtb", "mountaineering", "kayak"]
     pg.click("#fav-liste .fav-row[data-sport=bike] button[aria-label='Radtour entfernen']"); pg.wait_for_timeout(150)
     for k in ["walk", "snowshoe", "trailrun", "gravel", "emtb", "nordic"]: pg.click("#fav-" + k); pg.wait_for_timeout(60)
-    assert len(pg.evaluate("Set_.get('favAkt')")) == 12 and pg.is_disabled("#fav-golf") and "12 von höchstens 12" in pg.inner_text("#fav-zahl")
+    assert len(pg.evaluate("Set_.get('favAkt')")) == 12 and pg.is_disabled("#fav-paraglide") and "12 von höchstens 12" in pg.inner_text("#fav-zahl")
     pg.locator("#fav-box").scroll_into_view_if_needed(); bad += ["Favoriten: " + m for m in pg.evaluate(LAYOUT_JS)]
     pg.click("#fav-standard"); pg.wait_for_timeout(150); assert pg.evaluate("Set_.get('favAkt')") == ["hike", "run", "bike", "skitour", "mtb"]
     pg.evaluate("Set_.set('favAkt', ['run', 'mountaineering', 'snowshoe'])")
@@ -4410,14 +4411,14 @@ def statgruppen_2190(pg):
     assert ch == [["run", True], ["mountaineering", False], ["snowshoe", False]], ch
     pg.click("#rec-mehr"); pg.wait_for_selector("#rec-alle")
     al = pg.locator("#rec-alle .li-t b").all_inner_texts(); hk = pg.locator("#rec-alle h3").all_inner_texts()
-    assert hk == ["Zu Fuß", "Rad", "Winter", "Wasser", "Outdoor & Sonstige"] and "Skitour" in al and "Stand-up-Paddling" in al and "Golf" in al and "Ski (allgemein)" not in al, (hk, al)
-    pg.click("#rec-akt-sup"); pg.wait_for_selector(".sheet", state="detached")
+    assert hk == ["Zu Fuß", "Rad", "Winter", "Wasser", "Outdoor und Sonstige"] and "Skitour" in al and "Rafting" in al and "Gleitschirm" in al and "Golf" not in al and "Stand-up-Paddling" not in al and "Ski (allgemein)" not in al and len(al) == 29, (hk, al)
+    pg.click("#rec-akt-rafting"); pg.wait_for_selector(".sheet", state="detached")
     ch = pg.eval_on_selector_all(".chips.wrap .chip[data-sport]", "els => els.map(e => [e.dataset.sport, e.classList.contains('on')])")
-    assert ch[0] == ["sup", True] and len(ch) == 4, ch
+    assert ch[0] == ["rafting", True] and len(ch) == 4, ch
     pg.click(".bigstart"); pg.wait_for_timeout(300)
-    assert pg.evaluate("window.__calls.filter(c => c[0] === 'start').pop()[1]") == "sup" and pg.evaluate("Set_.get('recSport')") == "sup"
+    assert pg.evaluate("window.__calls.filter(c => c[0] === 'start').pop()[1]") == "rafting" and pg.evaluate("Set_.get('recSport')") == "rafting"
     pg.evaluate("window.__rec.state = 'idle'; window.__rec.unsent = false; Nav.render()"); pg.wait_for_selector(".bigstart")
-    assert pg.eval_on_selector(".chips.wrap .chip.on", "e => e.dataset.sport") == "sup", "zuletzt benutzte bleibt vorgewählt"
+    assert pg.eval_on_selector(".chips.wrap .chip.on", "e => e.dataset.sport") == "rafting", "zuletzt benutzte bleibt vorgewählt"
     # Sicherung: Gruppen und Favoriten rein und raus
     bk = pg.evaluate("""async () => { const d = await Backup.collect(); const s = d.kv.find(k => k.k === 'settings'); const gr = s.v.statGruppen, fav = s.v.favAkt;
       await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD);
@@ -4427,9 +4428,70 @@ def statgruppen_2190(pg):
     assert bk["nach"] == bk["gr"] and bk["bleibt"] == bk["gr"] and bk["gespeichert"] == bk["gr"] and bk["fnach"] == bk["fav"] == ["run", "mountaineering", "snowshoe"], bk
     # Planung: Bergsteigen, Schneeschuh, Skitour, Ski alpin wählbar; Tour bearbeiten: alle Kategorien
     go("#/plan", "select[aria-label=Sportart]"); po = pg.locator("select[aria-label=Sportart] option").all_inner_texts()
-    assert "Bergsteigen" in po and "Schneeschuh" in po and "Skitour" in po and "Ski alpin" in po, po
+    assert "Bergsteigen" in po and "Schneeschuhwandern" in po and "Skitour" in po and "Ski alpin" in po and "Bikepacking" in po, po
     # aufräumen
     pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); await Set_.set('recSport', ''); Tours.invalidate(); }", ids)
+    return bad
+
+
+def aktivitaeten_2190(pg):
+    """2.19.0 (endgültige Auswahl): Einstellungen neu geordnet – Bereiche mit einheitlichen Karten, Bereich „Aktivitäten“ mit Katalog (29 nach Kategorien,
+    Symbol und Kartenfarbe), Favoriten und Statistik-Gruppen. Altdaten: eine Tour mit einem entfernten Schlüssel bleibt unverändert, zeigt den Rückfall
+    (Liste, Tourseite, Filter, Statistik), steht im Katalog unter „Ältere Aktivitäten“; Favoriten und Gruppen mit entfernten Schlüsseln werden still bereinigt.
+    Gibt Layoutfehler zurück."""
+    bad = []
+    go = lambda h, sel: (pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h), pg.wait_for_selector(sel), pg.wait_for_timeout(300))
+    ids = pg.evaluate("""async () => {
+      await Set_.set('statGruppen', [{ id: 'w', name: 'Gehen', sports: ['walk', 'dogwalk', 'hike'] }, { id: 'x', name: 'Wasser alt', sports: ['sup', 'sailing'] }]);
+      await Set_.set('favAkt', ['hike', 'dogwalk', 'golf', 'kayak']);
+      const T0 = new Date(2018, 4, 10, 9).getTime(), mk = async (name, sport, k) => {
+        const pts = Array.from({ length: 40 }, (_, i) => ({ lat: 46.3 + k * 0.01 + i * 0.0004, lon: 10.3 + i * 0.0003, ele: 900 + i * 6, t: T0 + k * 86400000 + i * 60000 }));
+        return (await Tours.add({ name, sport, pts, src: 'file', force: true })).tour.id; };
+      const r = { d: await mk('AD Gassirunde', 'dogwalk', 0), g: await mk('AD Golf', 'golf', 1), w: await mk('AD Spaziergang', 'walk', 2) };
+      // gespeicherte Werte direkt wie aus einem Zwischenstand (ohne Bereinigung) – erst das Laden der Einstellungen bereinigt
+      Tours.invalidate(); return r; }""")
+    # Einstellungen bereinigen still (Laden wie beim Start)
+    cl = pg.evaluate("async () => { await Set_.load(); return { g: Set_.get('statGruppen'), f: Set_.get('favAkt') }; }")
+    assert cl["g"] == [{"id": "w", "name": "Gehen", "sports": ["walk", "hike"]}] and cl["f"] == ["hike", "kayak"], cl
+    # Gliederung der Einstellungen
+    go("#/settings", "#set-g-akt")
+    gl = pg.eval_on_selector_all("#view .set-g", "els => els.map(e => [e.id, e.querySelector('h2').textContent, [...e.querySelectorAll(':scope > .set-k > h3')].map(x => x.textContent)])")
+    assert [g[1] for g in gl] == ["Zusammenarbeit", "Aktivitäten", "Karte und Planung", "Aufnahme, Fotos und Videos", "Persönliches und Startseite", "Datensicherung", "Über die App"], gl
+    assert gl[1][2] == ["Katalog", "Favoriten für „Tour aufnehmen“", "Statistik-Gruppen"], gl[1]
+    assert pg.locator("#view .set-k").count() == pg.locator("#view .set-k > h3").count() and pg.locator("#view .pad > h3").count() == 0, "jede Karte mit Überschrift, keine losen Überschriften"
+    assert pg.eval_on_selector_all("#set-inhalt .chip", "els => els.map(e => e.textContent)") == [g[1] for g in gl]
+    for need in ("#set-mt", "#fav-box", "#sg-box", "#ss-box", "#rc", "#set-offline", "#pdf-karte", "#set-flugstufe", "#set-vlimit", "#set-vgal", "#set-vauto", "#homeset", "#bk-save", "#bk-restore", "#bk-days", "#bk-auto", "#md-save", "#set-wipe"):
+        assert pg.locator(need).count() == 1, need
+    # Katalog: 29 nach Kategorien, je mit Symbol und Kartenfarbe
+    kat = pg.eval_on_selector_all("#akt-box .akt-kat", "els => els.map(e => [e.querySelector('h4').textContent, e.querySelectorAll('.akt').length])")
+    assert kat == [["Zu Fuß (7)", 7], ["Rad (7)", 7], ["Winter (5)", 5], ["Wasser (5)", 5], ["Outdoor und Sonstige (5)", 5]], kat
+    assert pg.locator("#akt-box .akt .akt-i svg").count() == 29 and pg.locator("#akt-box .akt .akt-f").count() == 29
+    pg.wait_for_selector("#akt-alt li")
+    al = pg.locator("#akt-alt li").all_inner_texts()
+    assert any("„dogwalk“ (1 Tour) → Spazieren / Gehen" in x for x in al) and any("„golf“ (1 Tour) → Sonstiges" in x for x in al), al
+    pg.click("#set-inhalt .chip[data-ziel=set-g-sich]"); pg.wait_for_timeout(500)
+    for sel in ("#set-g-akt", "#akt-katalog", "#set-g-sich"):
+        pg.locator(sel).scroll_into_view_if_needed(); bad += ["Einstellungen " + sel + ": " + m for m in pg.evaluate(LAYOUT_JS)]
+    # Altdaten: Anzeige über den Rückfall, Tour unverändert
+    go("#/", "a.tour")
+    ch = pg.locator(".filters .chips .chip").all_inner_texts()
+    assert any("Spazieren / Gehen" in c for c in ch) and not any("dogwalk" in c for c in ch), ch
+    pg.evaluate("TourUI.filter.sport = 'walk'; Nav.render()"); pg.wait_for_timeout(300)
+    nm = pg.locator("a.tour .tb b").all_inner_texts()
+    assert "AD Gassirunde" in nm and "AD Spaziergang" in nm and "AD Golf" not in nm, nm
+    pg.evaluate("TourUI.filter.sport = ''; Nav.render()")
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", ids["d"]); pg.wait_for_selector(".tourp")
+    assert "Spazieren / Gehen" in pg.inner_text(".tourp .sub")
+    pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
+    pg.locator("header.top button[aria-label=Aktionen]").click(); pg.get_by_text("Sportart ändern").click(); pg.wait_for_selector("#sp-fremd")
+    assert "„dogwalk“" in pg.inner_text("#sp-fremd") and "Spazieren / Gehen" in pg.inner_text("#sp-fremd")
+    pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
+    t = pg.evaluate("id => DB.get('tours', id)", ids["d"]); assert t["sport"] == "dogwalk" and not t.get("sportMan"), t
+    st = pg.evaluate("""async () => { const all = (await Tours.list()).filter(t => t.name.startsWith('AD ')); const gr = StatGruppen.aktuell();
+      return { keys: [...StatGruppen.aufteilen(all, gr).keys()].sort(), ziel: Ziele.stand({ id: 'z', period: 'year', year: 2018, metric: 'count', target: 5, sport: 'dogwalk' }, all, new Date(2018, 11, 31), []).ist,
+        name: Goals.name({ sport: 'dogwalk', metric: 'count', period: 'year', year: 2018, target: 5 }) }; }""")
+    assert st["keys"] == ["other", "sgrp:w"] and st["ziel"] == 2 and "Spazieren / Gehen" in st["name"], st
+    pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); Tours.invalidate(); }", ids)
     return bad
 
 
@@ -5100,7 +5162,7 @@ def main():
         ms_bad = mt_schalter_2150(pg)
         ab_bad = abgleich_2180(pg)
         kp_bad = komootpaket_2180(pg)
-        sg_bad = statgruppen_2190(pg)
+        sg_bad = statgruppen_2190(pg) + aktivitaeten_2190(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

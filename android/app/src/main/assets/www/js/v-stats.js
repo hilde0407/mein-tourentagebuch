@@ -3,7 +3,7 @@ Views['/stats'] = async (root, [tab0]) => {
   const all = (await Tours.list()).filter(Jahr.zaehlt);      // gleiche Filterregel und Kennzahlen wie der Jahresrückblick (calc-jahr.js)
   const years = [...new Set(all.map(t => new Date(t.start).getFullYear()))].sort((a, b) => b - a);
   let year = years[0] || new Date().getFullYear(), sport = '', tab = ['ueber', 'rekorde', 'vergleich', 'kalender', 'auswertung', 'ziele', 'fitness'].includes(tab0) ? tab0 : tab0 === 'bestwerte' ? 'rekorde' : 'ueber';
-  const gr = StatGruppen.aktuell();      // 2.19.0: eigene Statistik-Gruppen (Einstellungen → „Statistik: Aktivitäten zusammenfassen“)
+  const gr = StatGruppen.aktuell();      // 2.19.0: eigene Statistik-Gruppen (Einstellungen → Aktivitäten → Statistik-Gruppen)
   const body = h('div', { class: 'pad' });
   root.append(topbar('Statistik', { back: true }), body);
   const draw = () => {

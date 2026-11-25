@@ -4,7 +4,9 @@
    reist mit der Sicherung. Grenzen: höchstens 8 Gruppen, Name 1–30 Zeichen, mindestens 2 Sportarten je Gruppe, jede Sportart höchstens in einer Gruppe,
    nur bekannte Sportarten. Vorgabe: leer – jede Aktivität steht für sich (es gibt keine festen Zusammenfassungen mehr; jeder entscheidet selbst).
    Ein-Klick-Vorschläge (Wandern + Bergsteigen + Schneeschuh, alle Rad-Arten, alle Ski-Arten) legen nur auf Wunsch eine Gruppe an.
-   Die Touren selbst ändern sich nie – nur die Auswertung fasst zusammen.
+   Die Touren selbst ändern sich nie – nur die Auswertung fasst zusammen. Eine Tour mit einem Schlüssel, der nicht im Katalog steht (z. B. aus einem
+   Zwischenstand von 2.19.0), zählt überall als ihre Rückfall-Aktivität (Sports.anzeige: Gassigehen → Spazieren / Gehen, sonst „Sonstiges“); solche
+   Schlüssel in gespeicherten Gruppen fallen beim Bereinigen still weg.
    Kennung einer Gruppe in Filtern und Zielen: 'sgrp:<id>' (neben den festen Gruppen 'grp:ski', 'grp:bike' …). Eine gelöschte Gruppe passt auf keine Tour
    und heißt „Gelöschte Gruppe“ – nie ein Fehler.
    Alle Stellen (Statistik, Bestwerte je Sportart, Auswertung, Jahresrückblick, Ziele, Startseite) rechnen hiermit (Jahresrückblick: rueckblick()).
@@ -16,7 +18,7 @@
   /** Ein-Klick-Vorschläge in den Einstellungen – nur Vorschläge, nie automatisch. */
   const VORSCHLAEGE = [
     { id: 'berg', name: 'Wandern + Berg + Schneeschuh', knopf: 'Wandern + Bergsteigen + Schneeschuh', sports: ['hike', 'mountaineering', 'snowshoe'] },
-    { id: 'rad', name: 'Rad', knopf: 'Alle Rad-Arten', sports: ['bike', 'commute', 'racebike', 'mtb', 'gravel', 'cyclocross', 'bmx', 'ebike', 'emtb'] },
+    { id: 'rad', name: 'Rad', knopf: 'Alle Rad-Arten', sports: ['bike', 'racebike', 'mtb', 'gravel', 'ebike', 'emtb', 'bikepacking'] },
     { id: 'ski', name: 'Ski', knopf: 'Alle Ski-Arten', sports: ['skialpin', 'skitour', 'nordic', 'snowboard', 'ski'] },
   ];
 
@@ -77,7 +79,7 @@
   }
 
   /** Die Gruppe einer Sportart oder null. */
-  function gruppeVon(sport, gruppen) { return (gruppen || []).find(g => g.sports.includes(sport)) || null; }
+  function gruppeVon(sport, gruppen) { const k = S().anzeige(sport); return (gruppen || []).find(g => g.sports.includes(k)) || null; }
   /** Die Gruppe zu einer Kennung 'sgrp:<id>' oder null (auch bei gelöschter Gruppe). */
   function gruppe(key, gruppen) {
     if (typeof key !== 'string' || !key.startsWith(PREFIX)) return null;
@@ -85,8 +87,8 @@
     return (gruppen || []).find(g => g.id === id) || null;
   }
   const istGruppe = key => typeof key === 'string' && key.startsWith(PREFIX);
-  /** Schlüssel, unter dem eine Sportart in Aufteilungen steht: 'sgrp:<id>' für Gruppenmitglieder, sonst die Sportart selbst. */
-  function schluessel(sport, gruppen) { const g = gruppeVon(sport, gruppen); return g ? PREFIX + g.id : (sport || 'other'); }
+  /** Schlüssel, unter dem eine Sportart in Aufteilungen steht: 'sgrp:<id>' für Gruppenmitglieder, sonst die Sportart selbst (nicht im Katalog: ihr Rückfall). */
+  function schluessel(sport, gruppen) { const g = gruppeVon(sport, gruppen); return g ? PREFIX + g.id : S().anzeige(sport); }
 
   /** Name eines Schlüssels: Gruppe → ihr Name (gelöscht → „Gelöschte Gruppe“), sonst die Sportart. */
   function name(key, gruppen) {
@@ -99,15 +101,17 @@
     return S().icon(key);
   }
   /** Farbe (Schlüssel für MapKit.sportColor): Gruppe → Farbe der ersten Sportart. */
-  function farbSport(key, gruppen) { if (istGruppe(key)) { const g = gruppe(key, gruppen); return g ? g.sports[0] : 'other'; } return key; }
+  function farbSport(key, gruppen) { if (istGruppe(key)) { const g = gruppe(key, gruppen); return g ? g.sports[0] : 'other'; } return S().anzeige(key); }
 
   /** Passt eine Tour dieser Sportart zur Auswahl sel? '' = alle, 'sgrp:<id>' = eigene Gruppe (gelöscht: keine), 'grp:<x>' = feste Gruppe
-      (grp:ski, grp:bike, grp:foot, grp:run wie in calc-planhilfe.js), sonst genau die Sportart. */
+      (grp:ski, grp:bike, grp:foot, grp:run wie in calc-planhilfe.js), sonst genau die Sportart. Schlüssel außerhalb des Katalogs (an der Tour oder in der
+      Auswahl, z. B. ein älteres Ziel) zählen als ihre Rückfall-Aktivität. */
   function passt(sel, sport, gruppen) {
     if (!sel) return true;
-    if (istGruppe(sel)) { const g = gruppe(sel, gruppen); return !!g && g.sports.includes(sport); }
-    if (sel.startsWith('grp:')) return (PH.SPORT_GRP[sel.slice(4)] || []).includes(sport);
-    return sel === sport;
+    const k = S().anzeige(sport);
+    if (istGruppe(sel)) { const g = gruppe(sel, gruppen); return !!g && g.sports.includes(k); }
+    if (sel.startsWith('grp:')) return (PH.SPORT_GRP[sel.slice(4)] || []).includes(k);
+    return S().anzeige(sel) === k;
   }
   /** Gibt es die Auswahl noch? (Für gespeicherte Filter: sonst zurück auf „Alle“.) */
   const gueltig = (sel, gruppen) => !istGruppe(sel) || !!gruppe(sel, gruppen);
@@ -127,8 +131,9 @@
   function rueckblickZeile(sport, gruppen) {
     const g = gruppeVon(sport, gruppen);
     if (g) return [PREFIX + g.id, g.name];
-    if (!sport || sport === 'other' || !bekannt().includes(sport)) return ['sonst', 'Sonstiges'];
-    return [sport, S().label(sport)];
+    const k = S().anzeige(sport);
+    if (k === 'other') return ['sonst', 'Sonstiges'];
+    return [k, S().label(k)];
   }
 
   /** Die Vorschläge, die gerade möglich sind: noch Platz, keine ihrer Sportarten schon in einer Gruppe. [{id (frei), name, knopf, sports}]. */

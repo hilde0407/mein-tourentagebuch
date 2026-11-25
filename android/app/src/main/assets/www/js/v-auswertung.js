@@ -197,13 +197,13 @@ const Ausw = {
     // Leistung über die Jahre
     const all = ctx.all.filter(t => Sports.passt(ctx.sport, t.sport));
     const perf = [];
-    [...new Set(all.map(t => t.sport))].forEach(s => {
-      const byY = {}; all.filter(t => t.sport === s && t.moving > 300 && t.dist > 500).forEach(t => { (byY[new Date(t.start).getFullYear()] = byY[new Date(t.start).getFullYear()] || []).push(t); });
+    [...new Set(all.map(t => Sports.anzeige(t.sport)))].forEach(s => {
+      const byY = {}; all.filter(t => Sports.anzeige(t.sport) === s && t.moving > 300 && t.dist > 500).forEach(t => { (byY[new Date(t.start).getFullYear()] = byY[new Date(t.start).getFullYear()] || []).push(t); });
       const ys = Object.keys(byY).filter(y => byY[y].length >= 2).sort();
       if (ys.length < 2) return;
       const spd = ys.map(y => sm(byY[y], 'dist') / sm(byY[y], 'moving') * 3.6), climb = ys.map(y => sm(byY[y], 'up') / (sm(byY[y], 'moving') / 3600));
       const bar = (vals, unit, dec) => { const mx = Math.max(...vals, 1); return h('div', { class: 'hbars' }, ys.map((y, i) => h('div', { class: 'hb' }, h('span', null, y), h('div', null, h('i', { style: { width: (vals[i] / mx * 100) + '%' } })), h('b', null, vals[i].toFixed(dec).replace('.', ',') + ' ' + unit)))); };
-      perf.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s)), h('p', { class: 'muted small' }, 'Ø Tempo (in Bewegung)'), bar(spd, 'km/h', 1), !['bike', 'racebike', 'mtb', 'ebike', 'gravel', 'emtb'].includes(s) ? [h('p', { class: 'muted small' }, 'Aufstieg je Stunde'), bar(climb, 'm/h', 0)] : null);
+      perf.push(h('h3', { class: 'sub' }, Sports.icon(s) + ' ' + Sports.label(s)), h('p', { class: 'muted small' }, 'Ø Tempo (in Bewegung)'), bar(spd, 'km/h', 1), !['bike', 'racebike', 'mtb', 'ebike', 'gravel', 'emtb', 'bikepacking'].includes(s) ? [h('p', { class: 'muted small' }, 'Aufstieg je Stunde'), bar(climb, 'm/h', 0)] : null);
     });
     if (perf.length) body.append(...Ausw.sec('Leistung über die Jahre', 'nur Jahre mit mindestens 2 Touren der Sportart'), ...perf.flat().filter(Boolean));
     // Neuland und Wetter

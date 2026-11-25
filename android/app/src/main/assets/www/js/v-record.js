@@ -194,7 +194,7 @@ Views['/rec'] = async root => {
     let sport = Aktiv.aufnahme(Set_.get('favAkt'), sessionStorage.getItem('recSport') || Set_.get('recSport')).gewaehlt;      // 2.19.0: die zuletzt benutzte Aktivität bleibt vorgewählt
     const name = h('input', { type: 'text', placeholder: 'z. B. Hüttenrunde', value: sessionStorage.getItem('recName') || '' });
     const chips = h('div', { class: 'chips wrap' });
-    /* 2.19.0: Favoriten-Aktivitäten als Chips (Einstellungen → Favoriten-Aktivitäten), dazu „Mehr …“ mit allen Aktivitäten nach Kategorien.
+    /* 2.19.0: Favoriten-Aktivitäten als Chips (Einstellungen → Aktivitäten → Favoriten), dazu „Mehr …“ mit allen Aktivitäten nach Kategorien.
        Bis 2.18 standen hier alle Sportarten außer Bergsteigen. */
     const drawChips = () => {
       chips.innerHTML = '';
@@ -205,7 +205,7 @@ Views['/rec'] = async root => {
     const mehr = () => {
       const s = sheet('Aktivität wählen', h('div', { id: 'rec-alle' }, Sports.kategorien(sport).map(([id, nm, list]) => [h('h3', { class: 'sub' }, nm),
         UI.list(list.map(([k, l, ic]) => UI.row({ icon: ic, title: l, trail: k === sport ? 'gewählt' : null, id: 'rec-akt-' + k, onclick: () => { sport = k; s.close(); drawChips(); } })), { cls: 'menu' })]).flat(),
-        h('p', { class: 'muted small' }, 'Welche Aktivitäten oben als Knöpfe stehen, stellst du unter Einstellungen → Favoriten-Aktivitäten ein.')));
+        h('p', { class: 'muted small' }, 'Welche Aktivitäten oben als Knöpfe stehen, stellst du unter Einstellungen → Aktivitäten → Favoriten für „Tour aufnehmen“ ein.')));
     };
     drawChips();
     const planned = (await Tours.list()).filter(t => t.status === 'planned');

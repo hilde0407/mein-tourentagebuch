@@ -132,7 +132,8 @@ const Fix = {
   /** Höhenangabe wirkt unglaubwürdig (mehr als 120 Höhenmeter je km und über 400 m). */
   suspicious: t => (t.dist || 0) > 500 && (t.up || 0) > 120 * (t.dist / 1000) && (t.up || 0) > 400,
   /** Schwellen für „zu schnell“ je Sportart (km/h). */
-  maxSpeed: s => ({ hike: 9, walk: 9, mountaineering: 9, snowshoe: 9, dogwalk: 9, orienteering: 20, commute: 45, cyclocross: 50, bmx: 40, snorkel: 6, dragonboat: 20, surf: 40, motorbike: 150, atv: 100, snowmobile: 120, climbing: 9, nordicwalking: 9, golf: 9, trailrun: 20, swim: 8, kayak: 15, sup: 12, rowing: 20, iceskate: 40, inline: 35, horse: 45, gravel: 45, emtb: 45, run: 20, bike: 45, mtb: 45, racebike: 60, ebike: 45 }[s] || 80),
+  maxSpeed: s => ({ hike: 9, walk: 9, mountaineering: 9, snowshoe: 9, climbing: 9, nordicwalking: 9, trailrun: 20, run: 20, gravel: 45, emtb: 45, bike: 45, mtb: 45, racebike: 60, ebike: 45,
+    bikepacking: 45, kayak: 15, rowing: 20, dragonboat: 20, rafting: 25, boat: 80, inline: 35, skateboard: 30, horse: 45, paraglide: 90 }[Sports.anzeige(s)] || 80),
   /** Ausreißer (einzelne Punkte, die wegspringen) und zu schnelle Abschnitte finden. */
   detect(pts, sport) {
     const spike = [], fast = [];
@@ -209,7 +210,10 @@ Views['/fix'] = async (root, [id]) => {
 
 /* Namensvorschläge: Orte (Start, Ziel, weitester Punkt) und Gipfel in der Nähe des höchsten Punkts. */
 const Suggest = {
-  sportName: { hike: 'Wanderung', walk: 'Spaziergang', mtb: 'MTB-Tour', bike: 'Radtour', racebike: 'Rennradtour', ebike: 'E-Bike-Tour', run: 'Lauf', ski: 'Skitour', skitour: 'Skitour', skialpin: 'Skitag', nordic: 'Langlauftour', mountaineering: 'Bergtour', snowshoe: 'Schneeschuhtour', climbing: 'Klettertour', nordicwalking: 'Nordic-Walking-Runde', trailrun: 'Traillauf', gravel: 'Graveltour', emtb: 'E-MTB-Tour', snowboard: 'Snowboardtag', sled: 'Rodelpartie', iceskate: 'Eislauf', swim: 'Schwimmrunde', kayak: 'Paddeltour', sup: 'SUP-Tour', rowing: 'Rudertour', sailing: 'Segeltörn', inline: 'Inlinerrunde', horse: 'Ausritt', golf: 'Golfrunde', dogwalk: 'Gassirunde', orienteering: 'OL', commute: 'Pendelfahrt', cyclocross: 'Crossrunde', bmx: 'BMX-Runde', snowmobile: 'Schneemobilfahrt', snorkel: 'Schnorcheln', dragonboat: 'Drachenbootfahrt', boat: 'Bootsfahrt', waterski: 'Wasserski', surf: 'Surfsession', kitesurf: 'Kitesession', wakesurf: 'Wakesession', skateboard: 'Skaterunde', fishing: 'Angeltag', hunting: 'Pirsch', archery: 'Bogenparcours', atv: 'Quadtour', motorbike: 'Endurotour' },
+  sportName: { hike: 'Wanderung', walk: 'Spaziergang', mtb: 'MTB-Tour', bike: 'Radtour', racebike: 'Rennradtour', ebike: 'E-Bike-Tour', run: 'Lauf', ski: 'Skitour', skitour: 'Skitour', skialpin: 'Skitag',
+    nordic: 'Langlauftour', mountaineering: 'Bergtour', snowshoe: 'Schneeschuhtour', climbing: 'Klettertour', nordicwalking: 'Nordic-Walking-Runde', trailrun: 'Traillauf', gravel: 'Graveltour',
+    emtb: 'E-MTB-Tour', bikepacking: 'Bikepacking-Tour', snowboard: 'Snowboardtag', kayak: 'Paddeltour', rowing: 'Rudertour', dragonboat: 'Drachenbootfahrt', rafting: 'Raftingtour',
+    boat: 'Bootsfahrt', skateboard: 'Skaterunde', inline: 'Inlinerrunde', horse: 'Ausritt', paraglide: 'Gleitschirmflug' },
   async peak(lat, lon) {
     const q = `[out:json][timeout:10];(node(around:350,${lat},${lon})["natural"~"peak|saddle"]["name"];node(around:350,${lat},${lon})["tourism"="alpine_hut"]["name"];);out;`;
     const r = await Native.http({ url: 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q), headers: { 'User-Agent': 'MeinTourentagebuch/1.0' } });
@@ -221,7 +225,7 @@ const Suggest = {
   /** Liste von Namensvorschlägen (ohne den aktuellen Namen), höchstens 6. */
   async names(t, pts) {
     if (!pts.length) throw new Error('Keine Streckenpunkte vorhanden');
-    const sp = Suggest.sportName[t.sport] || 'Tour', s = pts[0], e = pts[pts.length - 1];
+    const sp = Suggest.sportName[Sports.anzeige(t.sport)] || 'Tour', s = pts[0], e = pts[pts.length - 1];
     const far = pts.reduce((m, p) => Geo.dist(s.lat, s.lon, p.lat, p.lon) > Geo.dist(s.lat, s.lon, m.lat, m.lon) ? p : m, s);
     const hi = pts.reduce((m, p) => p.ele != null && (m == null || p.ele > m.ele) ? p : m, null);
     const loop = Geo.dist(s.lat, s.lon, e.lat, e.lon) < Math.max(500, 0.15 * (t.dist || 0));
@@ -229,7 +233,7 @@ const Suggest = {
     const a = await safe(() => Places.name(s.lat, s.lon));
     const b = loop ? null : await safe(() => Places.name(e.lat, e.lon));
     const f = loop && Geo.dist(s.lat, s.lon, far.lat, far.lon) > 2500 ? await safe(() => Places.name(far.lat, far.lon)) : null;
-    const wantPeak = hi && s.ele != null && hi.ele - s.ele >= 150 && ['hike', 'mountaineering', 'snowshoe', 'climbing', 'trailrun', 'ski', 'skitour'].includes(t.sport);
+    const wantPeak = hi && s.ele != null && hi.ele - s.ele >= 150 && ['hike', 'mountaineering', 'snowshoe', 'climbing', 'trailrun', 'ski', 'skitour'].includes(Sports.anzeige(t.sport));
     const pk = wantPeak ? await safe(() => Suggest.peak(hi.lat, hi.lon)) : null;
     const out = [];
     if (!loop && a && b && a !== b) out.push(`${sp} von ${a} nach ${b}`);

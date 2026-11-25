@@ -62,7 +62,9 @@ const Goals = {
       [['grp:bike', 'Rad (alle Arten)'], ['grp:foot', 'Wandern und Bergsteigen'], ['grp:ski', 'Ski (alle Arten)'], ['grp:run', 'Laufen (alle Arten)']].filter(([v]) => v === g.sport).map(opt),
       gr.length || (StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr)) ? h('optgroup', { label: 'Zusammengefasst' }, StatGruppen.auswahl(gr).map(opt),
         StatGruppen.istGruppe(g.sport) && !StatGruppen.gueltig(g.sport, gr) ? opt([g.sport, 'Gelöschte Gruppe']) : null) : null,
-      Sports.kategorien().map(([kid, knm, list]) => h('optgroup', { label: knm }, list.map(s => opt([s[0], s[1]])))));
+      // ein Ziel mit einem Schlüssel außerhalb des Katalogs (z. B. aus einem Zwischenstand) bleibt, wie es ist, und zählt über den Rückfall
+      g.sport && !g.sport.includes(':') && !Sports.bekannt(g.sport) ? opt([g.sport, Sports.label(g.sport) + ' (älteres Ziel)']) : null,
+      Sports.kategorien(g.sport).map(([kid, knm, list]) => h('optgroup', { label: knm }, list.map(s => opt([s[0], s[1]])))));
     draw();
     const s = sheet(goal ? 'Ziel ändern' : 'Neues Ziel', h('div', null, segBox, yearBox, h('div', { class: 'fld' }, 'Messgröße', metBox), h('label', { class: 'fld' }, 'Sportart', sportSel),
       h('label', { class: 'fld' }, 'Zielwert', val), h('p', { class: 'muted small', style: { marginTop: '-8px' } }, unit), err,

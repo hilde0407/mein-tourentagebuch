@@ -230,7 +230,7 @@ Views['/import'] = async root => {
   }
 };
 
-/* 2.19.0: Einstellungen → „Statistik: Aktivitäten zusammenfassen“ – die Statistik-Gruppen bearbeiten (Rechnung und Grenzen: js/calc-statgruppen.js).
+/* 2.19.0: Einstellungen → Aktivitäten → „Statistik-Gruppen“ – die Statistik-Gruppen bearbeiten (Rechnung und Grenzen: js/calc-statgruppen.js).
    Der Entwurf darf unfertige Gruppen enthalten (ohne Namen, unter 2 Sportarten); gespeichert wird nach jeder Änderung, was StatGruppen.sauber() übrig lässt.
    Dazu „Schneeschuh umstellen“: Wandern-Touren mit dem Schlagwort „Schneeschuh“ einmalig auf die Sportart Schneeschuh – nur auf Knopfdruck, rückgängig machbar. */
 const StatGrpUI = {
@@ -290,7 +290,7 @@ const StatGrpUI = {
   },
 };
 
-/* 2.19.0: Einstellungen → „Favoriten-Aktivitäten“ – welche Aktivitäten „Tour aufnehmen“ als Knöpfe anbietet (Rechnung: js/calc-aktivitaeten.js). */
+/* 2.19.0: Einstellungen → Aktivitäten → „Favoriten für „Tour aufnehmen““ – welche Aktivitäten „Tour aufnehmen“ als Knöpfe anbietet (Rechnung: js/calc-aktivitaeten.js). */
 const FavUI = {
   box() {
     const box = h('div', { id: 'fav-box' });
@@ -313,6 +313,32 @@ const FavUI = {
         h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'fav-standard', onclick: () => setze(Aktiv.STANDARD) }, 'Vorgabe wiederherstellen')));
     };
     draw();
+    return box;
+  },
+};
+
+/* 2.19.0: Einstellungen → Aktivitäten → „Katalog“: die Aktivitäten nach Kategorien, mit Symbol und Kartenfarbe (nur zum Ansehen; Tabelle in js/parse.js).
+   Darunter, falls vorhanden: Touren mit einer Aktivität, die nicht (mehr) im Katalog steht – sie bleiben unverändert und zählen als ihre Rückfall-Aktivität. */
+const KatalogUI = {
+  box() {
+    const farben = Sports.farben();
+    const alt = h('div', { id: 'akt-alt' });
+    const box = h('div', { id: 'akt-box' }, Sports.KAT.map(([kid, knm, keys]) => h('div', { class: 'akt-kat', 'data-kat': kid },
+      h('h4', null, knm + ' ', h('small', null, '(' + keys.length + ')')),
+      h('ul', { class: 'akt-liste' }, keys.map(k => h('li', { class: 'akt', 'data-sport': k },
+        h('span', { class: 'akt-i', html: Ico.svg(Sports.icon(k), 22) || esc(Sports.icon(k)) }),
+        h('span', { class: 'akt-n' }, Sports.label(k)),
+        h('i', { class: 'akt-f', style: { background: farben[k] }, title: 'Kartenfarbe', 'aria-hidden': 'true' })))))), alt);
+    (async () => {
+      const zahl = {};
+      for (const t of await DB.all('tours')) if (t && !Sports.bekannt(t.sport)) zahl[t.sport] = (zahl[t.sport] || 0) + 1;
+      const ks = Object.keys(zahl).sort();
+      if (!ks.length) return;
+      alt.append(h('h4', null, 'Ältere Aktivitäten in deinen Touren'),
+        h('p', { class: 'muted small' }, 'Diese Touren tragen eine Aktivität, die nicht im Katalog steht. Sie bleiben, wie sie sind, und zählen in Anzeige, Statistik und Zielen als:'),
+        h('ul', { class: 'akt-altl' }, ks.map(k => h('li', { 'data-sport': k }, '„' + k + '“ (' + zahl[k] + (zahl[k] === 1 ? ' Tour' : ' Touren') + ') → ' + Sports.label(k)))),
+        h('p', { class: 'muted small' }, 'Ändern kannst du die Aktivität an der Tour (Aktionen → Sportart ändern).'));
+    })().catch(e => console.error('Katalog', e));
     return box;
   },
 };
@@ -368,81 +394,104 @@ Views['/settings'] = async root => {
   const vgStand = h('p', { class: 'muted small', id: 'set-vgal-n' }, 'Wird gezählt …');
   const zeigeVg = async () => { const sc = await VideoGalerie.stand(); vgStand.textContent = VideoGalerie.zeile(sc); const b = $('#set-vgalcopy'); if (b) b.disabled = !(sc && sc.supported && sc.n); };
   const nT = await DB.count('tours'), nP = await DB.count('photos');
-  body.append(
-    MT.einstellung(),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
-    h('h3', null, 'Karte'),
-    h('div', { class: 'fld' }, 'Streckenfarbe', h('div', { class: 'chips wrap', id: 'rc' }, [['', 'Nach Sportart'], ['#e53935', 'Rot'], ['#fb8c00', 'Orange'], ['#fdd835', 'Gelb'], ['#43a047', 'Grün'], ['#1e88e5', 'Blau'], ['#8e24aa', 'Violett'], ['#d81b60', 'Pink'], ['#212121', 'Schwarz']].map(([c, n]) =>
-      h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),
-    sel('Kartenquelle', 'tiles', Object.entries(MapKit.providers).map(([k, v]) => [k, v.name])),
-    inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}'), inp('Schlüssel (für {key})', 'tileKey', ''),
-    UI.list([UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Ausschnitte für unterwegs laden, gesehene Kacheln merken', href: '#/offline', id: 'set-offline' })]),
-    h('p', { class: 'muted small' }, 'Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),
-    UI.toggle('Karte im PDF (braucht Internet)', Set_.get('pdfKarte') !== false, v => Set_.set('pdfKarte', !!v), { id: 'pdf-karte' }),
-    h('p', { class: 'muted small' }, 'Beim Tour-PDF lädt die App dafür einen Kartenausschnitt von OpenStreetMap (nur zum Zeichnen, nichts wird gespeichert). Vorhandene Kacheln nimmt sie zuerst: eine Offline-Karte, die den ganzen Ausschnitt enthält, oder gemerkte Kacheln. Fehlt etwas ohne Internet, oder ist der Schalter aus, steht die Streckenskizze im PDF.'),
-    // 2.16.0: Darstellung des 3D-Flugs
-    h('label', { class: 'fld' }, '3D-Flug: Darstellung', h('select', { id: 'set-flugstufe', onchange: async e => { await Set_.set('flugStufe', e.target.value); } },
-      FlugCalc.WAHL.map(([v, l]) => h('option', { value: v, selected: FlugCalc.stufe(Set_.get('flugStufe'), Flug.handy()) === v }, l)))),
-    h('p', { class: 'muted small' }, '„Flüssig“ rechnet mit weniger Bildpunkten und einfacherem Gelände, damit der Flug auch auf Handys ruhig läuft. „Schön“ zeichnet schärfer und mit Geländeschatten. Ruckelt der Flug, schaltet die App von selbst eine Stufe herunter.'),
-    h('h3', null, 'Routing'), inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'),
-    h('h3', null, 'Fotos'), sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
-    h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen'),
-    // 2.9.0: Videos aufnehmen – die Hülle bekommt die Werte über Videos.prefs()
-    h('h3', { id: 'set-video-h' }, 'Videos'),
-    h('label', { class: 'fld' }, 'Längste Video-Aufnahme', h('select', { id: 'set-vlimit', onchange: async e => { await Set_.set('videoLimit', e.target.value); Videos.prefs(); } },
-      VideoCalc.LIMITS.map(([v, l]) => h('option', { value: v, selected: String(Set_.get('videoLimit')) === v }, l)))),
-    UI.toggle('Aufgenommene Videos auch in der Galerie speichern', Set_.get('videoGallery') !== false, async v => { await Set_.set('videoGallery', !!v); Videos.prefs(); }, { id: 'set-vgal' }),
-    h('p', { class: 'muted small' }, 'Ab Android 10 im Ordner „Movies/Tourentagebuch“, ohne zusätzliche Berechtigung. Auf älteren Handys wird keine Kopie angelegt. Das Video bleibt in jedem Fall auch in der App.'),
-    window.MTApp ? h('div', { class: 'vg-box' }, vgStand, h('button', { class: 'btn', id: 'set-vgalcopy', onclick: () => VideoGalerie.kopieren(zeigeVg) }, 'Vorhandene Videos in die Galerie kopieren')) : null,
-    UI.toggle('HEVC-Videos beim Aufnehmen automatisch umwandeln', !!Set_.get('videoAuto'), async v => { await Set_.set('videoAuto', !!v); Videos.prefs(); }, { id: 'set-vauto' }),
-    h('p', { class: 'muted small' }, 'Aus: Videos bleiben, wie die Kamera sie speichert; der Player der App spielt sie ab. Umwandeln in H.264 geht jederzeit unter Foto-Quellen oder in den Details eines Videos.'),
-    // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
-    h('h3', { id: 'set-rec-h' }, 'Aufzeichnung'),
-    h('p', { class: 'muted small', id: 'set-akku-txt' }, 'Manche Handys beenden Apps im Hintergrund, um Akku zu sparen – dann bricht eine lange Aufnahme ab. Öffne die Akku-Einstellungen, suche „Tourentagebuch“ und wähle „Nicht eingeschränkt“ (je nach Handy auch „Nicht optimieren“). Die App kann das nicht selbst einstellen. Bricht eine Aufnahme trotzdem ab, sind die Punkte bis dahin gesichert, und die App bietet beim nächsten Öffnen Fortsetzen oder Speichern an.'),
-    window.MTApp ? h('p', { class: 'muted small', id: 'set-akku-stand' }, RecRescue.akkuZeile()) : null,
-    window.MTApp ? h('button', { class: 'btn', id: 'set-akku', onclick: () => MTApp.openBatterySettings() }, 'Akku-Einstellungen öffnen') : h('p', { class: 'muted small' }, 'Nur in der Android-App.'),
-    h('h3', null, 'Heimatort'), homeBox(),
-    h('h3', null, 'Puls'), inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
-    h('p', { class: 'muted small' }, 'Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
-    h('h3', null, 'Fitness-Einordnung'), h('p', { class: 'muted small' }, 'Das Geburtsjahr braucht die Fitness-Einordnung in der Statistik (nur das Jahr). Es bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.'), FitUI.yearBox(null, { label: 'Geburtsjahr' }),
-    h('h3', { id: 'homeset-h' }, 'Startseite'), h('p', { class: 'muted small' }, 'Was unter den Hauptknöpfen steht. Die Reihenfolge ist fest. Den Hinweis auf die Sicherung stellst du unter Datensicherung ein.'),
-    h('div', { id: 'homeset' }, Home.blocks.filter(b => b.meta).map(b => h('div', { class: 'hs-row' }, UI.toggle(b.meta.label, Home.shown(b), async on => {
-      const m = Object.assign({}, Set_.get('homeShow') || {}); m[b.id] = !!on; await Set_.set('homeShow', m);
-    }, { id: 'hs-' + b.id }), b.meta.sub ? h('p', { class: 'muted small' }, b.meta.sub) : null))),
-    // 2.19.0: Favoriten-Aktivitäten und Statistik-Gruppen
-    h('h3', { id: 'fav-h' }, 'Favoriten-Aktivitäten'),
-    h('p', { class: 'muted small' }, 'Diese Aktivitäten stehen bei „Tour aufnehmen“ als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.'),
-    FavUI.box(),
-    h('h3', { id: 'sg-h' }, 'Statistik: Aktivitäten zusammenfassen'),
-    h('p', { class: 'muted small', id: 'sg-txt' }, 'Jede Aktivität steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen („… (zusammengefasst)“). Jede Aktivität kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Aktivität.'),
-    StatGrpUI.box(),
-    h('h3', { class: 'sub', id: 'ss-h' }, 'Schneeschuh als eigene Aktivität'),
-    h('p', { class: 'muted small' }, 'Seit 2.19.0 ist Schneeschuh wieder eine eigene Aktivität. Ältere Touren waren Wandern mit dem Schlagwort „Schneeschuh“ – sie lassen sich hier als Schneeschuh führen (rückgängig machbar, das Schlagwort bleibt).'),
-    StatGrpUI.schneeschuh(),
-    h('h3', null, 'Datensicherung'), h('p', { class: 'muted' }, `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`),
-    h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
-    h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“. Offline-Karten sind auch nicht enthalten – sie lassen sich jederzeit neu laden.'),
-    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toast(e.message, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
-    h('div', { class: 'fld' }, 'Erinnern, wenn die letzte Sicherung älter ist als', remind),
-    h('p', { class: 'muted small' }, 'Touren und Fotos/Videos werden getrennt gezählt; die Startseite zeigt höchstens eine Zeile.'),
-    UI.toggle('Automatisch in Ordner sichern', !!Set_.get('backupAuto'), async (on, e) => {
-      if (!on) { await Set_.set('backupAuto', false); return; }
-      const f = await Medien.ordner(false);
-      if (!f) { e.target.checked = false; return; }
-      await Set_.set('backupAuto', true); showMedien();
-      toast('Ab jetzt einmal am Tag beim Start in „' + f.name + '“', 5000);
-      Backup.auto().then(r => { if (r) showLast(); });
-    }, { id: 'bk-auto' }),
-    h('p', { class: 'muted small' }, 'Beim Öffnen der App höchstens einmal am Tag eine neue Sicherung (.mtl, ohne Foto- und Videodateien) in den Sicherungsordner. Die letzten 5 bleiben, ältere löscht die App. Fotos und Videos werden nur auf Knopfdruck gesichert.'),
-    h('h3', { id: 'md-h' }, 'Fotos und Videos sichern'),
-    h('p', { class: 'muted small' }, 'Die App speichert die Dateien als ZIP in einen Ordner deiner Wahl, am besten auf einer Speicherkarte, einem USB-Stick oder in einem Ordner, den du danach auf den Computer kopierst. Beim nächsten Mal kommt nur Neues in eine weitere Datei „Medien_<Datum>.zip“ – bewahre alle auf. Große Sicherungen werden in Teile zu höchstens 1,5 GB geteilt.'),
-    mdStand, mdLast, mdOrdner,
-    h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'md-save', onclick: async () => { await Medien.sichern(); showMedien(); } }, 'Sichern'),
-      h('button', { class: 'btn', id: 'md-restore', onclick: async () => { await Medien.wiederherstellen(); showMedien(); } }, 'Wiederherstellen'),
-      h('button', { class: 'btn', id: 'md-folder', onclick: async () => { const f = await Medien.ordner(true); if (f) toast('Sicherungsordner: ' + f.name, 4000); showMedien(); } }, 'Ordner ändern')),
-    h('p', { class: 'muted small' }, 'Wiederherstellen: eine oder mehrere Medien-Sicherungen wählen. Fotos und Videos, die schon auf dem Handy sind, bleiben unverändert.'),
-    h('h3', null, 'Über'), h('p', { class: 'muted small' }, 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)'),
-    h('div', { class: 'row wrap' }, window.MTApp ? h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll') : null,
-      h('button', { class: 'btn sm danger', onclick: wipe }, 'Alle Daten löschen')));
+  /* 2.19.0: Einstellungen neu geordnet – Bereiche (h2) mit einheitlichen Karten (h3, eine Erklärzeile, dann Schalter/Felder, Hinweise klein darunter).
+     Gliederung wie die Verwaltung von „Meine Touren“: Zusammenarbeit · Aktivitäten (Katalog, Favoriten, Statistik-Gruppen) · Karte und Planung ·
+     Aufnahme, Fotos und Videos · Persönliches und Startseite · Datensicherung · Über die App. */
+  const hint = t => h('p', { class: 'muted small' }, t);
+  const karte = (id, hid, titel, text, ...kids) => h('section', { class: 'card set-k', id }, h('h3', { id: hid }, titel), text ? h('p', { class: 'muted small set-t' }, text) : null, ...kids);
+  const BEREICHE = [];
+  const bereich = (id, titel, text, ...karten) => { BEREICHE.push([id, titel]); return h('section', { class: 'set-g', id }, h('h2', null, titel), text ? h('p', { class: 'muted small set-gt' }, text) : null, ...karten); };
+  const gruppen = [
+    bereich('set-g-mt', 'Zusammenarbeit', null, MT.einstellung()),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
+    bereich('set-g-akt', 'Aktivitäten', 'Welche Aktivitäten es gibt, welche beim Aufnehmen vorn stehen und welche die Statistik zusammen zählt.',
+      karte('akt-katalog', 'akt-katalog-h', 'Katalog', 'Alle ' + Sports.katalog.length + ' Aktivitäten nach Kategorien, mit Symbol und Kartenfarbe. Jede Tour behält ihre Aktivität.',
+        KatalogUI.box(),
+        h('h4', { id: 'ss-h' }, 'Ältere Schneeschuh-Touren'),
+        hint('Seit 2.19.0 ist Schneeschuhwandern eine eigene Aktivität. Ältere Touren waren Wandern mit dem Schlagwort „Schneeschuh“ – sie lassen sich hier als Schneeschuhwandern führen (rückgängig machbar, das Schlagwort bleibt).'),
+        StatGrpUI.schneeschuh()),
+      karte('akt-fav', 'fav-h', 'Favoriten für „Tour aufnehmen“', 'Diese Aktivitäten stehen bei „Tour aufnehmen“ als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
+        FavUI.box()),
+      karte('akt-sg', 'sg-h', 'Statistik-Gruppen', 'Jede Aktivität steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen („… (zusammengefasst)“). Jede Aktivität kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Aktivität.',
+        StatGrpUI.box())),
+    bereich('set-g-karte', 'Karte und Planung', null,
+      karte('set-k-karte', 'set-karte-h', 'Karte', 'Wie Strecken und Karten aussehen und woher die Kacheln kommen.',
+        h('div', { class: 'fld' }, 'Streckenfarbe', h('div', { class: 'chips wrap', id: 'rc' }, [['', 'Nach Sportart'], ['#e53935', 'Rot'], ['#fb8c00', 'Orange'], ['#fdd835', 'Gelb'], ['#43a047', 'Grün'], ['#1e88e5', 'Blau'], ['#8e24aa', 'Violett'], ['#d81b60', 'Pink'], ['#212121', 'Schwarz']].map(([c, n]) =>
+          h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),
+        sel('Kartenquelle', 'tiles', Object.entries(MapKit.providers).map(([k, v]) => [k, v.name])),
+        inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}'), inp('Schlüssel (für {key})', 'tileKey', ''),
+        hint('Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),
+        UI.list([UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Ausschnitte für unterwegs laden, gesehene Kacheln merken', href: '#/offline', id: 'set-offline' })])),
+      karte('set-k-pdf', 'set-pdf-h', 'Karte im Tour-PDF', 'Statt der Streckenskizze ein echter Kartenausschnitt im Tour-PDF.',
+        UI.toggle('Karte im PDF (braucht Internet)', Set_.get('pdfKarte') !== false, v => Set_.set('pdfKarte', !!v), { id: 'pdf-karte' }),
+        hint('Beim Tour-PDF lädt die App dafür einen Kartenausschnitt von OpenStreetMap (nur zum Zeichnen, nichts wird gespeichert). Vorhandene Kacheln nimmt sie zuerst: eine Offline-Karte, die den ganzen Ausschnitt enthält, oder gemerkte Kacheln. Fehlt etwas ohne Internet, oder ist der Schalter aus, steht die Streckenskizze im PDF.')),
+      // 2.16.0: Darstellung des 3D-Flugs
+      karte('set-k-flug', 'set-flug-h', '3D-Flug', 'Wie fein der 3D-Flug über die Strecke gezeichnet wird.',
+        h('label', { class: 'fld' }, 'Darstellung', h('select', { id: 'set-flugstufe', onchange: async e => { await Set_.set('flugStufe', e.target.value); } },
+          FlugCalc.WAHL.map(([v, l]) => h('option', { value: v, selected: FlugCalc.stufe(Set_.get('flugStufe'), Flug.handy()) === v }, l)))),
+        hint('„Flüssig“ rechnet mit weniger Bildpunkten und einfacherem Gelände, damit der Flug auch auf Handys ruhig läuft. „Schön“ zeichnet schärfer und mit Geländeschatten. Ruckelt der Flug, schaltet die App von selbst eine Stufe herunter.')),
+      karte('set-k-routing', 'set-routing-h', 'Routing', 'Server und Profil für „Wegen folgen“ in der Planung.',
+        inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'))),
+    bereich('set-g-aufn', 'Aufnahme, Fotos und Videos', null,
+      // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
+      karte('set-k-rec', 'set-rec-h', 'Aufzeichnung', null,
+        h('p', { class: 'muted small set-t', id: 'set-akku-txt' }, 'Manche Handys beenden Apps im Hintergrund, um Akku zu sparen – dann bricht eine lange Aufnahme ab. Öffne die Akku-Einstellungen, suche „Tourentagebuch“ und wähle „Nicht eingeschränkt“ (je nach Handy auch „Nicht optimieren“). Die App kann das nicht selbst einstellen. Bricht eine Aufnahme trotzdem ab, sind die Punkte bis dahin gesichert, und die App bietet beim nächsten Öffnen Fortsetzen oder Speichern an.'),
+        window.MTApp ? h('p', { class: 'muted small', id: 'set-akku-stand' }, RecRescue.akkuZeile()) : null,
+        window.MTApp ? h('button', { class: 'btn', id: 'set-akku', onclick: () => MTApp.openBatterySettings() }, 'Akku-Einstellungen öffnen') : hint('Nur in der Android-App.')),
+      karte('set-k-fotos', 'set-fotos-h', 'Fotos', 'Welche Fotos zu einer Tour gehören.',
+        sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
+        h('button', { class: 'btn', onclick: async () => toast((await Photos.assignAll(true)) + ' Foto(s) neu zugeordnet') }, 'Alle Fotos neu zuordnen')),
+      // 2.9.0: Videos aufnehmen – die Hülle bekommt die Werte über Videos.prefs()
+      karte('set-k-video', 'set-video-h', 'Videos', 'Aufnahme, Galerie und Umwandeln von Videos.',
+        h('label', { class: 'fld' }, 'Längste Video-Aufnahme', h('select', { id: 'set-vlimit', onchange: async e => { await Set_.set('videoLimit', e.target.value); Videos.prefs(); } },
+          VideoCalc.LIMITS.map(([v, l]) => h('option', { value: v, selected: String(Set_.get('videoLimit')) === v }, l)))),
+        UI.toggle('Aufgenommene Videos auch in der Galerie speichern', Set_.get('videoGallery') !== false, async v => { await Set_.set('videoGallery', !!v); Videos.prefs(); }, { id: 'set-vgal' }),
+        hint('Ab Android 10 im Ordner „Movies/Tourentagebuch“, ohne zusätzliche Berechtigung. Auf älteren Handys wird keine Kopie angelegt. Das Video bleibt in jedem Fall auch in der App.'),
+        window.MTApp ? h('div', { class: 'vg-box' }, vgStand, h('button', { class: 'btn', id: 'set-vgalcopy', onclick: () => VideoGalerie.kopieren(zeigeVg) }, 'Vorhandene Videos in die Galerie kopieren')) : null,
+        UI.toggle('HEVC-Videos beim Aufnehmen automatisch umwandeln', !!Set_.get('videoAuto'), async v => { await Set_.set('videoAuto', !!v); Videos.prefs(); }, { id: 'set-vauto' }),
+        hint('Aus: Videos bleiben, wie die Kamera sie speichert; der Player der App spielt sie ab. Umwandeln in H.264 geht jederzeit unter Foto-Quellen oder in den Details eines Videos.'))),
+    bereich('set-g-ich', 'Persönliches und Startseite', null,
+      karte('set-k-home', 'set-home-h', 'Heimatort', 'Kartenmitte der Planung, Wetter und Vorschläge.', homeBox()),
+      karte('set-k-puls', 'set-puls-h', 'Puls und Fitness', 'Bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.',
+        inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
+        hint('Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
+        FitUI.yearBox(null, { label: 'Geburtsjahr' }),
+        hint('Das Geburtsjahr braucht die Fitness-Einordnung in der Statistik (nur das Jahr).')),
+      karte('set-k-start', 'homeset-h', 'Startseite', 'Was unter den Hauptknöpfen steht. Die Reihenfolge ist fest. Den Hinweis auf die Sicherung stellst du unter Datensicherung ein.',
+        h('div', { id: 'homeset' }, Home.blocks.filter(b => b.meta).map(b => h('div', { class: 'hs-row' }, UI.toggle(b.meta.label, Home.shown(b), async on => {
+          const m = Object.assign({}, Set_.get('homeShow') || {}); m[b.id] = !!on; await Set_.set('homeShow', m);
+        }, { id: 'hs-' + b.id }), b.meta.sub ? hint(b.meta.sub) : null))))),
+    bereich('set-g-sich', 'Datensicherung', `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`,
+      karte('set-k-bk', 'bk-h', 'Touren und Einstellungen sichern', null,
+        h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
+        h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“. Offline-Karten sind auch nicht enthalten – sie lassen sich jederzeit neu laden.'),
+        h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toast(e.message, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
+        h('div', { class: 'fld' }, 'Erinnern, wenn die letzte Sicherung älter ist als', remind),
+        hint('Touren und Fotos/Videos werden getrennt gezählt; die Startseite zeigt höchstens eine Zeile.'),
+        UI.toggle('Automatisch in Ordner sichern', !!Set_.get('backupAuto'), async (on, e) => {
+          if (!on) { await Set_.set('backupAuto', false); return; }
+          const f = await Medien.ordner(false);
+          if (!f) { e.target.checked = false; return; }
+          await Set_.set('backupAuto', true); showMedien();
+          toast('Ab jetzt einmal am Tag beim Start in „' + f.name + '“', 5000);
+          Backup.auto().then(r => { if (r) showLast(); });
+        }, { id: 'bk-auto' }),
+        hint('Beim Öffnen der App höchstens einmal am Tag eine neue Sicherung (.mtl, ohne Foto- und Videodateien) in den Sicherungsordner. Die letzten 5 bleiben, ältere löscht die App. Fotos und Videos werden nur auf Knopfdruck gesichert.')),
+      karte('set-k-md', 'md-h', 'Fotos und Videos sichern', 'Die App speichert die Dateien als ZIP in einen Ordner deiner Wahl, am besten auf einer Speicherkarte, einem USB-Stick oder in einem Ordner, den du danach auf den Computer kopierst. Beim nächsten Mal kommt nur Neues in eine weitere Datei „Medien_<Datum>.zip“ – bewahre alle auf. Große Sicherungen werden in Teile zu höchstens 1,5 GB geteilt.',
+        mdStand, mdLast, mdOrdner,
+        h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'md-save', onclick: async () => { await Medien.sichern(); showMedien(); } }, 'Sichern'),
+          h('button', { class: 'btn', id: 'md-restore', onclick: async () => { await Medien.wiederherstellen(); showMedien(); } }, 'Wiederherstellen'),
+          h('button', { class: 'btn', id: 'md-folder', onclick: async () => { const f = await Medien.ordner(true); if (f) toast('Sicherungsordner: ' + f.name, 4000); showMedien(); } }, 'Ordner ändern')),
+        hint('Wiederherstellen: eine oder mehrere Medien-Sicherungen wählen. Fotos und Videos, die schon auf dem Handy sind, bleiben unverändert.'))),
+    bereich('set-g-app', 'Über die App', null,
+      karte('set-k-ueber', 'set-ueber-h', 'Version und Lizenzen', 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)',
+        window.MTApp ? h('div', { class: 'row wrap' }, h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll')) : null),
+      karte('set-k-wipe', 'set-wipe-h', 'Alle Daten löschen', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht. Vorher eine Sicherung machen.',
+        h('div', { class: 'row wrap' }, h('button', { class: 'btn sm danger', id: 'set-wipe', onclick: wipe }, 'Alle Daten löschen')))),
+  ];
+  // Inhalt: springt zu einem Bereich (kein Seitenwechsel)
+  const inhalt = h('nav', { class: 'chips wrap set-inhalt', id: 'set-inhalt', 'aria-label': 'Bereiche der Einstellungen' }, BEREICHE.map(([id, titel]) =>
+    h('button', { class: 'chip', 'data-ziel': id, onclick: () => { const z = document.getElementById(id); if (z) z.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, titel)));
+  body.append(inhalt, ...gruppen);
 
   showLast(); showMedien(); if (window.MTApp) zeigeVg();
   async function wipe() {

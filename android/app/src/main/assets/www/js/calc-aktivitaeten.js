@@ -10,10 +10,10 @@
     return typeof Sports !== 'undefined' ? Sports : root.Sports;      // eslint-disable-line no-undef
   }
 
-  /** Liste bereinigen: nur bekannte Sportarten (ohne die nur noch für alte Touren gedachten), ohne Doppel, höchstens 12. Kein Array → Standard. */
+  /** Liste bereinigen: nur Aktivitäten des Katalogs (ohne die nur noch für alte Touren gedachten und ohne entfernte Schlüssel), ohne Doppel, höchstens 12. Kein Array → Standard. */
   function favoriten(list) {
     if (!Array.isArray(list)) return STANDARD.slice();
-    const ok = new Set(S().list.map(s => s[0]).filter(k => !S().ALT.includes(k))), out = [];
+    const ok = new Set(S().katalog.map(s => s[0])), out = [];      // nur der Katalog: Altschlüssel („ski“) und entfernte Schlüssel fallen still weg
     for (const k of list) if (typeof k === 'string' && ok.has(k) && !out.includes(k) && out.length < MAX) out.push(k);
     return out;
   }
@@ -33,7 +33,7 @@
   /** Was „Tour aufnehmen“ zeigt: die Favoriten als Chips; die zuletzt benutzte Aktivität ist vorgewählt und steht – falls sie kein Favorit ist – vorn dabei.
       Ohne gültige zuletzt benutzte: die erste der Favoriten (sonst Wandern). Rückgabe { chips: [Schlüssel], gewaehlt }. */
   function aufnahme(favs, zuletzt) {
-    const f = favoriten(favs), bekannt = S().list.some(s => s[0] === zuletzt);
+    const f = favoriten(favs), bekannt = S().katalog.some(s => s[0] === zuletzt);
     const gewaehlt = bekannt ? zuletzt : (f[0] || 'hike');
     return { chips: f.includes(gewaehlt) ? f : [gewaehlt].concat(f), gewaehlt };
   }

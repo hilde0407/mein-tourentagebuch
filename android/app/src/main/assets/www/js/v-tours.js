@@ -121,13 +121,13 @@ Views['/'] = async root => {
     chip('Alle', !F_.sport && !F_.fav && !F_.planned, () => { Object.assign(F_, { sport: '', fav: false, planned: false }); draw(); });
     chip('★ Favoriten', F_.fav, () => { F_.fav = !F_.fav; draw(); });
     chip('Geplant', F_.planned, () => { F_.planned = !F_.planned; draw(); });
-    const used = [...new Set(all.map(t => t.sport))];
+    const used = [...new Set(all.map(t => Sports.anzeige(t.sport)))];      // 2.19.0: Schlüssel außerhalb des Katalogs unter ihrem Rückfall
     Sports.list.filter(s => used.includes(s[0])).forEach(s => chip(s[1], F_.sport === s[0], () => { F_.sport = F_.sport === s[0] ? '' : s[0]; draw(); }));
     const nf = (F_.year ? 1 : 0) + (F_.region ? 1 : 0) + (F_.stars ? 1 : 0);
     fbtn.innerHTML = Ico.svg('filter') + '<span>Filter</span>' + (nf ? '<i>' + nf + '</i>' : '');
     fbtn.setAttribute('aria-label', nf ? 'Filter, ' + nf + ' gesetzt' : 'Filter');
     const ql = F_.q.trim().toLowerCase();
-    const ts = all.filter(t => (F_.planned ? t.status === 'planned' : t.status !== 'planned') && (!F_.sport || t.sport === F_.sport) && (!F_.fav || t.fav)
+    const ts = all.filter(t => (F_.planned ? t.status === 'planned' : t.status !== 'planned') && (!F_.sport || Sports.anzeige(t.sport) === F_.sport) && (!F_.fav || t.fav)
       && (!F_.year || String(new Date(t.start).getFullYear()) === String(F_.year)) && (!F_.region || Reisen.regionOf(t, cells) === F_.region) && (!F_.stars || Abgleich.sterne(t) >= +F_.stars) && (!ql || (t.name + ' ' + (t.note || '') + ' ' + Sports.label(t.sport)).toLowerCase().includes(ql)));
     list.innerHTML = '';
     const d = ts.reduce((a, t) => a + t.dist, 0), u = ts.reduce((a, t) => a + (t.up || 0), 0);
@@ -357,7 +357,8 @@ Views['/tour'] = async (root, [id]) => {
   }
   async function changeSport() {
     // 2.19.0: alle Aktivitäten nach Kategorien („Ski (allgemein)“ nur, wenn die Tour sie schon hat)
-    const s = sheet('Sportart', h('div', null, Sports.kategorien(t.sport).map(([kid, knm, list]) => [h('h3', { class: 'sub' }, knm), UI.list(list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; t.sportMan = 1; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' })]).flat()));
+    const fremd = !Sports.bekannt(t.sport) ? h('p', { class: 'muted small', id: 'sp-fremd' }, 'Die gespeicherte Aktivität dieser Tour („' + String(t.sport || '') + '“) steht nicht im Katalog. Sie zählt als „' + Sports.label(t.sport) + '“ und bleibt so, bis du hier eine Aktivität wählst.') : null;
+    const s = sheet('Sportart', h('div', null, fremd, Sports.kategorien(t.sport).map(([kid, knm, list]) => [h('h3', { class: 'sub' }, knm), UI.list(list.map(sp => UI.row({ icon: sp[2], title: sp[1], trail: sp[0] === t.sport ? 'gewählt' : null, onclick: async () => { t.sport = sp[0]; t.sportMan = 1; await Tours.save(t); s.close(); Nav.render(); } })), { cls: 'menu' })]).flat()));
   }
   async function exportGpx() {
     const wp = photos.filter(p => p.lat != null).map(p => ({ lat: p.lat, lon: p.lon, name: p.name }));

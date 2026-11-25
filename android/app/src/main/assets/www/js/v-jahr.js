@@ -58,7 +58,7 @@ Views['/jahr'] = async (root, [param]) => {
     h('div', { class: 'jsp-h' }, h('b', null, g.label), h('span', null, JahrUI.pct(g.anteil))),
     h('div', { class: 'jsp-b', 'aria-hidden': 'true' }, h('i', { style: { width: Math.max(1.5, g.anteil * 100) + '%' } })),
     h('small', null, [JahrUI.touren(g.n), g.dist ? F.km(g.dist) : null, g.up ? '↑ ' + F.m(g.up) : null].filter(Boolean).join(' · '))));
-  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Zusammengefasst nach deinen Statistik-Gruppen (Einstellungen).' : 'Jede Aktivität für sich – zusammenfassen lässt sich unter Einstellungen → Statistik.') }));
+  body.append(UI.section('Nach Sportart', h('div', { class: 'jsports' }, spr), { id: 'jahr-sport', sub: 'Anteil an der Strecke. ' + (StatGruppen.aktuell().length ? 'Zusammengefasst nach deinen Statistik-Gruppen (Einstellungen → Aktivitäten).' : 'Jede Aktivität für sich – zusammenfassen lässt sich unter Einstellungen → Aktivitäten → Statistik-Gruppen.') }));
 
   // Höhepunkte
   const hp = d.hoehepunkte, rows = [];

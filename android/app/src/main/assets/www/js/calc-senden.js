@@ -10,12 +10,17 @@
       dort gilt dann die Vorgabe-Sportart des Servers. */
   const SPORT = { hike: 'hike', walk: 'hike', mountaineering: 'mountaineering', run: 'jogging', bike: 'touringbicycle', ebike: 'e_touringbicycle', racebike: 'racebike', mtb: 'mtb',
     skialpin: 'skialpin', skitour: 'skitour', nordic: 'nordic', snowshoe: 'snowshoe',
-    // 2.19.0: neue Sportarten so, wie Meine Touren sie kennt bzw. am nächsten kommt; Wasser, Eis, Schneemobil, BMX, Reiten, Angeln, Golf, Motorrad … kennt der Server nicht (nicht mitsenden)
-    nordicwalking: 'nordicwalking', climbing: 'mountaineering', trailrun: 'jogging', gravel: 'touringbicycle', emtb: 'e_mtb', snowboard: 'skialpin',
-    dogwalk: 'hike', orienteering: 'jogging', commute: 'touringbicycle', cyclocross: 'racebike' };
+    // 2.19.0: neuere Aktivitäten so, wie auch ältere Server von Meine Touren sie kennen bzw. am nächsten kommt; Wasser, Skateboard, Inline, Reiten, Gleitschirm
+    // kennt ein älterer Server nicht (nicht mitsenden – dort gilt seine Vorgabe-Sportart). Entfernte Schlüssel älterer Touren gehen über ihren Rückfall (Sports.anzeige).
+    nordicwalking: 'nordicwalking', climbing: 'mountaineering', trailrun: 'jogging', gravel: 'touringbicycle', emtb: 'e_mtb', snowboard: 'skialpin', bikepacking: 'touringbicycle' };
+  /** Die Sportarten der App (parse.js; erst beim Aufruf geholt). */
+  function S() {
+    if (node) return require('./parse.js').Sports;
+    return typeof Sports !== 'undefined' ? Sports : root.Sports;      // eslint-disable-line no-undef
+  }
   /** Kennung für den Server; Schneeschuh (seit 2.19.0 eigene Sportart, davor Wandern mit dem Schlagwort „Schneeschuh“) geht als „snowshoe“. null = nicht mitsenden. */
   function sport(t) {
-    const s = SPORT[t && t.sport] || null;
+    const s = SPORT[t && S().anzeige(t.sport)] || null;
     if (s === 'hike' && (t.tags || []).includes('Schneeschuh')) return 'snowshoe';
     return s;
   }

@@ -48,7 +48,14 @@
   const BIS_2_18 = { snowshoe: 'hike', nordicwalking: 'hike', emtb: 'ebike', gravel: 'mtb', trailrun: 'run', snowboard: 'skialpin', climbing: 'mountaineering' };
   /** Gleiche Sportart für den Abgleich mit Meine Touren? Eine neue Sportart und die, unter der sie bis 2.18 lief (z. B. Schneeschuh ↔ Wandern, E-Mountainbike ↔ E-Bike),
       gelten als gleich – so stellt ein Abgleich nie still um und zeigt keinen Unterschied. Umstellen geht nur auf Knopfdruck (Schneeschuh) oder von Hand. */
-  function sportGleich(a, b) { return a === b || BIS_2_18[a] === b || BIS_2_18[b] === a; }
+  function sportGleich(a, b) {
+    if (a === b || BIS_2_18[a] === b || BIS_2_18[b] === a) return true;
+    // Schlüssel außerhalb des Katalogs (z. B. Gassigehen aus einem Zwischenstand) gelten als gleich mit ihrer Rückfall-Aktivität – die Tour bleibt unverändert.
+    const S = typeof module !== 'undefined' && module.exports ? require('./parse.js').Sports : (typeof Sports !== 'undefined' ? Sports : root.Sports);      // eslint-disable-line no-undef
+    if (!S || !S.anzeige || (S.bekannt(a) && S.bekannt(b))) return false;
+    const x = S.anzeige(a), y = S.anzeige(b);
+    return x === y || BIS_2_18[x] === y || BIS_2_18[y] === x;
+  }
   /** Touren, die „Schneeschuh umstellen“ ändern würde: Wandern mit dem Schlagwort „Schneeschuh“, Sportart nicht von Hand gewählt. */
   function schneeschuhKandidaten(tours) { return (tours || []).filter(t => t && t.sport === 'hike' && !t.sportMan && (t.tags || []).includes('Schneeschuh')); }
   /** Eine Tour umstellen (Kopie): Sportart snowshoe, Schlagwort bleibt, Merker ssUm = 1 für Rückgängig. */

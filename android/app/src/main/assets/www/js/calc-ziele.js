@@ -18,7 +18,7 @@
       gruppen: Liste der Statistik-Gruppen (Vorgabe: die gespeicherten, in Node leer). */
   function sportPasst(goal, sport, gruppen) {
     const s = goal.sport || '';
-    if (s === 'ski') return (PH.SPORT_GRP.ski || []).includes(sport);      // ein Ziel „Ski“ aus der Zeit vor 2.2.0 zählt alle Skiarten
+    if (s === 'ski') return SG.passt('grp:ski', sport, []);      // ein Ziel „Ski“ aus der Zeit vor 2.2.0 zählt alle Skiarten
     return SG.passt(s, sport, gruppen === undefined ? SG.aktuell() : gruppen);
   }
   /** Ältere Jahresziele (kv „goals“: {Jahr: {km, up, n}}) als Liste neuer Ziele lesen. Die Kennungen sind fest, damit ein erneutes Einlesen nichts verdoppelt. */

@@ -127,7 +127,7 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
   };
   const gr = StatGruppen.aktuell();      // 2.19.0: Statistik-Gruppen sind ein Chip (statt eines je Sportart)
   const usedSp = [...new Set(all.filter(t => inYear(t, yr)).map(t => t.sport))];
-  const used = [...new Set(Sports.list.map(s => s[0]).filter(k => usedSp.includes(k)).map(k => StatGruppen.schluessel(k, gr)))];
+  const used = [...new Set(Sports.list.map(s => s[0]).filter(k => usedSp.some(u => Sports.anzeige(u) === k)).map(k => StatGruppen.schluessel(k, gr)))];      // Schlüssel außerhalb des Katalogs unter ihrem Rückfall
   let sport = '';      // nur Seitenzustand: filtert allein diesen Abschnitt
   const chips = UI.chips([]), box = h('div'), goalBox = h('div', { class: 'ygoals' });
   let mine = [];
@@ -162,7 +162,7 @@ Home.add('year', 20, async ({ all, now, year: yr }) => {
   return UI.section('Dieses Jahr', [chips, box, goalBox], { cls: 'year', id: 'year', link: '#/stats', linkText: 'Statistik' });
 }, { label: 'Dieses Jahr und Ziele', sub: 'Strecke, Touren, Aufstieg, Monate, Ziele', def: true });
 
-/* ---- Wochen-Serie: Wochen in Folge mit mindestens einer Tour (standardmäßig aus; einschaltbar unter Einstellungen → Startseite) ---- */
+/* ---- Wochen-Serie: Wochen in Folge mit mindestens einer Tour (standardmäßig aus; einschaltbar unter Einstellungen → Persönliches und Startseite → Startseite) ---- */
 Home.add('serie', 30, async ({ all, now }) => {
   const s = Serie.berechne(all, now);
   return UI.section('Wochen-Serie', [UI.figs([[Ausw.wk(s.aktuell), 'in Folge'], [Ausw.wk(s.rekord), 'Rekord']]),

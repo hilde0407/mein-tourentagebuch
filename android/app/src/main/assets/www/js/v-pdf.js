@@ -4,7 +4,7 @@
    als JPEG (Qualität 0,85) kodiert und von js/calc-pdf.js in ein kleines PDF-1.4 geschrieben. Die Seiten entstehen nacheinander mit Pausen dazwischen
    (die Oberfläche bleibt bedienbar), mit Fortschritt und „Abbrechen“. Fotos kommen als Vorschaubilder (480 px) aus der lokalen Foto-Ablage.
    2.6.0: Im Tour-PDF steht statt der Skizze eine echte Karte (OpenStreetMap-Kacheln, Berechnung in js/calc-karte.js), wenn der Schalter
-   „Karte im PDF“ an ist (Einstellungen → Karte, Vorgabe an) und das Netz mitspielt. Die Kacheln werden höflich geladen (höchstens 3 gleichzeitig,
+   „Karte im PDF“ an ist (Einstellungen → Karte und Planung → Karte im Tour-PDF, Vorgabe an) und das Netz mitspielt. Die Kacheln werden höflich geladen (höchstens 3 gleichzeitig,
    8 s je Kachel, höchstens 12), nur im Speicher gehalten und nie gespeichert. Fehlt eine Kachel, gibt es kein Netz oder wird abgebrochen,
    kommt wie bisher die Skizze ins PDF. Die Karte ist ein eigenes JPEG-Bild im PDF, die Quellenangabe echter Text. Das Jahres-PDF bleibt ohne Karten. */
 const PdfUI = {

@@ -81,7 +81,7 @@ Views['/mehr'] = async root => {
     UI.section('Daten', UI.list([
       UI.row({ icon: 'download', title: 'Touren importieren', sub: MTCalc.importSub(MT.aktiv()), href: '#/import', id: 'm-import' }),
       UI.row({ icon: 'photo', title: 'Foto-Quellen', sub: 'Galerie, Ordner, Netzwerkfreigabe, Nextcloud', href: '#/sources', id: 'm-sources' }),
-      UI.row({ icon: 'gear', title: 'Einstellungen & Sicherung', sub: 'Karte, Routing, Heimatort, Puls, Datensicherung', href: '#/settings', id: 'm-settings' })])),
+      UI.row({ icon: 'gear', title: 'Einstellungen & Sicherung', sub: 'Aktivitäten, Karte, Aufnahme, Persönliches, Datensicherung', href: '#/settings', id: 'm-settings' })])),
     h('p', { class: 'muted small', style: { marginTop: '20px' } }, `${nT} ${nT === 1 ? 'Tour' : 'Touren'} · ${nP} ${nP === 1 ? 'Foto' : 'Fotos'} · alles nur auf diesem Handy`)));
 };
 window.mtBack = function () {

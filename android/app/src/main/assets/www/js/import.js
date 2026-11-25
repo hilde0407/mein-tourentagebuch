@@ -102,7 +102,7 @@ const Import = {
       if (!e.name || !e.name.trim()) return true;
       if (e.name === Tours.autoName(e.sport, e.start) || (e.sportAlt && e.name === Tours.autoName(e.sportAlt, e.start))) return true;
       const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp('^(' + Sports.list.map(x => esc(x[1])).concat(['Ski & Schnee', 'Tourenrad'])      /* 2.19.0: „Tourenrad“ heißt jetzt „Radtour“ */.join('|') + ')( (am Morgen|am Mittag|am Nachmittag|am Abend) · .*)?$').test(e.name.trim());
+      return new RegExp('^(' + Sports.list.map(x => esc(x[1])).concat(['Ski & Schnee', 'Tourenrad', 'Spazieren', 'Schneeschuh', 'Klettern'].map(esc))      /* 2.19.0: frühere Namen („Tourenrad“ heißt jetzt „Radtour“, „Spazieren“ jetzt „Spazieren / Gehen“ …) */.join('|') + ')( (am Morgen|am Mittag|am Nachmittag|am Abend) · .*)?$').test(e.name.trim());
     },
     /** Namen von Komoot übernehmen (2.0.4): nur wenn der bisherige Name selbst erzeugt ist oder noch der zuletzt von Komoot übernommene –
         ein in der App von Hand vergebener Name bleibt. Gibt true zurück, wenn sich der Name geändert hat. */
@@ -189,7 +189,8 @@ const Import = {
     COOKIE: 'kh_session',
     /** Sportarten von Meine Touren → Sportarten der App. Unbekanntes läuft über Sports.norm und landet sonst bei „Sonstiges“. */
     SPORT: { hike: 'hike', mountaineering: 'mountaineering', jogging: 'run', touringbicycle: 'bike', e_touringbicycle: 'ebike', e_mtb: 'emtb', racebike: 'racebike', mtb: 'mtb',
-      skialpin: 'skialpin', skitour: 'skitour', snowshoe: 'snowshoe', nordic: 'nordic', nordicwalking: 'nordicwalking', other: 'other' },      // 2.2.0: Wintersportarten getrennt; 2.19.0: Schneeschuh (+ Schlagwort), Nordic Walking, E-Mountainbike eigene Sportarten
+      skialpin: 'skialpin', skitour: 'skitour', snowshoe: 'snowshoe', nordic: 'nordic', nordicwalking: 'nordicwalking', other: 'other',      // 2.2.0: Wintersportarten getrennt; 2.19.0: Schneeschuh (+ Schlagwort), Nordic Walking, E-Mountainbike eigene Sportarten
+      mtb_easy: 'gravel', skaten: 'inline' },      // 2.19.0: Schlüssel, die Meine Touren anders nennt; alle übrigen (climbing, trailrun, bikepacking, kayak … und entfernte wie dogwalk, sup) über Sports.norm
     sport: s => Import.MT.SPORT[s] || Sports.norm(s),
     /** Serveradresse aufräumen: ohne „http(s)://“ wird https angenommen; übrig bleiben Schema, Rechner und Port. Wirft bei Unsinn. */
     base(raw) {
@@ -483,8 +484,9 @@ const Import = {
   Zepp: {
     KEY: 'xeNtBVqzDc6tuNTh', IV: 'MAAAYAAAAAAAAABg',
     /** Zepp-Sporttyp → Sportart der App (2.2.0 wie die Zuordnung des Servers „Meine Touren“, app/gpxtools.py): 43 und 105 Ski alpin, 178 Schneeschuh (seit 2.19.0 eigene Sportart,
-        dazu das Schlagwort „Schneeschuh“), 206 E-Bike. „Gehen“ zählt als Wandern; Laufen (1, 8) bleibt – anders als im Server – getrennt. 14 ist ein Wintersport ohne genauere Art („Ski (allgemein)“). */
-    TYPEN: { 1: 'run', 6: 'hike', 7: 'hike', 8: 'run', 9: 'bike', 13: 'hike', 14: 'ski', 15: 'hike', 22: 'hike', 43: 'skialpin', 105: 'skialpin', 178: 'snowshoe', 206: 'ebike' },
+        dazu das Schlagwort „Schneeschuh“), 206 E-Bike. „Gehen“ zählt als Wandern; Laufen (1, 8) bleibt – anders als im Server – getrennt.
+        2.19.0 (endgültige Auswahl): nur diese bekannten Typen; 14 (bis dahin „Ski (allgemein)“) gibt es nicht mehr – unbekannte Typen werden „Sonstiges“. */
+    TYPEN: { 1: 'run', 6: 'hike', 7: 'hike', 8: 'run', 9: 'bike', 13: 'hike', 15: 'hike', 22: 'hike', 43: 'skialpin', 105: 'skialpin', 178: 'snowshoe', 206: 'ebike' },
     SCHNEESCHUH: [178],
     HOSTS: ['https://api-mifit-de2.zepp.com', 'https://api-mifit-us2.zepp.com', 'https://api-mifit.huami.com', 'https://api-mifit.zepp.com'],
     async enc(text) {

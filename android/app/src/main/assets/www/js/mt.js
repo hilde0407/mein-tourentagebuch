@@ -55,8 +55,8 @@ const MT = {
   },
   /** Abschnitt ganz oben in den Einstellungen. */
   einstellung() {
-    return h('div', { id: 'set-mt-box' }, h('h3', { id: 'set-mt-h' }, 'Meine Touren'),
-      UI.toggle('Mit Meine Touren zusammenarbeiten', MT.aktiv(), v => MT.setzen(v), { id: 'set-mt' }),
-      h('p', { class: 'muted small' }, 'Nur nötig, wenn du den eigenen Server „Meine Touren“ nutzt. Ohne diese Option bleibt Mein Tourentagebuch ganz für sich.'));
+    return h('section', { class: 'card set-k', id: 'set-mt-box' }, h('h3', { id: 'set-mt-h' }, 'Meine Touren'),      // 2.19.0: Karte wie alle Einstellungen
+      h('p', { class: 'muted small set-t' }, 'Nur nötig, wenn du den eigenen Server „Meine Touren“ nutzt. Ohne diese Option bleibt Mein Tourentagebuch ganz für sich.'),
+      UI.toggle('Mit Meine Touren zusammenarbeiten', MT.aktiv(), v => MT.setzen(v), { id: 'set-mt' }));
   },
 };

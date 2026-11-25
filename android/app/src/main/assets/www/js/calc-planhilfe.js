@@ -17,11 +17,16 @@
   function median(a) { const s = a.slice().sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; }
 
   /* ---- Sportgruppen (wie SPORT_GRP in hinweise.py, auf die Sportarten dieser App übertragen; 2.19.0: Schneeschuh zu Fuß, Tempo wie Wandern) ---- */
-  const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike', 'gravel', 'emtb', 'commute', 'cyclocross'], ski: ['ski', 'skialpin', 'skitour', 'nordic', 'snowboard'], foot: ['hike', 'mountaineering', 'snowshoe', 'climbing', 'nordicwalking'], run: ['run', 'trailrun', 'orienteering'] };
+  const SPORT_GRP = { bike: ['mtb', 'bike', 'racebike', 'ebike', 'gravel', 'emtb', 'bikepacking'], ski: ['ski', 'skialpin', 'skitour', 'nordic', 'snowboard'], foot: ['hike', 'mountaineering', 'snowshoe', 'climbing', 'nordicwalking'], run: ['run', 'trailrun'] };
   /* 2.19.0: Die Gruppen dienen nur noch dem Vergleich ähnlicher Touren (Planungshilfe, „Wie ist es gelaufen?“) und älteren Zielen „grp:…“ – die Statistik fasst
      nichts mehr fest zusammen (eigene Statistik-Gruppen: calc-statgruppen.js). Neue Sportarten stehen bei der Gruppe, zu der sie bis 2.18 gezählt wurden. */
-  function gruppe(sport) { for (const k in SPORT_GRP) if (SPORT_GRP[k].includes(sport)) return k; return null; }
-  function gleicheGruppe(a, b) { const g = gruppe(a); return g ? gruppe(b) === g : a === b; }
+  /** Schlüssel außerhalb des Katalogs (z. B. Radpendeln aus einem Zwischenstand) wie ihre Rückfall-Aktivität (Sports.anzeige; ohne parse.js unverändert). */
+  function anz(sport) {
+    const S = typeof module !== 'undefined' && module.exports ? require('./parse.js').Sports : (typeof Sports !== 'undefined' ? Sports : root.Sports);      // eslint-disable-line no-undef
+    return S && S.anzeige ? S.anzeige(sport) : sport;
+  }
+  function gruppe(sport) { sport = anz(sport); for (const k in SPORT_GRP) if (SPORT_GRP[k].includes(sport)) return k; return null; }
+  function gleicheGruppe(a, b) { const g = gruppe(a); return g ? gruppe(b) === g : anz(a) === anz(b); }
 
   /* ---- Links ---- */
   /** Gültige http(s)-Adresse (bereinigt); sonst wirft die Funktion Error mit verständlicher Meldung. Kein javascript:, data:, file: …; keine Zugangsdaten in der Adresse. */
