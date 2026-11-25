@@ -696,3 +696,4 @@ img.tile-off{visibility:hidden}
 .mapchips{display:flex;align-items:center;gap:8px;padding:0 var(--gut) 10px;overflow-x:auto;scrollbar-width:none}
 .mapchips[hidden]{display:none}
 .mapchips:not([hidden])+.map.full{height:calc(100vh - var(--tab) - 168px)}
+.mapchips .chip{min-height:44px}
