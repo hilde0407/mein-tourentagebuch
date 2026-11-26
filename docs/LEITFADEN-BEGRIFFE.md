@@ -33,7 +33,7 @@ Interne Bezeichner (Dateinamen, Funktionen, Einstellungsschlüssel, API-Pfade, E
 | Einstellungsbereich | Meine Touren: „Verwaltung“; Tagebuch: „Einstellungen“ (Seitentitel gleich dem Menüpunkt) | gemischte Titel |
 | Teil einer Seite, den man anordnen kann | Baustein | Abschnitt, Kachel, Widget (für dasselbe) |
 | Gespeicherte Anordnung einer Seite | Ansicht | Seitenlayout, Layout |
-| Zusammenfassung von Sportarten ★ | Statistik-Gruppe (Anzeige: nur der Name, z. B. „Wandern (gesamt)“; die Zusammensetzung „Name = A + B + C“ nur im Tooltip/title bzw. aria-label und in Einstellungen → Sportarten) | „zusammengefasst“, „Gruppe“ ohne Zusatz |
+| Zusammenfassung von Sportarten ★ | Statistik-Gruppe (Anzeige: nur der Name, z. B. „Wandern (gesamt)“; die Zusammensetzung „Name = A + B + C“ nur im Tooltip/title bzw. aria-label und in Einstellungen → Sportarten; der Name ist immer ein kurzer, echter Name – Vorschlag „<Sportart> (gesamt)“, nie eine Aufzählung „A + B + C“; ein alter Aufzählungsname wird nicht stillschweigend geändert, sondern mit „Vorschlag übernehmen“ angeboten) | „zusammengefasst“, „Gruppe“ ohne Zusatz, Aufzählung als Name |
 | Mehrere Bausteine unter einer Überschrift | Bausteingruppe | „Gruppe“ ohne Zusatz |
 | Sportarten für die Aufzeichnung | Favoriten-Sportarten | „Favoriten“ ohne Zusatz |
 | Tour mit Stern | Lieblingstour bzw. Bewertung (Sterne) | Favorit |

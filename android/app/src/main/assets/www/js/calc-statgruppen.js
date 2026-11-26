@@ -17,7 +17,7 @@
   const MAX = 8, NAME_MAX = 30, MIN_SPORTS = 2, PREFIX = 'sgrp:';
   /** Ein-Klick-Vorschläge in den Einstellungen – nur Vorschläge, nie automatisch. */
   const VORSCHLAEGE = [
-    { id: 'berg', name: 'Bergtouren', knopf: 'Wandern + Bergsteigen + Schneeschuh', sports: ['hike', 'mountaineering', 'snowshoe'] },
+    { id: 'berg', name: 'Wandern (gesamt)', knopf: 'Wandern + Bergsteigen + Schneeschuh', sports: ['hike', 'mountaineering', 'snowshoe'] },
     { id: 'rad', name: 'Rad', knopf: 'Alle Rad-Arten', sports: ['bike', 'racebike', 'mtb', 'gravel', 'ebike', 'emtb', 'bikepacking'] },
     { id: 'ski', name: 'Ski', knopf: 'Alle Ski-Arten', sports: ['skialpin', 'skitour', 'nordic', 'snowboard', 'ski'] },
   ];
@@ -34,8 +34,24 @@
     const s = String(n == null ? '' : n).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
     return Array.from(s).slice(0, NAME_MAX).join('').trim();
   }
-  /** Ersatzname aus den Sportarten („Wandern + Bergsteigen“), gekürzt auf 30 Zeichen. */
-  const ersatzName = sports => nameSauber(sports.map(s => S().label(s)).join(' + ')) || 'Gruppe';
+  /** 2.20.2: Kurzer Name zu einer Sportart-Liste: „<erste Sportart> (gesamt)“, z. B. „Wandern (gesamt)“ (höchstens 30 Zeichen; leer bei keiner Sportart).
+      Das ist der Namensvorschlag im Editor und der Fallback von sauber(); nie eine Aufzählung. */
+  const SUFFIX = ' (gesamt)';
+  function kurzName(sports) {
+    const erste = (Array.isArray(sports) ? sports : []).find(s => typeof s === 'string' && bekannt().includes(s));
+    if (!erste) return '';
+    return Array.from(S().label(erste)).slice(0, NAME_MAX - SUFFIX.length).join('').trim() + SUFFIX;
+  }
+  /** Die frühere Aufzählung „Wandern + Bergsteigen + Schneeschuhwandern“ (auf 30 Zeichen gekürzt), die bis 2.20.1 als Ersatzname diente. */
+  const aufzaehlung = sports => nameSauber((sports || []).map(s => S().label(s)).join(' + '));
+  /** Ist der Name der Gruppe nur die automatische Aufzählung der Sportarten (bis 2.20.1 als Ersatzname vergeben)? Dann false für leere Namen und echte Namen. */
+  function nurAufzaehlung(g) {
+    if (!g || !Array.isArray(g.sports) || g.sports.length < MIN_SPORTS) return false;
+    const n = nameSauber(g.name);
+    return !!n && n.includes(' + ') && vergleich(n) === vergleich(aufzaehlung(g.sports.filter(s => bekannt().includes(s))));
+  }
+  /** Der Namensvorschlag für eine Gruppe, wenn ihr Name nur eine Aufzählung ist (sonst ''). */
+  const vorschlagName = g => nurAufzaehlung(g) ? kurzName(g.sports) : '';
 
   /** Freie Kennung „g1“, „g2“ … (kurz, nur Kleinbuchstaben und Ziffern). */
   function neueId(list, extra) {
@@ -46,7 +62,7 @@
 
   /** Liste prüfen und bereinigen (beim Laden, Speichern, Wiederherstellen). Was nicht taugt, fällt weg; nie ein Fehler.
       Sportarten: nur bekannte, ohne Doppel, keine, die schon in einer früheren Gruppe steht; weniger als 2 → Gruppe fällt weg.
-      Name leer → aus den Sportarten. Kennung ungültig oder doppelt → neu. Höchstens 8 Gruppen. */
+      Name leer (nur beschädigte/importierte Daten; der Editor verlangt einen Namen) → kurz „<Sportart> (gesamt)“. Kennung ungültig oder doppelt → neu. Höchstens 8 Gruppen. */
   function sauber(list) {
     if (!Array.isArray(list)) return [];
     const ok = new Set(bekannt()), belegt = new Set(), out = [], ids = [];
@@ -59,7 +75,7 @@
       let id = typeof g.id === 'string' && /^[a-z0-9]{1,16}$/.test(g.id) && !ids.includes(g.id) ? g.id : null;
       if (!id) id = neueId(list.filter(x => x && typeof x.id === 'string'), ids);
       ids.push(id); sports.forEach(s => belegt.add(s));
-      out.push({ id, name: nameSauber(g.name) || ersatzName(sports), sports });
+      out.push({ id, name: nameSauber(g.name) || kurzName(sports) || 'Gruppe', sports });
     }
     return out;
   }
@@ -219,7 +235,7 @@
     return cacheWert;
   }
 
-  const api = { MAX, NAME_MAX, MIN_SPORTS, PREFIX, VORSCHLAEGE, nameSauber, neueId, sauber, pruefe, nameWieAktivitaet, zumSpeichern, beschriftung, titel, chipAuswahl, gruppeVon, gruppe, istGruppe, schluessel, name, icon, farbSport,
+  const api = { MAX, NAME_MAX, MIN_SPORTS, PREFIX, VORSCHLAEGE, kurzName, nurAufzaehlung, vorschlagName, nameSauber, neueId, sauber, pruefe, nameWieAktivitaet, zumSpeichern, beschriftung, titel, chipAuswahl, gruppeVon, gruppe, istGruppe, schluessel, name, icon, farbSport,
     passt, gueltig, auswahl, aufteilen, rueckblickZeile, vorschlaege, einspielen, ausSicherung, aktuell };
   if (node) module.exports = api; else root.StatGruppen = api;
 })(typeof window !== 'undefined' ? window : globalThis);

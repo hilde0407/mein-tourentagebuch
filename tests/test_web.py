@@ -4399,10 +4399,22 @@ def statgruppen_2190(pg):
     pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').concat([{ id: 'altw', name: 'Kajak / Kanu', sports: ['kayak', 'rowing'] }]))"); go("#/settings", "#sg-box")
     assert len(pg.evaluate("Set_.get('statGruppen')")) == 3 and "bitte umbenennen" in pg.inner_text("#sg-hinweis-2") and "bisherigen Namen" in pg.inner_text("#sg-hinweis-2"), pg.inner_text("#sg-box")
     pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').filter(g => g.id !== 'altw'))"); go("#/settings", "#sg-box")
+    # 2.20.2: Vorschlag heißt kurz; Name wird beim Anlegen vorbelegt (Sportart ankreuzen); alte Aufzählung als Name: Hinweis + Übernehmen-Knopf, nichts stillschweigend umbenannt
+    assert [g["name"] for g in pg.evaluate("Set_.get('statGruppen')")][:2] == ["Rad", "Wandern (gesamt)"] and pg.input_value("#sg-name-1") == "Wandern (gesamt)"
+    pg.click("#sg-add"); pg.wait_for_selector("#sg-name-2"); assert pg.input_value("#sg-name-2") == ""
+    pg.click("#sg-grp-2 [data-sport=skitour] input"); pg.wait_for_function("() => document.querySelector('#sg-name-2').value === 'Skitour (gesamt)'")
+    pg.click("#sg-grp-2 [data-sport=nordic] input"); pg.wait_for_function("() => Set_.get('statGruppen').length === 3 && !document.querySelector('#sg-hinweis-2')")
+    assert pg.input_value("#sg-name-2") == "Skitour (gesamt)" and pg.locator("#sg-aufz-2").count() == 0 and pg.locator("#sg-hinweis-2").count() == 0, (pg.input_value("#sg-name-2"), pg.evaluate("Set_.get('statGruppen')"), pg.locator("#sg-hinweis-2").count() and pg.inner_text("#sg-hinweis-2"))
+    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').slice(0, 2).concat([{ id: 'aufz', name: 'Skitour + Langlauf', sports: ['skitour', 'nordic'] }]))"); go("#/settings", "#sg-box")
+    assert pg.evaluate("Set_.get('statGruppen')[2].name") == "Skitour + Langlauf" and "nur eine Aufzählung" in pg.inner_text("#sg-aufz-2"), pg.inner_text("#sg-box")
+    assert pg.inner_text("#sg-aufz-btn-2").strip() == "Vorschlag übernehmen: Skitour (gesamt)" and pg.locator("#sg-aufz-0, #sg-aufz-1").count() == 0
+    pg.click("#sg-aufz-btn-2"); pg.wait_for_function("() => Set_.get('statGruppen')[2].name === 'Skitour (gesamt)' && !document.querySelector('#sg-aufz-2')")
+    assert pg.locator("#sg-aufz-2").count() == 0 and pg.input_value("#sg-name-2") == "Skitour (gesamt)"
+    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').slice(0, 2))"); go("#/settings", "#sg-box")
     # Statistik: Filter und Block „Sportarten“
     go("#/stats", ".kpis"); pg.select_option("select[aria-label=Zeitraum]", "2019"); pg.wait_for_timeout(200)
     opts = [re.sub(r"^[^\wÄÖÜäöü]+", "", x.strip()) for x in pg.locator("#st-sport-f .chip").all_inner_texts()]
-    assert "Bergtouren" in opts and "Rad" in opts and "Bergsteigen" in opts and not any("zusammengefasst" in o or " = " in o or " + " in o for o in opts), opts      # 2.20.1: nur der Name (2.19.1: „Name = A + B“)
+    assert "Wandern (gesamt)" in opts and "Rad" in opts and "Bergsteigen" in opts and not any("zusammengefasst" in o or " = " in o or " + " in o for o in opts), opts      # 2.20.1: nur der Name (2.19.1: „Name = A + B“)
     assert pg.get_attribute("#st-sport-f .chip[data-sport='sgrp:rad']", "title") == "Rad = Radtour + Rennrad + Mountainbike + Gravelbike + E-Mountainbike + Bikepacking" and pg.get_attribute("#st-sport-f .chip[data-sport='sgrp:rad']", "aria-label").startswith("Rad = Radtour")      # 2.20.1: Zusammensetzung im title und aria-label
     rows = pg.eval_on_selector_all("#st-sport .hb", "els => els.map(e => e.dataset.sport)")
     assert "sgrp:berg" in rows and "sgrp:rad" in rows and "ebike" in rows and "kayak" in rows and "mountaineering" not in rows and "hike" not in rows and "mtb" not in rows, rows
@@ -4411,7 +4423,7 @@ def statgruppen_2190(pg):
     # Bestwerte je Sportart und Auswertung
     pg.click("#st-sport-f .chip.salle"); pg.click(".chips .chip:has-text('Bestwerte')"); pg.wait_for_selector("#bw-sport h3")
     hs = pg.eval_on_selector_all("#bw-sport h3[data-sport]", "els => els.map(e => [e.dataset.sport, e.textContent])")
-    assert any(k == "sgrp:berg" and "Bergtouren · 4 Touren" in t and " = " not in t for k, t in hs), hs
+    assert any(k == "sgrp:berg" and "Wandern (gesamt) · 4 Touren" in t and " = " not in t for k, t in hs), hs
     pg.click(".chips .chip:has-text('Auswertung')"); pg.wait_for_selector("table.cstat")
     tr = pg.eval_on_selector_all("table.cstat tbody tr", "els => els.map(e => [e.dataset.sport, e.cells[0].textContent, e.cells[1].textContent])")
     assert any(k == "sgrp:berg" and b == "4" for k, a, b in tr) and any(k == "kayak" for k, a, b in tr), tr
@@ -4424,7 +4436,7 @@ def statgruppen_2190(pg):
       const g = { id: 'zsg', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'sgrp:berg' }, g2 = Object.assign({}, g, { id: 'zweg', sport: 'sgrp:weg' }), g3 = Object.assign({}, g, { id: 'zalt', sport: 'grp:bike' });
       await Goals.save([g, g2, g3]); const all = (await Tours.list()).filter(Jahr.zaehlt), d = new Date(2019, 11, 31);
       return { ist: Ziele.stand(g, all, d).ist, weg: Ziele.stand(g2, all, d).ist, alt: Ziele.stand(g3, all, d).ist, name: Goals.name(g), name2: Goals.name(g2) }; }""")
-    assert z["ist"] == 4 and z["weg"] == 0 and z["alt"] == 2 and z["name"] == "Touren · Bergtouren" and "Gelöschte Statistik-Gruppe" in z["name2"], z
+    assert z["ist"] == 4 and z["weg"] == 0 and z["alt"] == 2 and z["name"] == "Touren · Wandern (gesamt)" and "Gelöschte Statistik-Gruppe" in z["name2"], z
     # 2.20.1: Ziele-Zeile mit Statistik-Gruppe: nur der Name (Zusammensetzung im title), „756 / 800 km“ einzeilig bei 390 px und 150 % Schrift
     grp0 = pg.evaluate("Set_.get('statGruppen')")
     pg.evaluate("""async () => { const gr = Set_.get('statGruppen').map(x => x.id === 'berg' ? Object.assign({}, x, { name: 'Bergtouren (gesamt) mit Schnee' }) : x); await Set_.set('statGruppen', gr);
@@ -4443,7 +4455,7 @@ def statgruppen_2190(pg):
     go("#/stats/ziele", "#view"); pg.wait_for_timeout(300)
     pg.evaluate("Goals.edit({ id: 'zweg', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'sgrp:weg' }, null, () => {})"); pg.wait_for_selector("#goalsport-wahl")
     o2 = wahl_texte(pg, "goalsport")
-    assert "Bergtouren" in o2 and not any(" = " in x for x in o2) and "Gelöschte Statistik-Gruppe" in o2 and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "sgrp:weg" and "Rad (alle Arten)" not in o2 and "Bergsteigen" in o2 and "Skitour" in o2, o2
+    assert "Wandern (gesamt)" in o2 and not any(" = " in x for x in o2) and "Gelöschte Statistik-Gruppe" in o2 and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "sgrp:weg" and "Rad (alle Arten)" not in o2 and "Bergsteigen" in o2 and "Skitour" in o2, o2
     pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
     pg.evaluate("Goals.edit({ id: 'zalt', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'grp:bike' }, null, () => {})"); pg.wait_for_selector("#goalsport-wahl")
     assert "Rad (alle Arten)" in pg.locator("#goalsport-wahl .chip").all_inner_texts() and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "grp:bike"

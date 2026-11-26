@@ -1672,7 +1672,7 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ];
   const sb = SG.sauber(roh);
   eq(sb.map(g => g.sports), [['hike', 'mountaineering'], ['walk', 'snowshoe'], ['mtb', 'ebike']], 'Sportarten: bekannt, ohne Doppel, jede nur einmal, mind. 2');
-  ok(sb[0].name === 'Berg touren' && sb[1].name === 'Spazieren / Gehen + Schneeschu' && sb[2].name === 'x'.repeat(30), 'Namen: Leerraum, Ersatzname, höchstens 30 Zeichen');
+  ok(sb[0].name === 'Berg touren' && sb[1].name === 'Spazieren / Gehen (gesamt)' && sb[2].name === 'x'.repeat(30), 'Namen: Leerraum, kurzer Fallback „<Sportart> (gesamt)“, höchstens 30 Zeichen');
   ok(new Set(sb.map(g => g.id)).size === 3 && sb.every(g => /^[a-z0-9]{1,16}$/.test(g.id)) && sb[0].id === 'a', 'Kennungen eindeutig und gültig');
   ok(SG.nameSauber('😀'.repeat(31)).length === 60 && Array.from(SG.nameSauber('😀'.repeat(31))).length === 30, 'Name nach Zeichen gekürzt');
   const neun = Array.from({ length: 9 }, (_, i) => ({ id: 'g' + i, name: 'G' + i, sports: [Sports.list[i * 1][0], 'x'] }));
@@ -1705,13 +1705,23 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(SG.vorschlaege([{ id: 'rad', name: 'X', sports: ['run', 'walk'] }])[1].id !== 'rad', 'freie Kennung');
   ok(SG.vorschlaege(Array.from({ length: 8 }, (_, i) => ({ id: 'x' + i, name: 'x', sports: [] }))).length === 0, 'keine Vorschläge bei 8 Gruppen');
   const ST = VS;
+  // 2.20.2: kurzer Name statt Aufzählung
+  eq(VS.map(v => v.name), ['Wandern (gesamt)', 'Rad', 'Ski'], 'Vorschlagsnamen kurz');
+  eq([SG.kurzName(['hike', 'mountaineering', 'snowshoe']), SG.kurzName(['walk', 'snowshoe']), SG.kurzName([]), SG.kurzName(['quatsch'])], ['Wandern (gesamt)', 'Spazieren / Gehen (gesamt)', '', ''], 'kurzName: erste Sportart');
+  ok(Sports.list.every(s => { const n = SG.kurzName([s[0]]); return n.length <= 30 && n.endsWith(' (gesamt)') && !SG.nameWieAktivitaet(n); }), 'kurzName: höchstens 30 Zeichen, „(gesamt)“, nie wie eine Sportart');
+  const aufz = { id: 'x', name: 'Wandern + Bergsteigen + Schneeschuhwandern', sports: ['hike', 'mountaineering', 'snowshoe'] };
+  ok(SG.nurAufzaehlung(aufz) && SG.vorschlagName(aufz) === 'Wandern (gesamt)', 'Aufzählung als Name erkannt, Vorschlag kurz');
+  ok(SG.nurAufzaehlung({ id: 'y', name: 'Spazieren / Gehen + Schneeschu', sports: ['walk', 'snowshoe'] }), 'gekürzte Aufzählung (alter Ersatzname) erkannt');
+  ok(!SG.nurAufzaehlung({ name: 'Wandern (gesamt)', sports: aufz.sports }) && !SG.nurAufzaehlung({ name: 'Bergtouren', sports: aufz.sports }) && !SG.nurAufzaehlung({ name: '', sports: aufz.sports }) && !SG.nurAufzaehlung({ name: 'Wandern + Bergsteigen', sports: aufz.sports }) && SG.vorschlagName({ name: 'Rad', sports: ['bike', 'mtb'] }) === '', 'echte Namen sind keine Aufzählung');
+  eq(SG.sauber([aufz])[0].name, SG.nameSauber(aufz.name), 'sauber() benennt eine bestehende Aufzählung nicht stillschweigend um');
+  ok(SG.pruefe([{ id: 'x', name: 'Wandern (gesamt)', sports: ['hike', 'walk'] }])[0] === '', '„(gesamt)“ erfüllt die Regel „nicht wie eine Sportart“');
 
   // Jahresrückblick: ohne Gruppen jede Sportart für sich; mit Vorschlägen bzw. eigenen Gruppen zusammengefasst
   const Y = [T('h', 'hike', day(2026, 1, 10), 10000, 300), T('ss', 'snowshoe', day(2026, 1, 11), 5000, 200, { tags: ['Schneeschuh'] }), T('w', 'walk', day(2026, 1, 12), 2000, 10),
     T('m', 'mountaineering', day(2026, 1, 13), 6000, 900), T('b1', 'mtb', day(2026, 5, 1), 30000, 500), T('b2', 'ebike', day(2026, 5, 2), 20000, 200), T('r', 'run', day(2026, 6, 1), 8000, 50), T('st', 'skitour', day(2026, 2, 1), 9000, 1200)];
   eq(J.nachSportart(Y).map(g => g.key), ['mtb', 'ebike', 'hike', 'skitour', 'run', 'mountaineering', 'snowshoe', 'walk'], 'ohne Gruppen: jede Sportart für sich (Skitour, Bergsteigen, Schneeschuh sichtbar)');
   eq(J.nachSportart(Y, []), J.nachSportart(Y), 'leere Einstellung = Vorgabe');
-  eq(J.nachSportart(Y, ST).map(g => [g.key, g.label, g.n]), [['sgrp:rad', 'Rad', 2], ['sgrp:berg', 'Bergtouren', 3], ['sgrp:ski', 'Ski', 1], ['run', 'Laufen', 1], ['walk', 'Spazieren / Gehen', 1]], 'mit den Vorschlägen');
+  eq(J.nachSportart(Y, ST).map(g => [g.key, g.label, g.n]), [['sgrp:rad', 'Rad', 2], ['sgrp:berg', 'Wandern (gesamt)', 3], ['sgrp:ski', 'Ski', 1], ['run', 'Laufen', 1], ['walk', 'Spazieren / Gehen', 1]], 'mit den Vorschlägen');
   const eigene = [{ id: 'berg', name: 'Bergtouren', sports: ['hike', 'mountaineering', 'snowshoe'] }];
   const yr = J.nachSportart(Y, eigene);
   ok(yr.find(g => g.key === 'sgrp:berg').n === 3 && yr.find(g => g.key === 'sgrp:berg').dist === 21000 && yr.some(g => g.key === 'walk' && g.label === 'Spazieren / Gehen') && yr.some(g => g.key === 'mtb') && !yr.some(g => g.key === 'sgrp:rad'), 'eigene Gruppe, der Rest einzeln');

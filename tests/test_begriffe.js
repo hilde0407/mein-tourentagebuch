@@ -151,6 +151,14 @@ for (const [datei, liste] of dateien()) {
   if (!/^Wandern \(gesamt\) = .+ \+ .+ \+ .+ \+ /.test(SGt.titel('sgrp:w', G))) fehler.push('StatGruppen.titel liefert nicht die volle Zusammensetzung: ' + SGt.titel('sgrp:w', G));
   if (/ = | \+ /.test(SGt.auswahl(G)[0][1]) || /\+/.test(SGt.chipAuswahl(['hike'], G).gruppen[0].label)) fehler.push('Auswahl/Chips zeigen die Zusammensetzung statt des Namens');
 }
+/* 2.20.2: Gruppen haben immer einen kurzen, echten Namen (keine Aufzählung als Ersatzname) */
+{
+  const SGk = require(path.join(WWW, 'js/calc-statgruppen.js'));
+  const leer = SGk.sauber([{ id: 'a', name: '', sports: ['hike', 'mountaineering', 'snowshoe'] }])[0].name;
+  if (leer !== 'Wandern (gesamt)' || / \+ /.test(leer)) fehler.push('StatGruppen.sauber: Fallback-Name ist keine kurze Form „<Sportart> (gesamt)“: ' + leer);
+  for (const v of SGk.VORSCHLAEGE) if (/ \+ /.test(v.name) || v.name.length > 20) fehler.push('Vorschlagsname nicht kurz: ' + v.name);
+  if (SGk.vorschlagName({ name: 'Wandern + Bergsteigen + Schneeschuhwandern', sports: ['hike', 'mountaineering', 'snowshoe'] }) !== 'Wandern (gesamt)') fehler.push('Aufzählung als Gruppenname wird nicht erkannt');
+}
 if (process.argv.includes('-v')) console.log('Ausnahmen:\n' + ausnahmen.join('\n'));
 if (gezaehlt < 3000) { console.error('Zu wenige Textstücke gefunden (' + gezaehlt + ') – Leser kaputt?'); process.exit(1); }
 if (fehler.length) {

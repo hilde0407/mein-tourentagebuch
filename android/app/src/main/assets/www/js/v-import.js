@@ -233,6 +233,7 @@ Views['/import'] = async root => {
 /* 2.19.0: Einstellungen → Sportarten → „Statistik-Gruppen“ – die Statistik-Gruppen bearbeiten (Rechnung und Grenzen: js/calc-statgruppen.js).
    Der Entwurf darf unfertige Gruppen enthalten (ohne Namen, unter 2 Sportarten); gespeichert wird nach jeder Änderung, was StatGruppen.sauber() übrig lässt.
    Dazu „Schneeschuh umstellen“: Wandern-Touren mit dem Schlagwort „Schneeschuh“ einmalig auf die Sportart Schneeschuh – nur auf Knopfdruck, rückgängig machbar. */
+const nameSauberLeer = n => !StatGruppen.nameSauber(n);
 const StatGrpUI = {
   box() {
     const box = h('div', { id: 'sg-box' });
@@ -244,13 +245,15 @@ const StatGrpUI = {
       box.append(h('p', { class: 'muted small', id: 'sg-stand' }, (roh || []).length ? (roh.length === 1 ? '1 Statistik-Gruppe' : roh.length + ' Statistik-Gruppen') + ' – die übrigen Sportarten stehen für sich.' : 'Keine Statistik-Gruppen: jede Sportart steht in der Statistik für sich.'));
       entwurf.forEach((g, i) => {
         const andere = new Map(); entwurf.forEach((o, j) => { if (j !== i) o.sports.forEach(sp => { if (!andere.has(sp)) andere.set(sp, o.name || 'Gruppe ' + (j + 1)); }); });
-        const nameIn = h('input', { type: 'text', maxlength: String(StatGruppen.NAME_MAX), value: g.name, id: 'sg-name-' + i, 'aria-label': 'Name der Gruppe ' + (i + 1), placeholder: 'z. B. Bergtouren', autocapitalize: 'sentences',
+        const nameIn = h('input', { type: 'text', maxlength: String(StatGruppen.NAME_MAX), value: g.name, id: 'sg-name-' + i, 'aria-label': 'Name der Gruppe ' + (i + 1), placeholder: 'z. B. Wandern (gesamt)', autocapitalize: 'sentences',
           oninput: e => { g.name = e.target.value; }, onchange: async () => { await speichern(); draw(); } });
         const sports = h('div', { role: 'group', 'aria-label': 'Sportarten der Gruppe ' + (g.name || i + 1) }, Sports.kategorien(g.sports.find(k => Sports.ALT.includes(k))).map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports' }, list.map(([k, label, ic]) => {
           const besetzt = andere.get(k);
           return h('label', { class: 'sg-sp' + (besetzt ? ' off' : ''), 'data-sport': k },
             h('input', { type: 'checkbox', checked: g.sports.includes(k), disabled: !!besetzt, 'aria-describedby': besetzt ? 'sg-bes-' + i + '-' + k : null,
-              onchange: async e => { if (e.target.checked) { if (!g.sports.includes(k)) g.sports.push(k); } else g.sports = g.sports.filter(x => x !== k); await speichern(); draw(); } }),
+              onchange: async e => { const vorher = StatGruppen.kurzName(g.sports); if (e.target.checked) { if (!g.sports.includes(k)) g.sports.push(k); } else g.sports = g.sports.filter(x => x !== k);
+                if (nameSauberLeer(g.name) || g.name === vorher) g.name = StatGruppen.kurzName(g.sports);      // 2.20.2: Namensvorschlag „<Sportart> (gesamt)“, solange der Name leer oder noch der Vorschlag ist
+                await speichern(); draw(); } }),
             h('span', null, ic + ' ' + label, besetzt ? h('small', { id: 'sg-bes-' + i + '-' + k }, 'in „' + besetzt + '“') : null));
         }))]).flat());
         box.append(h('div', { class: 'sg-grp', id: 'sg-grp-' + i, 'data-id': g.id },
@@ -258,7 +261,9 @@ const StatGrpUI = {
             h('button', { class: 'btn sm danger', id: 'sg-del-' + i, 'aria-label': 'Statistik-Gruppe ' + (g.name || i + 1) + ' löschen', onclick: async () => {
               if (!await confirmBox('Statistik-Gruppe „' + (g.name || 'Gruppe ' + (i + 1)) + '“ löschen?', 'Die Gruppe verschwindet aus Statistik, Filtern und Zielen. Die Touren behalten ihre Sportart. Rückgängig nur durch neues Anlegen.', 'Löschen')) return;      // 2.20.0: Löschen fragt nach
               entwurf.splice(i, 1); await speichern(); draw(); toast('Statistik-Gruppe gelöscht'); } }, 'Löschen')),
-          sports, hinweise[i] ? h('p', { class: 'err small', role: 'status', id: 'sg-hinweis-' + i }, hinweise[i]) : null));
+          sports, hinweise[i] ? h('p', { class: 'err small', role: 'status', id: 'sg-hinweis-' + i }, hinweise[i]) : null,
+          StatGruppen.vorschlagName(g) ? h('div', { class: 'row wrap', id: 'sg-aufz-' + i }, h('p', { class: 'muted small', style: { flex: '1 1 100%', margin: '4px 0' } }, 'Name ist nur eine Aufzählung – kürzer benennen?'),
+            h('button', { class: 'btn sm', id: 'sg-aufz-btn-' + i, onclick: async () => { g.name = StatGruppen.vorschlagName(g); await speichern(); draw(); toast('Statistik-Gruppe „' + g.name + '“ gespeichert'); } }, 'Vorschlag übernehmen: ' + StatGruppen.vorschlagName(g))) : null));
       });
       const vs = StatGruppen.vorschlaege(entwurf);
       box.append(h('div', { class: 'row wrap' },
