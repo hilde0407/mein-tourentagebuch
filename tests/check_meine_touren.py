@@ -250,9 +250,9 @@ def main():
             assert o["g1"]["note"] == "Früh los, oben Gämsen gesehen." and o["g1"]["stars"] == 5 and sorted(o["g1"]["tags"]) == ["Gipfel", "Wetterstein"] and o["g1"]["hr"] and o["g1"]["src"] == "mt", o["g1"]
             sports = {t["sport"]: o[t["id"]]["sport"] for t in srv if o.get(t["id"])}
             print("Sportarten:", sports)
-            erw = {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "ebike", "racebike": "racebike", "jogging": "run", "skialpin": "skialpin", "skitour": "skitour",
-                              "snowshoe": "hike", "nordic": "nordic", "nordicwalking": "hike", "mountaineering": "mountaineering", "other": "other"}
-            if "snowshoe" not in sports: erw.pop("snowshoe")      # neuere Server (ab 3.50.0) führen Schneeschuhwandern schon selbst als Wandern mit Schlagwort
+            erw = {"hike": "hike", "touringbicycle": "bike", "e_touringbicycle": "ebike", "mtb": "mtb", "e_mtb": "emtb", "racebike": "racebike", "jogging": "run", "skialpin": "skialpin", "skitour": "skitour",
+                              "snowshoe": "snowshoe", "nordic": "nordic", "nordicwalking": "nordicwalking", "mountaineering": "mountaineering", "other": "other"}
+            if "snowshoe" not in sports: erw.pop("snowshoe")      # neuere Server (ab 3.50.0) führen Schneeschuhwandern schon selbst als Wandern mit Schlagwort; ab 2.19.0 sind Schneeschuh, Nordic Walking und E-Mountainbike eigene Sportarten
             assert sports == erw, sports
             sumS = (sum(t["dist_m"] for t in srv if t["id"] != "987654322"), sum(t["up_m"] for t in srv if t["id"] != "987654322"))
             sumA = pg.evaluate("Tours.list().then(l => [l.reduce((s, t) => s + t.dist, 0), l.reduce((s, t) => s + t.up, 0)])")
