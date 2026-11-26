@@ -58,7 +58,7 @@ const UI = {
       „Alle Sportarten“ liefert ''. Gibt eine Liste von Elementen zurück (zum Einhängen in eine .chips-Leiste). */
   sportChips(auswahl, sel, onpick) {
     const dot = k => h('i', { class: 'sdot', 'aria-hidden': 'true', style: { background: MapKit.routeColor(k, '#2e7d32') } });
-    const chip = (key, label, dots, ti) => h('button', { class: 'chip schip' + (sel === key ? ' on' : ''), 'aria-pressed': sel === key ? 'true' : 'false', 'data-sport': key, title: ti || null,
+    const chip = (key, label, dots, ti) => h('button', { class: 'chip schip' + (sel === key ? ' on' : ''), 'aria-pressed': sel === key ? 'true' : 'false', 'data-sport': key, title: ti || null, 'aria-label': ti || null,
       onclick: () => onpick(sel === key ? '' : key) }, dots, label);
     const out = [h('button', { class: 'chip salle', 'aria-pressed': sel ? 'false' : 'true', onclick: () => onpick('') }, 'Alle Sportarten')];
     if (!sel) out[0].classList.add('on');
@@ -76,7 +76,7 @@ const UI = {
     let wert = sel;
     const box = h('div', { class: 'chips wrap swahl', id: idp + '-wahl', role: 'group', 'aria-label': opts.label || 'Sportart' });
     const istSport = k => !!k && !extra.some(e => e[0] === k);
-    const chip = (k, text, ti) => h('button', { class: 'chip' + (wert === k ? ' on' : ''), 'aria-pressed': wert === k ? 'true' : 'false', 'data-sport': k, title: ti || null, onclick: () => setze(k) }, text);
+    const chip = (k, text, ti) => h('button', { class: 'chip' + (wert === k ? ' on' : ''), 'aria-pressed': wert === k ? 'true' : 'false', 'data-sport': k, title: ti || null, 'aria-label': ti || null, onclick: () => setze(k) }, text);
     const draw = () => {
       box.innerHTML = '';
       extra.forEach(([k, l, ti]) => box.append(chip(k, l, ti)));

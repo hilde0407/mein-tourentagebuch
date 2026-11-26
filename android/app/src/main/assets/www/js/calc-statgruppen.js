@@ -123,15 +123,14 @@
     if (istGruppe(key)) { const g = gruppe(key, gruppen); return g ? g.name : 'Gelöschte Statistik-Gruppe'; }
     return S().label(key);
   }
-  /** 2.19.1: Beschriftung in Filtern, Zielen und Aufteilungen: Gruppe → „Name = A + B + C“ (mehr als 3 Mitglieder: „A + B + C + …“),
-      gelöschte Gruppe → „Gelöschte Statistik-Gruppe“, sonst die Sportart. titel(): die volle Liste (für das title-Attribut), sonst ''. */
+  /** 2.20.1: Beschriftung in Filtern, Zielen, Aufteilungen und Listen: Gruppe → nur ihr Name („Wandern (gesamt)“), gelöschte Gruppe →
+      „Gelöschte Statistik-Gruppe“, sonst die Sportart. Die Zusammensetzung steht nur im title-/aria-Text (titel()) und im Editor der Gruppen. */
   function beschriftung(key, gruppen) {
     if (!istGruppe(key)) return S().label(key);
     const g = gruppe(key, gruppen);
-    if (!g) return 'Gelöschte Statistik-Gruppe';
-    const l = g.sports.map(s => S().label(s));
-    return g.name + ' = ' + (l.length > 3 ? l.slice(0, 3).join(' + ') + ' + …' : l.join(' + '));
+    return g ? g.name : 'Gelöschte Statistik-Gruppe';
   }
+  /** Die volle Schreibweise „Name = A + B + C“ (alle Mitglieder) für title/aria-label und den Editor; keine Gruppe oder gelöscht: ''. */
   function titel(key, gruppen) {
     const g = istGruppe(key) ? gruppe(key, gruppen) : null;
     return g ? g.name + ' = ' + g.sports.map(s => S().label(s)).join(' + ') : '';
@@ -157,7 +156,7 @@
   /** Gibt es die Auswahl noch? (Für gespeicherte Filter: sonst zurück auf „Alle“.) */
   const gueltig = (sel, gruppen) => !istGruppe(sel) || !!gruppe(sel, gruppen);
 
-  /** Einträge für Auswahllisten (Sportartfilter, Ziele): [['sgrp:g1', 'Bergtouren = Wandern + Bergsteigen', volle Liste], …] (2.19.1, bis 2.19.0 „… (zusammengefasst)“). */
+  /** Einträge für Auswahllisten (Sportartfilter, Ziele): [['sgrp:g1', 'Bergtouren', 'Bergtouren = Wandern + Bergsteigen'], …] (2.20.1: nur der Name, die Zusammensetzung als Titel). */
   function auswahl(gruppen) { return (gruppen || []).map(g => [PREFIX + g.id, beschriftung(PREFIX + g.id, gruppen), titel(PREFIX + g.id, gruppen)]); }
 
   /** 2.19.1: Die eine Auswahl für Sportart-Chips (Karte, Tourenliste): nur Sportarten, die in den Touren vorkommen (Schlüssel außerhalb des Katalogs

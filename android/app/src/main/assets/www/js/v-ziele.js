@@ -20,10 +20,10 @@ const Goals = {
   },
   sportName(s) { return !s ? '' : StatGruppen.istGruppe(s) ? StatGruppen.beschriftung(s, StatGruppen.aktuell()) : s === 'grp:bike' ? 'Rad (alle Arten)' : s === 'grp:foot' ? 'Wandern und Bergsteigen' : s === 'grp:ski' || s === 'ski' ? 'Ski (alle Arten)' : s === 'grp:run' ? 'Laufen (alle Arten)' : Sports.label(s); },
   name(g) { const m = Ziele.METRIKEN.find(x => x[0] === g.metric); return m[1] + (g.period === 'week' ? ' pro Woche' : '') + ' · ' + (g.sport ? Goals.sportName(g.sport) : 'Alle Sportarten'); },
-  /** Zahl mit Einheit: „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
+  /** Zahl mit Einheit (2.20.1: geschütztes Leerzeichen U+00A0, nie getrennt): „740 km“, „12.400 m“, „8 Touren“, „6,5 h“. */
   dec: g => (g.metric === 'hours' || (g.metric === 'km' && g.target < 50) ? 1 : 0),
   fmt(v, g) {
-    return Goals.nf(v, Goals.dec(g)) + ({ km: ' km', up: ' m', count: Math.round(v) === 1 ? ' Tour' : ' Touren', hours: ' Std.' }[g.metric]);
+    return Goals.nf(v, Goals.dec(g)) + ({ km: '\u00a0km', up: '\u00a0m', count: Math.round(v) === 1 ? '\u00a0Tour' : '\u00a0Touren', hours: '\u00a0Std.' }[g.metric]);
   },
   /** Satz zum Stand: in Worten, nie nur Farbe. */
   text(g, s) {
@@ -38,9 +38,10 @@ const Goals = {
   /** Zeile mit Name, „740 / 800 km“, Balken und Satz. opts.onclick macht sie antippbar (Ändern). */
   row(g, tours, now, opts) {
     const s = Ziele.stand(g, tours, now);
-    const kids = [h('span', null, Goals.name(g)), h('em', null, Goals.nf(s.ist, Goals.dec(g)) + ' / ' + Goals.fmt(g.target, g)),
+    const zus = g.sport ? StatGruppen.titel(g.sport, StatGruppen.aktuell()) : '';      // 2.20.1: Statistik-Gruppe nur mit Namen, Zusammensetzung als Hinweis
+    const kids = [h('span', { title: zus || null }, Goals.name(g)), h('em', null, Goals.nf(s.ist, Goals.dec(g)) + ' / ' + Goals.fmt(g.target, g)),
       UI.bar(s.anteil, g.period === 'year' && g.year === now.getFullYear() && s.soll != null ? { mark: s.soll / g.target, title: 'Soll heute' } : null), h('small', null, Goals.text(g, s))];
-    return opts && opts.onclick ? h('button', { class: 'ygoal tap', 'aria-label': Goals.name(g) + ' ändern', onclick: opts.onclick }, kids) : h('div', { class: 'ygoal' }, kids);
+    return opts && opts.onclick ? h('button', { class: 'ygoal tap', title: zus || null, 'aria-label': Goals.name(g) + ' ändern' + (zus ? ' (' + zus + ')' : ''), onclick: opts.onclick }, kids) : h('div', { class: 'ygoal' }, kids);
   },
   /** Blatt zum Anlegen oder Ändern. goal = null: neues Ziel mit den Vorgaben `pre` ({period, year}). done() nach dem Speichern oder Löschen. */
   edit(goal, pre, done) {

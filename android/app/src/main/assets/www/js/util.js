@@ -22,18 +22,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 /** 2.20.0: Zahl mit ausgeschriebener Ein- oder Mehrzahl – „1 Foto“, „3 Fotos“ (statt „Foto(s)“). */
 const anz = (n, eins, viele) => n + ' ' + (n === 1 ? eins : viele);
 
-/* Zentrale Formate (2.20.0, Leitfaden Regel 10): km und m mit Komma, Dauer „1:05 Std.“ bzw. „45 Min.“, Datum TT.MM.JJJJ. Eigene Formate in Ansichten nicht neu erfinden. */
+/* Zentrale Formate (2.20.0; 2.20.1: Zahl und Einheit mit geschütztem Leerzeichen U+00A0, nie getrennt; Leitfaden Regel 10): km und m mit Komma, Dauer „1:05 Std.“ bzw. „45 Min.“, Datum TT.MM.JJJJ. Eigene Formate in Ansichten nicht neu erfinden. */
 const F = {
-  km: m => m == null ? '–' : (m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 100000 ? 1 : 0).replace('.', ',') + ' km'),
+  km: m => m == null ? '–' : (m < 1000 ? Math.round(m) + '\u00a0m' : (m / 1000).toFixed(m < 100000 ? 1 : 0).replace('.', ',') + '\u00a0km'),
   km2: m => m == null ? '–' : (m / 1000).toFixed(1).replace('.', ','),
-  m: m => m == null || isNaN(m) ? '–' : Math.round(m).toLocaleString('de-DE') + ' m',
-  dur: s => { if (s == null || isNaN(s)) return '–'; s = Math.round(s); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60); return hh ? hh + ':' + String(mm).padStart(2, '0') + ' Std.' : mm + ' Min.'; },
+  m: m => m == null || isNaN(m) ? '–' : Math.round(m).toLocaleString('de-DE') + '\u00a0m',
+  dur: s => { if (s == null || isNaN(s)) return '–'; s = Math.round(s); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60); return hh ? hh + ':' + String(mm).padStart(2, '0') + '\u00a0Std.' : mm + '\u00a0Min.'; },
   clock: s => { s = Math.round(s || 0); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; return (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0'); },
   date: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',
   dshort: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',      // 2.20.0: TT.MM.JJJJ (bis 2.19 zweistellige Jahreszahl)
   time: ms => ms ? new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–',
-  speed: (m, s) => s > 0 ? (m / s * 3.6).toFixed(1).replace('.', ',') + ' km/h' : '–',
-  size: b => b > 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.round(b / 1024) + ' KB',
+  speed: (m, s) => s > 0 ? (m / s * 3.6).toFixed(1).replace('.', ',') + '\u00a0km/h' : '–',
+  size: b => b > 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + '\u00a0MB' : Math.round(b / 1024) + '\u00a0KB',
 };
 
 function toast(msg, ms) {

@@ -86,7 +86,8 @@ const REGELN = [
   { re: /Als GPX speichern|Als PDF\b(?! exportieren)/, statt: 'Als GPX/PDF exportieren' },
   { re: /\bBackups?\b|Datensicherung/, statt: 'Sicherung' },
   { re: /Seitenlayout|\bDashboard\b|\bWidgets?\b/, statt: 'Ansicht / Baustein / Start' },
-  { re: /\(zusammengefasst\)|Zusammengefasst/, statt: 'Statistik-Gruppe („Name = A + B + C“)' },
+  { re: /\(zusammengefasst\)|Zusammengefasst/, statt: 'Statistik-Gruppe (Anzeige: nur der Name)' },
+  { re: /^ = $/, statt: 'Statistik-Gruppe: „Name = A + B + C“ nur über StatGruppen.titel() (title/aria, Editor), nie selbst zusammensetzen', nur: /www\/js\/(?!calc-statgruppen\.js)/ },
   { re: /\bFavorit\b|Favoriten(?!-Sportart)/, statt: 'Favoriten-Sportarten / Lieblingstour' },
   { re: /\bAlle Jahre\b/, statt: 'Gesamte Zeit' },
   { re: /^Alle$/, statt: 'Alle Sportarten (im Sportart-Filter)', nur: /v-start\.js|v-tours\.js|v-map\.js|v-stats\.js/ },
@@ -142,6 +143,13 @@ for (const [datei, liste] of dateien()) {
       if (!zeichen.some(k => k.startsWith(c))) fehler.push(`www/js/${f}:${line}  „${s.trim().slice(0, 60)}“  → Bildzeichen ohne Liniensymbol (icons.js ICON_CHARS ergänzen)`);
     }
   }
+}
+/* 2.20.1: Statistik-Gruppe in Anzeigen nur mit Namen; die volle Schreibweise nur als titel() (title/aria-label, Editor) */
+{
+  const SGt = require(path.join(WWW, 'js/calc-statgruppen.js')), G = [{ id: 'w', name: 'Wandern (gesamt)', sports: ['hike', 'mountaineering', 'snowshoe', 'walk'] }];
+  if (SGt.beschriftung('sgrp:w', G) !== 'Wandern (gesamt)') fehler.push('StatGruppen.beschriftung liefert nicht nur den Namen: ' + SGt.beschriftung('sgrp:w', G));
+  if (!/^Wandern \(gesamt\) = .+ \+ .+ \+ .+ \+ /.test(SGt.titel('sgrp:w', G))) fehler.push('StatGruppen.titel liefert nicht die volle Zusammensetzung: ' + SGt.titel('sgrp:w', G));
+  if (/ = | \+ /.test(SGt.auswahl(G)[0][1]) || /\+/.test(SGt.chipAuswahl(['hike'], G).gruppen[0].label)) fehler.push('Auswahl/Chips zeigen die Zusammensetzung statt des Namens');
 }
 if (process.argv.includes('-v')) console.log('Ausnahmen:\n' + ausnahmen.join('\n'));
 if (gezaehlt < 3000) { console.error('Zu wenige Textstücke gefunden (' + gezaehlt + ') – Leser kaputt?'); process.exit(1); }

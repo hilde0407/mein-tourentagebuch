@@ -2,6 +2,19 @@
 import http.server, json, os, re, socketserver, threading, sys
 from playwright.sync_api import sync_playwright
 
+
+# 2.20.1: Zahl und Einheit stehen mit geschütztem Leerzeichen (U+00A0) in der Oberfläche; die Textvergleiche der Tests lesen es als gewöhnliches Leerzeichen.
+# Die Prüfungen auf das geschützte Leerzeichen selbst lesen per evaluate() (statgruppen_2190) bzw. Python-Aufrufe ohne diese Umsetzung.
+from playwright.sync_api import Page as _Page, Locator as _Loc
+def _nb(f):
+    def w(*a, **k):
+        r = f(*a, **k)
+        return [x.replace("\u00a0", " ") if isinstance(x, str) else x for x in r] if isinstance(r, list) else (r.replace("\u00a0", " ") if isinstance(r, str) else r)
+    return w
+for _c in (_Page, _Loc):
+    for _m in [m for m in ("inner_text", "text_content", "all_inner_texts", "all_text_contents", "get_attribute", "input_value") if hasattr(_c, m)]:
+        setattr(_c, _m, _nb(getattr(_c, _m)))
+
 WWW = os.path.join(os.path.dirname(__file__), "..", "android", "app", "src", "main", "assets", "www")
 
 class Q(http.server.SimpleHTTPRequestHandler):
@@ -1858,7 +1871,7 @@ def winter(pg):
     nski = pg.evaluate("Tours.list().then(l => l.filter(t => Sports.SKI.concat(['snowboard']).includes(t.sport) && t.status !== 'planned' && !t.hidden).length)")
     assert pg.locator(".kpis .kpi").first.inner_text().split("\n")[0].strip() == str(nski) and nski >= 6, (pg.inner_text(".kpis"), nski)
     pg.evaluate("location.hash = '#/stats/ziele'"); pg.wait_for_selector("#goaladd"); pg.click("#goaladd"); pg.wait_for_selector("#goalsport-wahl")
-    opts = wahl_texte(pg, "goalsport"); pg.evaluate("Set_.set('statGruppen', [])"); assert "Ski = Ski alpin + Skitour + Langlauf + …" in opts and "Ski (alle Arten)" not in opts and "Skitour" in opts and "Langlauf" in opts and "Ski alpin" in opts and "Ski (allgemein)" not in opts, opts
+    opts = wahl_texte(pg, "goalsport"); pg.evaluate("Set_.set('statGruppen', [])"); assert "Ski" in opts and not any(" = " in x for x in opts) and "Ski (alle Arten)" not in opts and "Skitour" in opts and "Langlauf" in opts and "Ski alpin" in opts and "Ski (allgemein)" not in opts, opts
     zu(pg)
     pg.evaluate("location.hash = '#/plan'"); pg.wait_for_selector("#plsport-wahl"); po = wahl_texte(pg, "plsport")
     assert "Skitour" in po and "Langlauf" in po and "Ski (allgemein)" not in po and "Wandern" in po, po
@@ -4389,8 +4402,8 @@ def statgruppen_2190(pg):
     # Statistik: Filter und Block „Sportarten“
     go("#/stats", ".kpis"); pg.select_option("select[aria-label=Zeitraum]", "2019"); pg.wait_for_timeout(200)
     opts = [re.sub(r"^[^\wÄÖÜäöü]+", "", x.strip()) for x in pg.locator("#st-sport-f .chip").all_inner_texts()]
-    assert "Bergtouren = Wandern + Bergsteigen + Schneeschuhwandern" in opts and "Rad = Radtour + Rennrad + Mountainbike + …" in opts and "Bergsteigen" in opts and not any("zusammengefasst" in o for o in opts), opts      # 2.19.1
-    assert pg.get_attribute("#st-sport-f .chip[data-sport='sgrp:rad']", "title") == "Rad = Radtour + Rennrad + Mountainbike + Gravelbike + E-Mountainbike + Bikepacking"
+    assert "Bergtouren" in opts and "Rad" in opts and "Bergsteigen" in opts and not any("zusammengefasst" in o or " = " in o or " + " in o for o in opts), opts      # 2.20.1: nur der Name (2.19.1: „Name = A + B“)
+    assert pg.get_attribute("#st-sport-f .chip[data-sport='sgrp:rad']", "title") == "Rad = Radtour + Rennrad + Mountainbike + Gravelbike + E-Mountainbike + Bikepacking" and pg.get_attribute("#st-sport-f .chip[data-sport='sgrp:rad']", "aria-label").startswith("Rad = Radtour")      # 2.20.1: Zusammensetzung im title und aria-label
     rows = pg.eval_on_selector_all("#st-sport .hb", "els => els.map(e => e.dataset.sport)")
     assert "sgrp:berg" in rows and "sgrp:rad" in rows and "ebike" in rows and "kayak" in rows and "mountaineering" not in rows and "hike" not in rows and "mtb" not in rows, rows
     pg.click("#st-sport-f .chip[data-sport='sgrp:berg']"); pg.wait_for_timeout(200)
@@ -4398,7 +4411,7 @@ def statgruppen_2190(pg):
     # Bestwerte je Sportart und Auswertung
     pg.click("#st-sport-f .chip.salle"); pg.click(".chips .chip:has-text('Bestwerte')"); pg.wait_for_selector("#bw-sport h3")
     hs = pg.eval_on_selector_all("#bw-sport h3[data-sport]", "els => els.map(e => [e.dataset.sport, e.textContent])")
-    assert any(k == "sgrp:berg" and "Bergtouren = Wandern + Bergsteigen + Schneeschuhwandern · 4 Touren" in t for k, t in hs), hs
+    assert any(k == "sgrp:berg" and "Bergtouren · 4 Touren" in t and " = " not in t for k, t in hs), hs
     pg.click(".chips .chip:has-text('Auswertung')"); pg.wait_for_selector("table.cstat")
     tr = pg.eval_on_selector_all("table.cstat tbody tr", "els => els.map(e => [e.dataset.sport, e.cells[0].textContent, e.cells[1].textContent])")
     assert any(k == "sgrp:berg" and b == "4" for k, a, b in tr) and any(k == "kayak" for k, a, b in tr), tr
@@ -4411,11 +4424,26 @@ def statgruppen_2190(pg):
       const g = { id: 'zsg', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'sgrp:berg' }, g2 = Object.assign({}, g, { id: 'zweg', sport: 'sgrp:weg' }), g3 = Object.assign({}, g, { id: 'zalt', sport: 'grp:bike' });
       await Goals.save([g, g2, g3]); const all = (await Tours.list()).filter(Jahr.zaehlt), d = new Date(2019, 11, 31);
       return { ist: Ziele.stand(g, all, d).ist, weg: Ziele.stand(g2, all, d).ist, alt: Ziele.stand(g3, all, d).ist, name: Goals.name(g), name2: Goals.name(g2) }; }""")
-    assert z["ist"] == 4 and z["weg"] == 0 and z["alt"] == 2 and "Bergtouren = Wandern + Bergsteigen + Schneeschuhwandern" in z["name"] and "Gelöschte Statistik-Gruppe" in z["name2"], z
+    assert z["ist"] == 4 and z["weg"] == 0 and z["alt"] == 2 and z["name"] == "Touren · Bergtouren" and "Gelöschte Statistik-Gruppe" in z["name2"], z
+    # 2.20.1: Ziele-Zeile mit Statistik-Gruppe: nur der Name (Zusammensetzung im title), „756 / 800 km“ einzeilig bei 390 px und 150 % Schrift
+    grp0 = pg.evaluate("Set_.get('statGruppen')")
+    pg.evaluate("""async () => { const gr = Set_.get('statGruppen').map(x => x.id === 'berg' ? Object.assign({}, x, { name: 'Bergtouren (gesamt) mit Schnee' }) : x); await Set_.set('statGruppen', gr);
+      await Goals.save([{ id: 'zlang', period: 'year', year: new Date().getFullYear(), metric: 'km', target: 800, sport: 'sgrp:berg' }]); }""")
+    for w, fs in ((390, 100), (390, 150), (360, 150)):
+        pg.set_viewport_size({"width": w, "height": 800})
+        pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = 'html{font-size:' + fs + '% !important}'; }", fs)
+        go("#/stats/ziele", ".ygoal"); pg.wait_for_timeout(250)
+        zr = pg.evaluate("""() => { const r = document.querySelector('.ygoal'), sp = r.querySelector('span'), em = r.querySelector('em'), lh = parseFloat(getComputedStyle(em).lineHeight) || em.getBoundingClientRect().height;
+          return { text: sp.textContent, title: sp.title, wert: em.textContent, hoehe: em.getBoundingClientRect().height, zeile: parseFloat(getComputedStyle(em).fontSize) * 1.6, rechts: em.getBoundingClientRect().right, breite: innerWidth, nbsp: em.textContent.includes('\\u00a0km') }; }""")
+        assert " = " not in zr["text"] and " + " not in zr["text"] and zr["text"] == "Strecke · Bergtouren (gesamt) mit Schnee", zr
+        assert zr["title"] == "Bergtouren (gesamt) mit Schnee = Wandern + Bergsteigen + Schneeschuhwandern", zr
+        assert zr["wert"].endswith("/ 800\u00a0km") and zr["hoehe"] < zr["zeile"] and zr["rechts"] <= zr["breite"], (w, fs, zr)      # einzeilig, nicht über den Rand
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    pg.evaluate("async g => { await Set_.set('statGruppen', g); await Goals.save([]); }", grp0)
     go("#/stats/ziele", "#view"); pg.wait_for_timeout(300)
     pg.evaluate("Goals.edit({ id: 'zweg', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'sgrp:weg' }, null, () => {})"); pg.wait_for_selector("#goalsport-wahl")
     o2 = wahl_texte(pg, "goalsport")
-    assert "Bergtouren = Wandern + Bergsteigen + Schneeschuhwandern" in o2 and "Gelöschte Statistik-Gruppe" in o2 and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "sgrp:weg" and "Rad (alle Arten)" not in o2 and "Bergsteigen" in o2 and "Skitour" in o2, o2
+    assert "Bergtouren" in o2 and not any(" = " in x for x in o2) and "Gelöschte Statistik-Gruppe" in o2 and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "sgrp:weg" and "Rad (alle Arten)" not in o2 and "Bergsteigen" in o2 and "Skitour" in o2, o2
     pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
     pg.evaluate("Goals.edit({ id: 'zalt', period: 'year', year: 2019, metric: 'count', target: 10, sport: 'grp:bike' }, null, () => {})"); pg.wait_for_selector("#goalsport-wahl")
     assert "Rad (alle Arten)" in pg.locator("#goalsport-wahl .chip").all_inner_texts() and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "grp:bike"
@@ -4533,7 +4561,7 @@ def aktivitaeten_2190(pg):
     reihe = pg.evaluate("Sports.katalog.map(x => x[0]).concat(['ski'])"); einzeln = [k for k in km if not k.startswith("sgrp:")]
     assert einzeln == sorted(einzeln, key=reihe.index), einzeln
     assert [k for k in kats[1:]] == [n for n in ["Zu Fuß", "Rad", "Winter", "Wasser", "Outdoor und Sonstige"] if n in kats], kats
-    assert "Gehen = Spazieren / Gehen + Wandern" in pg.inner_text("#mapsport .schip[data-sport='sgrp:w']")
+    assert pg.inner_text("#mapsport .schip[data-sport='sgrp:w']").strip() == "Gehen" and pg.get_attribute("#mapsport .schip[data-sport='sgrp:w']", "title") == "Gehen = Spazieren / Gehen + Wandern"      # 2.20.1: Anzeige nur der Name, Zusammensetzung im title
     gleich = pg.evaluate("""() => [...document.querySelectorAll('#mapsport .schip:not([data-sport^="sgrp:"])')].every(c => { const d = document.createElement('i'); d.style.background = MapKit.routeColor(c.dataset.sport); document.body.append(d);
       const ok = getComputedStyle(d).backgroundColor === getComputedStyle(c.querySelector('.sdot')).backgroundColor; d.remove(); return ok; })""")
     assert gleich, "Farbpunkt = Streckenfarbe"
