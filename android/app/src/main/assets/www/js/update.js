@@ -15,7 +15,7 @@ const Update = {
       try {
         const inst = Update.installiert();
         if (!UpdateCalc.lesen(inst)) return { ok: false, grund: 'Version dieser App unbekannt' };
-        const r = await Native.http({ url: UpdateCalc.API, headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'MeinTourentagebuch/' + inst + ' (Update-Prüfung)' } });
+        const r = await Native.http({ url: UpdateCalc.API, headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'MeinTourentagebuch/' + inst + ' (update-check)' } });
         const a = UpdateCalc.auswerten(r);
         if (!a.ok) return { ok: false, grund: r && (r.status === 403 || r.status === 429) ? 'GitHub ist gerade nicht erreichbar (Anfragegrenze)' : 'keine Antwort von GitHub' };
         await DB.kvSet('update', { t: Date.now(), latest: a.latest, url: a.url, notes: a.notes });

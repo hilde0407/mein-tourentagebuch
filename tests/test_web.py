@@ -4348,6 +4348,11 @@ def update_2210(pg):
     „Herunterladen“ öffnet die Release-Seite, „Später“ blendet aus bis eine noch neuere kommt, höchstens alle 12 Stunden, Schalter aus = keine Anfrage,
     Fehler/Rate-Limit/offline still (nichts gespeichert, nächster Versuch), Einstellungen: Schalter und „Jetzt prüfen“. Gibt Layoutfehler zurück."""
     bad = []
+    # OkHttp (MainActivity.httpCall) weist Kopfzeilenwerte mit Nicht-ASCII-Zeichen ab (2.21.0: „Update-Prüfung“ im User-Agent → auf dem Handy „keine Verbindung“)
+    import re as _re
+    _src = open(os.path.join(WWW, "js", "update.js"), encoding="utf-8").read()
+    for _m in _re.finditer(r"headers:\s*\{[^}]*\}", _src):
+        assert all(ord(c) < 128 for c in _m.group(0)), "Kopfzeilen der Update-Prüfung müssen ASCII sein: " + _m.group(0)
     API = "**/api.github.com/repos/hilde0407/mein-tourentagebuch/releases/latest"
     CORS = {"access-control-allow-origin": "*", "access-control-allow-headers": "*"}
     st = {"hits": 0, "status": 200, "tag": "v2.21.0", "abort": False, "uas": []}
