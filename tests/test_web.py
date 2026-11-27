@@ -3098,7 +3098,7 @@ def statistik_2130(pg):
           for (const [id, sport, start, dist, up, dur, moving, maxAlt] of T) await DB.put('tours', { id, name: 'Vergleich ' + id, sport, start, end: start + dur * 1000, dist, up, down: up, dur, moving, maxAlt, src: 'file', status: 'done' });
           Tours.invalidate(); await Set_.set('bestN', 1); Ausw.vgl = { a: 2016, b: 2015, m: 'dist' }; }""")
         go(pg, "#/stats", ".chips")
-        pg.click(".chips .chip:has-text('Vergleich')"); pg.wait_for_selector("#vgl-diff")
+        pg.click("#st-tabs [role=tab]:has-text('Vergleich')"); pg.wait_for_selector("#vgl-diff")
         assert pg.locator("select[aria-label=Zeitraum]").count() == 0 and pg.locator("#st-sport-f").count() == 1, "eigene Jahre, Sportart bleibt"
         assert pg.input_value("#vgl-a") == "2016" and pg.input_value("#vgl-b") == "2015"
         d = pg.inner_text("#vgl-diff"); assert d.startswith("−25 % Strecke") and "2016: 60,0 km" in d and "2015: 80,0 km" in d, d
@@ -4594,10 +4594,10 @@ def statgruppen_2190(pg):
     pg.click("#st-sport-f .chip[data-sport='sgrp:berg']"); pg.wait_for_timeout(200)
     assert pg.locator(".kpis .kpi").first.inner_text().split("\n")[0].strip() == "4", pg.inner_text(".kpis")      # Wandern, Schneeschuh (alt: Wandern), 2 × Bergsteigen
     # Bestwerte je Sportart und Auswertung
-    pg.click("#st-sport-f .chip.salle"); pg.click(".chips .chip:has-text('Bestwerte')"); pg.wait_for_selector("#bw-sport h3")
+    pg.click("#st-sport-f .chip.salle"); pg.click("#st-tabs [role=tab]:has-text('Bestwerte')"); pg.wait_for_selector("#bw-sport h3")
     hs = pg.eval_on_selector_all("#bw-sport h3[data-sport]", "els => els.map(e => [e.dataset.sport, e.textContent])")
     assert any(k == "sgrp:berg" and "Wandern (gesamt) · 4 Touren" in t and " = " not in t for k, t in hs), hs
-    pg.click(".chips .chip:has-text('Auswertung')"); pg.wait_for_selector("table.cstat")
+    pg.click("#st-tabs [role=tab]:has-text('Auswertung')"); pg.wait_for_selector("table.cstat")
     tr = pg.eval_on_selector_all("table.cstat tbody tr", "els => els.map(e => [e.dataset.sport, e.cells[0].textContent, e.cells[1].textContent])")
     assert any(k == "sgrp:berg" and b == "4" for k, a, b in tr) and any(k == "kayak" for k, a, b in tr), tr
     # Jahresrückblick
@@ -4837,6 +4837,41 @@ def audit_2240(pg):
     return bad
 
 
+def wellen_2240_mittel(pg):
+    """2.24.0, Welle 2: M1 Statistik-Reiter sichtbar und als Reiter ausgezeichnet, M2 Planung fragt vor dem Verlassen, M4 Statistik-Leerzustände."""
+    # M1: der gewählte Reiter liegt bei schmalem Schirm und 130 % Schrift ganz im Bild und ist ein Reiter (role=tab, aria-selected)
+    for w, fs in ((360, 130), (390, 100), (430, 100)):
+        pg.set_viewport_size({"width": w, "height": 800})
+        pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+        for tab in ("kalender", "auswertung", "vergleich", "rekorde", "ziele", "fitness"):
+            go(pg, "#/stats/" + tab, "#st-tabs"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(150)
+            r = pg.evaluate("() => { const b = document.querySelector('#st-tabs [role=tab][aria-selected=true]'), v = document.querySelector('#view').getBoundingClientRect(), x = b.getBoundingClientRect(); return [b.dataset.tab, Math.round(x.left), Math.round(x.right), Math.round(v.right), document.querySelector('#st-tabs').getAttribute('role'), document.querySelectorAll('#st-tabs [role=tab]').length]; }")
+            assert r[0] == tab and r[1] >= 0 and r[2] <= r[3] + 1 and r[4] == "tablist" and r[5] == 7, (w, fs, tab, r)
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    # M4: ohne jede Tour derselbe Leerzustand auf allen Reitern (außer Ziele) – mit Weg zu Aufzeichnung und Import; mit Touren nur der Hinweis auf Jahr/Sportart
+    pg.evaluate("window.__list0 = Tours.list; Tours.list = async () => []; 0")
+    for tab in ("ueber", "rekorde", "vergleich", "kalender", "auswertung", "fitness"):
+        go(pg, "#/stats/" + tab, "#st-tabs"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_selector(".st-leer")
+        t = pg.inner_text("#view"); assert "Noch keine Touren" in t and "Touren importieren" in t and "Aufzeichnung starten" in t and "anderes Jahr" not in t and "0 aktive Tage" not in t and "Geburtsjahr" not in t, (tab, t)
+    go(pg, "#/stats/ziele", "#st-tabs"); pg.wait_for_function("() => !Nav._busy"); assert pg.locator(".st-leer").count() == 0
+    pg.evaluate("Tours.list = window.__list0; Tours.invalidate(); 0")
+    go(pg, "#/stats/rekorde", "#st-tabs"); pg.wait_for_function("() => !Nav._busy"); assert pg.locator(".st-leer").count() == 0
+    # M2: Planung – ungesicherte Punkte: Rückfrage beim Zurückgehen (Pfeil und Android-Zurücktaste), „Abbrechen“ bleibt, „Verwerfen“ verlässt
+    go(pg, "#/plan", ".pmap"); pg.wait_for_function("() => !Nav._busy")
+    box = pg.locator(".pmap").bounding_box()
+    pg.mouse.click(box["x"] + 120, box["y"] + 120); pg.wait_for_selector(".pmap .mk", timeout=10000); pg.mouse.click(box["x"] + 200, box["y"] + 160); pg.wait_for_function("() => document.querySelectorAll('.pmap .mk').length === 2")
+    pg.click("header.top button[aria-label=Zurück]"); pg.wait_for_selector(".sheet-back.on")
+    assert "Planung verwerfen?" in pg.inner_text(".sheet") and pg.locator(".sheet .btn.danger").inner_text() == "Verwerfen"
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_timeout(300)
+    assert pg.evaluate("location.hash") == "#/plan" and pg.locator(".pmap .mk").count() == 2, "Abbrechen: bleibt, Punkte bleiben"
+    pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet-back.on"); assert "Planung verwerfen?" in pg.inner_text(".sheet")      # Android-Zurücktaste
+    pg.click(".sheet .btn.danger"); pg.wait_for_selector(".sheet", state="detached"); pg.wait_for_function("() => location.hash !== '#/plan'"); pg.wait_for_function("() => !Nav._busy")
+    assert pg.evaluate("Nav.sperre") is None
+    go(pg, "#/plan", ".pmap"); pg.wait_for_function("() => !Nav._busy")      # ohne Punkte: keine Rückfrage
+    pg.evaluate("window.mtBack()"); pg.wait_for_function("() => location.hash !== '#/plan'"); assert pg.locator(".sheet").count() == 0
+    return []
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -4991,7 +5026,7 @@ def main():
             pg.locator(".home .chips .chip").first.click(); pg.wait_for_timeout(200)
             assert pg.locator(".year .kpi b").first.inner_text() == big0 and pg.locator(".year .ygoal").count() == 2
         pg.click(".year .ylink"); pg.wait_for_function("location.hash==='#/stats/ziele'")
-        pg.wait_for_selector("#goals .ygoal"); assert pg.locator(".chips .chip.on").inner_text() == "Ziele"
+        pg.wait_for_selector("#goals .ygoal"); assert pg.locator("#st-tabs .tabbtn.on").inner_text() == "Ziele"
         pg.evaluate("DB.kvSet('goals', {})"); pg.evaluate("location.hash='#/start'"); pg.wait_for_selector("#yset")
         # Foto-Quellen: Galerie zu Tour
         pg.evaluate("window.__gts = %d; window.__gallery=[{uri:'content://m/1',ts:%d,name:'q'}]" % (t0 + 100000, t0 + 100000))
@@ -5021,18 +5056,18 @@ def main():
         # Auswertung: Rekorde, Kalender, Auswertung (Neuland, Wetter), Ziele
         pg.route("**/archive-api.open-meteo.com/**", lambda r: r.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"daily": {"temperature_2m_mean": [8.5], "temperature_2m_max": [12.0], "precipitation_sum": [2.4]}})))
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".kpis")
-        pg.get_by_role("button", name="Bestwerte", exact=True).click(); pg.wait_for_selector("text=Bester Tag"); tx = pg.inner_text("#view")
+        pg.get_by_role("tab", name="Bestwerte", exact=True).click(); pg.wait_for_selector("text=Bester Tag"); tx = pg.inner_text("#view")
         assert "Längste Serie" in tx and "Beste Woche" in tx and "Bestwerte je Sportart" in tx and "Bestwerte" in tx and "Bester Monat" not in tx, tx[:400]
-        pg.get_by_role("button", name="Kalender", exact=True).click(); pg.wait_for_selector(".cal")
+        pg.get_by_role("tab", name="Kalender", exact=True).click(); pg.wait_for_selector(".cal")
         assert pg.locator(".cd.l1, .cd.l2, .cd.l3, .cd.l4").count() >= 1
         pg.locator("button.cd").first.click(); pg.wait_for_selector(".sheet .li"); pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
-        pg.get_by_role("button", name="Auswertung", exact=True).click(); pg.wait_for_selector("text=Statistik nach Sportart")
+        pg.get_by_role("tab", name="Auswertung", exact=True).click(); pg.wait_for_selector("text=Statistik nach Sportart")
         pg.get_by_role("button", name="Berechnen").click(); pg.wait_for_selector("text=Größte Entdeckungen", timeout=15000)
         nl = pg.evaluate("Tours.list().then(a => a.filter(t => t.nlCells != null).map(t => [t.nlNew, t.nlCells]))")
         assert len(nl) >= 3 and nl[0][1] > 0 and any(x[0] == 100 for x in nl), nl
         pg.get_by_role("button", name="Wetter holen").click(); pg.wait_for_selector("text=Touren mit Wetterdaten", timeout=15000)
         assert "an Regentagen" in pg.inner_text("#view") and "Kälteste Tour" in pg.inner_text("#view")
-        pg.get_by_role("button", name="Ziele", exact=True).click(); pg.wait_for_selector("#goaladd")
+        pg.get_by_role("tab", name="Ziele", exact=True).click(); pg.wait_for_selector("#goaladd")
 
         pg.route("**/nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=500, body="x", headers={"access-control-allow-origin": "*"}))
         # Reisen & Alben: Reise aus 4 weit entfernten Tagen erkennen, Tags vergeben, Album-Seite
@@ -5509,7 +5544,7 @@ def main():
         sg_bad = statgruppen_2190(pg) + aktivitaeten_2190(pg)
         up_bad = update_2210(pg)
         dd_bad = doppelt_2230(pg)
-        ad_bad = audit_2240(pg)
+        ad_bad = audit_2240(pg) + wellen_2240_mittel(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

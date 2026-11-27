@@ -27,6 +27,11 @@ Views['/plan'] = async (root, [editId]) => {
     editing = await DB.get('tours', editId);
     if (editing) { sport = editing.sport; name = editing.name; const pts = await Tours.points(editId); const meta = (await DB.kvGet('plan:' + editId, null)); if (meta) { wps = meta.wps; } else { const sp = Geo.simplify(pts, 60); wps = [sp[0], sp[sp.length - 1]].map(p => ({ lat: p.lat, lon: p.lon })); } }
   }
+  // 2.24.0: ungesicherte Punkte gehen nicht lautlos verloren – beim Verlassen (Zurück, Reiter, Android-Zurücktaste) fragt die Planung nach
+  const stand = () => JSON.stringify(wps.map(w => [+w.lat.toFixed(6), +w.lon.toFixed(6)]));
+  let gesichert = wps.length ? stand() : '[]';
+  const ungesichert = () => wps.length > 0 && stand() !== gesichert;
+  Nav.sperre = () => ungesichert() ? confirmBox('Planung verwerfen?', 'Die gesetzten Punkte sind noch nicht gespeichert und gehen verloren.', 'Verwerfen') : true;
   const info = h('div', { class: 'pinfo' }), chips = h('div', { class: 'chips' });
   const prof = h('canvas', { class: 'prof small' });
   root.append(topbar(editing ? 'Tour bearbeiten' : 'Tour planen', { back: true, actions: h('button', { class: 'ico', 'aria-label': 'Letzten Punkt entfernen', onclick: undo }, '↶') }), mapEl, panel);
@@ -104,6 +109,7 @@ Views['/plan'] = async (root, [editId]) => {
       else tour = (await Tours.add({ name: nm.trim(), sport, pts: plain, status: 'planned', src: 'plan' })).tour;
       await DB.kvSet('plan:' + tour.id, { wps });
     } catch (e) { toastFehler('Speichern', e); return null; }
+    gesichert = stand();
     toast(editing ? 'Änderungen gespeichert' : 'Geplante Tour gespeichert');
     if (go === true) return tour; Nav.go('/tour/' + tour.id); return tour;
   }
@@ -115,5 +121,5 @@ Views['/plan'] = async (root, [editId]) => {
   }
   if (wps.length > 1) await rebuild(); else redraw();
   if (editing && wps.length) map.fitBounds(L.latLngBounds(wps.map(w => [w.lat, w.lon])), { padding: [40, 40] });
-  return () => map.remove();
+  return () => { Nav.sperre = null; map.remove(); };
 };

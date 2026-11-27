@@ -96,6 +96,13 @@ const UI = {
     box.wert = () => wert; box.setze = setze;
     return box;
   },
+  /** 2.24.0: Reiter (Statistik): eigene Leiste mit Unterstrich, role="tablist"/"tab", aria-selected – sieht nicht mehr wie ein Filter-Chip aus. Der gewählte Reiter wird in Sicht gerollt. */
+  reiter(options, active, onpick, opts) {
+    const bar = h('div', { class: 'tabbar', role: 'tablist', id: opts && opts.id, 'aria-label': opts && opts.label || null },
+      options.map(([k, l]) => h('button', { class: 'tabbtn' + (k === active ? ' on' : ''), role: 'tab', 'aria-selected': k === active ? 'true' : 'false', 'data-tab': k, id: opts && opts.id ? opts.id + '-' + k : null, onclick: () => onpick(k) }, l)));
+    bar.zeige = () => { const on = bar.querySelector('.tabbtn.on'); if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2); };
+    return bar;
+  },
   chips(kids, opts) { return h('div', { class: 'chips' + (opts && opts.wrap ? ' wrap' : ''), id: opts && opts.id }, kids); },
   /** Umschalter mit zwei bis vier Segmenten. options: [[schlüssel, text, href?], …]. */
   seg(options, active, onpick, opts) {

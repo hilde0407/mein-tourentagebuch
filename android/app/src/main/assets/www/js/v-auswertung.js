@@ -7,6 +7,10 @@ const Ausw = {
   monday: ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; },
   kpi: (v, l) => UI.fig(v, l),
   link: (t, main, sub) => h('a', { class: 'li', href: '#/tour/' + t.id }, h('span', { class: 'li-i' }, Sports.icon(t.sport)), h('span', { class: 'li-t' }, h('b', null, main), h('small', null, sub))),
+  /** 2.24.0: ein Leerzustand für „in diesem Zeitraum gibt es keine Touren“ (Übersicht, Bestwerte, Auswertung) – und einer für „es gibt noch gar keine Touren“. */
+  leerZeitraum: () => UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' }),
+  leerKeine: () => UI.empty({ icon: 'chart', cls: 'st-leer', title: 'Noch keine Touren', text: 'Sobald Touren im Tagebuch stehen, zeigt die Statistik hier Zahlen, Bestwerte und den Kalender.',
+    actions: [UI.sign('Aufzeichnung starten', { href: '#/rec' }), h('a', { class: 'btn', href: '#/import', html: Ico.svg('download') + '<span>Touren importieren</span>' })] }),
   sec: (title, sub) => [h('h3', null, title), sub ? h('p', { class: 'muted small' }, sub) : null].filter(Boolean),
 
   /* ---------- Bestwerte (ein Abschnitt statt zweier Rekordlisten) und Wochen-Serie ---------- */
@@ -38,9 +42,9 @@ const Ausw = {
 
   /* ---------- Rekorde ---------- */
   rekorde(body, ts, ctx) {
-    body.append(Ausw.bestwerte(ts), Ausw.serie(((ctx && ctx.all) || ts).filter(t => !(ctx && ctx.sport) || Sports.passt(ctx.sport, t.sport))));
     const real = ts.filter(t => t.dist > 0);
-    if (!real.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Noch keine Touren.'))); return; }
+    if (!real.length) { body.append(Ausw.leerZeitraum()); return; }
+    body.append(Ausw.bestwerte(ts), Ausw.serie(((ctx && ctx.all) || ts).filter(t => !(ctx && ctx.sport) || Sports.passt(ctx.sport, t.sport))));
     const group = keyFn => { const m = new Map(); real.forEach(t => { const k = keyFn(t.start); const g = m.get(k) || { k, dist: 0, up: 0, n: 0, first: t.start }; g.dist += t.dist; g.up += t.up || 0; g.n++; g.first = Math.min(g.first, t.start); m.set(k, g); }); return [...m.values()]; };
     const best = (arr, f) => arr.slice().sort((a, b) => f(b) - f(a))[0];
     const days = group(Ausw.dkey), weeks = group(ms => Ausw.monday(ms).getTime()), months = group(ms => { const d = new Date(ms); return d.getFullYear() + '-' + d.getMonth(); }), yrs = group(ms => new Date(ms).getFullYear());
@@ -186,7 +190,7 @@ const Ausw = {
 
   /* ---------- Auswertung: Sportarten, Leistung, Neuland, Wetter ---------- */
   auswertung(body, ts, ctx) {
-    if (!ts.length) { body.append(h('div', { class: 'empty' }, h('p', null, 'Keine Touren in diesem Zeitraum.'))); return; }
+    if (!ts.length) { body.append(Ausw.leerZeitraum()); return; }
     // Statistik nach Sportart
     const gr = StatGruppen.aktuell();      // 2.19.0: Statistik-Gruppen als eine Zeile mit dem Gruppennamen
     const rows = [...StatGruppen.aufteilen(ts, gr).entries()].sort((a, b) => b[1].reduce((x, t) => x + t.dist, 0) - a[1].reduce((x, t) => x + t.dist, 0));

@@ -16,7 +16,7 @@
   --up:#1b7a4b;--down:#a3541a;
   --d:"Barlow Semi Condensed","Barlow",system-ui,sans-serif;--b:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --sh:0 1px 2px rgba(12,37,38,.14),0 6px 18px rgba(12,37,38,.14);
-  --tab:64px;--gut:16px;--r:12px;--r-s:6px;--paper:#e4e9e0;
+  --tab:64px;--tipp:48px;--gut:16px;--r:12px;--r-s:6px;--paper:#e4e9e0;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
@@ -114,6 +114,10 @@ input[type=checkbox]{flex:none;width:24px;height:24px;margin:0;accent-color:var(
 /* Chips */
 .chips{display:flex;gap:8px;overflow-x:auto;padding:4px var(--gut);margin:0 calc(var(--gut) * -1);scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
+.tabbar{position:relative;display:flex;gap:2px;overflow-x:auto;margin:6px calc(var(--gut) * -1) 4px;padding:0 var(--gut);border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tabbtn{flex:none;min-height:var(--tipp);padding:0 14px;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;background:none;cursor:pointer;font-size:.98rem;font-weight:500;color:var(--muted);white-space:nowrap}
+.tabbtn.on{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
 .chips.wrap{flex-wrap:wrap;overflow:visible;padding:4px 0;margin:0}
 .chip{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--edge);background:transparent;cursor:pointer;font-size:.94rem;font-weight:500;color:var(--ink);text-decoration:none;white-space:nowrap}
 .chip::after{content:"";position:absolute;inset:-6px 0}

@@ -2,7 +2,7 @@
 /* Gerüst: Router, untere Leiste, Kopfzeile, Seite „Mehr“, Startablauf. Ansichten registrieren sich in Views[...]. */
 const Views = {};
 const Nav = {
-  cleanup: null, cur: '',
+  cleanup: null, cur: '', sperre: null,
   /* Fünf Reiter; „Aufzeichnen“ sitzt in der Mitte. Was nicht hier steht, liegt unter „Mehr“ oder ist von Start/Touren aus erreichbar. */
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufzeichnen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
@@ -29,6 +29,12 @@ const Nav = {
     let key = '/' + (parts[0] || '');
     if (!Views[key]) key = '/';      // unbekannte Adresse: Tourenliste
     const route = Views[key];
+    /* 2.24.0: Sperre – eine Seite mit ungesicherter Arbeit (Planung) fragt nach, bevor man sie verlässt. Bei „Abbrechen“ bleibt man; die Adresse wird zurückgesetzt. */
+    if (Nav.sperre && Nav.raw && raw !== Nav.raw) {
+      const frei = await Nav.sperre();
+      if (!frei) { history.replaceState(null, '', '#' + Nav.raw); return; }
+      Nav.sperre = null;
+    }
     if (Nav.cleanup) { try { Nav.cleanup(); } catch (e) { /* weiter */ } Nav.cleanup = null; }
     const root = $('#view');
     /* Rollposition je Adresse merken: Wer aus der Tourenliste eine Tour öffnet und zurückgeht, steht wieder an derselben Stelle (2.0.3).

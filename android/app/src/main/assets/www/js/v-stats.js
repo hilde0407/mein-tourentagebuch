@@ -12,15 +12,16 @@ Views['/stats'] = async (root, [tab0]) => {
     // 2.19.0: jede Sportart einzeln (nach Kategorien), dazu die selbst angelegten Statistik-Gruppen; keine festen Gruppen mehr („Ski (alle Arten)“ entfällt)
     // 2.20.0: Chips statt Auswahlliste – dasselbe Muster „Sportart filtern“ wie Karte und Tourenliste (UI.sportChips), nur Sportarten mit Touren
     if (!StatGruppen.gueltig(sport, gr)) sport = '';
+    const reiter = UI.reiter([['ueber', 'Übersicht'], ['rekorde', 'Bestwerte'], ['vergleich', 'Vergleich'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele'], ['fitness', 'Fitness']], tab, k => { tab = k; draw(); }, { id: 'st-tabs', label: 'Statistik' });
+    if (!all.length && tab !== 'ziele') { body.append(reiter, Ausw.leerKeine()); reiter.zeige(); return; }      // 2.24.0: noch gar keine Touren – auf allen Reitern (außer Ziele) derselbe Leerzustand mit Weg zu Aufzeichnung und Import
     const ss = UI.chips(UI.sportChips(StatGruppen.chipAuswahl(all.map(t => t.sport), gr), sport, k => { sport = k; draw(); }), { id: 'st-sport-f' });
     ss.setAttribute('role', 'group'); ss.setAttribute('aria-label', 'Sportart');
     if (tab === 'vergleich') body.append(ss);      // 2.13.0: der Vergleich wählt seine zwei Jahre selbst; die Sportart gilt
     else if (tab !== 'ziele' && tab !== 'fitness') body.append(h('div', { class: 'row' }, sel), ss);      // Zeitraum und Sportart gelten dort nicht: Ziele haben ihr eigenes Jahr und ihre eigene Sportart
     const ts = all.filter(t => (year === 'all' || new Date(t.start).getFullYear() === year) && Sports.passt(sport, t.sport, gr));
-    body.append(UI.chips([['ueber', 'Übersicht'], ['rekorde', 'Bestwerte'], ['vergleich', 'Vergleich'], ['kalender', 'Kalender'], ['auswertung', 'Auswertung'], ['ziele', 'Ziele'], ['fitness', 'Fitness']].map(([k, l]) => UI.chip(l, tab === k, () => { tab = k; draw(); }))));
-    const onChip = $('.chips .chip.on', body); if (onChip) onChip.parentNode.scrollLeft = Math.max(0, onChip.offsetLeft - 120);      // gewählten Reiter in Sicht holen
+    body.append(reiter); reiter.zeige();      // 2.24.0: den gewählten Reiter in Sicht holen (bisher fand die Suche den Chip „Alle Sportarten“ der Sportart-Leiste statt des Reiters)
     if (tab !== 'ueber') { const r = Ausw[tab](body, ts, { all, year, sport }); return r; }
-    if (!ts.length) { body.append(UI.empty({ icon: 'chart', title: 'Keine Touren in diesem Zeitraum', text: 'Wähle oben ein anderes Jahr oder eine andere Sportart.' })); return; }
+    if (!ts.length) { body.append(Ausw.leerZeitraum()); return; }
     const k = Jahr.kennzahlen(ts);
     body.append(h('div', { class: 'kpis' },
       kpi(k.n, 'Touren'), kpi(F.km(k.dist), 'Strecke'), kpi(F.m(k.up), 'Aufstieg'), kpi(F.dur(k.zeit), 'Dauer'), kpi(k.tage, 'Aktive Tage'),
