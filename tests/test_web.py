@@ -88,6 +88,10 @@ def wahl_texte(pg, idp):
     pg.evaluate("window.mtBack()"); pg.wait_for_selector(f"#{idp}-alle", state="detached")
     return t
 
+def ohne_dup(t):
+    """2.23.0: die Importmeldung kann mit einem Satz zu möglichen Doppelten enden („ · 1 mögliche doppelte Tour – Hinweis auf der Startseite“); für Vergleiche der übrigen Meldung abschneiden."""
+    return re.sub(r" · \d+\smögliche doppelte Tour(?:en)? – Hinweis auf der Startseite$", "", t)
+
 def layout_check(pg, routes, widths=((360, 100), (390, 100), (430, 100), (360, 130))):
     """Jede Hauptansicht bei 360–430 px Breite und mit 130 % Schriftgröße: nichts ragt seitlich hinaus, alles ist gut tippbar."""
     bad = []
@@ -1428,7 +1432,7 @@ def meine_touren(pg):
     pg.wait_for_selector(".sheet", state="detached"); go(); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "mt.test"); pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234")
     pg.evaluate("window.__mt.log = []"); (leise(), pg.click("#mt-go")); msg = toast("importiert", 60000)
     nur = " · %d Touren nur in der App" % (1 + pg.evaluate("ids => Tours.list().then(l => l.filter(t => ids.includes(t.id) && t.status !== 'planned' && !t.hidden).length)", vorher))      # was vorher da war, und die „andere Tour zur selben Zeit“
-    assert msg == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server" + nur, msg
+    assert ohne_dup(msg) == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server" + nur, msg
     log = pg.evaluate("window.__mt.log"); assert log[:3] == ["GET /api/me", "POST /api/login", "GET /api/tours"] and len([x for x in log if x.endswith("/gpx")]) == 14 and not [x for x in log if x.split()[0] != "GET" and "login" not in x], log
     assert not [x for x in log if "/g2/" in x or "/g4/" in x or "/987654321/" in x], "für vorhandene Touren wird keine Strecke geladen"
     kv = pg.evaluate("DB.all('kv')"); acc = [k for k in kv if k["k"] == "mt"][0]["v"]
@@ -1612,7 +1616,7 @@ def doppelte(pg):
     key = lambda a, b: "|".join(sorted([d[a], d[b]]))
     box = lambda a, b: f"section.dup[data-key='{key(a, b)}']"
     pg.evaluate("location.hash = '#/import'"); pg.wait_for_selector("#imp-dup"); pg.click("#imp-dup"); pg.wait_for_selector("#dup-n")
-    assert pg.inner_text("#dup-n") == "2 mögliche Paare" and pg.locator("section.dup").count() == 2, pg.inner_text("#view")
+    assert pg.inner_text("#dup-n") == "2 mögliche doppelte Touren" and pg.evaluate("document.querySelector('#dup-n').textContent") == "2\u00a0mögliche doppelte Touren" and pg.locator("section.dup").count() == 2, pg.inner_text("#view")
     assert pg.evaluate("Tours.list().then(l => l.length)") == n0, "Ansehen ändert nichts"
     kz = pg.inner_text(box("K", "Z")); m = pg.locator(box("K", "Z") + " .dup-m").all_inner_texts()
     assert "Grund: gleiche Startzeit" in kz and "Grund: gleiche Zeitspanne" in pg.inner_text(box("X", "Y")), kz
@@ -1626,7 +1630,7 @@ def doppelte(pg):
     # Zusammenführen: Fotos und Puls wandern zur bleibenden Tour, Kennung der gelöschten bleibt als alias
     pg.click(box("K", "Z") + " button[data-a=merge]"); pg.wait_for_selector(".sheet .btn.pri:has-text('Zusammenführen')"); pg.click(".sheet .btn.pri:has-text('Zusammenführen')")
     pg.wait_for_function("document.querySelector('#toast') && /Zusammengeführt/.test(document.querySelector('#toast').textContent)"); assert pg.inner_text("#toast") == "Zusammengeführt · 2 Fotos übernommen"
-    pg.wait_for_function("document.querySelectorAll('section.dup').length === 1"); assert pg.inner_text("#dup-n") == "1 mögliches Paar"
+    pg.wait_for_function("document.querySelectorAll('section.dup').length === 1"); assert pg.inner_text("#dup-n") == "1 mögliche doppelte Tour"
     r = pg.evaluate("""async (d) => { const k = await DB.get('tours', d.K), z = await DB.get('tours', d.Z), ph = await DB.byIndex('photos', 'tour', d.K), trk = await DB.get('tracks', d.K);
       const again = await Tours.add({ sport: 'hike', src: 'zepp', srcId: 'zepp:d1', pts: [{ lat: 1, lon: 1, t: 1e12 }, { lat: 1.01, lon: 1, t: 1e12 + 60000 }] });
       return { k, z: z || null, ztrk: (await DB.get('tracks', d.Z)) || null, ph: ph.length, hr: (trk.hr || []).filter(Boolean).length, again: [again.dup, again.tour.id],
@@ -2198,7 +2202,7 @@ def alles(pg):
     pg.evaluate("async () => { await DB.kvSet('abgleich', { t: Date.now() - 30 * 3600000, neu: 1, fehler: 0, versuch: Date.now() - 30 * 3600000 }); }")
     go(pg, "#/start", "#startsync"); pg.wait_for_function(LEISE, timeout=30000)
     pg.evaluate("autoAbgleich()"); toast = toast_text(pg, "Touren geholt", 20000)
-    assert toast == "Touren geholt: 3 neue Touren", toast
+    assert ohne_dup(toast) == "Touren geholt: 3 neue Touren", toast
     assert pg.locator("#sum, #prog-stop, .sheet").count() == 0, "still: kein Blatt"
     assert pg.evaluate("__al.calls.map(c => c[0]).join()") == "zepp,komoot,mt" and pg.evaluate("Import.Alles.auto()") is None, "danach 24 Stunden Ruhe"
     pg.wait_for_function("() => /heute \\d\\d:\\d\\d · 3 neue Touren/.test(document.querySelector('#lastsync').textContent)")
@@ -4345,6 +4349,86 @@ def notizhoehe_2160(pg):
 
 
 
+def doppelt_2230(pg):
+    """2.23.0: Hinweis auf mögliche Doppelte nach Importen (Startseite, ruhig, „Später“, bei jedem Aufbau neu bewertet), Gruppen aus drei oder mehr Touren
+    (eine Karte, nacheinander zusammenführen), Stand in Mehr → Import → Aufräumen, Satz in der Importmeldung. Gibt Layoutfehler zurück."""
+    bad = []
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    basis0 = pg.evaluate("DB.kvGet('dupBasis', null)"); assert basis0 and basis0 > 0, "Basis wird beim Start festgehalten"
+    nbsp = " "      # Playwright liefert innerText mit gewöhnlichem Leerzeichen; das geschützte prüft textContent (unten)
+    note = lambda: pg.locator("#dupnote").count()
+    def seite():
+        pg.evaluate("() => { if (location.hash === '#/start') Nav.render(); else location.hash = '#/start'; }"); pg.wait_for_function("() => !Nav._busy && document.querySelector('#view').children.length > 0"); pg.wait_for_timeout(300)
+    d = pg.evaluate(DUP_DATEN)      # K+Z (gleiche Startzeit), X+Y (überlappende Zeitspanne)
+    drei = pg.evaluate("""async () => { const base = Date.UTC(2026, 6, 4, 7), MIN = 60000, ids = [];
+      const line = (t0, n, f, hr) => Array.from({ length: n }, (_, i) => Object.assign({ lat: 47.3 + i * 0.0006 * f, lon: 11.2, ele: 800 + i * 5, t: t0 + i * MIN }, hr ? { hr: 115 + (i % 15) } : {}));
+      for (const [n, src, f, off, hr] of [['Dreifach Komoot', 'komoot', 1, 0, false], ['Dreifach Uhr', 'zepp', 1.02, 1, true], ['Dreifach Datei', 'file', 0.99, 2, false]]) {
+        const r = await Tours.add({ name: n, sport: 'hike', pts: line(base + off * MIN, 70, f, hr), src, force: true, srcId: src + ':dreifach' }); ids.push(r.tour.id); }
+      return ids; }""")
+    # 1. Stand in Aufräumen – zählt alles Offene (unabhängig von „neu“): K+Z, X+Y, die Dreifache = 3 mögliche doppelte Touren
+    pg.evaluate("DB.kvSet('dupBasis', Date.now() + 3600000)")      # nichts davon ist „neu“
+    go(pg, "#/import", "#imp-dup"); pg.wait_for_function("() => document.querySelector('#imp-dup').dataset.n !== undefined")
+    t = pg.inner_text("#imp-dup small"); assert t.startswith("3" + nbsp + "mögliche doppelte Touren"), t
+    seite(); assert note() == 0, "keine neue Tour darunter: kein Hinweis"
+    # 2. Hinweis: alle drei Fälle haben neue Touren
+    pg.evaluate("DB.kvSet('dupBasis', 1)"); seite(); assert note() == 1
+    t = pg.inner_text("#dupnote"); assert t.startswith("3" + nbsp + "mögliche doppelte Touren unter den neuen Touren") and "Von allein wird nichts zusammengeführt" in t and "davon 1" + nbsp + "mit drei oder mehr Einträgen" in t.replace("D", "d"), t
+    assert "\u00a0mögliche doppelte Touren" in pg.evaluate("document.querySelector('#dupnote b').textContent"), "geschütztes Leerzeichen zwischen Zahl und Wort"
+    assert pg.locator("#dupnote #dup-banner-go").count() == 1 and pg.locator("#dupnote #dup-banner-later").count() == 1 and pg.locator(".sheet-back.on").count() == 0, "kein Dialog"
+    bad += ["Hinweis 360 px: " + m for m in (pg.set_viewport_size({"width": 360, "height": 800}), pg.wait_for_timeout(200), pg.evaluate(LAYOUT_JS))[2]]
+    pg.set_viewport_size({"width": 390, "height": 800})
+    # 3. Satz in der Importmeldung (ein Satz, Zahl und Wort mit geschütztem Leerzeichen)
+    s = pg.evaluate("Dup.satz()"); assert "\u00a0" in s and s.replace("\u00a0", " ") == " · 3" + nbsp + "mögliche doppelte Touren – Hinweis auf der Startseite", s
+    # 4. „Später“ gilt je Gruppe, bleibt nach Neuaufbau weg; eine weitere gleiche Tour ist eine neue Gruppe
+    pg.click("#dup-banner-later"); pg.wait_for_selector("#dupnote", state="detached"); seite(); assert note() == 0 and pg.evaluate("Dup.satz()") == ""
+    assert len(pg.evaluate("DB.kvGet('dupSpaeter', [])")) == 3
+    vier = pg.evaluate("""async () => { const base = Date.UTC(2026, 6, 4, 7), MIN = 60000;
+      const pts = Array.from({ length: 70 }, (_, i) => ({ lat: 47.3 + i * 0.0006, lon: 11.2, ele: 800 + i * 5, t: base + 3 * MIN + i * MIN }));
+      return (await Tours.add({ name: 'Dreifach Strava', sport: 'hike', pts, src: 'strava', srcId: 'strava:dreifach', force: true })).tour.id; }""")
+    seite(); assert note() == 1 and pg.inner_text("#dupnote").startswith("1" + nbsp + "mögliche doppelte Tour unter den neuen Touren"), "erweiterte Gruppe wird wieder gemeldet"
+    # 5. Prüfen: eine Karte je Gruppe, vier Einträge, Zählung wie im Hinweis und in Aufräumen
+    pg.click("#dup-banner-go"); pg.wait_for_selector("#dup-n"); pg.wait_for_selector("section.dup")
+    assert pg.inner_text("#dup-n") == "3" + nbsp + "mögliche doppelte Touren" and "davon 1" + nbsp + "mit drei oder mehr Einträgen" in pg.inner_text("#dup-n2"), pg.inner_text("#view")
+    assert pg.locator("section.dup").count() == 3 and pg.locator("section.dup-gruppe").count() == 1
+    g = pg.locator("section.dup-gruppe"); assert g.get_attribute("data-n") == "4" and g.locator(".dup-e").count() == 4 and g.locator(".dup-m b", has_text="Wird gelöscht").count() == 3
+    assert "Dieselbe Tour liegt 4" + nbsp + "Mal vor" in g.inner_text(), g.inner_text()
+    bad += layout_check(pg, ["#/doppelt"], widths=((360, 100), (390, 100), (360, 130)))
+    # „Andere behalten“ dreht der Reihe nach durch (4 Mal = wieder der Vorschlag)
+    pg.evaluate("location.hash = '#/doppelt'"); pg.wait_for_selector("section.dup-gruppe .dup-a")
+    k0 = g.locator(".dup-m").first.evaluate("e => e.parentElement.querySelector('a.tour').textContent")
+    seen = {k0}
+    for _ in range(3):
+        g.locator("button[data-a=swap]").click(); seen.add(g.locator(".dup-m").first.evaluate("e => e.parentElement.querySelector('a.tour').textContent"))
+    assert len(seen) == 4 and g.locator(".dup-m b", has_text="Bleibt").count() == 1, seen
+    g.locator("button[data-a=swap]").click(); assert g.locator(".dup-m").first.evaluate("e => e.parentElement.querySelector('a.tour').textContent") in seen
+    # 6. Zusammenführen: eine Rückfrage für die ganze Gruppe, danach bleibt eine Tour; Zuordnungen aller drei wandern mit
+    ids = drei + [vier]; n0 = pg.evaluate("Tours.list().then(l => l.length)")
+    g.locator("button[data-a=merge]").click(); pg.wait_for_selector(".sheet[aria-label='Touren zusammenführen?']"); q = pg.inner_text(".sheet")
+    assert "bleibt" in q and "werden 3" + nbsp + "Touren gelöscht" in q and "nicht rückgängig" in q, q
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("Tours.list().then(l => l.length)") == n0, "Abbrechen ändert nichts"
+    bad += sheet_check(pg, "Gruppe zusammenführen", lambda: (go(pg, "#/doppelt", "section.dup-gruppe .dup-a"), pg.locator("section.dup-gruppe button[data-a=merge]").click()))
+    go(pg, "#/doppelt", "section.dup-gruppe .dup-a"); pg.locator("section.dup-gruppe button[data-a=merge]").click()
+    pg.wait_for_selector(".sheet .btn.pri:has-text('Zusammenführen')"); pg.click(".sheet .btn.pri:has-text('Zusammenführen')")
+    pg.wait_for_function("document.querySelectorAll('section.dup-gruppe').length === 0"); assert pg.inner_text("#dup-n") == "2" + nbsp + "mögliche doppelte Touren"
+    r = pg.evaluate("""async ids => { const l = await Tours.list(), rest = l.filter(t => ids.includes(t.id)); return { n: l.length, rest: rest.length, alias: (rest[0].alias || []).sort(), src: rest[0].srcId }; }""", ids)
+    assert r["n"] == n0 - 3 and r["rest"] == 1, r
+    assert len(set(r["alias"] + [r["src"]])) == 4, r      # Kennungen aller vier Quellen bleiben erhalten – ein späterer Import legt nichts neu an
+    # 7. „Keine Doppelten“ nimmt das Paar aus Hinweis, Seite und Aufräumen
+    pg.evaluate("DB.kvSet('dupSpaeter', [])"); seite(); assert pg.inner_text("#dupnote").startswith("2" + nbsp + "mögliche doppelte Touren")
+    pg.click("#dup-banner-go"); pg.wait_for_selector("section.dup"); pg.locator(f"section.dup[data-key='{'|'.join(sorted([d['K'], d['Z']]))}'] button[data-a=keep]").click()
+    pg.wait_for_function("document.querySelectorAll('section.dup').length === 1"); seite(); assert pg.inner_text("#dupnote").startswith("1" + nbsp + "mögliche doppelte Tour unter")
+    go(pg, "#/import", "#imp-dup"); pg.wait_for_function("() => /^1/.test(document.querySelector('#imp-dup small').textContent)")
+    # 8. Nichts mehr offen: Hinweis verschwindet von selbst, Aufräumen sagt „Keine doppelten Touren“
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); await DB.del('kv', 'dupSpaeter'); await DB.kvSet('dupBasis', 1); }", vorher)
+    seite(); assert note() == 0
+    go(pg, "#/import", "#imp-dup"); pg.wait_for_function("() => /^Keine doppelten Touren/.test(document.querySelector('#imp-dup small').textContent)")
+    bad += layout_check(pg, ["#/import"], widths=((360, 100), (390, 100), (430, 100), (360, 130)))
+    pg.evaluate("b => DB.kvSet('dupBasis', b)", basis0)
+    assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
+    return sorted(set(bad))
+
+
+
 def update_2210(pg):
     """2.21.0: „Auf neue Version prüfen“. GitHub-Antwort per Route nachgestellt: Hinweis auf der Startseite bei neuerer Version (nicht bei gleicher/älterer),
     „Herunterladen“ öffnet die Release-Seite, „Später“ blendet aus bis eine noch neuere kommt, höchstens alle 12 Stunden, Schalter aus = keine Anfrage,
@@ -5389,6 +5473,7 @@ def main():
         kp_bad = komootpaket_2180(pg)
         sg_bad = statgruppen_2190(pg) + aktivitaeten_2190(pg)
         up_bad = update_2210(pg)
+        dd_bad = doppelt_2230(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -5425,6 +5510,7 @@ def main():
         bad += kp_bad
         bad += sg_bad
         bad += up_bad
+        bad += dd_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

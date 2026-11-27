@@ -33,6 +33,7 @@ Interne Bezeichner (Dateinamen, Funktionen, Einstellungsschlüssel, API-Pfade, E
 | Einstellungsbereich | Meine Touren: „Verwaltung“; Tagebuch: „Einstellungen“ (Seitentitel gleich dem Menüpunkt) | gemischte Titel |
 | Teil einer Seite, den man anordnen kann | Baustein | Abschnitt, Kachel, Widget (für dasselbe) |
 | Gespeicherte Anordnung einer Seite | Ansicht | Seitenlayout, Layout |
+| Dieselbe Tour mehrfach vorhanden (2.23.0) | „mögliche doppelte Tour“ (Zählung: eine Gruppe = eine Tour, auch bei drei oder mehr Einträgen); Knopf „Keine Doppelten“; Seite „Doppelte Touren prüfen“ | „Duplikat“, „Dublette“ |
 | Zusammenfassung von Sportarten ★ | Statistik-Gruppe (Anzeige: nur der Name, z. B. „Wandern (gesamt)“; die Zusammensetzung „Name = A + B + C“ nur im Tooltip/title bzw. aria-label und in Einstellungen → Sportarten; der Name ist immer ein kurzer, echter Name – Vorschlag „<Sportart> (gesamt)“, nie eine Aufzählung „A + B + C“; ein alter Aufzählungsname wird nicht stillschweigend geändert, sondern mit „Vorschlag übernehmen“ angeboten) | „zusammengefasst“, „Gruppe“ ohne Zusatz, Aufzählung als Name |
 | Mehrere Bausteine unter einer Überschrift | Bausteingruppe | „Gruppe“ ohne Zusatz |
 | Sportarten für die Aufzeichnung | Favoriten-Sportarten | „Favoriten“ ohne Zusatz |
@@ -57,6 +58,7 @@ Interne Bezeichner (Dateinamen, Funktionen, Einstellungsschlüssel, API-Pfade, E
 9. **Wegangaben in Hinweisen:** „Verwaltung → <Reiter> → <Bereich>“ bzw. „Mehr → Einstellungen → <Bereich>“, mit genau den Namen, die dort stehen.
 10. **Schreibweisen:** Auslassung „ …“ (mit Leerzeichen davor), Anführungszeichen „…“, Pfeil „→“. Knöpfe beginnen groß. Einheiten und Datum nur über die zentrale Formatfunktion: km, m, „Std.“ und „Min.“; Datum TT.MM.JJJJ, auch bei Eingaben. Mehrzahl ausschreiben statt „Foto(s)“. Symbole an Knöpfen: je App ein System (Tagebuch SVG-Symbole, keine Emoji in Knöpfen; Meine Touren wie bisher, aber dieselbe Aktion immer mit demselben Symbol).
 11. **Einstellungen gliedern (Tagebuch, seit 2.22.0):** Übersicht mit einer Zeile je Gruppe (Titel + ein Satz zum aktuellen Stand, in Listen von Statistik-Gruppen nur der Name), die Gruppe als Unterseite mit Zurück-Pfeil; lange Listen (Katalog, Favoriten, Statistik-Gruppen) liegen eine Ebene tiefer oder sind einklappbar. Zurück und Android-Zurücktaste führen genau eine Ebene hoch. Wegangaben nennen die Gruppe: „Mehr → Einstellungen → Sicherung“.
+12. **Hinweise nach Importen (Tagebuch, seit 2.23.0):** Nach einem Import weist die App ruhig auf Folgen hin (Startseite, Baustein mit „Prüfen“ und „Später“, bei jedem Aufbau neu bewertet, verschwindet von selbst), nie mit einem Dialog, der den Import unterbricht; die Abschlussmeldung darf einen Satz ergänzen. Zahl und Wort bleiben mit geschütztem Leerzeichen zusammen („3 mögliche doppelte Touren“).
 
 ## 3. Regeln für künftige Änderungen
 - Neue Texte prüfen: steht die Sache in Tabelle 1, gilt das Wort dort.

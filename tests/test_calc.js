@@ -362,6 +362,27 @@ ok(F.berechne([], 1980, heute).status === 'keine_touren', 'ohne Touren');
   ok(m.mtId === 'eigen' && m.upMt === 600 && m.up === 600, 'vorhandene Zuordnung bleibt');
   m = D.zusammen(t('k', T0, 10000, 180, { srcId: 'komoot:777' }), t('k2', T0, 10000, 180, { komootId: '888' }), {});
   ok(m.komootId === undefined, 'Komoot-Tour behält ihre eigene Nummer');
+  // 2.23.0: Gruppen – drei Einträge derselben Tour sind eine Gruppe, kein Paar-Gewirr
+  const g3 = [t('a', T0, 10000, 180, { created: 100 }), t('b', T0 + MIN, 10000, 180, { created: 200, hrAvg: 110 }), t('c', T0 + 2 * MIN, 10000, 180, { created: 300 }), t('e', T0 + 86400000, 8000, 60, { created: 50 }), t('f', T0 + 86400000 + MIN, 8050, 60, { created: 60 })];
+  let gr = D.gruppen(g3);
+  ok(gr.length === 2 && gr[0].members.length === 2 && gr[1].members.length === 3, 'eine Gruppe mit drei, ein Paar: ' + JSON.stringify(gr.map(x => x.id)));
+  ok(gr[1].keep.id === 'b' && gr[1].drops.map(x => x.id).join() === 'a,c' && gr[1].id === 'a|b|c' && gr[1].keys.length === 3 && gr[1].key === 'a|b', 'Vorschlag: mit Puls; Rest nach Start; Kennung; drei Paar-Schlüssel');
+  ok(gr[0].keep.id === 'e' && gr[0].drops[0].id === 'f' && gr[0].key === 'e|f' && gr[0].members.length === 2, 'Gruppe aus zwei = Paar (gleicher Schlüssel)');
+  ok(D.paare(g3).filter(x => x.key === gr[0].key).length === 1 && gr[0].keep.id === D.paare(g3).find(x => x.key === gr[0].key).keep.id, 'gleicher Vorschlag wie bei Paaren');
+  // Kette: a~b, b~c, aber a~c nicht – eine Gruppe, alle Paare bleiben auffindbar
+  const kette = [t('a', T0, 10000, 30), t('b', T0 + 4 * MIN, 10000, 30), t('c', T0 + 8 * MIN, 10000, 30)];
+  ok(D.grund(kette[0], kette[2]) === 'zeit' || D.gruppen(kette).length === 1, 'Kette bleibt eine Gruppe');
+  ok(D.gruppen(g3, { ignore: ['a|b', 'a|c', 'b|c'] }).length === 1 && D.gruppen(g3, { ignore: gr[1].keys.concat(gr[0].keys) }).length === 0, '„Keine Doppelten“ für alle Paare der Gruppe');
+  ok(D.gruppen([]).length === 0 && D.gruppen(null).length === 0, 'leer');
+  // Neu und „Später“: nur Gruppen mit mindestens einer neuen Tour; verworfene Gruppen kommen nicht wieder, wohl aber eine erweiterte
+  ok(D.mitNeuen(gr, 250).length === 1 && D.mitNeuen(gr, 250)[0].id === 'a|b|c' && D.mitNeuen(gr, 1e6).length === 0 && D.mitNeuen(gr, 0).length === 2, 'nur mit neuer Tour (created nach der Basis)');
+  ok(D.offen(gr, ['a|b|c']).length === 1 && D.offen(gr, ['a|b|c'])[0].id === 'e|f' && D.offen(gr, null).length === 2, '„Später“ gilt je Gruppe');
+  ok(D.offen(D.gruppen(g3.concat(t('d', T0 + 3 * MIN, 10000, 180))), ['a|b|c']).some(x => x.members.length === 4), 'kommt eine Tour dazu, ist es eine neue Gruppe');
+  // Zählung: Zahl und Wort mit geschütztem Leerzeichen, eine Gruppe = eine mögliche doppelte Tour
+  ok(D.text(1) === '1\u00a0mögliche doppelte Tour' && D.text(3) === '3\u00a0mögliche doppelte Touren', 'Text Ein-/Mehrzahl');
+  const sd = D.stand(gr);
+  ok(sd.n === 2 && sd.gross === 1 && sd.text === '2\u00a0mögliche doppelte Touren' && sd.extra === 'davon 1\u00a0mit drei oder mehr Einträgen', 'Stand: ' + JSON.stringify(sd));
+  ok(D.stand([]).text === 'Keine doppelten Touren' && D.stand([]).n === 0 && D.stand(null).extra === '', 'Stand ohne Doppelte');
 })();
 
 /* ---------- 2.2.0: Wintersportarten, Bewertung, Alles abgleichen ---------- */

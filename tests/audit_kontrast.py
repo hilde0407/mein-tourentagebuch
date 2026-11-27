@@ -125,6 +125,7 @@ def main():
             dup = pg.evaluate(T.DUP_DATEN)
             pg.evaluate("async id => { const t = await DB.get('tours', id); Object.assign(t, { mtId: 'g1', zMt: 1, upMt: 655, downMt: 650, distMt: Math.round(t.dist) + 40, starsMt: 4, upSrc: 'mt', up: 655, down: 650, dist: Math.round(t.dist) + 40 }); await Tours.save(t); }", dup["K"])
             go("#/doppelt", "section.dup .dup-a"); scan("Doppelte, Paare"); pg.locator("section.dup button[data-a=merge]").first.click(); pg.wait_for_timeout(400); scan("Doppelte, Rückfrage"); zu()
+            pg.evaluate("DB.kvSet('dupBasis', 1)"); go("#/start", "#dupnote"); scan("Start, Hinweis auf mögliche Doppelte (2.23.0)")
             go("#/tour/" + dup["K"], "#mtinfo"); scan("Tour, Zahlen aus Meine Touren")
             pg.evaluate("async (d) => { for (const k of ['K', 'Z', 'X', 'Y']) await Tours.remove(d[k]); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'mt'); await DB.del('kv', 'zepp'); }", dup)
             # 2.5.0: PDF und Senden (Jahresrückblick mit „Als PDF“, Tourmenü, Blätter zum Senden und zum PDF)

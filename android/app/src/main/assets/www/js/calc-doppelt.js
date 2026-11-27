@@ -104,6 +104,42 @@
     return AB().sterneZusammen(keep, drop, t);      // eigene Bewertung (2.2.0): von Hand gesetzte gilt, sonst die vorhandene
   }
 
-  const api = { grund, wert, hat, paare, zusammen, key, ende };
+  /** Gruppen (2.23.0): Paare, die eine Tour gemeinsam haben, gehören zu einer Gruppe – dieselbe Tour kann drei- oder mehrmals vorliegen (Uhr, Komoot, Strava).
+      Eine Gruppe mit zwei Touren sieht aus wie ein Paar. Gibt [{ keep, drops, members, grund, key, keys, id }] zurück, neueste zuerst:
+        keep = Vorschlag, welche Tour bleibt (dieselbe Regel wie bei Paaren: mehr Daten, sonst früher angelegt), drops = alle übrigen, nach Start sortiert,
+        keys = die Paar-Schlüssel innerhalb der Gruppe (für „keine Doppelten“), key = Schlüssel des Paars keep + erstes drop (sonst der erste), id = Kennung der Gruppe (alle Tour-Kennungen, sortiert),
+        grund = Grund dieser Verbindung. opts wie bei paare. */
+  function gruppen(tours, opts) {
+    opts = opts || {};
+    const ps = paare(tours, opts), mem = new Map(), eltern = new Map();
+    const finde = x => { while (eltern.get(x) !== x) { eltern.set(x, eltern.get(eltern.get(x))); x = eltern.get(x); } return x; };
+    for (const p of ps) for (const t of [p.keep, p.drop]) if (!eltern.has(t.id)) { eltern.set(t.id, t.id); mem.set(t.id, t); }
+    for (const p of ps) { const a = finde(p.keep.id), b = finde(p.drop.id); if (a !== b) eltern.set(a, b); }
+    const teile = new Map();
+    for (const p of ps) { const w = finde(p.keep.id); if (!teile.has(w)) teile.set(w, { ps: [], ids: new Set() }); const g = teile.get(w); g.ps.push(p); g.ids.add(p.keep.id); g.ids.add(p.drop.id); }
+    const info = t => ({ fotos: (opts.fotos || {})[t.id] || 0, hand: opts.hand ? !!opts.hand(t) : false });
+    const out = [];
+    for (const g of teile.values()) {
+      const members = [...g.ids].map(id => mem.get(id)), w = new Map(members.map(t => [t.id, wert(t, info(t))]));
+      members.sort((a, b) => w.get(a.id) !== w.get(b.id) ? w.get(b.id) - w.get(a.id) : (a.created || 0) !== (b.created || 0) ? (a.created || 0) - (b.created || 0) : String(a.id) < String(b.id) ? -1 : 1);
+      const keep = members[0], drops = members.slice(1).sort((a, b) => a.start - b.start), kp = g.ps.find(p => p.key === key(keep.id, drops[0].id)) || g.ps[0];
+      out.push({ keep, drops, members: members.slice().sort((a, b) => a.start - b.start), grund: kp.grund, key: kp.key, keys: g.ps.map(p => p.key), id: [...g.ids].sort().join('|') });
+    }
+    return out.sort((x, y) => y.keep.start - x.keep.start || (x.id < y.id ? -1 : 1));
+  }
+
+  /** Gruppen mit mindestens einer neuen Tour (angelegt nach basis, ms) – so wird nach einem Import auf mögliche Doppelte hingewiesen. */
+  const mitNeuen = (gs, basis) => (gs || []).filter(g => g.members.some(t => (t.created || 0) > (basis || 0)));
+  /** Ohne die Gruppen, die mit „Später“ schon verworfen wurden (gleiche Kennung = gleiche Touren; kommt eine Tour dazu, ist es eine neue Gruppe). */
+  const offen = (gs, spaeter) => { const s = new Set(spaeter || []); return (gs || []).filter(g => !s.has(g.id)); };
+  /** „3 mögliche doppelte Touren“ – gezählt wird je Gruppe eine Tour, die mehrfach vorliegt (auch bei drei oder mehr Einträgen). Zahl und Wort mit geschütztem Leerzeichen. */
+  const text = n => n + '\u00a0' + (n === 1 ? 'mögliche doppelte Tour' : 'mögliche doppelte Touren');
+  /** Stand in Worten für Hinweis, Liste und Seite: { n, gross, text („Keine doppelten Touren“ oder text(n)), extra („davon 1 mit drei oder mehr Einträgen“) }. */
+  const stand = gs => {
+    const n = (gs || []).length, gross = (gs || []).filter(g => g.members.length > 2).length;
+    return { n, gross, text: n ? text(n) : 'Keine doppelten Touren', extra: gross ? 'davon ' + gross + '\u00a0mit drei oder mehr Einträgen' : '' };
+  };
+
+  const api = { grund, wert, hat, paare, zusammen, key, ende, gruppen, mitNeuen, offen, text, stand };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Doppelt = api;
 })(typeof window !== 'undefined' ? window : globalThis);

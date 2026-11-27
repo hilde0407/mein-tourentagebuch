@@ -103,6 +103,7 @@ async function boot() {
     document.body.innerHTML = '<div class="empty"><h2>Die Daten lassen sich nicht öffnen</h2><p>' + esc(e.message) + '</p><p>Bitte die App schließen und neu starten.</p></div>'; return;
   }
   try { await MT.start(); } catch (e) { console.error('Meine Touren: Entscheidung', e); }      // 2.15.0: Bestandsnutzer einschalten, sonst die Frage vormerken
+  try { await Dup.basis(); } catch (e) { console.error('Doppelte: Basis', e); }      // 2.23.0: ab jetzt zählen neue Touren für den Hinweis auf mögliche Doppelte
   const tabs = $('#tabs');
   Nav.tabs.forEach(([p, t, i]) => tabs.append(h('a', { href: '#' + p, 'data-p': p, class: p === '/rec' ? 'rec' : '', onclick: () => { if (location.hash === '#' + p) $('#view').scrollTop = 0; } },      // Tippen auf den schon offenen Reiter: zurück nach oben
      h('span', { class: 'ti', html: Ico.svg(i, 23) }), h('span', null, t))));
@@ -134,7 +135,7 @@ async function autoAbgleich() {
     const last = await DB.kvGet('abgleich', null);
     const el = $('#lastsync'); if (el && last) el.textContent = Abgleich.zeile(last);
     const bad = r.items.filter(i => i.err);
-    if (r.neu || bad.length) toast('Touren geholt: ' + (r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') : 'nichts Neues') + (bad.length ? ' · ' + bad.map(i => i.name).join(', ') + ': Fehler (Einzelheiten unter „Touren holen“)' : ''), 6000);
+    if (r.neu || bad.length) toast('Touren geholt: ' + (r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') : 'nichts Neues') + (bad.length ? ' · ' + bad.map(i => i.name).join(', ') + ': Fehler (Einzelheiten unter „Touren holen“)' : '') + (r.neu ? await Dup.satz() : ''), 6000);
     if (r.neu && Nav.cur === '/start' && $('#view').scrollTop < 40) Nav.render();      // nicht mitten im Blättern
   } catch (e) { console.error('Automatischer Abgleich', e); }
 }
@@ -143,13 +144,13 @@ async function handleShared() {
   try {
     const files = JSON.parse(MTApp.takeShared() || '[]');
     const txt = JSON.parse(MTApp.takeSharedText() || '[]');
-    for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird importiert …'); try { toast(Import.describe(await Import.fromUrl(m[0]))); } catch (e) { toast(e.message); } } }
+    for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird importiert …'); try { const r = await Import.fromUrl(m[0]); toast(Import.describe(r) + (r.added ? await Dup.satz() : ''), 6000); } catch (e) { toast(e.message); } } }
     if (!files.length) return;
     const photos = files.filter(f => /\.(jpe?g|png|heic|webp)$/i.test(f.name)), tracks = files.filter(f => !photos.includes(f));
     if (tracks.length) {
       const was = await frageGemachtGeplant(tracks.length);      // 2.6.2: von außen geöffnete Strecken nicht blind als „gemacht“ speichern
       if (!was) { try { await Native.call('clearCache'); } catch (e) { /* egal */ } toast('Nicht übernommen'); }
-      else { toast('Import läuft …'); const r = await Import.cacheFiles(tracks, null, was === 'planned' ? { status: 'planned', src: 'plan', ohneZeit: true } : null); toast(Import.describe(r), 5000); Tours.invalidate(); if (Nav.cur === '/' || Nav.cur === '/start') Nav.render(); }
+      else { toast('Import läuft …'); const r = await Import.cacheFiles(tracks, null, was === 'planned' ? { status: 'planned', src: 'plan', ohneZeit: true } : null); toast(Import.describe(r) + (r.added && was !== 'planned' ? await Dup.satz() : ''), 6000); Tours.invalidate(); if (Nav.cur === '/' || Nav.cur === '/start') Nav.render(); }
     }
     if (photos.length) {
       const m = await Native.json('importFiles', { paths: photos.map(f => f.path), src: 'geteilt' });

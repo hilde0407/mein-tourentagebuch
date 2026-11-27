@@ -11,11 +11,13 @@ const AllesUI = {
       r = await PhotoSources.progress('Touren holen', upd => Import.Alles.run({ stop: () => halt, onProgress: (text, frac) => upd(frac, 1, null, text) }), { cancel: () => { halt = true; } });
     } catch (e) { err = e; }
     Tours.invalidate();
+    const dup = r && r.neu ? await Dup.hinweis().catch(() => null) : null;      // 2.23.0: mögliche Doppelte unter den neuen Touren
     const done = () => { if (after) after(); };
     if (err || !r) { toast((err && err.message) || 'Touren holen nicht möglich', 7000); done(); return; }
     const kopf = r.stopped ? 'Abgebrochen – der Rest kommt beim nächsten Mal.' : r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') + ' im Tagebuch.' : 'Das Tagebuch ist auf dem neuesten Stand.';
     const s = sheet(r.stopped ? 'Touren holen abgebrochen' : 'Touren geholt', h('div', { id: 'sum' },
       h('p', { id: 'sum-head' }, kopf),
+      dup ? h('p', { id: 'sum-dup', class: 'muted' }, dup.text + ' unter den neuen Touren – du findest sie auf der Startseite und unter Mehr → Import → Aufräumen → „Doppelte Touren prüfen“.') : null,
       UI.list(r.items.map(i => UI.row({ id: 'sum-' + i.id, title: i.name, sub: Abgleich.quellZeile(i, Import.describe), trail: i.err ? 'Fehler' : null }))),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'sum-ok', onclick: () => s.close() }, 'Fertig'))), { onclose: done });
   },
@@ -30,8 +32,9 @@ Views['/import'] = async root => {
     let err = null;
     try {
       const r = await PhotoSources.progress(title, (upd, txt) => fn(upd, txt), opts);
-      const msg = r && r.added != null ? Import.describe(r) + (r.limit ? ' – ' + r.limit : '') : String(r);
-      Tours.invalidate(); toast(msg, 7000);
+      let msg = r && r.added != null ? Import.describe(r) + (r.limit ? ' – ' + r.limit : '') : String(r);
+      Tours.invalidate(); if (r && r.added) msg += await Dup.satz();      // 2.23.0: mögliche Doppelte unter den neuen Touren – ein Satz, kein Dialog
+      toast(msg, 7000);
     } catch (e) { err = e; toast(e.message, 8000); }
     if (opts && opts.after) opts.after(err);
   };
@@ -48,6 +51,9 @@ Views['/import'] = async root => {
       h('p', { class: 'muted small' }, 'Still im Hintergrund, höchstens einmal am Tag und nur, wenn gerade nichts aufgezeichnet wird. Neue Touren meldet die App kurz.'));
     allBox.hidden = false;
   })().catch(() => {});
+  /* 2.23.0: „Doppelte Touren prüfen“ zeigt den Stand („3 mögliche doppelte Touren“ bzw. „Keine doppelten Touren“); billig berechnet, ohne Fotos */
+  const dupRow = UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus mehreren Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' });
+  Dup.stand().then(st => { const sub = dupRow.querySelector('.li-s, small, .sub'); if (sub) sub.textContent = st.text + ' · Gleiche Tour aus mehreren Quellen zusammenführen'; dupRow.dataset.n = st.n; }).catch(() => {});
   body.append(allBox, h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
     h('div', { class: 'list' },
       card('file', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
@@ -58,7 +64,7 @@ Views['/import'] = async root => {
       card('bike', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
       card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
       card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)),
-    UI.section('Aufräumen', UI.list([UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus zwei Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' }), UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
+    UI.section('Aufräumen', UI.list([dupRow, UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
 
   /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
   async function mt() {
