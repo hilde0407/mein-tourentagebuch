@@ -4802,6 +4802,41 @@ def aktivitaeten_2190(pg):
     return bad
 
 
+SEITEN_2240 = ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/vergleich", "#/stats/ziele", "#/stats/fitness", "#/jahr", "#/reisen",
+               "#/import", "#/doppelt", "#/fotodoppelt", "#/sources", "#/offline", "#/fuehrer", "#/plan", "#/settings", "#/settings/sportarten", "#/settings/sportarten/statistik-gruppen", "#/settings/persoenlich", "#/settings/sicherung",
+               "#/settings/karte", "#/settings/aufzeichnung", "#/settings/zusammenarbeit", "#/settings/ueber"]
+
+def audit_2240(pg):
+    """2.24.0 (Prüfbericht): H1 kein „null“/„undefined“/„NaN“ im Seitentext; H2 Planung „Änderungen speichern“ behält Notiz, Lieblingstour, Schlagwörter."""
+    bad = []
+    # H1: auf jeder Hauptseite, auch auf den beiden Einstellungs-Seiten, die „null“ zeigten
+    for r in SEITEN_2240:
+        pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", r)
+        pg.wait_for_function("() => !Nav._busy && document.querySelector('#view').children.length > 0"); pg.wait_for_timeout(250)
+        t = pg.evaluate("document.querySelector('#view').innerText")
+        m = re.search(r"\b(null|undefined|NaN)\b", t)
+        assert not m, (r, m.group(0), t[max(0, m.start() - 60):m.end() + 60])
+    # H2: geplante Tour bearbeiten und speichern – Notiz, Lieblingstour, Schlagwörter bleiben, nichts wird vorher gelöscht
+    tid = pg.evaluate("""async () => { const pts = Array.from({ length: 12 }, (_, i) => ({ lat: 47.0 + i * 0.001, lon: 11.0 + i * 0.001, ele: 700 + i * 5, t: null }));
+      const r = await Tours.add({ name: 'Plan Alpen', sport: 'hike', pts, status: 'planned', src: 'plan', tags: ['Alpen'] });
+      const t = await DB.get('tours', r.tour.id); t.note = 'Meine Notiz'; t.fav = true; t.rating = 4; await Tours.save(t); return t.id; }""")
+    pg.evaluate("id => { location.hash = '#/plan/' + id }", tid); pg.wait_for_selector(".pmap"); pg.wait_for_function("() => !Nav._busy")
+    pg.wait_for_selector("text=Änderungen speichern"); pg.click("text=Änderungen speichern"); pg.wait_for_selector(".sheet input"); pg.fill(".sheet input", "Plan Alpen neu"); pg.click(".sheet .btn.pri")
+    pg.wait_for_function("() => location.hash.startsWith('#/tour/')")
+    t = pg.evaluate("DB.get('tours', %s)" % json.dumps(tid))
+    assert t and t["name"] == "Plan Alpen neu" and t["note"] == "Meine Notiz" and t["fav"] is True and t["tags"] == ["Alpen"] and t["rating"] == 4 and t["status"] == "planned", t
+    assert pg.evaluate("Tours.list().then(l => l.filter(x => x.name.startsWith('Plan Alpen')).length)") == 1, "keine zweite Tour"
+    assert pg.evaluate("DB.get('tracks', %s).then(x => x.lat.length)" % json.dumps(tid)) >= 2
+    # fällt das Schreiben aus, bleibt die Tour erhalten (nichts wird vorher gelöscht)
+    pg.evaluate("id => { location.hash = '#/plan/' + id }", tid); pg.wait_for_selector(".pmap"); pg.wait_for_function("() => !Nav._busy")
+    pg.evaluate("window.__put0 = DB.put; DB.put = async (s, o) => { if (s === 'tracks') throw new Error('Speicher voll'); return window.__put0.call(DB, s, o); }; 0")
+    pg.click("text=Änderungen speichern"); pg.wait_for_selector(".sheet input"); pg.click(".sheet .btn.pri")
+    assert "Speichern nicht möglich: Speicher voll" in toast_text(pg, "Speichern nicht möglich")
+    pg.evaluate("DB.put = window.__put0; 0")
+    t = pg.evaluate("DB.get('tours', %s)" % json.dumps(tid)); assert t and t["note"] == "Meine Notiz", t
+    return bad
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -5474,6 +5509,7 @@ def main():
         sg_bad = statgruppen_2190(pg) + aktivitaeten_2190(pg)
         up_bad = update_2210(pg)
         dd_bad = doppelt_2230(pg)
+        ad_bad = audit_2240(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -5511,6 +5547,7 @@ def main():
         bad += sg_bad
         bad += up_bad
         bad += dd_bad
+        bad += ad_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

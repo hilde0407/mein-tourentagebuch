@@ -40,9 +40,9 @@ const FitUI = {
         try { await FitUI.setYear(inp.value); err.textContent = ''; toast('Geburtsjahr gespeichert'); if (!sofort) after(); } catch (e) { err.textContent = e.message; }
       };
       box.innerHTML = '';
-      box.append(h('label', { class: 'fld' }, (opts && opts.label) || 'Geburtsjahr', inp), err,
+      box.append(...[h('label', { class: 'fld' }, (opts && opts.label) || 'Geburtsjahr', inp), err,
         sofort ? null : h('div', { class: 'row' }, h('button', { class: 'btn pri', id: 'fit-save', onclick: save }, 'Speichern'),
-          FitUI.year() ? h('button', { class: 'btn', id: 'fit-del', onclick: async () => { await Set_.set('birthYear', ''); toast('Geburtsjahr gelöscht'); after(); } }, 'Löschen') : null));
+          FitUI.year() ? h('button', { class: 'btn', id: 'fit-del', onclick: async () => { await Set_.set('birthYear', ''); toast('Geburtsjahr gelöscht'); after(); } }, 'Löschen') : null)].filter(Boolean));      // 2.24.0: append(null) schrieb „null“ in die Einstellungen
     };
     draw();
     return box;

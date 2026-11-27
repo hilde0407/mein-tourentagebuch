@@ -96,11 +96,16 @@ Views['/plan'] = async (root, [editId]) => {
   async function save(go) {
     const pts = await pointsOrWarn(); if (!pts) return null;
     const nm = await askText('Name der Tour', 'Name', name || (Sports.label(sport) + ' ' + F.dshort(Date.now())), 'Speichern'); if (!nm) return null;
-    if (editing) await Tours.remove(editing.id);
-    const r = await Tours.add({ id: editing && editing.id, name: nm.trim(), sport, pts: pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })), status: 'planned', src: 'plan' });
-    await DB.kvSet('plan:' + r.tour.id, { wps });
-    toast('Tour gespeichert');
-    if (go === true) return r.tour; Nav.go('/tour/' + r.tour.id); return r.tour;
+    const plain = pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null }));
+    let tour;
+    try {
+      // 2.24.0: eine bestehende Tour wird geändert, nicht gelöscht und neu angelegt – Notiz, Lieblingstour, Schlagwörter und Bewertung bleiben
+      if (editing) tour = await Tours.ersetzeStrecke(editing.id, { name: nm, sport, pts: plain });
+      else tour = (await Tours.add({ name: nm.trim(), sport, pts: plain, status: 'planned', src: 'plan' })).tour;
+      await DB.kvSet('plan:' + tour.id, { wps });
+    } catch (e) { toastFehler('Speichern', e); return null; }
+    toast(editing ? 'Änderungen gespeichert' : 'Geplante Tour gespeichert');
+    if (go === true) return tour; Nav.go('/tour/' + tour.id); return tour;
   }
   async function saveAndGo() { const t = await save(true); if (t) startWith(t, await Tours.points(t.id)); }
   async function exportGpx() {

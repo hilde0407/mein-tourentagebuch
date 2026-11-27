@@ -272,11 +272,11 @@ const StatGrpUI = {
             h('button', { class: 'btn sm', id: 'sg-aufz-btn-' + i, onclick: async () => { g.name = StatGruppen.vorschlagName(g); await speichern(); draw(); toast('Statistik-Gruppe „' + g.name + '“ gespeichert'); } }, 'Vorschlag übernehmen: ' + StatGruppen.vorschlagName(g))) : null));
       });
       const vs = StatGruppen.vorschlaege(entwurf);
-      box.append(h('div', { class: 'row wrap' },
+      box.append(...[h('div', { class: 'row wrap' },
         h('button', { class: 'btn', id: 'sg-add', disabled: entwurf.length >= StatGruppen.MAX, onclick: () => { entwurf.push({ id: StatGruppen.neueId(entwurf), name: '', sports: [] }); draw(); const f = $('#sg-name-' + (entwurf.length - 1)); if (f) f.focus(); } }, 'Statistik-Gruppe hinzufügen')),
         vs.length ? h('div', { id: 'sg-vorschlaege' }, h('p', { class: 'muted small' }, 'Vorschläge (ein Klick legt die Gruppe an):'), h('div', { class: 'row wrap' }, vs.map(v =>
           h('button', { class: 'btn', id: 'sg-vorschlag-' + v.id, onclick: async () => { offen.add(v.id); entwurf.push({ id: v.id, name: v.name, sports: v.sports }); await speichern(); draw(); toast('Statistik-Gruppe „' + v.name + '“ gespeichert'); } }, 'Vorschlag: ' + v.knopf)))) : null,
-        entwurf.length >= StatGruppen.MAX ? h('p', { class: 'muted small' }, 'Höchstens ' + StatGruppen.MAX + ' Statistik-Gruppen.') : null);
+        entwurf.length >= StatGruppen.MAX ? h('p', { class: 'muted small' }, 'Höchstens ' + StatGruppen.MAX + ' Statistik-Gruppen.') : null].filter(Boolean));      // 2.24.0: append(null) schrieb „null“ ins Blatt
     };
     draw();
     return box;

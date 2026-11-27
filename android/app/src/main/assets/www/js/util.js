@@ -43,6 +43,14 @@ function toast(msg, ms) {
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms || 3200);
 }
 
+/** 2.24.0: Fehlermeldung nach Leitfaden Regel 5: „<Vorgang> nicht möglich: <Grund>“ – nie die rohe Systemmeldung allein. e = Error oder Text. */
+function fehlerText(vorgang, e) {
+  let g = String((e && e.message) || e || '').trim().replace(/^(Error|TypeError|RangeError):\s*/, '').replace(/[.\s]+$/, '');
+  if (!g) g = 'unbekannter Fehler';
+  return vorgang + ' nicht möglich: ' + g;
+}
+function toastFehler(vorgang, e, ms) { toast(fehlerText(vorgang, e), ms || 5000); }
+
 /** Blatt: Dialog, der von unten hochfährt. Gibt {el, close} zurück. Schließt mit ✕, Tipp daneben, Zurück-Taste oder Escape. */
 function sheet(title, content, opts) {
   const back = h('div', { class: 'sheet-back', onclick: e => { if (e.target === back) close(); } });

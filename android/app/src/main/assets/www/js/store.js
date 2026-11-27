@@ -179,6 +179,23 @@ const Tours = {
   /** Pulszone 0–4 (entspricht Zone 1–5) nach Anteil am Maximalpuls. */
   hrZone(bpm, hmax) { const q = bpm / hmax; return q < 0.6 ? 0 : q < 0.7 ? 1 : q < 0.8 ? 2 : q < 0.9 ? 3 : 4; },
   async save(t) { await DB.put('tours', t); Tours.invalidate(); },
+  /** 2.24.0: Strecke, Name und Sportart einer bestehenden Tour ersetzen (Planung → „Änderungen speichern“). Alle übrigen Felder (Notiz, Lieblingstour,
+      Schlagwörter, Bewertung, Quelle, Anlegedatum …) bleiben; zuerst wird die neue Spur geschrieben, nichts wird vorher gelöscht. Gibt die Tour zurück. */
+  async ersetzeStrecke(id, o) {
+    const pts = o.pts.filter(p => isFinite(p.lat) && isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180);
+    if (pts.length < 2) throw new Error('Zu wenige Punkte');
+    const t = await DB.get('tours', id);
+    if (!t) throw new Error('Die Tour gibt es nicht mehr');
+    const st = Geo.stats(pts), bb = Geo.bbox(pts);
+    const trk = { id, lat: pts.map(p => p.lat), lon: pts.map(p => p.lon), ele: pts.map(p => p.ele), t: pts.map(p => p.t), seg: pts.map(p => p.newSeg ? 1 : 0) };
+    await DB.put('tracks', trk);
+    if (o.name && o.name.trim()) t.name = o.name.trim();
+    if (o.sport) t.sport = o.sport;
+    Object.assign(t, { end: st.end, dur: st.dur, moving: st.moving, dist: st.dist, maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: bb, calcV: Tours.CALC }, Tours.hrSummary(pts));
+    Tours.applyHoehe(t, st);
+    await DB.put('tours', t); Tours.invalidate();
+    return t;
+  },
   /** Puls nachtragen (z. B. bei Touren, die vor der Pulsunterstützung importiert wurden): Werte nach Zeit auf die gespeicherten Punkte legen. */
   async fillHr(id, hrPts, srcStart) {
     const trk = await DB.get('tracks', id), t = await DB.get('tours', id);
