@@ -58,6 +58,7 @@ const Set_ = {   // Einstellungen mit Vorgabewerten (im Speicher gespiegelt)
     pdfKarte: true,      // 2.6.0: Karte (OpenStreetMap-Kacheln) im Tour-PDF; aus = Streckenskizze wie in 2.5.0
     statGruppen: [],      // 2.19.0: Statistik-Gruppen [{id, name, sports}] – selbst angelegte Zusammenfassungen; leer = jede Sportart für sich (js/calc-statgruppen.js)
     favAkt: ['hike', 'run', 'bike', 'skitour', 'mtb'],      // 2.19.0: Favoriten-Sportarten für „Tour aufnehmen“ (geordnet, höchstens 12; js/calc-aktivitaeten.js)
+    updateCheck: true,      // 2.21.0: beim Start höchstens alle 12 Stunden bei GitHub nach einer neuen Version fragen (js/update.js)
     recSport: '',      // 2.19.0: zuletzt beim Aufnehmen gewählte Sportart (bleibt vorgewählt)
   },
   async load() {

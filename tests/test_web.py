@@ -4343,6 +4343,87 @@ def notizhoehe_2160(pg):
 
 
 
+def update_2210(pg):
+    """2.21.0: „Auf neue Version prüfen“. GitHub-Antwort per Route nachgestellt: Hinweis auf der Startseite bei neuerer Version (nicht bei gleicher/älterer),
+    „Herunterladen“ öffnet die Release-Seite, „Später“ blendet aus bis eine noch neuere kommt, höchstens alle 12 Stunden, Schalter aus = keine Anfrage,
+    Fehler/Rate-Limit/offline still (nichts gespeichert, nächster Versuch), Einstellungen: Schalter und „Jetzt prüfen“. Gibt Layoutfehler zurück."""
+    bad = []
+    API = "**/api.github.com/repos/hilde0407/mein-tourentagebuch/releases/latest"
+    CORS = {"access-control-allow-origin": "*", "access-control-allow-headers": "*"}
+    st = {"hits": 0, "status": 200, "tag": "v2.21.0", "abort": False, "uas": []}
+    def antwort(r):
+        if r.request.method == "OPTIONS": return r.fulfill(status=204, headers=CORS)
+        st["hits"] += 1; st["uas"].append(r.request.headers.get("authorization", ""))
+        if st["abort"]: return r.abort()
+        body = json.dumps({"tag_name": st["tag"], "html_url": "https://github.com/hilde0407/mein-tourentagebuch/releases/tag/" + st["tag"], "body": "## Neu\n- Hinweis auf neue Versionen"}) if st["status"] == 200 else '{"message":"rate limit"}'
+        r.fulfill(status=st["status"], body=body, content_type="application/json", headers=CORS)
+    pg.route(API, antwort)
+    pg.evaluate("() => { window.__ver0 = MTApp.version; MTApp.version = () => '2.20.2'; window.__opened = null; }")
+    def zurueck(**k):
+        st.update({"hits": 0, "status": 200, "tag": "v2.21.0", "abort": False}); st.update(k)
+        pg.evaluate("async () => { await Set_.set('updateCheck', true); await DB.kvSet('update', null); await DB.kvSet('updateSpaeter', ''); }")
+    def start():
+        pg.evaluate("async () => { await Update.start(); }"); pg.wait_for_timeout(150)
+    def seite():
+        pg.evaluate("() => { if (location.hash === '#/start') Nav.render(); else location.hash = '#/start'; }"); pg.wait_for_selector(".home-acts"); pg.wait_for_timeout(250)
+    banner = lambda: pg.locator("#updatenote").count()
+    gespeichert = lambda: pg.evaluate("async () => (await DB.kvGet('update', null))")
+    # 1. neuere Version: Hinweis mit Wortlaut und beiden Knöpfen
+    zurueck(); seite(); assert banner() == 0
+    start(); assert st["hits"] == 1, st
+    assert banner() == 1, "Hinweis erscheint nach der Prüfung auf der Startseite"
+    t = pg.inner_text("#updatenote"); assert "Neue Version 2.21.0 verfügbar (installiert: 2.20.2)" in t and "Herunterladen" in t and "Später" in t, t
+    assert st["uas"] == [""], "keine Anmeldung, kein Token"
+    g = gespeichert(); assert g["latest"] == "2.21.0" and g["t"] > 0, g
+    bad += ["Hinweis 360 px: " + m for m in (pg.set_viewport_size({"width": 360, "height": 800}), pg.wait_for_timeout(200), pg.evaluate(LAYOUT_JS))[2]]
+    pg.set_viewport_size({"width": 390, "height": 800})
+    # 2. nicht bei jedem Seitenwechsel, höchstens alle 12 Stunden
+    start(); seite(); start(); assert st["hits"] == 1, "innerhalb von 12 Stunden keine zweite Anfrage: %d" % st["hits"]
+    pg.evaluate("async () => { const g = await DB.kvGet('update', null); g.t = Date.now() - 13 * 3600000; await DB.kvSet('update', g); }"); start(); assert st["hits"] == 2, "nach 12 Stunden wieder"
+    # 3. Herunterladen öffnet nur die Release-Seite (kein Download von selbst)
+    seite(); pg.click("#upd-banner-dl")
+    assert pg.evaluate("window.__opened") == "https://github.com/hilde0407/mein-tourentagebuch/releases/tag/v2.21.0", pg.evaluate("window.__opened")
+    # 4. Später: weg, bleibt weg (auch nach Neuaufbau), kommt bei noch neuerer Version wieder
+    pg.click("#upd-banner-later"); pg.wait_for_selector("#updatenote", state="detached"); seite(); assert banner() == 0, "Später gilt für diese Version"
+    pg.evaluate("async () => { await DB.kvSet('update', null); }"); st["tag"] = "v2.21.0"; start(); seite(); assert banner() == 0, "gleiche Version bleibt ausgeblendet"
+    pg.evaluate("async () => { await DB.kvSet('update', null); }"); st["tag"] = "v2.22.0"; start(); seite(); assert banner() == 1 and "2.22.0" in pg.inner_text("#updatenote"), "noch neuere Version: Hinweis wieder da"
+    # 5. gleiche oder ältere Version: kein Hinweis
+    for tag in ("v2.20.2", "v2.19.0", "v2.20.1", "v2.21.0-rc1", "nightly"):
+        zurueck(tag=tag); start(); seite(); assert st["hits"] == 1 and banner() == 0, "kein Hinweis bei %s (Anfragen %d, Hinweise %d)" % (tag, st["hits"], banner())
+    # 6. Schalter aus: keine Anfrage, auch kein gemerkter Hinweis
+    zurueck(); start(); seite(); assert banner() == 1
+    pg.evaluate("async () => { await Set_.set('updateCheck', false); await DB.kvSet('update', null); }"); st["hits"] = 0
+    start(); assert st["hits"] == 0, "Schalter aus = keine Anfrage"
+    pg.evaluate("async () => { await DB.kvSet('update', { t: Date.now(), latest: '2.30.0', url: 'https://github.com/hilde0407/mein-tourentagebuch/releases/latest' }); }"); seite(); assert banner() == 0, "Schalter aus = kein Hinweis"
+    # 7. Fehler, Rate-Limit, Schrott, offline: still, nichts gespeichert, nächster Versuch
+    for k in ({"status": 403}, {"status": 429}, {"status": 500}, {"abort": True}):
+        zurueck(**k); pg.evaluate("() => { const t = document.getElementById('toast'); if (t) t.classList.remove('on'); }")
+        start(); seite(); assert st["hits"] == 1 and banner() == 0 and gespeichert() is None, "still bei " + str(k)
+        assert not pg.evaluate("() => !!(document.getElementById('toast') && document.getElementById('toast').classList.contains('on'))"), "kein Dialog/Toast bei " + str(k)
+        assert not pg.locator(".sheet-back.on").count(), "kein Dialog bei " + str(k)
+        st.update({"status": 200, "abort": False}); start(); assert st["hits"] == 2 and banner() == 1, "nächster Start versucht es erneut " + str(k)
+    # 8. Einstellungen: Schalter und „Jetzt prüfen“
+    zurueck(); go(pg, "#/settings", "#set-update")
+    assert pg.is_checked("#set-update input") and "github.com" in pg.inner_text("#set-k-update") and "Auf neue Version prüfen" in pg.inner_text("#set-update"), "Schalter an (Vorgabe) mit Erklärung"
+    assert "Noch nicht geprüft" in pg.inner_text("#upd-stat")
+    pg.click("#upd-now"); pg.wait_for_function("() => /Neue Version/.test(document.getElementById('upd-stat').textContent)")
+    assert "Neue Version 2.21.0 verfügbar (installiert: 2.20.2)" in pg.inner_text("#upd-stat") and "Hinweis auf neue Versionen" in pg.inner_text("#upd-notes") and pg.is_visible("#upd-dl")
+    pg.click("#upd-dl"); assert pg.evaluate("window.__opened").endswith("/releases/tag/v2.21.0")
+    st["tag"] = "v2.20.2"; pg.click("#upd-now"); pg.wait_for_function("() => /neueste/.test(document.getElementById('upd-stat').textContent)")
+    assert "Du hast die neueste Version" in pg.inner_text("#upd-stat") and not pg.is_visible("#upd-dl")
+    st["abort"] = True; pg.click("#upd-now"); pg.wait_for_function("() => /nicht möglich/.test(document.getElementById('upd-stat').textContent)")
+    assert pg.inner_text("#upd-stat").startswith("Prüfung nicht möglich: "), pg.inner_text("#upd-stat")
+    st["abort"] = False; st["status"] = 403; pg.click("#upd-now"); pg.wait_for_function("() => /nicht möglich/.test(document.getElementById('upd-stat').textContent)")
+    pg.click("#set-update input"); pg.wait_for_timeout(150); assert pg.evaluate("Set_.get('updateCheck')") is False, "Schalter speichert sofort"
+    pg.click("#set-update input"); pg.wait_for_timeout(150); assert pg.evaluate("Set_.get('updateCheck')") is True
+    bad += ["Einstellungen Updates 360 px: " + m for m in (pg.set_viewport_size({"width": 360, "height": 800}), pg.wait_for_timeout(200), pg.evaluate(LAYOUT_JS))[2]]
+    pg.set_viewport_size({"width": 390, "height": 800})
+    # 9. unbekannte App-Version (Browser/Test): gar keine Anfrage
+    zurueck(); pg.evaluate("() => { MTApp.version = window.__ver0; }"); start(); assert st["hits"] == 0, "ohne lesbare Version keine Anfrage"
+    pg.unroute(API); pg.evaluate("async () => { await DB.kvSet('update', null); await DB.kvSet('updateSpaeter', ''); await Set_.set('updateCheck', true); }")
+    seite()
+    return bad
+
 def statgruppen_2190(pg):
     """2.19.0: Sportarten-Katalog, Statistik-Gruppen und Favoriten. Vorgabe: jede Sportart einzeln, keine Gruppe. Einstellungen: Vorschläge (ein Klick), Gruppe
     abhaken/löschen, gesperrte Sportarten, unfertige Gruppe; Wirkung in Statistik-Filter, Block „Sportarten“, Bestwerte je Sportart, Auswertung, Jahresrückblick,
@@ -5257,6 +5338,7 @@ def main():
         ab_bad = abgleich_2180(pg)
         kp_bad = komootpaket_2180(pg)
         sg_bad = statgruppen_2190(pg) + aktivitaeten_2190(pg)
+        up_bad = update_2210(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -5292,6 +5374,7 @@ def main():
         bad += ab_bad
         bad += kp_bad
         bad += sg_bad
+        bad += up_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

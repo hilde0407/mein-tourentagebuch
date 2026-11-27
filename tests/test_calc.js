@@ -848,6 +848,30 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   ok(V.speicher(null) === null && V.speicher('x') === null, 'ohne Angabe');
 }
 
+/* ---------- 2.21.0 Auf neue Version prüfen (calc-update.js): Versionen lesen und vergleichen, GitHub-Antwort auswerten, Abstand, Hinweis ---------- */
+{
+  const U = require(W + 'calc-update.js'), H = 3600000, t0 = day(2026, 11, 27, 10);
+  ok(U.lesen('v2.20.2').join('.') === '2.20.2' && U.lesen('2.21').join('.') === '2.21.0' && U.lesen(' V3.0.1 ').join('.') === '3.0.1', 'Versionen lesen');
+  for (const s of ['', null, undefined, 5, 'abc', 'v2', '2.21.0-rc1', '2.21.0.1', '2.x.0', 'latest', '2..1', '99999.1.1', {}]) ok(U.lesen(s) === null, 'kein Versionsschrott: ' + JSON.stringify(s));
+  ok(U.vergleich('2.20.2', 'v2.21.0') === -1 && U.vergleich('2.21.0', '2.21.0') === 0 && U.vergleich('2.21.1', '2.21.0') === 1, 'Vergleich');
+  ok(U.vergleich('2.9.0', '2.10.0') === -1 && U.vergleich('2.20.2', '2.3.9') === 1 && U.vergleich('3.0.0', '2.99.99') === 1, 'numerisch, nicht als Text');
+  ok(U.vergleich('test', '2.21.0') === null && U.neuer('test', '2.21.0') === false && U.neuer('2.20.2', 'quatsch') === false, 'unlesbar: nie neuer');
+  ok(U.neuer('2.20.2', 'v2.21.0') && !U.neuer('2.21.0', 'v2.21.0') && !U.neuer('2.21.1', 'v2.21.0') && !U.neuer('2.20.2', '2.21.0-beta'), 'neuer / gleich / älter / Vorabversion');
+  const A = (o, st) => U.auswerten({ status: st == null ? 200 : st, body: typeof o === 'string' ? o : JSON.stringify(o) });
+  const gut = A({ tag_name: 'v2.21.0', html_url: 'https://github.com/hilde0407/mein-tourentagebuch/releases/tag/v2.21.0', body: '## Neu\r\n- **Updates** prüfen\n\n- zweite Zeile' });
+  ok(gut.ok && gut.latest === '2.21.0' && gut.url === 'https://github.com/hilde0407/mein-tourentagebuch/releases/tag/v2.21.0' && gut.notes === 'Neu\nUpdates prüfen\nzweite Zeile', 'Antwort ausgewertet: ' + JSON.stringify(gut));
+  ok(A({ tag_name: 'v2.21.0', html_url: 'https://boese.example/x' }).url === 'https://github.com/hilde0407/mein-tourentagebuch/releases/tag/v2.21.0', 'fremder Verweis wird ersetzt');
+  ok(A({ tag_name: 'v2.21.0', html_url: 'javascript:alert(1)' }).url.startsWith(U.SEITE), 'kein javascript:-Verweis');
+  ok(!A({ tag_name: 'v2.21.0' }, 403).ok && !A({}, 429).ok && !A({ tag_name: 'v2.21.0' }, 500).ok && !A('<html>', 200).ok && !A('null').ok && !A('[]').ok && !A({ tag_name: 'v9.9.9', prerelease: true }).ok && !A({ tag_name: 'v9.9.9', draft: true }).ok && !A({ tag_name: 'nightly' }).ok, 'Fehler, Rate-Limit, Schrott, Entwurf, Vorabversion: nichts');
+  ok(!U.auswerten(null).ok && !U.auswerten({}).ok && !U.auswerten({ status: 200, body: 5 }).ok, 'ohne Antwort: nichts');
+  ok(A({ tag_name: '2.21.0', body: 'x'.repeat(900) }).notes.length <= 410, 'Änderungen gekürzt');
+  ok(U.faellig(null, t0) && U.faellig(0, t0) && !U.faellig(t0 - 11.9 * H, t0) && U.faellig(t0 - 12 * H, t0) && U.faellig(t0 + 5 * H, t0), 'alle 12 Stunden; falsche Uhr zählt als fällig');
+  const st = { latest: '2.21.0' };
+  ok(U.zeigen('2.20.2', st, '') && U.zeigen('2.20.2', st, undefined) && U.zeigen('2.20.2', st, 'Schrott'), 'Hinweis bei neuer Version');
+  ok(!U.zeigen('2.21.0', st, '') && !U.zeigen('2.22.0', st, '') && !U.zeigen('2.20.2', null, '') && !U.zeigen('test', st, ''), 'kein Hinweis bei gleicher, älterer, fehlender, unlesbarer Version');
+  ok(!U.zeigen('2.20.2', st, '2.21.0') && !U.zeigen('2.20.2', st, 'v2.21.0') && U.zeigen('2.20.2', { latest: '2.21.1' }, '2.21.0') && U.zeigen('2.20.2', { latest: '2.22.0' }, '2.21.0'), '„Später“ gilt nur bis eine noch neuere Version kommt');
+}
+
 /* ---------- 2.10.0 Sicherung (calc-sicherung.js): Tage seit, eine Erinnerungszeile für Touren und Medien, Texte, Fortschritt, „einmal am Tag“ ---------- */
 {
   const S = require(W + 'calc-sicherung.js'), D = 86400000, now = day(2026, 11, 22, 10);

@@ -115,6 +115,7 @@ async function boot() {
   await Nav.render();
   setTimeout(() => { Tours.migP = Tours.migrate().then(r => { if (r && (r.up || r.sport || r.pos || r.ski) && ['/', '/start', ''].includes(Nav.cur)) Nav.render(); }).catch(e => console.error('Neuberechnung', e)); }, 1500);
   setTimeout(autoAbgleich, 6000);
+  setTimeout(() => Update.start(), 8000);      // 2.21.0: neue Version? höchstens alle 12 Stunden, still
   setTimeout(() => Backup.auto().then(r => { if (r && Nav.cur === '/start' && $('#backupnote')) Nav.render(); }), 12000);      // 2.10.0: automatische Tagessicherung in den Ordner (nur wenn eingeschaltet)
   setTimeout(() => Medien.status().then(s => { if (s && s.running) Medien.follow(); }), 2500);      // 2.10.0: läuft noch eine Medien-Sicherung (Oberfläche neu geladen)? Fortschritt zeigen
   setTimeout(() => MedienAbgleich.pruefeOffen().catch(e => console.error('Abgleich', e)), 3000);      // 2.18.1: lief beim letzten Mal ein Abgleich mit Meine Touren? (Ergebnisse übernehmen, fortsetzen?)
