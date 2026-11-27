@@ -353,12 +353,12 @@ Views['/tour'] = async (root, [id]) => {
   async function fixEle() {
     toast('Höhe wird aus dem Geländemodell korrigiert …');
     try { const o = t.up; Object.assign(t, await Fix.demFix(t)); toast(`Höhe korrigiert: Aufstieg ${F.m(o)} → ${F.m(t.up)}`); Nav.render(); }
-    catch (e) { toast('Höhe korrigieren nicht möglich: ' + e.message); }
+    catch (e) { toastFehler('Höhe korrigieren', e); }
   }
   async function zeppEle() {
     toast('Höhe wird aus der Uhr korrigiert …');
     try { const o = t.up; Object.assign(t, await Fix.zeppEle(t)); toast(`Höhe korrigiert (aus der Uhr): ↑ ${F.m(t.up)} (vorher ${F.m(o)})`); Nav.render(); }
-    catch (e) { toast('Höhe korrigieren nicht möglich: ' + e.message); }
+    catch (e) { toastFehler('Höhe korrigieren', e); }
   }
   async function changeSport() {
     // 2.19.0: alle Sportarten nach Kategorien („Ski (allgemein)“ nur, wenn die Tour sie schon hat)

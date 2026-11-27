@@ -45,7 +45,8 @@ function toast(msg, ms) {
 
 /** 2.24.0: Fehlermeldung nach Leitfaden Regel 5: „<Vorgang> nicht möglich: <Grund>“ – nie die rohe Systemmeldung allein. e = Error oder Text. */
 function fehlerText(vorgang, e) {
-  let g = String((e && e.message) || e || '').trim().replace(/^(Error|TypeError|RangeError):\s*/, '').replace(/[.\s]+$/, '');
+  let g = String((e && e.message) || e || '').trim().replace(/^(Error|TypeError|RangeError):\s*/, '').replace(/\s+$/, '');
+  if (/^[^.]*\.$/.test(g)) g = g.slice(0, -1);      // ein einzelner Satz: ohne Schlusspunkt
   if (!g) g = 'unbekannter Fehler';
   return vorgang + ' nicht möglich: ' + g;
 }

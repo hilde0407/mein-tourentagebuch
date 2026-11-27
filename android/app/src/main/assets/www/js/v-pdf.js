@@ -414,10 +414,10 @@ const PdfUI = {
         if (halt || !pages) return null;
         return { pages, bytes: w.finish(), hinweis: ctl.hinweis || '' };
       }, { cancel: () => { halt = true; }, note: 'Das Tagebuch zeichnet die Seiten nacheinander und setzt sie zu einem PDF zusammen. Bitte die App so lange geöffnet lassen.' });
-    } catch (e) { console.error('PDF', e); toast('PDF-Export nicht möglich: ' + (e && e.message || e), 7000); return null; }
+    } catch (e) { console.error('PDF', e); toastFehler('PDF-Export', e, 7000); return null; }
     finally { PdfUI.busy = false; }
     if (!res) { toast('Abgebrochen – nichts gespeichert', 4000); return null; }
-    try { await PdfUI.ausgeben(res.bytes, name, title, res.pages, res.hinweis); } catch (e) { console.error('PDF speichern', e); toast('PDF-Export nicht möglich: ' + (e && e.message || e), 7000); return null; }
+    try { await PdfUI.ausgeben(res.bytes, name, title, res.pages, res.hinweis); } catch (e) { console.error('PDF speichern', e); toastFehler('PDF-Export', e, 7000); return null; }
     return { name, bytes: res.bytes, pages: res.pages };
   },
   /** Datei in den Zwischenspeicher der Hülle legen (stückweise, Base64). */
@@ -445,7 +445,7 @@ const PdfUI = {
         h('button', { class: 'btn', id: 'pdf-teilen', onclick: async e => {
           const b = e.currentTarget; b.disabled = true;
           try { await PdfUI.zwischenspeichern(bytes, name); await Native.call('shareCache', { name, mime: 'application/pdf', title: title + ' teilen' }); s.close(); }
-          catch (err) { toast('Teilen nicht möglich: ' + (err && err.message || err), 6000); b.disabled = false; }
+          catch (err) { toastFehler('Teilen', err, 6000); b.disabled = false; }
         } }, 'Teilen …'),
         h('button', { class: 'btn pri', id: 'pdf-ok', onclick: () => s.close() }, 'Fertig'))));
   },

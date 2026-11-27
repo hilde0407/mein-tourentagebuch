@@ -72,7 +72,7 @@ Views['/story'] = async (root, [id]) => {
     };
     const send = async () => {
       const v = inp.value.trim(); if (!v) return;
-      try { await Comments.add(p.id, v); CM = await Comments.all(); inp.value = ''; fill(); draw(); } catch (e) { toast(String(e.message || e)); }
+      try { await Comments.add(p.id, v); CM = await Comments.all(); inp.value = ''; fill(); draw(); } catch (e) { toastFehler('Kommentar speichern', e); }
     };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
     sheet('Foto und Kommentare', h('div', null, h('img', { src: Photos.url(p.id), alt: '', style: { width: '100%', maxHeight: '45vh', objectFit: 'contain', borderRadius: '6px' } }), list,

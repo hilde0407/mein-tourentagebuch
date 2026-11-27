@@ -120,7 +120,7 @@ const MedienAbgleich = {
     const s = sheet('Mit Meine Touren abgleichen', body);
     let r, lokal;
     try { [r, lokal] = await Promise.all([MedienAbgleich.lese(acc, id), MedienAbgleich.lokal(t.id)]); }
-    catch (e) { s.close(); toast('Abgleich nicht möglich: ' + e.message, 8000); if (e.relogin && after) after(); return null; }
+    catch (e) { s.close(); toastFehler('Abgleich', e, 8000); if (e.relogin && after) after(); return null; }
     const cur = (await DB.get('tours', t.id)) || t;
     const darf = r.darf_schreiben !== false && acc.role !== 'viewer';
     const lage = MedienCalc.notizLage(cur, r.notiz || {}), plan = MedienCalc.fotoPlan(lokal, r, {});
@@ -188,7 +188,7 @@ const MedienAbgleich = {
       }
       job = { jobId: 'ab' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), titel: 'Mit Meine Touren abgleichen', wifiOnly: Set_.get('mtWlan') !== false,
         wlanFotos: items.some(i => i.a.wlan), tasks: MedienCalc.auftrag(items, acc.base) };
-    } catch (e) { MedienAbgleich._busy = false; toast('Abgleich nicht möglich: ' + e.message, 8000); if (after) after(); return null; }
+    } catch (e) { MedienAbgleich._busy = false; toastFehler('Abgleich', e, 8000); if (after) after(); return null; }
     await DB.kvSet(MedienAbgleich.LAUF, { jobId: job.jobId, ab: 0, res });
     let st;
     try { st = await Native.json('mtAbgleichStart', Object.assign({ cookie: MedienAbgleich.cookie(acc) }, job)); } catch (e) { st = { started: false, error: e.message }; }
@@ -228,7 +228,7 @@ const MedienAbgleich = {
       }
     } catch (e) { err = e; }
     finally { s.close(); MedienAbgleich._busy = false; }
-    if (err) { toast('Abgleich nicht möglich: ' + err.message, 9000); if (after) after(); return null; }
+    if (err) { toastFehler('Abgleich', err, 9000); if (after) after(); return null; }
     return MedienAbgleich.abschluss(acc, st, after);
   },
   /** Neue Ergebnisse aus der Hülle holen und übernehmen. Gibt den Stand zurück (st.lauf = { jobId, ab, res }). */
@@ -327,7 +327,7 @@ const MedienAbgleich = {
     if (MedienCalc.fortsetzbar(st)) return MedienAbgleich.fortsetzenFragen(acc, st, after);
     try { await Native.json('mtAbgleichVerwerfen'); } catch (e) { /* bleibt liegen, wird beim nächsten Start neu angelegt */ }
     await DB.del('kv', MedienAbgleich.LAUF);
-    if (st.ende === 'relogin') { const e = acc ? await Import.MT.expired(acc) : new Error('Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.'); toast('Abgleich nicht möglich: ' + e.message, 9000); if (after) after(); return null; }
+    if (st.ende === 'relogin') { const e = acc ? await Import.MT.expired(acc) : new Error('Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.'); toastFehler('Abgleich', e, 9000); if (after) after(); return null; }
     if (st.ende === 'verboten') { toast('Abgleich nicht möglich: Dieses Konto darf nur ansehen, Senden geht damit nicht.', 9000); if (after) after(); return null; }
     if (st.ende === 'abgebrochen') res.stopped = true;
     return MedienAbgleich.ergebnis(res, after);
@@ -412,7 +412,7 @@ const MedienAbgleich = {
         }
         return out;
       }, { note: 'Es wird nur gelesen. Übertragen wird erst nach deiner Auswahl.' });
-    } catch (e) { toast('Abgleich nicht möglich: ' + e.message, 8000); if (e.relogin && after) after(); return null; }
+    } catch (e) { toastFehler('Abgleich', e, 8000); if (e.relogin && after) after(); return null; }
     if (!items.length) { toast('Alles ist gleich – nichts abzugleichen.', 5000); return null; }
     const darf = items.every(i => i.plan.darfSchreiben);
     const st = { wahl: darf ? 'beides' : 'holen', videos: false };

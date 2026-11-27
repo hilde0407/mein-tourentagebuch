@@ -142,7 +142,7 @@ const Senden = {
       r = await PhotoSources.progress('An Meine Touren senden', async upd => { let k = 0; return Senden.eine(acc, t, { upd: text => upd(Math.min(++k, 3), 4, null, text) }); }, { note: 'Bitte die App geöffnet lassen, bis das Senden fertig ist.' });
     } catch (e) { err = e; }
     finally { Senden._busy = false; }
-    if (err) { toast('Nicht gesendet: ' + err.message, 9000); if (err.relogin && Nav.cur === '/import') Nav.render(); return null; }
+    if (err) { toastFehler('Senden', err, 9000); if (err.relogin && Nav.cur === '/import') Nav.render(); return null; }
     toast(r.status === 'gesendet' ? '„' + t.name + '“ wurde an Meine Touren gesendet.' + (r.warn ? ' ' + r.warn : '') : '„' + t.name + '“ war schon in Meine Touren – nichts doppelt angelegt.', 7000);
     Tours.invalidate(); if (after) after();
     return r;
@@ -192,7 +192,7 @@ const Senden = {
     } catch (e) { err = e; }
     finally { Senden._busy = false; }
     Tours.invalidate();
-    if (err) { toast('Nicht gesendet: ' + err.message, 9000); if (after) after(); return null; }
+    if (err) { toastFehler('Senden', err, 9000); if (after) after(); return null; }
     const s = sheet(r.stopped ? 'Senden abgebrochen' : 'Gesendet', h('div', { id: 'send-ergebnis' }, h('p', { id: 'send-ergebnis-t' }, SendenCalc.zusammen(r)),
       r.fehler.length > 1 ? UI.list(r.fehler.slice(0, 8).map(f => UI.row({ title: f.name, sub: f.text }))) : null,
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'send-fertig', onclick: () => s.close() }, 'Fertig'))), { onclose: () => { if (after) after(); } });
@@ -235,7 +235,7 @@ const Senden = {
       }
       await DB.kvSet('mtOffen', q);
       if (ok || vorh) { toast(ok ? 'Tour an Meine Touren gesendet' : 'Die Tour war schon in Meine Touren', 4000); Tours.invalidate(); }
-      else if (bad) toast(bad.wieder ? 'Senden an Meine Touren nicht möglich – wird später noch einmal versucht' : 'Senden an Meine Touren nicht möglich: ' + bad.message, 8000);
+      else if (bad) toast(bad.wieder ? 'Senden an Meine Touren nicht möglich – wird später noch einmal versucht' : fehlerText('Senden an Meine Touren', bad), 8000);
     } finally { Senden._busy = false; }
   },
 };

@@ -41,7 +41,7 @@ const Backup = {
       const r = await Native.json('autoBackup', { name: SicherungCalc.autoName(jetzt), b64, keep: 5 });
       await DB.kvSet('lastBackup', Date.now()); await DB.kvSet('backupSnooze', 0);
       return r;
-    } catch (e) { console.error('Automatische Sicherung', e); toast('Automatische Sicherung nicht möglich: ' + e.message, 7000); return null; }
+    } catch (e) { console.error('Automatische Sicherung', e); toastFehler('Automatische Sicherung', e, 7000); return null; }
   },
   /** Sicherung speichern; merkt bei Erfolg den Zeitpunkt. Gibt den Speicherort (Text) zurück. */
   async save() {
@@ -97,7 +97,7 @@ const Backup = {
       if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge${nb ? ' sowie ' + nb + (nb === 1 ? ' Wanderführer (Buch)' : ' Wanderführer (Bücher)') : ''} werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto- und Videodateien selbst sind nicht Teil dieser Sicherung – sie kommen über „Fotos und Videos wiederherstellen“ zurück.)`, 'Einspielen')) return;
       await Backup.apply(data);
       toast('Sicherung eingespielt'); Nav.render();
-    } catch (e) { toast(e.message, 7000); }
+    } catch (e) { toastFehler('Wiederherstellen', e, 7000); }
   },
   async apply(data) {
     await DB.putMany('tours', data.tours); await DB.putMany('tracks', data.tracks || []); await DB.putMany('photos', data.photos || []);
@@ -123,7 +123,7 @@ const Medien = {
     if (!neu) { try { f = await Native.json('mediaFolder'); } catch (e) { f = null; } }
     if (f && f.tree && f.ok) return f;
     if (!neu && f && f.tree && !f.ok) toast('Kein Zugriff mehr auf den Sicherungsordner – bitte neu wählen.', 5000);
-    try { f = await Native.json('mediaFolder', { pick: true }); } catch (e) { toast(e.message, 6000); return null; }
+    try { f = await Native.json('mediaFolder', { pick: true }); } catch (e) { toastFehler('Ordner wählen', e, 6000); return null; }
     if (!f || !f.tree) return null;
     if (!f.ok) { toast('Dieser Ordner erlaubt kein dauerhaftes Schreiben. Bitte einen anderen wählen.', 7000); return null; }
     return f;
@@ -139,7 +139,7 @@ const Medien = {
       + ' im Ordner „' + f.name + '“ gespeichert. Bei vielen Videos dauert das einige Minuten; die App muss dafür nicht offen bleiben.';
     if (!await confirmBox('Fotos und Videos sichern?', txt, 'Sichern')) return null;
     let r;
-    try { r = await Native.json('mediaBackup', { tree: f.tree }); } catch (e) { toast('Sichern nicht möglich: ' + e.message, 7000); return null; }
+    try { r = await Native.json('mediaBackup', { tree: f.tree }); } catch (e) { toastFehler('Sichern', e, 7000); return null; }
     if (r && r.started === false) toast('Sicherung läuft schon', 4000);
     return Medien.follow();
   },
@@ -148,14 +148,14 @@ const Medien = {
     const st = await Medien.status();
     if (st && st.running) return Medien.follow();
     let l;
-    try { l = await Native.json('mediaPickZips'); } catch (e) { toast(e.message, 6000); return null; }
+    try { l = await Native.json('mediaPickZips'); } catch (e) { toastFehler('Sicherung wählen', e, 6000); return null; }
     if (!Array.isArray(l) || !l.length) return null;
     const gross = l.reduce((s, x) => s + (+x.size || 0), 0);
     const txt = (l.length === 1 ? '1 Datei' : l.length + ' Dateien') + (gross ? ' (' + SicherungCalc.groesse(gross) + ')' : '') + ' werden gelesen. '
       + 'Fotos und Videos, die es auf dem Handy schon gibt, bleiben unverändert. Die Einträge (Zeit, Ort, Tour) kommen aus der normalen Sicherung (.mtl).';
     if (!await confirmBox('Fotos und Videos wiederherstellen?', txt, 'Wiederherstellen')) return null;
     let r;
-    try { r = await Native.json('mediaRestore', { uris: l.map(x => x.uri) }); } catch (e) { toast('Wiederherstellen nicht möglich: ' + e.message, 7000); return null; }
+    try { r = await Native.json('mediaRestore', { uris: l.map(x => x.uri) }); } catch (e) { toastFehler('Wiederherstellen', e, 7000); return null; }
     if (r && r.started === false) toast('Sicherung läuft schon', 4000);
     return Medien.follow();
   },

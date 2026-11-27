@@ -225,7 +225,7 @@ Views['/rec'] = async root => {
         await RecRoute.set({ kind: 'gpx', name: nm }, RecRoute.text(a.pts)); Junctions.load(sp); TourHelp.disarmPlan(); rr = {};
         if (a.sport) sport = a.sport; name.value = nm; drawChips(); drawRoute();
         toast('Route „' + nm + '“ ist aktiv – Ansagen eingeschaltet');
-      } catch (e) { toast(e.message, 6000); }
+      } catch (e) { toastFehler('Route aktivieren', e, 6000); }
     }
     async function startWith0(t) { TourHelp.armPlan(t); const pts = await Tours.points(t.id); await RecRoute.set({ kind: 'tour', id: t.id, name: t.name }, RecRoute.text(pts)); Junctions.load(Geo.simplify(pts, 3)); rr = {}; sport = t.sport; name.value = t.name; drawChips(); drawRoute(); }
     drawRoute();
@@ -270,9 +270,9 @@ Views['/rec'] = async root => {
         if (!a || a.pts.length < 2) throw new Error('Datei enthält keine Spur');
         const r = await Tours.add({ name: '', sport: Sports.norm(a.rawSport) || 'hike', pts: a.pts, src: 'rec', force: true });
         await Photos.assignAll();
-        toast(r.dup ? 'Diese Tour gibt es schon.' : 'Tour wiederhergestellt ✓');
+        toast(r.dup ? 'Diese Tour gibt es schon.' : 'Tour wiederhergestellt');
         Nav.go('/tour/' + r.tour.id);
-      } catch (e) { toast('Wiederherstellen nicht möglich: ' + e.message, 6000); }
+      } catch (e) { toastFehler('Wiederherstellen', e, 6000); }
     } }, h('span', { class: 'li-i', html: Ico.svg('save', 22) }), h('span', { class: 'li-t' }, h('b', null, F.date(b.ts) + ' · ' + F.time(b.ts) + ' Uhr'), h('small', null, F.size(b.size))))));
     sh = sheet('Gesicherte Aufzeichnungen', body);
   }
@@ -438,7 +438,7 @@ Views['/rec'] = async root => {
         Nav.go('/tour/' + r.tour.id);
         Senden.auto(r.tour);      // 2.5.0: nur wenn „Neue Aufzeichnungen automatisch senden“ eingeschaltet ist; still, im Hintergrund
       } catch (e) {
-        toast('Speichern nicht möglich: ' + e.message + ' – die Aufzeichnung bleibt erhalten', 7000);
+        toast(fehlerText('Speichern', e) + ' – die Aufzeichnung bleibt erhalten', 7000);
         Nav.render();
       }
     } finally { window.__saving = false; }

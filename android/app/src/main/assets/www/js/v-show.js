@@ -136,7 +136,7 @@ show(0);loop();
         }
         await Native.call('shareCache', { name: fname, mime: 'text/html', title: 'Diashow teilen' });
       });
-    } catch (e) { toast('Teilen nicht möglich: ' + (e && e.message || e)); }
+    } catch (e) { toastFehler('Teilen', e); }
   },
   /** Fotos zu einer Liste von Touren (mit Tourname), nach Zeit sortiert. */
   async forTours(tours) {

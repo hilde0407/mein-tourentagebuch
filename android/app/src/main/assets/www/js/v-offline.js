@@ -63,7 +63,7 @@ const Offline = {
       + 'Bitte sparsam laden: Der Kartenserver ist ein freies, spendenfinanziertes Angebot.';
     if (!await confirmBox('Offline-Karte laden?', txt, 'Herunterladen')) return null;
     let r;
-    try { r = await Native.json('tilesStart', args); } catch (e) { toast('Laden nicht möglich: ' + e.message, 7000); return null; }
+    try { r = await Native.json('tilesStart', args); } catch (e) { toastFehler('Laden', e, 7000); return null; }
     if (r && r.started === false) { toast(r.error || 'Laden nicht möglich.', 7000); return null; }
     return Offline.follow(nach);
   },
@@ -196,13 +196,13 @@ Views['/offline'] = async root => {
       + (Set_.get('offlineWifi') !== false ? 'Nur über WLAN.' : 'Auch über mobile Daten.');
     if (!await confirmBox('„' + (g.name || 'Offline-Karte') + '“ aktualisieren?', txt, 'Aktualisieren')) return;
     let r;
-    try { r = await Native.json('tilesStart', { refresh: g.id, wifiOnly: Set_.get('offlineWifi') !== false }); } catch (e) { toast('Aktualisieren nicht möglich: ' + e.message, 7000); return; }
+    try { r = await Native.json('tilesStart', { refresh: g.id, wifiOnly: Set_.get('offlineWifi') !== false }); } catch (e) { toastFehler('Aktualisieren', e, 7000); return; }
     if (r && r.started === false) { toast(r.error || 'Aktualisieren nicht möglich.', 7000); return; }
     await Offline.follow(zeige);
   }
   async function loeschen(g) {
     if (!await confirmBox('Offline-Karte „' + (g.name || 'Offline-Karte') + '“ löschen?', 'Die Offline-Karte (' + O.mb(g.bytes) + ') wird vom Handy gelöscht. Neu laden geht jederzeit. Kacheln, die eine andere Offline-Karte auch braucht, bleiben.', 'Löschen')) return;
-    try { await Native.json('tilesDelete', { id: g.id }); toast('Offline-Karte gelöscht'); } catch (e) { toast(e.message, 6000); }
+    try { await Native.json('tilesDelete', { id: g.id }); toast('Offline-Karte gelöscht'); } catch (e) { toastFehler('Löschen', e, 6000); }
     zeige();
   }
 

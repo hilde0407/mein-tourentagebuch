@@ -122,7 +122,7 @@ const TourBild = {
   /** Tourmenü → „Als Bild teilen“: Blatt mit Vorschau, Format, Schalter „Fotos einbeziehen“, Teilen und Speichern. */
   async dialog(t) {
     let d;
-    try { d = await TourBild.daten(t); } catch (e) { toast('Das Bild konnte nicht vorbereitet werden: ' + (e && e.message || e), 6000); return; }
+    try { d = await TourBild.daten(t); } catch (e) { toastFehler('Bild vorbereiten', e, 6000); return; }
     const st = { format: 'hoch', mitFotos: d.fotos.length > 0 }, img = h('img', { id: 'tb-bild', alt: '' });
     const vorschau = h('div', { class: 'tb-vor', id: 'tb-vor', 'aria-busy': 'true' }, img), info = h('p', { class: 'muted small', id: 'tb-info', 'aria-live': 'polite' }, 'Bild wird erstellt …');
     const ctl = h('div', { class: 'tb-ctl' }), btns = h('div', { class: 'row end wrap tb-btns' });
@@ -155,7 +155,7 @@ const TourBild = {
     const name = () => TeilenCalc.dateiname(t.name, st.format);
     const teilen = h('button', { class: 'btn pri', id: 'tb-teilen', disabled: true, onclick: async e => {
       const b = e.currentTarget; b.disabled = true;
-      try { await TourBild.teilen(cv, name(), t.name); } catch (err) { toast('Teilen nicht möglich: ' + (err && err.message || err), 6000); } finally { b.disabled = false; }
+      try { await TourBild.teilen(cv, name(), t.name); } catch (err) { toastFehler('Teilen', err, 6000); } finally { b.disabled = false; }
     }, html: Ico.svg('share') + '<span>Teilen …</span>' });
     btns.append(teilen);
     drawCtl();
@@ -163,7 +163,7 @@ const TourBild = {
     if (await TourBild.galerieMoeglich()) {
       btns.prepend(h('button', { class: 'btn', id: 'tb-galerie', disabled: !cv, onclick: async e => {
         const b = e.currentTarget; b.disabled = true;
-        try { const ort = await TourBild.galerie(cv, name()); toast('In der Galerie gespeichert: ' + ort, 5000); } catch (err) { toast('Speichern nicht möglich: ' + (err && err.message || err), 6000); } finally { b.disabled = false; }
+        try { const ort = await TourBild.galerie(cv, name()); toast('In der Galerie gespeichert: ' + ort, 5000); } catch (err) { toastFehler('Speichern', err, 6000); } finally { b.disabled = false; }
       } }, 'In Galerie speichern'));
     }
     zeichne();

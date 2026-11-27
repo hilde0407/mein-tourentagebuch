@@ -159,6 +159,14 @@ for (const [datei, liste] of dateien()) {
   for (const v of SGk.VORSCHLAEGE) if (/ \+ /.test(v.name) || v.name.length > 20) fehler.push('Vorschlagsname nicht kurz: ' + v.name);
   if (SGk.vorschlagName({ name: 'Wandern + Bergsteigen + Schneeschuhwandern', sports: ['hike', 'mountaineering', 'snowshoe'] }) !== 'Wandern (gesamt)') fehler.push('Aufzählung als Gruppenname wird nicht erkannt');
 }
+/* 2.24.0: Rückmeldungen nach Leitfaden Regel 5 – kein „✓“ in einer Meldung, keine rohe Systemmeldung allein (toast(e.message)); Fehler laufen über toastFehler/fehlerText */
+for (const f of fs.readdirSync(path.join(WWW, 'js')).filter(x => x.endsWith('.js'))) {
+  fs.readFileSync(path.join(WWW, 'js', f), 'utf8').split('\n').forEach((l, k) => {
+    if (/^\s*(\/\/|\*)/.test(l)) return;
+    if (/\btoast\([^)]*✓/.test(l)) fehler.push(`www/js/${f}:${k + 1}  „✓“ in einer Meldung (Regel 5: ohne ✓)`);
+    if (/\btoast\(\s*(?:String\()?\(?\w+\.message\b/.test(l)) fehler.push(`www/js/${f}:${k + 1}  rohe Systemmeldung als Meldung – toastFehler('<Vorgang>', e) verwenden (Regel 5)`);
+  });
+}
 if (process.argv.includes('-v')) console.log('Ausnahmen:\n' + ausnahmen.join('\n'));
 if (gezaehlt < 3000) { console.error('Zu wenige Textstücke gefunden (' + gezaehlt + ') – Leser kaputt?'); process.exit(1); }
 if (fehler.length) {

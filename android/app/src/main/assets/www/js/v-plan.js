@@ -117,7 +117,7 @@ Views['/plan'] = async (root, [editId]) => {
   async function exportGpx() {
     const pts = await pointsOrWarn(); if (!pts) return;
     const nm = (name || 'Planung ' + F.dshort(Date.now())).replace(/[^\wäöüÄÖÜß -]/g, '_') + '.gpx';
-    try { toast('GPX exportiert: ' + await Native.json('saveFile', { name: nm, mime: 'application/gpx+xml', text: Geo.gpx(name || 'Planung', sport, pts) })); } catch (e) { toast(e.message); }
+    try { toast('GPX exportiert: ' + await Native.json('saveFile', { name: nm, mime: 'application/gpx+xml', text: Geo.gpx(name || 'Planung', sport, pts) })); } catch (e) { toastFehler('GPX-Export', e); }
   }
   if (wps.length > 1) await rebuild(); else redraw();
   if (editing && wps.length) map.fitBounds(L.latLngBounds(wps.map(w => [w.lat, w.lon])), { padding: [40, 40] });

@@ -167,7 +167,7 @@ Views['/fotodoppelt'] = async (root, [tid]) => {
       + 'Ort, Tour, Notiz, Kommentare und die Wahl als Titelfoto gehen vorher auf das behaltene Foto über, wo dort nichts steht. Das lässt sich nicht rückgängig machen.', 'Löschen')) return;
     let stopp = false, e;
     try { e = await PhotoSources.progress('Doppelte Fotos löschen', u => FotoDup.loeschen(r.gruppen, r.groessen, u, () => stopp), { cancel: () => { stopp = true; }, note: '' }); }
-    catch (x) { toast('Löschen nicht möglich: ' + x.message, 6000); return; }
+    catch (x) { toastFehler('Löschen', x, 6000); return; }
     window.dispatchEvent(new Event('photos-changed'));
     toast((e.n === 1 ? '1 Foto gelöscht' : e.n + ' Fotos gelöscht') + (e.bytes ? ' · ' + FotoDoppeltCalc.mb(e.bytes) + ' frei' : '') + (e.felder ? ' · Angaben übernommen' : '') + (e.abgebrochen ? ' · abgebrochen' : ''), 6000);
     Nav.render();

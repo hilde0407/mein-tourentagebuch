@@ -13,7 +13,7 @@ const TourHelp = {
   hm: min => String(Math.floor(min / 60) % 24).padStart(2, '0') + ':' + String(Math.round(min % 60)).padStart(2, '0'),
   kmh: v => v.toFixed(1).replace('.', ',') + ' km/h',
   /** Öffnet eine gespeicherte Adresse – nur auf Tipp, nur http/https. In der Android-App im Browser des Handys. */
-  openLink(e, url) { try { Planhilfe.pruefeUrl(url); } catch (er) { e.preventDefault(); toast(er.message); return; } if (window.MTApp && MTApp.openUrl) { e.preventDefault(); MTApp.openUrl(url); } },
+  openLink(e, url) { try { Planhilfe.pruefeUrl(url); } catch (er) { e.preventDefault(); toastFehler('Link öffnen', er); return; } if (window.MTApp && MTApp.openUrl) { e.preventDefault(); MTApp.openUrl(url); } },
   linkRow(l, onremove) {
     return h('div', { class: 'li lnk' }, h('a', { class: 'li-t', href: l.url, target: '_blank', rel: 'noopener noreferrer', onclick: e => TourHelp.openLink(e, l.url) },
       h('b', null, l.titel), h('small', null, new URL(l.url).hostname + ' · ' + (Planhilfe.LINK_ARTEN.find(a => a[0] === l.art) || [0, 'Sonstiges'])[1])),
@@ -150,7 +150,7 @@ const TourHelp = {
     const q = meta.quelle || {};
     const qs = h('select', { id: 'pn-qart', 'aria-label': 'Herkunft der Planung', onchange: () => saveQ() }, h('option', { value: '' }, 'Nicht angegeben'), P.QUELLEN.map(([k, l]) => h('option', { value: k, selected: q.art === k }, l)));
     const qt = h('input', { type: 'text', id: 'pn-qtext', maxlength: P.MAX_QTEXT, 'aria-label': 'Herkunft, Freitext', placeholder: 'z. B. Titel der Tour oder des Buchs', value: q.text || '', onchange: () => saveQ() });
-    const saveQ = async () => { try { const r = P.pruefeQuelle(qs.value, qt.value); await PlanMeta.patch(t.id, { quelle: r }); toast('Herkunft gespeichert'); } catch (e) { toast(e.message); } };
+    const saveQ = async () => { try { const r = P.pruefeQuelle(qs.value, qt.value); await PlanMeta.patch(t.id, { quelle: r }); toast('Herkunft gespeichert'); } catch (e) { toastFehler('Herkunft speichern', e); } };
     const list = h('div', { class: 'list', id: 'pn-links' });
     const draw = () => {
       list.innerHTML = '';

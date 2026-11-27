@@ -321,7 +321,7 @@ FlugVideo.erzeuge = async (ctx, w, weg) => {
     FlugVideo.laeuft = null;
     ps.close();
   }
-  if (fehler) { console.warn('Flugvideo:', fehler); toast('Video nicht erzeugt: ' + (fehler.message || fehler), 8000); return null; }
+  if (fehler) { console.warn('Flugvideo:', fehler); toastFehler('Video erzeugen', fehler, 8000); return null; }
   if (!ergebnis) { toast('Abgebrochen – nichts gespeichert'); return null; }
   FlugVideo.fertig(ergebnis, urls);
   return ergebnis;
@@ -334,7 +334,7 @@ FlugVideo.fertig = (r, urls) => {
   const knoepfe = [];
   if (window.MTApp) {
     knoepfe.push(h('button', { class: 'btn', id: 'fv-play', onclick: async () => { try { const x = await Native.json('playVideo', { file: r.name }); if (x && x.ok === false && x.what === -1) toast('Video nicht gefunden'); } catch (e) { toast('Abspielen nicht möglich'); } } }, '▶ Abspielen'));
-    knoepfe.push(h('button', { class: 'btn pri', id: 'fv-share', onclick: () => Native.call('flugVideoShare', { name: r.name }).catch(e => toast('Teilen nicht möglich: ' + e.message)) }, 'Teilen'));
+    knoepfe.push(h('button', { class: 'btn pri', id: 'fv-share', onclick: () => Native.call('flugVideoShare', { name: r.name }).catch(e => toastFehler('Teilen', e)) }, 'Teilen'));
   } else if (r.blob) {
     const url = URL.createObjectURL(r.blob); urls.push(url);
     const a = h('a', { class: 'btn pri', id: 'fv-dl', href: url, download: r.name }, 'Herunterladen'); knoepfe.push(a);

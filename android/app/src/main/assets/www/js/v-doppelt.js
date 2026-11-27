@@ -96,7 +96,7 @@ Views['/doppelt'] = async root => {
           h('button', { class: 'btn', 'data-a': 'merge', onclick: async () => {
             const wer = drops.length === 1 ? `„${drops[0].name}“` : drops.slice(0, -1).map(d => `„${d.name}“`).join(', ') + ` und „${drops[drops.length - 1].name}“`;
             if (!await confirmBox('Touren zusammenführen?', `„${keep.name}“ bleibt. Fotos, Notiz, Pins und Zuordnungen von ${wer} wandern dorthin, dann ${drops.length === 1 ? `wird ${wer}` : `werden ${drops.length}\u00a0Touren`} gelöscht. Das lässt sich nicht rückgängig machen.`, 'Zusammenführen')) return;
-            try { const r = await Dup.mergeAlle(keep.id, drops.map(d => d.id)); toast('Zusammengeführt' + (r.fotos ? ' · ' + r.fotos + (r.fotos === 1 ? ' Foto' : ' Fotos') + ' übernommen' : ''), 5000); } catch (e) { toast(e.message, 6000); }
+            try { const r = await Dup.mergeAlle(keep.id, drops.map(d => d.id)); toast('Touren zusammengeführt' + (r.fotos ? ' · ' + r.fotos + (r.fotos === 1 ? ' Foto' : ' Fotos') + ' übernommen' : ''), 5000); } catch (e) { toastFehler('Zusammenführen', e, 6000); }
             Nav.render();
           } }, 'Zusammenführen'),
           h('button', { class: 'btn', 'data-a': 'swap', onclick: () => { const alle = [keep].concat(drops); keep = alle[1]; drops = alle.slice(2).concat(alle[0]); draw(); } }, 'Andere behalten'),

@@ -117,7 +117,7 @@ Views['/jahr'] = async (root, [param]) => {
   btn.onclick = async () => {
     const label = btn.querySelector('span'); btn.disabled = true; label.textContent = 'Bild wird erstellt …';
     try { const cv = await JahrKarte.render(d, { now }); await JahrKarte.teilen(cv, year); }
-    catch (e) { console.error('Jahr: Teilen', e); toast('Bild erstellen nicht möglich: ' + (e && e.message || e), 6000); }
+    catch (e) { console.error('Jahr: Teilen', e); toastFehler('Bild erstellen', e, 6000); }
     finally { btn.disabled = false; label.textContent = 'Als Bild teilen'; }
   };
   // 2.5.0: das ganze Jahr als PDF (Deckblatt, eine Zeile je Tour); die Fotos je Tour sind abschaltbar, weil sie die Datei groß machen

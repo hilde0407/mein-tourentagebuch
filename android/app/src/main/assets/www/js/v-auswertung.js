@@ -237,7 +237,7 @@ const Ausw = {
       const ts = ctx.all.filter(t => t.nlCells != null);
       const todo = ctx.all.filter(t => t.nlCells == null).length;
       const btn = h('button', { class: 'btn' + (todo ? ' pri' : ''), onclick: async () => {
-        btn.disabled = true; try { await Ausw.neulandRechnen((i, n) => { btn.textContent = 'Berechne ' + i + '/' + n + ' …'; }); } catch (e) { toast(e.message, 6000); }
+        btn.disabled = true; try { await Ausw.neulandRechnen((i, n) => { btn.textContent = 'Berechne ' + i + '/' + n + ' …'; }); } catch (e) { toastFehler('Berechnung', e, 6000); }
         const all2 = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden); ctx.all.splice(0, ctx.all.length, ...all2); draw(); } }, todo ? 'Berechnen' + (ts.length ? ' (' + todo + ' neue)' : '') : 'Neu berechnen');
       if (!ts.length) { el.append(h('p', { class: 'muted' }, 'Noch nicht berechnet.'), btn); return; }
       const years = [...new Set(ts.map(t => new Date(t.start).getFullYear()))].sort();
@@ -272,7 +272,7 @@ const Ausw = {
       const have = Ausw.wxRows(ctx.all), todo = ctx.all.filter(t => t.wxT == null && t.start && t.lat != null && !t.wxFail);
       const btn = h('button', { class: 'btn' + (have.length ? '' : ' pri'), onclick: async () => {
         btn.disabled = true; const batch = todo.slice(0, 150);
-        try { const r = await Ausw.wetterLaden(batch, (i, n) => { btn.textContent = 'Lade ' + i + '/' + n + ' …'; }); toast(r.ok + ' Touren mit Wetter' + (r.fail ? ' · ' + r.fail + ' ohne Daten' : '')); } catch (e) { toast(e.message, 6000); }
+        try { const r = await Ausw.wetterLaden(batch, (i, n) => { btn.textContent = 'Lade ' + i + '/' + n + ' …'; }); toast(r.ok + ' Touren mit Wetter' + (r.fail ? ' · ' + r.fail + ' ohne Daten' : '')); } catch (e) { toastFehler('Wetter holen', e, 6000); }
         const all2 = (await Tours.list()).filter(t => t.status !== 'planned' && !t.hidden); ctx.all.splice(0, ctx.all.length, ...all2); draw(); } }, todo.length ? (have.length ? 'Weitere holen (' + Math.min(150, todo.length) + ' von ' + todo.length + ')' : 'Wetter holen') : 'Alles geholt');
       if (!todo.length) btn.disabled = true;
       if (!have.length) { el.append(btn); return; }

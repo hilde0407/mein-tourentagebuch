@@ -150,7 +150,7 @@ async function handleShared() {
   try {
     const files = JSON.parse(MTApp.takeShared() || '[]');
     const txt = JSON.parse(MTApp.takeSharedText() || '[]');
-    for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird importiert …'); try { const r = await Import.fromUrl(m[0]); toast(Import.describe(r) + (r.added ? await Dup.satz() : ''), 6000); } catch (e) { toast(e.message); } } }
+    for (const t of txt) { const m = (t.text || '').match(/https?:\/\/\S+/); if (m && confirm_ok(m[0])) { toast('Link wird importiert …'); try { const r = await Import.fromUrl(m[0]); toast(Import.describe(r) + (r.added ? await Dup.satz() : ''), 6000); } catch (e) { toastFehler('Link importieren', e); } } }
     if (!files.length) return;
     const photos = files.filter(f => /\.(jpe?g|png|heic|webp)$/i.test(f.name)), tracks = files.filter(f => !photos.includes(f));
     if (tracks.length) {
@@ -162,7 +162,7 @@ async function handleShared() {
       const m = await Native.json('importFiles', { paths: photos.map(f => f.path), src: 'geteilt' });
       const s0 = Photos.skipCount, n = await Photos.addMeta(m); toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0, 'übernommen'), 4000);
     }
-  } catch (e) { toast('Teilen: ' + e.message); }
+  } catch (e) { toastFehler('Teilen', e); }
 }
 const confirm_ok = u => /^https?:\/\//.test(u);
 async function handlePhotoQueue() {

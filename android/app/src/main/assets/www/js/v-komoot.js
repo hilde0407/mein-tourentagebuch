@@ -93,7 +93,7 @@ const KomootPaket = {
       let r;
       try {
         r = await PhotoSources.progress('Komoot-Paket', upd2 => KomootPaket.bauen(t, { fotos: ids, ort: st.ort, notiz: st.notiz, upd: (i, n, nm) => upd2(i + 1, n, nm) }), { note: 'Fotos werden verkleinert. Bitte die App geöffnet lassen.' });
-      } catch (e) { toast('Komoot-Paket nicht möglich: ' + (e && e.message || e), 7000); return; }
+      } catch (e) { toastFehler('Komoot-Paket', e, 7000); return; }
       await KomootPaket.ausgeben(r, t);
     };
     return s;
@@ -108,7 +108,7 @@ const KomootPaket = {
     const cache = 'komoot-paket-' + String(t.id).replace(/[^A-Za-z0-9_-]/g, '_') + '.zip';
     let ort;
     try { await PdfUI.zwischenspeichern(r.bytes, cache); ort = await Native.json('saveFile', { name: r.name, mime: 'application/zip', path: cache }); }
-    catch (e) { toast('Komoot-Paket exportieren nicht möglich: ' + (e && e.message || e), 7000); return; }
+    catch (e) { toastFehler('Komoot-Paket exportieren', e, 7000); return; }
     const s = sheet('Komoot-Paket exportiert', h('div', { id: 'kp-fertig' },
       h('p', { id: 'kp-ort-t' }, 'Gespeichert: ' + ort), h('p', { class: 'muted small' }, info + '. In der README-Datei steht, wie du es in Komoot hochlädst. Die Sichtbarkeit wählst du dort selbst.'),
       r.ohneOrt ? h('p', { class: 'muted small' }, anz(r.ohneOrt, 'Pin ohne Ort ist', 'Pins ohne Ort sind') + ' nicht in der GPX-Datei.') : null,
@@ -116,7 +116,7 @@ const KomootPaket = {
         h('button', { class: 'btn', id: 'kp-teilen', onclick: async e => {
           const b = e.currentTarget; b.disabled = true;
           try { await PdfUI.zwischenspeichern(r.bytes, cache); await Native.call('shareCache', { name: cache, mime: 'application/zip', title: 'Komoot-Paket teilen' }); s.close(); }
-          catch (err) { toast('Teilen nicht möglich: ' + (err && err.message || err), 6000); b.disabled = false; }
+          catch (err) { toastFehler('Teilen', err, 6000); b.disabled = false; }
         } }, 'Teilen …'),
         h('button', { class: 'btn pri', id: 'kp-ok', onclick: () => s.close() }, 'Fertig'))));
   },

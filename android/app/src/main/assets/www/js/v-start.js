@@ -108,7 +108,7 @@ Home.add('backup', 12, async ({ all, now }) => {
   if (!r.zeigen) return null;
   const jetzt = r.art === 'medien'
     ? async () => { const j = await Medien.sichern(); if (j && !j.error) Nav.render(); }
-    : async () => { try { await Backup.save(); Nav.render(); } catch (e) { toast(e.message, 7000); } };
+    : async () => { try { await Backup.save(); Nav.render(); } catch (e) { toastFehler('Sicherung speichern', e, 7000); } };
   const box = UI.banner([h('b', null, r.text), h('div', { class: 'muted small' }, r.sub)], [
     h('button', { class: 'btn sm', id: 'bk-now', 'data-art': r.art, onclick: jetzt }, 'Jetzt sichern'),
     h('button', { class: 'btn sm', id: 'bk-later', onclick: async () => { await DB.kvSet('backupSnooze', Date.now() + 7 * 86400000); box.remove(); toast('Ich erinnere dich in 7 Tagen wieder.'); } }, 'Später')], { id: 'backupnote' });

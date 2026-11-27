@@ -227,7 +227,7 @@ const Buecher = {
     const go = h('button', { class: 'btn pri', id: 'fu-ex-go', onclick: async () => {
       go.disabled = true;
       try { const r = await Buecher.exportieren({ mitCover }); s.close(); if (r) toast('Wanderführer exportiert: ' + r.ort + ' · ' + r.buecher + (r.buecher === 1 ? ' Buch' : ' Bücher'), 6000); }
-      catch (e) { go.disabled = false; toast('Export nicht möglich: ' + (e && e.message || e), 6000); }
+      catch (e) { go.disabled = false; toastFehler('Export', e, 6000); }
     } }, 'Exportieren');
     const s = sheet('Wanderführer exportieren', h('div', { id: 'fu-ex' },
       h('p', null, 'Speichert deine Bücher mit allen Buchtouren (Titel, Strecke mit Linie auf der Karte, Aufstieg) als Datei – zum Übertragen auf ein anderes Gerät oder zum Aufheben. Dabei steht auch, welche Buchtouren du gewandert bist (Datum und Name der Tour).'),
@@ -256,11 +256,11 @@ const Buecher = {
   },
   /** „Wanderführer importieren“: Datei wählen, prüfen, Rückfrage mit Zusammenfassung und Konflikten, dann zusammenführen (nichts wird überschrieben). */
   async importieren(fertig) {
-    let files; try { files = await Buecher.waehle('.json,application/json', false); } catch (e) { toast(e.message, 5000); return; }
+    let files; try { files = await Buecher.waehle('.json,application/json', false); } catch (e) { toastFehler('Datei wählen', e, 5000); return; }
     if (!files || !files.length) return;
     let d;
     try { d = FuehrerDatei.lies(new TextDecoder('utf-8').decode(await Import.fetchBuf(files[0].url))); }
-    catch (e) { toast(e.message, 7000); return; }
+    catch (e) { toastFehler('Wanderführer importieren', e, 7000); return; }
     return Buecher.zeigePlan(d, 'Wanderführer importieren', fertig);
   },
   /** 2.15.0: „Aus Meine Touren holen“ – nur bei „Mit Meine Touren zusammenarbeiten“ und bestehender Verbindung. Gleicher Netzweg wie „Aus Meine Touren holen“
@@ -274,7 +274,7 @@ const Buecher = {
       go.disabled = true;
       let d;
       try { d = await Buecher.holeMt(acc, mitCover); }
-      catch (e) { go.disabled = false; s.close(); toast(e.message, 7000); if (e.relogin) Nav.render(); return; }      // Sitzung abgelaufen: der Knopf verschwindet, bis man sich unter „Touren importieren“ neu anmeldet
+      catch (e) { go.disabled = false; s.close(); toastFehler('Wanderführer holen', e, 7000); if (e.relogin) Nav.render(); return; }      // Sitzung abgelaufen: der Knopf verschwindet, bis man sich unter „Touren importieren“ neu anmeldet
       s.close();
       return Buecher.zeigePlan(d, 'Aus Meine Touren holen', fertig);
     } }, 'Holen');
@@ -340,7 +340,7 @@ const Buecher = {
         const r = await Tours.add({ name: bt.title, sport: 'hike', pts: pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })), status: 'planned', src: 'plan' });
         await PlanMeta.patch(r.tour.id, { quelle: { art: 'fuehrer', text: (b.name + ' – ' + bt.title).slice(0, Planhilfe.MAX_QTEXT) } });
         s.close(); toast('Als Planung übernommen'); Nav.go('/tour/' + r.tour.id);
-      } catch (e) { plan.disabled = false; toast('Als Planung übernehmen nicht möglich: ' + e.message, 5000); }
+      } catch (e) { plan.disabled = false; toastFehler('Als Planung übernehmen', e, 5000); }
     } }, 'Als Planung übernehmen');
     const s = sheet(bt.title, h('div', { class: 'fu-kb' }, h('p', { class: 'muted small' }, 'Aus dem Buch: ' + b.name),
       UI.figs([[F.km(bt.km * 1000), 'Strecke'], bt.up != null ? ['↑ ' + F.m(bt.up), 'Aufstieg'] : null]), mapEl, h('div', { class: 'row end' }, plan)), { onclose: () => { try { if (map) map.remove(); } catch (e) { /* schon weg */ } } });
@@ -438,7 +438,7 @@ Views['/fuehrer'] = async root => {
   function start() {
     if (!buecher.length) { prog = null; drawSync(); return; }
     if (st.fehlendePaare) { prog = 0; drawSync(); } else prog = null;
-    Buecher.sync(hoerer).catch(e => { console.error('Wanderführer-Abgleich', e); if (!gone) { prog = null; drawSync(); toast('Vergleich mit deinen Touren nicht möglich: ' + e.message, 5000); } });
+    Buecher.sync(hoerer).catch(e => { console.error('Wanderführer-Abgleich', e); if (!gone) { prog = null; drawSync(); toastFehler('Vergleich mit deinen Touren', e, 5000); } });
   }
   // 2.13.0: Übertragen als Datei (zwischen Geräten). 2.15.0: „Aus Meine Touren holen“ nur bei „Mit Meine Touren zusammenarbeiten“ und bestehender Verbindung
   const mtKonto = await MT.konto();

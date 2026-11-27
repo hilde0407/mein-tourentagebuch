@@ -115,7 +115,7 @@ const Lightbox = {
     }
     async function convertNow(p) {
       let r;
-      try { r = await Native.json('videoConvert', { ids: [p.id] }); } catch (e) { toast('Umwandeln nicht möglich: ' + e.message, 6000); return; }
+      try { r = await Native.json('videoConvert', { ids: [p.id] }); } catch (e) { toastFehler('Umwandeln', e, 6000); return; }
       if (!r.hevc) { toast('Dieses Video ist kein HEVC – Umwandeln hilft hier nicht. „In Video-App öffnen“ geht trotzdem.', 7000); await zeigeInfo(p); return; }
       errMsg = '';
       await Videos.poll();
@@ -247,7 +247,7 @@ const Pano = {
       const panos = m.filter(x => PanoCalc.ist(x)).length;
       toast(!n ? 'Schon vorhanden' : n === 1 ? (panos ? 'Panorama übernommen' : 'Foto übernommen') : n + ' Fotos übernommen', 4000);
       return n;
-    } catch (e) { toast(e.message, 6000); return 0; }
+    } catch (e) { toastFehler('Foto übernehmen', e, 6000); return 0; }
     finally { Pano._busy = false; }
   },
 };
@@ -291,14 +291,14 @@ const Videos = {
   /** „Vorhandene Videos umwandeln“: zählen, nachfragen, nacheinander umwandeln (Fortschritt „2 von 5“, Abbrechen). */
   async alle() {
     let sc;
-    try { sc = await Native.json('videoScan'); } catch (e) { toast(e.message, 5000); return; }
+    try { sc = await Native.json('videoScan'); } catch (e) { toastFehler('Videos prüfen', e, 5000); return; }
     if (!sc.n) { toast(sc.all ? 'Alle Videos spielen schon ab – nichts umzuwandeln.' : 'Keine Videos vorhanden.', 5000); return; }
     const txt = (sc.n === 1 ? '1 Video ist' : sc.n + ' Videos sind') + ' im Format HEVC gespeichert, das die Ansicht in der App oft nicht abspielt. '
       + 'Sie werden nacheinander auf dem Handy in H.264 umgewandelt. Das dauert je Video etwa so lange wie das Video selbst oder länger und braucht Akku – am besten am Ladegerät. '
       + 'Das Original wird erst ersetzt, wenn die Umwandlung geklappt hat.';
     if (!await confirmBox('Videos umwandeln?', txt, 'Umwandeln')) return;
     let r;
-    try { r = await Native.json('videoConvert', { ids: sc.ids }); } catch (e) { toast('Umwandeln nicht möglich: ' + e.message, 6000); return; }
+    try { r = await Native.json('videoConvert', { ids: sc.ids }); } catch (e) { toastFehler('Umwandeln', e, 6000); return; }
     if (!r.hevc) { toast('Nichts umzuwandeln.', 4000); return; }
     return Videos.follow();
   },
@@ -362,7 +362,7 @@ const VideoTrim = {
   async open(p, onDone) {
     if (!window.MTApp) { toast('Zuschneiden geht nur in der Android-App.'); return; }
     let k;
-    try { k = await Native.json('videoKeys', { id: p.id }); } catch (e) { toast('Das Video lässt sich nicht lesen (' + e.message + ').', 6000); return; }
+    try { k = await Native.json('videoKeys', { id: p.id }); } catch (e) { toastFehler('Video lesen', e, 6000); return; }
     const dur = +k.dur || +p.dur || 0, keys = (k.keys || []).map(Number).sort((a, b) => a - b);
     if (dur < 2000) { toast('Das Video ist zu kurz zum Zuschneiden.', 5000); return; }
     const st = { a: 0, e: dur, ersetzen: false };
@@ -417,7 +417,7 @@ const VideoTrim = {
       if (st.ersetzen && !await confirmBox('Original ersetzen?', 'Das Video wird durch den Ausschnitt ' + VideoCalc.zeitText(a) + '–' + VideoCalc.zeitText(e) + ' ersetzt. Der Rest ist danach weg (eine Kopie in der Galerie bleibt, falls es eine gibt).', 'Ersetzen')) return;
       let r;
       try { r = await Native.json('videoTrim', { id: p.id, startMs: a, endMs: e, replace: st.ersetzen }); }
-      catch (x) { toast('Zuschneiden nicht möglich: ' + x.message, 7000); return; }
+      catch (x) { toastFehler('Zuschneiden', x, 7000); return; }
       if (!r || !r.started) { toast(VideoJobUI.belegt, 6000); return; }
       s.close();
       const j = await VideoJobUI.follow('Video zuschneiden', q => 'Wird zugeschnitten … ' + (+q.pct || 0) + ' %');
@@ -428,7 +428,7 @@ const VideoTrim = {
       if (res.replaced) {
         Object.assign(orig, { w: res.w || orig.w, h: res.h || orig.h, dur: res.dur || orig.dur, ts: orig.ts ? orig.ts + (+res.startMs || 0) : orig.ts, trimmed: true });
         await DB.put('photos', orig);
-        toast('Zugeschnitten ✓ – das Original ist ersetzt.', 4000);
+        toast('Video zugeschnitten – das Original ist ersetzt', 4000);
         window.dispatchEvent(new Event('photos-changed'));
         if (onDone) onDone(Object.assign({}, res, { ts: orig.ts }));
         return;
@@ -436,7 +436,7 @@ const VideoTrim = {
       if (await DB.get('photos', res.id)) { toast('Diesen Ausschnitt gibt es schon.', 5000); return; }
       const neu = Object.assign({}, orig, { id: res.id, name: 'Video (zugeschnitten).mp4', ts: orig.ts ? orig.ts + (+res.startMs || 0) : 0, w: res.w || orig.w, h: res.h || orig.h, dur: res.dur || 0, trimOf: p.id, note: '' });
       await DB.put('photos', neu);
-      toast('Zugeschnitten ✓ – als neues Video gespeichert, das Original bleibt.', 5000);
+      toast('Video zugeschnitten – als neues Video gespeichert, das Original bleibt', 5000);
       window.dispatchEvent(new Event('photos-changed'));
       if (onDone) onDone(res, neu);
     }
@@ -459,7 +459,7 @@ const VideoGalerie = {
     const items = [];
     for (const id of sc.ids) { const p = await DB.get('photos', id).catch(() => null); items.push({ id, ts: p && p.ts ? p.ts : 0 }); }
     let r;
-    try { r = await Native.json('videoGalleryCopy', { items }); } catch (e) { toast(e.message, 6000); return; }
+    try { r = await Native.json('videoGalleryCopy', { items }); } catch (e) { toastFehler('Videos kopieren', e, 6000); return; }
     if (!r || !r.started) { toast(VideoJobUI.belegt, 6000); return; }
     const j = await VideoJobUI.follow('Videos in die Galerie', q => Math.min(q.total, (q.done || 0) + 1) + ' von ' + q.total);
     const res = (j && j.result) || {}, ok = +res.ok || 0, bad = +res.bad || 0;
@@ -612,7 +612,7 @@ const PhotoSources = {
     return n;
   },
   sheet(tour, done) {
-    const run = async fn => { s.close(); try { const s0 = Photos.skipCount, n = await fn(); if (n != null) toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0), 4000); window.dispatchEvent(new Event('photos-changed')); if (done) await done(); } catch (e) { toast(e.message, 6000); } };
+    const run = async fn => { s.close(); try { const s0 = Photos.skipCount, n = await fn(); if (n != null) toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0), 4000); window.dispatchEvent(new Event('photos-changed')); if (done) await done(); } catch (e) { toastFehler('Fotos holen', e, 6000); } };
     const it = (ico, t, sub, fn) => h('button', { class: 'li', onclick: () => run(fn) }, h('span', { class: 'li-i' }, ico), h('span', { class: 'li-t' }, h('b', null, t), h('small', null, sub)));
     const s = sheet('Fotos hinzufügen', h('div', null, h('div', { class: 'list menu' },
       it('🖼️', 'Aus der Galerie wählen', 'Einzelne Fotos auswählen', async () => { const m = await Native.json('pickPhotos'); return Photos.addMeta(m); }),
@@ -773,7 +773,7 @@ const PhotoSources = {
           }
         });
         toast(FotoDoppeltCalc.importText(n, Photos.skipCount - s0), 4000); window.dispatchEvent(new Event('photos-changed'));
-      } catch (e) { toast(e.message, 6000); }
+      } catch (e) { toastFehler('Fotos holen', e, 6000); }
     }
     load(st.path || '');
   },
@@ -826,7 +826,7 @@ Views['/sources'] = async root => {
   body.append(h('p', { class: 'muted' }, 'Fotos werden verkleinert (max. 2400 Pixel) in den privaten Speicher der App kopiert. Originale bleiben unverändert.'),
     h('div', { class: 'list' },
       h('button', { class: 'li', onclick: () => PhotoSources.sheet(null, null) }, h('span', { class: 'li-i' }, '＋'), h('span', { class: 'li-t' }, h('b', null, 'Fotos hinzufügen'), h('small', null, 'Galerie, Ordner, SMB, Nextcloud'))),
-      h('button', { class: 'li', onclick: async () => { try { const s0 = Photos.skipCount, n = await PhotoSources.scanFolders(), sk = Photos.skipCount - s0; toast(anz(n, 'neues Foto', 'neue Fotos') + (sk ? ' · ' + sk + ' schon vorhanden, übersprungen' : '')); } catch (e) { toast(e.message); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt importieren'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
+      h('button', { class: 'li', onclick: async () => { try { const s0 = Photos.skipCount, n = await PhotoSources.scanFolders(), sk = Photos.skipCount - s0; toast(anz(n, 'neues Foto', 'neue Fotos') + (sk ? ' · ' + sk + ' schon vorhanden, übersprungen' : '')); } catch (e) { toastFehler('Ordner prüfen', e); } } }, h('span', { class: 'li-i' }, '🔄'), h('span', { class: 'li-t' }, h('b', null, 'Gemerkte Ordner jetzt importieren'), h('small', null, folders.length ? folders.map(f => decodeURIComponent(f.name)).join(', ') : 'Noch keine Ordner gemerkt'))),
       h('a', { class: 'li', id: 'src-dup', href: '#/fotodoppelt' }, h('span', { class: 'li-i', html: Ico.svg('swap', 20) }), h('span', { class: 'li-t' }, h('b', null, 'Doppelte Fotos prüfen'), h('small', null, 'Gleiche Fotos und Videos finden und aufräumen'))),
       window.MTApp ? h('button', { class: 'li', id: 'src-vconv', onclick: () => Videos.alle() }, h('span', { class: 'li-i' }, '🎬'), h('span', { class: 'li-t' }, h('b', null, 'Vorhandene Videos umwandeln'), h('small', null, 'HEVC-Videos in H.264, damit sie hier abspielen'))) : null));
   // 2.9.0: Speicher getrennt nach Fotos und Videos; darunter die Videos einzeln (antippen = ansehen, Papierkorb = löschen)

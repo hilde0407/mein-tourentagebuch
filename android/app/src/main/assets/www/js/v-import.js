@@ -13,7 +13,7 @@ const AllesUI = {
     Tours.invalidate();
     const dup = r && r.neu ? await Dup.hinweis().catch(() => null) : null;      // 2.23.0: mögliche Doppelte unter den neuen Touren
     const done = () => { if (after) after(); };
-    if (err || !r) { toast((err && err.message) || 'Touren holen nicht möglich', 7000); done(); return; }
+    if (err || !r) { toastFehler('Touren holen', err, 7000); done(); return; }
     const kopf = r.stopped ? 'Abgebrochen – der Rest kommt beim nächsten Mal.' : r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') + ' im Tagebuch.' : 'Das Tagebuch ist auf dem neuesten Stand.';
     const s = sheet(r.stopped ? 'Touren holen abgebrochen' : 'Touren geholt', h('div', { id: 'sum' },
       h('p', { id: 'sum-head' }, kopf),
@@ -35,7 +35,7 @@ Views['/import'] = async root => {
       let msg = r && r.added != null ? Import.describe(r) + (r.limit ? ' – ' + r.limit : '') : String(r);
       Tours.invalidate(); if (r && r.added) msg += await Dup.satz();      // 2.23.0: mögliche Doppelte unter den neuen Touren – ein Satz, kein Dialog
       toast(msg, 7000);
-    } catch (e) { err = e; toast(e.message, 8000); }
+    } catch (e) { err = e; toastFehler(title, e, 8000); }
     if (opts && opts.after) opts.after(err);
   };
   const card = (ico, t, sub, fn, id) => UI.row({ icon: ico, title: t, sub, onclick: fn, id });
@@ -119,7 +119,7 @@ Views['/import'] = async root => {
       h('p', { class: 'muted small' }, 'Empfohlen: in Meine Touren unter „Konto & Freigaben“ einen Betrachter (nur ansehen) anlegen und hier verwenden. Das Passwort wird nicht gespeichert, nur ein Sitzungsschlüssel auf diesem Handy. Er kommt in keine Sicherung.'),
       zahlen, zHint,
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'mt-go', onclick: async () => {
-        let base; try { base = M.base(url.value); } catch (e) { toast(e.message, 6000); return; }
+        let base; try { base = M.base(url.value); } catch (e) { toastFehler('Verbinden', e, 6000); return; }
         if (/^http:/.test(base) && !M.privat(base) && !await confirmBox('Unverschlüsselt verbinden?', 'Die Adresse beginnt mit http. Name und Passwort gehen dann unverschlüsselt durch das Netz und können mitgelesen werden. Sicherer ist eine Adresse mit https.', 'Trotzdem verbinden')) return;
         const name = nm.value, pass = pw.value;
         s.close();
@@ -164,7 +164,7 @@ Views['/import'] = async root => {
         h('label', { class: 'fld' }, 'Client-ID', id), h('label', { class: 'fld' }, 'Client-Secret', sec),
         h('button', { class: 'btn', onclick: async () => { if (!id.value.trim()) { toast('Bitte Client-ID eintragen'); return; } await Set_.set('stravaId', id.value.trim()); Native.available() ? MTApp.openUrl(Import.Strava.authUrl(id.value.trim())) : window.open(Import.Strava.authUrl(id.value.trim())); } }, 'Bei Strava erlauben'),
         h('label', { class: 'fld' }, 'Adresse / Code', code),
-        h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => { try { const acc = await Import.Strava.exchange(id.value.trim(), sec.value.trim(), Import.Strava.parseCode(code.value)); s.close(); run('Strava', upd => Import.Strava.importAll(acc, upd)); } catch (e) { toast(e.message, 7000); } } }, 'Verbinden & Touren holen'))),
+        h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => { try { const acc = await Import.Strava.exchange(id.value.trim(), sec.value.trim(), Import.Strava.parseCode(code.value)); s.close(); run('Strava', upd => Import.Strava.importAll(acc, upd)); } catch (e) { toastFehler('Strava verbinden', e, 7000); } } }, 'Verbinden & Touren holen'))),
       h('p', { class: 'muted small' }, 'Tipp: Strava erlaubt 100 Abfragen je 15 Minuten. Bei sehr vielen Aktivitäten einfach später erneut starten. Alternativ den kompletten Strava-Export (ZIP) über „Dateien“ importieren.')));
   }
   async function zepp() {
@@ -181,7 +181,7 @@ Views['/import'] = async root => {
     const loggedIn = h('div', null, h('p', null, '✓ Verbunden mit Zepp' + (c && c.viaToken ? ' (mit Token)' : '')),
       h('div', { class: 'row end wrap' },
         h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Verbindung trennen'),
-        h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert'); } catch (e) { toast(e.message, 8000); } } }, 'Zugang testen'),
+        h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert'); } catch (e) { toastFehler('Zugang testen', e, 8000); } } }, 'Zugang testen'),
         h('button', { class: 'btn', onclick: () => { s.close(); run('Höhe korrigieren', async (upd, txt) => { txt.textContent = 'Touren aus Zepp holen …'; const r = await Fix.zeppEleAll(c, upd); return `Höhe korrigiert (aus der Uhr): ${r.done} von ${r.total} passenden Touren` + (r.none ? `, ${r.none} ohne brauchbare Höhendaten` : '') + (r.fail ? `, ${r.fail} nicht möglich` : ''); }); } }, '⌚ Höhe aller Touren korrigieren'),
         h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Touren holen')));
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
@@ -190,9 +190,9 @@ Views['/import'] = async root => {
     const inApp = Native.available() ? h('div', null,
       h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort): Die App öffnet die Zepp-Anmeldeseite, du meldest dich wie gewohnt an, die App übernimmt das Zugangs-Token selbst.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
-        let r; try { r = await Native.json('zeppLogin'); } catch (e) { toast(e.message, 7000); return; }
+        let r; try { r = await Native.json('zeppLogin'); } catch (e) { toastFehler('Anmeldung bei Zepp', e, 7000); return; }
         if (!r || !r.token) { toast('Kein Token übernommen'); return; }
-        let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(r.token, hs.value); } catch (e) { toast(e.message, 9000); return; }
+        let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(r.token, hs.value); } catch (e) { toastFehler('Token prüfen', e, 9000); return; }
         run0(acc); } }, 'Bei Zepp anmelden')),
       null) : null;
     const tok = h('div', null, inApp,
@@ -206,7 +206,7 @@ Views['/import'] = async root => {
       h('label', { class: 'fld' }, 'Token', tk), h('label', { class: 'fld' }, 'Server (nur falls nötig)', hs),
       h('p', { class: 'muted small' }, 'Das Token wird nur auf diesem Handy gespeichert und läuft nach einiger Zeit ab; dann einfach ein neues holen. Es gibt Zugriff auf deine Zepp-Daten – nicht weitergeben.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
-        let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(tk.value, hs.value); } catch (e) { toast(e.message, 9000); return; }
+        let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(tk.value, hs.value); } catch (e) { toastFehler('Token prüfen', e, 9000); return; }
         run0(acc); } }, 'Prüfen & Touren holen')));
     const sel = h('div', { class: 'row' }, ['Mit Token', 'E-Mail / Passwort'].map((n, i) => h('button', { class: 'btn' + (i ? '' : ' pri'), onclick: e => { tok.hidden = !!i; pass.hidden = !i; [...sel.children].forEach((b, j) => b.classList.toggle('pri', j === i)); } }, n)));
     pass.hidden = true;
@@ -462,7 +462,7 @@ Views['/settings'] = async (root, args) => {
       karte('set-k-bk', 'bk-h', 'Touren und Einstellungen sichern', null,
         h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
         h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“. Offline-Karten sind auch nicht enthalten – sie lassen sich jederzeit neu laden.'),
-        h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toast(e.message, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
+        h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'bk-save', onclick: async () => { try { await Backup.save(); showLast(); } catch (e) { toastFehler('Sicherung speichern', e, 7000); } } }, 'Sicherung speichern'), h('button', { class: 'btn', id: 'bk-restore', onclick: Backup.restore }, 'Sicherung einspielen')),
         h('div', { class: 'fld' }, 'Erinnern, wenn die letzte Sicherung älter ist als', remind),
         hint('Touren und Fotos/Videos werden getrennt gezählt; die Startseite zeigt höchstens eine Zeile.'),
         UI.toggle('Automatisch in Ordner sichern', !!Set_.get('backupAuto'), async (on, e) => {
