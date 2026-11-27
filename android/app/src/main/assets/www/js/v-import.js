@@ -232,11 +232,11 @@ Views['/import'] = async root => {
 
 /* 2.19.0: Einstellungen → Sportarten → „Statistik-Gruppen“ – die Statistik-Gruppen bearbeiten (Rechnung und Grenzen: js/calc-statgruppen.js).
    Der Entwurf darf unfertige Gruppen enthalten (ohne Namen, unter 2 Sportarten); gespeichert wird nach jeder Änderung, was StatGruppen.sauber() übrig lässt.
-   Dazu „Schneeschuh umstellen“: Wandern-Touren mit dem Schlagwort „Schneeschuh“ einmalig auf die Sportart Schneeschuh – nur auf Knopfdruck, rückgängig machbar. */
+   2.22.0: „Schneeschuh umstellen“ (samt Rückgängig) ist entfernt; die Sportart einer Tour ändert man an der Tour (Aktionen → Sportart ändern). */
 const nameSauberLeer = n => !StatGruppen.nameSauber(n);
 const StatGrpUI = {
   box() {
-    const box = h('div', { id: 'sg-box' });
+    const box = h('div', { id: 'sg-box' }), offen = new Set();      // 2.22.0: Sportarten-Liste je Gruppe eingeklappt (offen: ausgewählte Gruppen-Ids; neue und unfertige Gruppen sind offen)
     let entwurf = StatGruppen.aktuell().map(g => ({ id: g.id, name: g.name, sports: g.sports.slice() }));
     const speichern = async () => { await Set_.set('statGruppen', StatGruppen.zumSpeichern(entwurf, Set_.get('statGruppen'))); };      // 2.19.1: kein neuer Name wie eine Sportart
     const draw = () => {
@@ -247,15 +247,15 @@ const StatGrpUI = {
         const andere = new Map(); entwurf.forEach((o, j) => { if (j !== i) o.sports.forEach(sp => { if (!andere.has(sp)) andere.set(sp, o.name || 'Gruppe ' + (j + 1)); }); });
         const nameIn = h('input', { type: 'text', maxlength: String(StatGruppen.NAME_MAX), value: g.name, id: 'sg-name-' + i, 'aria-label': 'Name der Gruppe ' + (i + 1), placeholder: 'z. B. Wandern (gesamt)', autocapitalize: 'sentences',
           oninput: e => { g.name = e.target.value; }, onchange: async () => { await speichern(); draw(); } });
-        const sports = h('div', { role: 'group', 'aria-label': 'Sportarten der Gruppe ' + (g.name || i + 1) }, Sports.kategorien(g.sports.find(k => Sports.ALT.includes(k))).map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports' }, list.map(([k, label, ic]) => {
+        const sports = h('details', { class: 'sg-wahl', id: 'sg-wahl-' + i, open: offen.has(g.id) || !g.sports.length || !!hinweise[i], ontoggle: e => { if (e.target.open) offen.add(g.id); else offen.delete(g.id); } }, h('summary', null, g.sports.length ? 'Sportarten ändern (' + g.sports.length + ' gewählt)' : 'Sportarten wählen'), h('div', { role: 'group', 'aria-label': 'Sportarten der Gruppe ' + (g.name || i + 1) }, Sports.kategorien(g.sports.find(k => Sports.ALT.includes(k))).map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports' }, list.map(([k, label, ic]) => {
           const besetzt = andere.get(k);
           return h('label', { class: 'sg-sp' + (besetzt ? ' off' : ''), 'data-sport': k },
             h('input', { type: 'checkbox', checked: g.sports.includes(k), disabled: !!besetzt, 'aria-describedby': besetzt ? 'sg-bes-' + i + '-' + k : null,
-              onchange: async e => { const vorher = StatGruppen.kurzName(g.sports); if (e.target.checked) { if (!g.sports.includes(k)) g.sports.push(k); } else g.sports = g.sports.filter(x => x !== k);
+              onchange: async e => { offen.add(g.id); const vorher = StatGruppen.kurzName(g.sports); if (e.target.checked) { if (!g.sports.includes(k)) g.sports.push(k); } else g.sports = g.sports.filter(x => x !== k);
                 if (nameSauberLeer(g.name) || g.name === vorher) g.name = StatGruppen.kurzName(g.sports);      // 2.20.2: Namensvorschlag „<Sportart> (gesamt)“, solange der Name leer oder noch der Vorschlag ist
                 await speichern(); draw(); } }),
             h('span', null, ic + ' ' + label, besetzt ? h('small', { id: 'sg-bes-' + i + '-' + k }, 'in „' + besetzt + '“') : null));
-        }))]).flat());
+        }))]).flat()));
         box.append(h('div', { class: 'sg-grp', id: 'sg-grp-' + i, 'data-id': g.id },
           h('div', { class: 'row' }, h('label', { class: 'fld', style: { flex: '1', margin: '6px 0' } }, 'Name', nameIn),
             h('button', { class: 'btn sm danger', id: 'sg-del-' + i, 'aria-label': 'Statistik-Gruppe ' + (g.name || i + 1) + ' löschen', onclick: async () => {
@@ -269,30 +269,10 @@ const StatGrpUI = {
       box.append(h('div', { class: 'row wrap' },
         h('button', { class: 'btn', id: 'sg-add', disabled: entwurf.length >= StatGruppen.MAX, onclick: () => { entwurf.push({ id: StatGruppen.neueId(entwurf), name: '', sports: [] }); draw(); const f = $('#sg-name-' + (entwurf.length - 1)); if (f) f.focus(); } }, 'Statistik-Gruppe hinzufügen')),
         vs.length ? h('div', { id: 'sg-vorschlaege' }, h('p', { class: 'muted small' }, 'Vorschläge (ein Klick legt die Gruppe an):'), h('div', { class: 'row wrap' }, vs.map(v =>
-          h('button', { class: 'btn', id: 'sg-vorschlag-' + v.id, onclick: async () => { entwurf.push({ id: v.id, name: v.name, sports: v.sports }); await speichern(); draw(); toast('Statistik-Gruppe „' + v.name + '“ gespeichert'); } }, 'Vorschlag: ' + v.knopf)))) : null,
+          h('button', { class: 'btn', id: 'sg-vorschlag-' + v.id, onclick: async () => { offen.add(v.id); entwurf.push({ id: v.id, name: v.name, sports: v.sports }); await speichern(); draw(); toast('Statistik-Gruppe „' + v.name + '“ gespeichert'); } }, 'Vorschlag: ' + v.knopf)))) : null,
         entwurf.length >= StatGruppen.MAX ? h('p', { class: 'muted small' }, 'Höchstens ' + StatGruppen.MAX + ' Statistik-Gruppen.') : null);
     };
     draw();
-    return box;
-  },
-  /** Knopf „Schneeschuh-Touren umstellen“ mit Zählung und Rückgängig. */
-  schneeschuh() {
-    const box = h('div', { id: 'ss-box' });
-    const draw = async () => {
-      const all = await DB.all('tours'), kand = Abgleich.schneeschuhKandidaten(all), zur = Abgleich.schneeschuhZurueckKandidaten(all);
-      box.innerHTML = '';
-      box.append(h('p', { class: 'muted small', id: 'ss-stand' }, kand.length ? (kand.length === 1 ? '1 Wandern-Tour trägt' : kand.length + ' Wandern-Touren tragen') + ' das Schlagwort „Schneeschuh“ (aus der Zeit, als Schneeschuh als Wandern geführt wurde).' : 'Keine Wandern-Tour mit dem Schlagwort „Schneeschuh“ offen.'),
-        h('div', { class: 'row wrap' },
-          kand.length ? h('button', { class: 'btn', id: 'ss-um', onclick: async () => {
-            if (!await confirmBox('Auf Schneeschuh umstellen?', kand.length + (kand.length === 1 ? ' Tour bekommt' : ' Touren bekommen') + ' die Sportart Schneeschuh. Das Schlagwort bleibt. Von Hand gewählte Sportarten bleiben unverändert. Rückgängig machbar.', 'Umstellen')) return;
-            for (const t of kand) await DB.put('tours', Abgleich.schneeschuhUmstellen(t));
-            Tours.invalidate(); toast(kand.length + (kand.length === 1 ? ' Tour' : ' Touren') + ' umgestellt'); draw(); } }, 'Schneeschuh-Touren als Sportart Schneeschuh führen') : null,
-          zur.length ? h('button', { class: 'btn', id: 'ss-zurueck', onclick: async () => {
-            if (!await confirmBox('Umstellung rückgängig machen?', zur.length + (zur.length === 1 ? ' Tour wird' : ' Touren werden') + ' wieder Wandern (mit dem Schlagwort „Schneeschuh“).', 'Rückgängig')) return;
-            for (const t of zur) await DB.put('tours', Abgleich.schneeschuhZurueck(t));
-            Tours.invalidate(); toast('Rückgängig gemacht'); draw(); } }, 'Umstellung rückgängig (' + zur.length + ')') : null));
-    };
-    draw().catch(e => console.error('Schneeschuh', e));
     return box;
   },
 };
@@ -301,6 +281,7 @@ const StatGrpUI = {
 const FavUI = {
   box() {
     const box = h('div', { id: 'fav-box' });
+    let wahlOffen = false;      // 2.22.0: die lange Auswahl ist eingeklappt (bleibt offen, solange man darin arbeitet)
     const setze = async l => { await Set_.set('favAkt', Aktiv.favoriten(l)); draw(); };
     const draw = () => {
       const f = Aktiv.favoriten(Set_.get('favAkt'));
@@ -313,10 +294,11 @@ const FavUI = {
           h('button', { class: 'btn sm', 'aria-label': Sports.label(k) + ' entfernen', onclick: () => setze(Aktiv.umschalten(f, k)) }, '✕')))), { id: 'fav-liste' })
         : h('p', { class: 'muted small', id: 'fav-leer' }, 'Keine Favoriten-Sportarten – beim Aufzeichnen steht dann nur die zuletzt benutzte Sportart und „Mehr …“.'),
         h('p', { class: 'muted small', id: 'fav-zahl', 'aria-live': 'polite' }, f.length + ' von höchstens ' + Aktiv.MAX + ' gewählt.'),
-        ...Sports.kategorien().map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports', role: 'group', 'aria-label': 'Favoriten-Sportarten: ' + knm }, list.map(([k, l, ic]) =>
+        h('details', { id: 'fav-wahl', open: wahlOffen, ontoggle: e => { wahlOffen = e.target.open; } }, h('summary', null, 'Sportarten auswählen'),
+          ...Sports.kategorien().map(([kid, knm, list]) => [h('p', { class: 'muted small sg-kat' }, knm), h('div', { class: 'sg-sports', role: 'group', 'aria-label': 'Favoriten-Sportarten: ' + knm }, list.map(([k, l, ic]) =>
           h('label', { class: 'sg-sp' + (!f.includes(k) && f.length >= Aktiv.MAX ? ' off' : ''), 'data-sport': k },
             h('input', { type: 'checkbox', id: 'fav-' + k, checked: f.includes(k), disabled: !f.includes(k) && f.length >= Aktiv.MAX, onchange: () => setze(Aktiv.umschalten(f, k)) }),
-            h('span', null, ic + ' ' + l))))]).flat(),
+            h('span', null, ic + ' ' + l))))]).flat()),
         h('div', { class: 'row wrap' }, h('button', { class: 'btn', id: 'fav-standard', onclick: async () => { if (await confirmBox('Standard wiederherstellen?', 'Die Favoriten-Sportarten werden wieder: ' + Aktiv.STANDARD.map(Sports.label).join(', ') + '.', 'Wiederherstellen')) setze(Aktiv.STANDARD); } }, 'Standard wiederherstellen')));
     };
     draw();
@@ -350,9 +332,10 @@ const KatalogUI = {
   },
 };
 
-Views['/settings'] = async root => {
+Views['/settings'] = async (root, args) => {
   const body = h('div', { class: 'pad' });
-  root.append(topbar('Einstellungen', { back: true }), body);
+  /* 2.22.0: Einstellungen wie die Verwaltung in Meine Touren – Übersicht mit Gruppen-Zeilen (je mit kurzem Stand), Unterseiten mit Zurück-Pfeil:
+     #/settings → #/settings/<gruppe> → bei „Sportarten“ weiter #/settings/sportarten/<katalog|favoriten|statistik-gruppen>. */
   const sel = (label, key, opts) => h('label', { class: 'fld' }, label, h('select', { onchange: async e => { await Set_.set(key, e.target.value); } }, opts.map(([v, l]) => h('option', { value: v, selected: String(Set_.get(key)) === String(v) }, l))));
   const homeBox = () => {      // Heimatort suchen und übernehmen (Kartenmitte der Planung, Wetter, Vorschläge)
     const q = h('input', { type: 'text', placeholder: 'Ort oder Adresse suchen …', value: Set_.get('homeName') || '', autocapitalize: 'off' }),
@@ -405,22 +388,24 @@ Views['/settings'] = async root => {
      Gliederung wie die Verwaltung von „Meine Touren“: Zusammenarbeit · Sportarten (Katalog, Favoriten, Statistik-Gruppen) · Karte und Planung ·
      Aufzeichnung, Fotos und Videos · Persönliches und Startseite · Sicherung · Über die App (2.20.0: Namen nach docs/LEITFADEN-BEGRIFFE.md). */
   const hint = t => h('p', { class: 'muted small' }, t);
-  const karte = (id, hid, titel, text, ...kids) => h('section', { class: 'card set-k', id }, h('h3', { id: hid }, titel), text ? h('p', { class: 'muted small set-t' }, text) : null, ...kids);
-  const BEREICHE = [];
-  const bereich = (id, titel, text, ...karten) => { BEREICHE.push([id, titel]); return h('section', { class: 'set-g', id }, h('h2', null, titel), text ? h('p', { class: 'muted small set-gt' }, text) : null, ...karten); };
+  const karte = (id, hid, titel, text, ...kids) => h('section', { class: 'card set-k', id }, titel ? h('h3', { id: hid }, titel) : null, text ? h('p', { class: 'muted small set-t' }, text) : null, ...kids);
+  const nz = (n, e, m) => n + '\u00a0' + (n === 1 ? e : m), nbz = t => String(t).replace(/(\d) (?=[A-Za-zÄÖÜäöü])/g, '$1\u00a0');      // Zahl und Einheit zusammenhalten (Leitfaden)
+  const bereich = (key, id, titel, text, karten, icon) => ({ key, id, titel, text, karten, icon });
+  const DETAIL = {      // Unterseiten von „Sportarten“: die langen Listen
+    katalog: { titel: 'Katalog', icon: 'list', sub: () => nz(Sports.katalog.length, 'Sportart', 'Sportarten') + ' in ' + nz(Sports.KAT.length, 'Kategorie', 'Kategorien') + ', mit Symbol und Kartenfarbe',
+      karte: () => karte('akt-katalog', 'akt-katalog-h', null, 'Alle ' + Sports.katalog.length + ' Sportarten nach Kategorien, mit Symbol und Kartenfarbe. Jede Tour behält ihre Sportart.',
+        KatalogUI.box()) },
+    favoriten: { titel: 'Favoriten-Sportarten', icon: 'star', sub: () => { const f = Aktiv.favoriten(Set_.get('favAkt')); return f.length ? nz(f.length, 'Favoriten-Sportart', 'Favoriten-Sportarten') + ': ' + f.slice(0, 3).map(Sports.label).join(', ') + (f.length > 3 ? ' …' : '') : 'Keine Favoriten-Sportarten'; },
+      karte: () => karte('akt-fav', 'fav-h', null, 'Für „Tour aufzeichnen“: Diese Sportarten stehen dort als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
+        FavUI.box()) },
+    'statistik-gruppen': { titel: 'Statistik-Gruppen', icon: 'chart', sub: () => { const r = StatGruppen.sauber(Set_.get('statGruppen')) || []; return r.length ? nz(r.length, 'Statistik-Gruppe', 'Statistik-Gruppen') + ': ' + r.slice(0, 2).map(x => x.name).join(', ') + (r.length > 2 ? ' …' : '') : 'Keine – jede Sportart steht für sich'; },
+      karte: () => karte('akt-sg', 'sg-h', null, 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Statistik-Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort als „Name = Sportart + Sportart …“. Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (alle)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Sportart.',
+        StatGrpUI.box()) },
+  };
   const gruppen = [
-    bereich('set-g-mt', 'Zusammenarbeit', null, MT.einstellung()),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
-    bereich('set-g-akt', 'Sportarten', 'Welche Sportarten es gibt, welche beim Aufzeichnen vorn stehen und welche die Statistik als Statistik-Gruppe zusammen zählt.',
-      karte('akt-katalog', 'akt-katalog-h', 'Katalog', 'Alle ' + Sports.katalog.length + ' Sportarten nach Kategorien, mit Symbol und Kartenfarbe. Jede Tour behält ihre Sportart.',
-        KatalogUI.box(),
-        h('h4', { id: 'ss-h' }, 'Ältere Schneeschuh-Touren'),
-        hint('Seit 2.19.0 ist Schneeschuhwandern eine eigene Sportart. Ältere Touren waren Wandern mit dem Schlagwort „Schneeschuh“ – sie lassen sich hier als Schneeschuhwandern führen (rückgängig machbar, das Schlagwort bleibt).'),
-        StatGrpUI.schneeschuh()),
-      karte('akt-fav', 'fav-h', 'Favoriten-Sportarten', 'Für „Tour aufzeichnen“: Diese Sportarten stehen dort als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
-        FavUI.box()),
-      karte('akt-sg', 'sg-h', 'Statistik-Gruppen', 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Statistik-Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort als „Name = Sportart + Sportart …“. Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (alle)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Sportart.',
-        StatGrpUI.box())),
-    bereich('set-g-karte', 'Karte und Planung', null,
+    bereich('zusammenarbeit', 'set-g-mt', 'Zusammenarbeit', null, () => [MT.einstellung()], 'link'),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
+    bereich('sportarten', 'set-g-akt', 'Sportarten', 'Welche Sportarten es gibt, welche beim Aufzeichnen vorn stehen und welche die Statistik als Statistik-Gruppe zusammen zählt.', () => [UI.list(Object.entries(DETAIL).map(([k, d]) => UI.row({ icon: d.icon, title: d.titel, sub: d.sub(), href: '#/settings/sportarten/' + k, id: 'set-r-' + k })), { id: 'set-sportarten' })], 'flag'),
+    bereich('karte', 'set-g-karte', 'Karte und Planung', null, () => [
       karte('set-k-karte', 'set-karte-h', 'Karte', 'Wie Strecken und Karten aussehen und woher die Kacheln kommen.',
         h('div', { class: 'fld' }, 'Streckenfarbe', h('div', { class: 'chips wrap', id: 'rc' }, [['', 'Nach Sportart'], ['#e53935', 'Rot'], ['#fb8c00', 'Orange'], ['#fdd835', 'Gelb'], ['#43a047', 'Grün'], ['#1e88e5', 'Blau'], ['#8e24aa', 'Violett'], ['#d81b60', 'Pink'], ['#212121', 'Schwarz']].map(([c, n]) =>
           h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),
@@ -437,8 +422,8 @@ Views['/settings'] = async root => {
           FlugCalc.WAHL.map(([v, l]) => h('option', { value: v, selected: FlugCalc.stufe(Set_.get('flugStufe'), Flug.handy()) === v }, l)))),
         hint('„Flüssig“ rechnet mit weniger Bildpunkten und einfacherem Gelände, damit der Flug auch auf Handys ruhig läuft. „Schön“ zeichnet schärfer und mit Geländeschatten. Ruckelt der Flug, schaltet die App von selbst eine Stufe herunter.')),
       karte('set-k-routing', 'set-routing-h', 'Routing', 'Server und Profil für „Wegen folgen“ in der Planung.',
-        inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'))),
-    bereich('set-g-aufn', 'Aufzeichnung, Fotos und Videos', null,
+        inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'))], 'map'),
+    bereich('aufzeichnung', 'set-g-aufn', 'Aufzeichnung, Fotos und Videos', null, () => [
       // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
       karte('set-k-rec', 'set-rec-h', 'Aufzeichnung', null,
         h('p', { class: 'muted small set-t', id: 'set-akku-txt' }, 'Manche Handys beenden Apps im Hintergrund, um Akku zu sparen – dann bricht eine lange Aufzeichnung ab. Öffne die Akku-Einstellungen, suche „Tourentagebuch“ und wähle „Nicht eingeschränkt“ (je nach Handy auch „Nicht optimieren“). Die App kann das nicht selbst einstellen. Bricht eine Aufzeichnung trotzdem ab, sind die Punkte bis dahin gesichert, und die App bietet beim nächsten Öffnen Fortsetzen oder Speichern an.'),
@@ -455,8 +440,8 @@ Views['/settings'] = async root => {
         hint('Ab Android 10 im Ordner „Movies/Tourentagebuch“, ohne zusätzliche Berechtigung. Auf älteren Handys wird keine Kopie angelegt. Das Video bleibt in jedem Fall auch in der App.'),
         window.MTApp ? h('div', { class: 'vg-box' }, vgStand, h('button', { class: 'btn', id: 'set-vgalcopy', onclick: () => VideoGalerie.kopieren(zeigeVg) }, 'Vorhandene Videos in die Galerie kopieren')) : null,
         UI.toggle('HEVC-Videos beim Aufnehmen automatisch umwandeln', !!Set_.get('videoAuto'), async v => { await Set_.set('videoAuto', !!v); Videos.prefs(); }, { id: 'set-vauto' }),
-        hint('Aus: Videos bleiben, wie die Kamera sie speichert; der Player der App spielt sie ab. Umwandeln in H.264 geht jederzeit unter Foto-Quellen oder in den Details eines Videos.'))),
-    bereich('set-g-ich', 'Persönliches und Startseite', null,
+        hint('Aus: Videos bleiben, wie die Kamera sie speichert; der Player der App spielt sie ab. Umwandeln in H.264 geht jederzeit unter Foto-Quellen oder in den Details eines Videos.'))], 'rec'),
+    bereich('persoenlich', 'set-g-ich', 'Persönliches und Startseite', null, () => [
       karte('set-k-home', 'set-home-h', 'Heimatort', 'Kartenmitte der Planung, Wetter und Vorschläge.', homeBox()),
       karte('set-k-puls', 'set-puls-h', 'Puls und Fitness', 'Bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.',
         inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
@@ -466,8 +451,8 @@ Views['/settings'] = async root => {
       karte('set-k-start', 'homeset-h', 'Startseite', 'Was unter den Hauptknöpfen steht. Die Reihenfolge ist fest. Den Hinweis auf die Sicherung stellst du unter „Sicherung“ ein.',
         h('div', { id: 'homeset' }, Home.blocks.filter(b => b.meta).map(b => h('div', { class: 'hs-row' }, UI.toggle(b.meta.label, Home.shown(b), async on => {
           const m = Object.assign({}, Set_.get('homeShow') || {}); m[b.id] = !!on; await Set_.set('homeShow', m);
-        }, { id: 'hs-' + b.id }), b.meta.sub ? hint(b.meta.sub) : null))))),
-    bereich('set-g-sich', 'Sicherung', `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`,
+        }, { id: 'hs-' + b.id }), b.meta.sub ? hint(b.meta.sub) : null))))], 'home'),
+    bereich('sicherung', 'set-g-sich', 'Sicherung', `${nT} Touren · ${nP} Fotos. Alle Daten liegen nur auf diesem Handy. Mach regelmäßig eine Sicherung und speichere sie außerhalb des Handys.`, () => [
       karte('set-k-bk', 'bk-h', 'Touren und Einstellungen sichern', null,
         h('p', { class: 'muted small', id: 'lastbk' }, 'Letzte Sicherung: noch nie'),
         h('p', { class: 'muted small', id: 'bk-media' }, 'Die Foto- und Videodateien sind in dieser Sicherung nicht enthalten, nur ihre Einträge (Zeit, Ort, Tour). Die Dateien sicherst du getrennt unter „Fotos und Videos sichern“. Offline-Karten sind auch nicht enthalten – sie lassen sich jederzeit neu laden.'),
@@ -488,22 +473,44 @@ Views['/settings'] = async root => {
         h('div', { class: 'row wrap' }, h('button', { class: 'btn pri', id: 'md-save', onclick: async () => { await Medien.sichern(); showMedien(); } }, 'Sichern'),
           h('button', { class: 'btn', id: 'md-restore', onclick: async () => { await Medien.wiederherstellen(); showMedien(); } }, 'Wiederherstellen'),
           h('button', { class: 'btn', id: 'md-folder', onclick: async () => { const f = await Medien.ordner(true); if (f) toast('Sicherungsordner: ' + f.name, 4000); showMedien(); } }, 'Ordner ändern')),
-        hint('Wiederherstellen: eine oder mehrere Medien-Sicherungen wählen. Fotos und Videos, die schon auf dem Handy sind, bleiben unverändert.'))),
-    bereich('set-g-app', 'Über die App', null,
+        hint('Wiederherstellen: eine oder mehrere Medien-Sicherungen wählen. Fotos und Videos, die schon auf dem Handy sind, bleiben unverändert.'))], 'save'),
+    bereich('app', 'set-g-app', 'Über die App', null, () => [
       karte('set-k-update', 'set-update-h', 'Updates', 'Beim Start fragt die App höchstens alle 12 Stunden bei github.com nach, ob es eine neue Version gibt. Übertragen wird nur diese Anfrage, keine Touren, Fotos oder Angaben zu dir. Heruntergeladen wird nichts von selbst; Android fragt vor der Installation selbst nach.',
         UI.toggle('Auf neue Version prüfen', Set_.get('updateCheck') !== false, v => Set_.set('updateCheck', !!v), { id: 'set-update' }),
         h('h4', { id: 'upd-h' }, 'Auf Updates prüfen'), Update.zeile()),
       karte('set-k-ueber', 'set-ueber-h', 'Version und Lizenzen', 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)',
         window.MTApp ? h('div', { class: 'row wrap' }, h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll')) : null),
       karte('set-k-wipe', 'set-wipe-h', 'Alle Daten löschen', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht. Vorher eine Sicherung machen.',
-        h('div', { class: 'row wrap' }, h('button', { class: 'btn sm danger', id: 'set-wipe', onclick: wipe }, 'Alle Daten löschen')))),
+        h('div', { class: 'row wrap' }, h('button', { class: 'btn sm danger', id: 'set-wipe', onclick: wipe }, 'Alle Daten löschen')))], 'info'),
   ];
-  // Inhalt: springt zu einem Bereich (kein Seitenwechsel)
-  const inhalt = h('nav', { class: 'chips wrap set-inhalt', id: 'set-inhalt', 'aria-label': 'Bereiche der Einstellungen' }, BEREICHE.map(([id, titel]) =>
-    h('button', { class: 'chip', 'data-ziel': id, onclick: () => { const z = document.getElementById(id); if (z) z.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, titel)));
-  body.append(inhalt, ...gruppen);
-
-  showLast(); showMedien(); if (window.MTApp) zeigeVg();
+  /* Kurzer Stand je Gruppe für die Übersicht (ein Satz, Zahl und Einheit mit geschütztem Leerzeichen). */
+  const SUMME = {
+    zusammenarbeit: async () => MT.aktiv() ? 'Eingeschaltet' : 'Aus – das Tagebuch bleibt ganz für sich',
+    sportarten: async () => { const f = Aktiv.favoriten(Set_.get('favAkt')), r = StatGruppen.sauber(Set_.get('statGruppen')) || [];
+      return nz(Sports.katalog.length, 'Sportart', 'Sportarten') + ' · ' + nz(f.length, 'Favoriten-Sportart', 'Favoriten-Sportarten') + ' · ' + (r.length ? nz(r.length, 'Statistik-Gruppe', 'Statistik-Gruppen') : 'keine Statistik-Gruppe'); },
+    karte: async () => { const pv = MapKit.providers[Set_.get('tiles')], fl = FlugCalc.WAHL.find(x => x[0] === FlugCalc.stufe(Set_.get('flugStufe'), Flug.handy()));
+      return 'Karte: ' + (pv ? pv.name : 'OpenStreetMap') + ' · 3D-Flug: ' + (fl ? fl[1].replace(/ \(.*\)$/, '') : '–'); },
+    aufzeichnung: async () => { const vl = VideoCalc.LIMITS.find(x => x[0] === String(Set_.get('videoLimit'))), pm = +Set_.get('photoMargin') || 0;
+      return nbz('Längste Video-Aufnahme: ' + (vl ? vl[1] : '2 Minuten') + ' · Foto-Zeitfenster: ' + (pm ? pm + ' Minuten' : 'genau')); },
+    persoenlich: async () => (Set_.get('homeName') ? 'Heimatort: ' + Set_.get('homeName') : 'Noch kein Heimatort') + (Set_.get('hrMax') ? ' · Maximalpuls ' + Set_.get('hrMax') + ' bpm' : ''),
+    sicherung: async () => { const t = await DB.kvGet('lastBackup', null), d = +Set_.get('backupDays') || 0;
+      return 'Letzte Sicherung: ' + (t ? F.dshort(t) : 'noch nie') + ' · Erinnerung: ' + (d ? 'nach ' + d + ' Tagen' : 'aus'); },
+    app: async () => 'Version ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Prüfung auf neue Version: ' + (Set_.get('updateCheck') !== false ? 'an' : 'aus'),
+  };
+  const gr = args && args[0] ? gruppen.find(x => x.key === args[0]) : null, dt = gr && gr.key === 'sportarten' && args[1] ? DETAIL[args[1]] : null;
+  if (dt) {      // Unterseite einer langen Liste
+    root.append(topbar(dt.titel, { back: true }), body); body.append(dt.karte());
+  } else if (gr) {      // eine Gruppe
+    root.append(topbar(gr.titel, { back: true }), body);
+    if (gr.text) body.append(h('p', { class: 'muted small set-gt' }, gr.text));
+    body.append(...gr.karten());
+    if (gr.key === 'sicherung') { showLast(); showMedien(); }
+    if (gr.key === 'aufzeichnung' && window.MTApp) zeigeVg();
+  } else {      // Übersicht
+    root.append(topbar('Einstellungen', { back: true }), body);
+    const sums = await Promise.all(gruppen.map(x => SUMME[x.key]().catch(() => '')));
+    body.append(UI.list(gruppen.map((x, i) => UI.row({ icon: x.icon, title: x.titel, sub: sums[i], href: '#/settings/' + x.key, id: 'set-r-' + x.key })), { id: 'set-uebersicht' }));
+  }
   async function wipe() {
     if (!await confirmBox('Alle Daten löschen?', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht. Zurückholen lassen sie sich nur aus einer Sicherung.', 'Löschen')) return;
     for (const s of ['tours', 'tracks', 'photos']) await DB.clear(s);

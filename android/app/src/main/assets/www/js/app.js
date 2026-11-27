@@ -11,7 +11,9 @@ const Nav = {
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
   deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/fotodoppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan', '/offline'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
-  back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go(Nav.home[Nav.cur] || '/start'); },
+  back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go(Nav.oben() || Nav.home[Nav.cur] || '/start'); },
+  /** 2.22.0: Eine Ebene höher innerhalb der Einstellungen (/settings/<gruppe>/<seite> → /settings/<gruppe> → /settings), sonst nichts. */
+  oben() { const p = Nav.raw.split('/').filter(Boolean); return Nav.cur === '/settings' && p.length > 1 ? '/' + p.slice(0, -1).join('/') : ''; },
   depth: 0,
   /** Rendert nie zweimal gleichzeitig: Ein laufender Aufbau wird zu Ende geführt, danach wird höchstens einmal neu gezeichnet. */
   async render() {

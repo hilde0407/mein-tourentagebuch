@@ -1785,18 +1785,10 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   eq(SG.einspielen([], undefined), [], 'nichts in der Sicherung: nichts ändert sich');
   eq(SG.einspielen(undefined, 'kaputt'), [], 'Unsinn in der Sicherung: kein Fehler');
 
-  // Schneeschuh: Abgleich gleichwertig, Umstellen nur auf Knopfdruck, rückgängig
+  // Schneeschuh: Abgleich gleichwertig (kein stilles Umstellen)
   ok(AB.sportGleich('hike', 'snowshoe') && AB.sportGleich('snowshoe', 'hike') && AB.sportGleich('run', 'run') && !AB.sportGleich('hike', 'walk') && !AB.sportGleich('ski', 'snowshoe'), 'Wandern ↔ Schneeschuh ist keine Änderung');
   ok(AB.sportGleich('ebike', 'emtb') && AB.sportGleich('hike', 'nordicwalking') && AB.sportGleich('mountaineering', 'climbing') && AB.sportGleich('skialpin', 'snowboard') && !AB.sportGleich('emtb', 'mtb'), 'neue Sportarten ↔ Zuordnung bis 2.18');
-  const alt = [T('a1', 'hike', day(2025, 1, 5), 5000, 100, { tags: ['Schneeschuh'] }), T('a2', 'hike', day(2025, 1, 6), 5000, 100), T('a3', 'hike', day(2025, 1, 7), 5000, 100, { tags: ['Schneeschuh'], sportMan: 1 }), T('a4', 'snowshoe', day(2025, 1, 8), 5000, 100, { tags: ['Schneeschuh'] })];
-  const kd = AB.schneeschuhKandidaten(alt);
-  ok(kd.length === 1 && kd[0].id === 'a1', 'nur Wandern + Schlagwort, nicht von Hand gewählt');
-  const um = AB.schneeschuhUmstellen(kd[0]);
-  ok(um.sport === 'snowshoe' && um.tags.join() === 'Schneeschuh' && um.ssUm === 1 && kd[0].sport === 'hike', 'umgestellt (Kopie), Schlagwort bleibt');
-  const nach = alt.map(t => (t.id === 'a1' ? um : t)), zk = AB.schneeschuhZurueckKandidaten(nach);
-  ok(zk.length === 1 && zk[0].id === 'a1' && AB.schneeschuhKandidaten(nach).length === 0, 'Rückgängig nur für umgestellte Touren');
-  const zu = AB.schneeschuhZurueck(zk[0]);
-  ok(zu.sport === 'hike' && !('ssUm' in zu) && zu.tags.join() === 'Schneeschuh', 'rückgängig gemacht');
+  ok(typeof AB.schneeschuhUmstellen === 'undefined' && typeof AB.schneeschuhZurueck === 'undefined', '2.22.0: „Schneeschuh umstellen“ samt Rückgängig ist entfernt');
   ok(SE.sport(T('s', 'snowshoe', 0, 1, 0)) === 'snowshoe' && SE.sport(T('s', 'hike', 0, 1, 0, { tags: ['Schneeschuh'] })) === 'snowshoe' && SE.sport(T('s', 'mountaineering', 0, 1, 0)) === 'mountaineering', 'Senden an Meine Touren: snowshoe');
   eq(['emtb', 'nordicwalking', 'climbing', 'trailrun', 'gravel', 'snowboard', 'bikepacking', 'kayak', 'rafting', 'paraglide', 'horse', 'other'].map(k => SE.sport(T('s', k, 0, 1, 0))),
     ['e_mtb', 'nordicwalking', 'mountaineering', 'jogging', 'touringbicycle', 'skialpin', 'touringbicycle', null, null, null, null, null], 'neue Sportarten beim Senden');

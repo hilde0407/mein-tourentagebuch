@@ -297,7 +297,7 @@ def videos_290(pg):
     pg.wait_for_selector(".lb", state="detached")
 
     # 6. Einstellungen: Vorgaben (2 Minuten, Galerie an, Umwandeln aus), Änderungen gespeichert und an die Hülle (videoPrefs)
-    go(pg, "#/settings", "#set-vlimit")
+    go(pg, "#/settings/aufzeichnung", "#set-vlimit")
     assert pg.input_value("#set-vlimit") == "120", pg.input_value("#set-vlimit")
     assert [o.strip() for o in pg.locator("#set-vlimit option").all_inner_texts()] == ["30 Sekunden", "2 Minuten", "5 Minuten", "Unbegrenzt"]
     assert pg.is_checked("#set-vgal input") and not pg.is_checked("#set-vauto input")
@@ -307,9 +307,10 @@ def videos_290(pg):
     pg.click("#set-vauto"); pg.wait_for_function("() => window.__vprefs && window.__vprefs.auto === true")
     st = pg.evaluate("DB.kvGet('settings', {})")
     assert st["videoLimit"] == "300" and st["videoGallery"] is False and st["videoAuto"] is True, st
-    go(pg, "#/settings", "#set-vlimit")      # neu aufgebaut: zeigt die gespeicherten Werte
+    go(pg, "#/settings/aufzeichnung", "#set-vlimit")      # neu aufgebaut: zeigt die gespeicherten Werte
     assert pg.input_value("#set-vlimit") == "300" and not pg.is_checked("#set-vgal input") and pg.is_checked("#set-vauto input")
-    assert "nicht enthalten" in pg.inner_text("#bk-media") and "Videos" in pg.inner_text("#bk-media")
+    go(pg, "#/settings/sicherung", "#bk-media"); assert "nicht enthalten" in pg.inner_text("#bk-media") and "Videos" in pg.inner_text("#bk-media")
+    go(pg, "#/settings/aufzeichnung", "#set-vlimit")
     pg.select_option("#set-vlimit", "0"); pg.wait_for_function("() => window.__vprefs.limit === '0'")
     # zurück auf die Vorgaben
     pg.select_option("#set-vlimit", "120"); pg.click("#set-vgal"); pg.click("#set-vauto")
@@ -644,7 +645,7 @@ def rettung_2120(pg):
         assert "Tour gespeichert" in toast_text(pg, "gespeichert") and pg.evaluate("__rec.state") == "idle"
         assert pg.evaluate("sessionStorage.getItem('recAutoSave')") is None
         # 7. Einstellungen: Abschnitt Aufzeichnung mit ehrlichem Satz, Stand und Knopf
-        go(pg, "#/settings", "#set-akku")
+        go(pg, "#/settings/aufzeichnung", "#set-akku")
         assert "kann das nicht selbst einstellen" in pg.inner_text("#set-akku-txt") and "eingeschränkt" in pg.inner_text("#set-akku-stand")
         pg.click("#set-akku"); assert pg.evaluate("window.__akkuAuf") == 2
         pg.evaluate("window.__akkuFrei = true; window.dispatchEvent(new Event('mtresume'))")
@@ -827,7 +828,7 @@ def video_2120(pg):
         assert pg.evaluate("id => DB.get('photos', id).then(p => p.dur)", vid) == 6000
         # 6. Vorhandene Videos in die Galerie: Zählung, Rückfrage, Fortschritt „1 von 2“, Ergebnis, neue Zählung
         pg.evaluate("async () => { await DB.put('photos', { id: 'g1b2c3d4e5f6a7b8c9dv', name: 'Video.mp4', ts: 1700000400000, video: true, dur: 3000, tour: '' }); }")
-        go(pg, "#/settings", "#set-vgalcopy"); pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === '2 Videos noch nicht in der Galerie'")
+        go(pg, "#/settings/aufzeichnung", "#set-vgalcopy"); pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === '2 Videos noch nicht in der Galerie'")
         pg.click("#set-vgalcopy"); pg.wait_for_selector(".sheet[aria-label='Videos in die Galerie kopieren?']")
         assert "2 Videos werden" in pg.inner_text(".sheet[aria-label='Videos in die Galerie kopieren?']") and "Movies/Tourentagebuch" in pg.inner_text(".sheet[aria-label='Videos in die Galerie kopieren?']")
         pg.click(".sheet[aria-label='Videos in die Galerie kopieren?'] button.pri"); pg.wait_for_selector("#vj-txt")
@@ -838,7 +839,7 @@ def video_2120(pg):
         leise(); pg.evaluate("() => { __vj.scan = { supported: true, all: 3, n: 0, ids: [] }; __vjEnde({ ok: 1, bad: 1, msg: 'Speicher voll', cancelled: false }); }")
         assert toast_text(pg, "Galerie kopiert") == "1 Video in die Galerie kopiert · 1 nicht möglich (Speicher voll)", pg.inner_text("#toast")
         pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === 'Alle Videos sind schon in der Galerie.' && document.querySelector('#set-vgalcopy').disabled")
-        pg.evaluate("__vj.scan = { supported: false, all: 3, n: 3, ids: [] }"); go(pg, "#/settings", "#set-vgalcopy")
+        pg.evaluate("__vj.scan = { supported: false, all: 3, n: 3, ids: [] }"); go(pg, "#/settings/aufzeichnung", "#set-vgalcopy")
         pg.wait_for_function("() => document.querySelector('#set-vgal-n').textContent === 'Erst ab Android 10 möglich.' && document.querySelector('#set-vgalcopy').disabled")
     finally:
         pg.evaluate("""async ids => { window.MTApp.call = window.__vjcall0; for (const id of ids) await DB.del('photos', id); window.__lightbox && window.__lightbox.close();
@@ -854,7 +855,7 @@ def sicherung_2100(pg):
     calls = lambda m: pg.evaluate("m => __md.calls.filter(c => c[0] === m).map(c => c[1])", m)
     try:
         # 1. Einstellungen: Hinweis angepasst, Stand der Medien, noch nie gesichert, noch kein Ordner
-        go(pg, "#/settings", "#md-stand")
+        go(pg, "#/settings/sicherung", "#md-stand")
         pg.wait_for_function("() => document.querySelector('#md-stand').textContent.includes('noch nicht gesichert')")
         assert pg.inner_text("#md-stand") == "8 Dateien · 30 MB · 5 Dateien noch nicht gesichert (12 MB)", pg.inner_text("#md-stand")
         assert pg.inner_text("#md-last") == "Zuletzt gesichert: noch nie" and "noch keiner gewählt" in pg.inner_text("#md-ordner")
@@ -990,7 +991,7 @@ def offline_2110(pg):
     try:
         # 1. Erreichbar über Mehr, Einstellungen und den Kartenreiter (sichtbarer Ausschnitt wird übernommen)
         go(pg, "#/mehr", "#m-offline"); assert pg.get_attribute("#m-offline", "href") == "#/offline"
-        go(pg, "#/settings", "#set-offline"); assert "Offline-Karten sind auch nicht enthalten" in pg.inner_text("#bk-media")
+        go(pg, "#/settings/karte", "#set-offline"); go(pg, "#/settings/sicherung", "#bk-media"); assert "Offline-Karten sind auch nicht enthalten" in pg.inner_text("#bk-media")
         go(pg, "#/map", "#tooffline")
         pg.evaluate("document.querySelector('.map.full').__karte.map.setView([47.45, 11.08], 13, { animate: false })"); pg.wait_for_timeout(200)
         vb = pg.evaluate("(() => { const b = document.querySelector('.map.full').__karte.map.getBounds(); return [b.getSouth(), b.getNorth()]; })()")
@@ -1131,9 +1132,9 @@ def neue_funktionen(pg):
     assert pg.evaluate("DB.kvGet('lastBackup', 0).then(v => Date.now() - v < 20000)"), "Zeitpunkt der Sicherung gemerkt"
     pg.evaluate("async ([d]) => { await DB.kvSet('lastBackup', Date.now() - 10 * d); }", [DAY]); pg.evaluate("Nav.render()"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300)
     assert pg.locator("#backupnote").count() == 0, "10 Tage sind unter der Schwelle von 14"
-    pg.evaluate("location.hash = '#/settings'"); pg.wait_for_selector("#bk-days"); pg.click("#bk-days .chip:has-text('7 Tage')"); pg.wait_for_function("Set_.get('backupDays') === 7")
+    pg.evaluate("location.hash = '#/settings/sicherung'"); pg.wait_for_selector("#bk-days"); pg.click("#bk-days .chip:has-text('7 Tage')"); pg.wait_for_function("Set_.get('backupDays') === 7")
     pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#backupnote"); assert "vor 10 Tagen" in pg.inner_text("#backupnote")
-    pg.evaluate("location.hash = '#/settings'"); pg.wait_for_selector("#bk-days"); pg.click("#bk-days .chip:has-text('Aus')"); pg.wait_for_function("Set_.get('backupDays') === 0")
+    pg.evaluate("location.hash = '#/settings/sicherung'"); pg.wait_for_selector("#bk-days"); pg.click("#bk-days .chip:has-text('Aus')"); pg.wait_for_function("Set_.get('backupDays') === 0")
     pg.evaluate("location.hash = '#/start'"); pg.wait_for_selector("#hero"); pg.wait_for_timeout(300); assert pg.locator("#backupnote").count() == 0, "Erinnerung aus"
     pg.evaluate("async () => { await Set_.set('backupDays', 14); await DB.kvSet('lastBackup', Date.now()); }")
 
@@ -1277,7 +1278,7 @@ def neue_funktionen(pg):
     pg.evaluate("async () => { await Set_.set('homeShow', { fitness: true }); Nav.render(); }"); pg.wait_for_selector("#fitness-home"); assert "Orientierung, keine medizinische Aussage" in pg.inner_text("#fitness-home")
     pg.evaluate("async () => { await Set_.set('homeShow', {}); }")
     # --- 8. Startseite einrichten (Einstellungen) ---
-    pg.evaluate("Nav.go('/settings')"); pg.wait_for_selector("#homeset")
+    pg.evaluate("Nav.go('/settings/persoenlich')"); pg.wait_for_selector("#homeset")
     assert pg.locator("#homeset input[type=checkbox]").count() >= 5 and "Sicherung" in pg.inner_text("#view")
     assert not pg.is_checked("#hs-serie input") and not pg.is_checked("#hs-fitness input") and pg.is_checked("#hs-recent input") and pg.is_checked("#hs-memo input")
     pg.click("#hs-serie"); pg.click("#hs-recent"); pg.wait_for_function("Set_.get('homeShow').serie === true && Set_.get('homeShow').recent === false")
@@ -1661,7 +1662,7 @@ def neue_layout(pg, ids):
     """Gestaltungsprüfung der neuen Abschnitte, Seiten und Blätter (Rückblick, Plan und Ergebnis, Planungshilfe, Fitness, Ziele, Startseite mit allen Bausteinen)."""
     tour = lambda k: "#/tour/" + ids[k]
     pg.evaluate("async () => { await Goals.save([{ id: 'lay1', period: 'year', year: new Date().getFullYear(), metric: 'km', target: 1200, sport: '' }, { id: 'lay2', period: 'week', year: 0, metric: 'count', target: 2, sport: 'grp:foot' }]); }")
-    bad = layout_check(pg, ["#/stats/fitness", "#/stats/ziele", "#/stats/rekorde", tour("big"), tour("linked"), tour("plan"), "#/settings"])
+    bad = layout_check(pg, ["#/stats/fitness", "#/stats/ziele", "#/stats/rekorde", tour("big"), tour("linked"), tour("plan"), "#/settings", "#/settings/sportarten"])
     for sel, name in (("#fitness #fit-total", "Fitness"), ("#goals .ygoal", "Ziele")):      # die Seiten zeigen wirklich die neuen Inhalte
         pg.evaluate("h => { location.hash = h }", "#/stats/" + ("fitness" if name == "Fitness" else "ziele")); pg.wait_for_selector(sel)
     pg.evaluate("h => { location.hash = h }", tour("big")); pg.wait_for_selector("#rueckblick")
@@ -2619,7 +2620,7 @@ def fuehrer(pg):
     go(pg, "#/start", "#fuehrer-home-row"); tx = pg.inner_text("#fuehrer-home-row"); assert "Wanderführer: 4 von 15 gewandert" in tx and "3 Bücher" in tx, tx
     assert pg.evaluate("document.querySelector('#fuehrer-home-row').getAttribute('href')") == "#/fuehrer"
     shot("6-start")
-    go(pg, "#/settings", "#homeset"); assert "Wanderführer" in pg.inner_text("#homeset")
+    go(pg, "#/settings/persoenlich", "#homeset"); assert "Wanderführer" in pg.inner_text("#homeset")
     pg.locator("#homeset .sw", has_text="Wanderführer").click(); pg.wait_for_function("(Set_.get('homeShow') || {}).fuehrer === false")
     go(pg, "#/start", "#hero"); pg.wait_for_timeout(300); assert pg.locator("#fuehrer-home").count() == 0, "abgeschaltet: keine Zeile"
     pg.evaluate("Set_.set('homeShow', {})"); go(pg, "#/start", "#fuehrer-home-row")
@@ -2951,10 +2952,10 @@ def pdf_karte(pg, aus=None):
     assert "Abgebrochen" in toast_text(pg, "Abgebrochen") and pg.evaluate("window.__saved") is None and time.time() - t0 < 6, "Abbruch beim Kartenladen"
     pg.wait_for_function("PdfUI.busy === false", timeout=5000); pg.evaluate("window.__klHaengen = false")
     # ---- Schalter in den Einstellungen (Vorgabe an); aus → Skizze, kein Netz
-    go(pg, "#/settings", "#pdf-karte"); assert pg.locator("#pdf-karte input").is_checked() and "braucht Internet" in pg.inner_text("#pdf-karte")
+    go(pg, "#/settings/karte", "#pdf-karte"); assert pg.locator("#pdf-karte input").is_checked() and "braucht Internet" in pg.inner_text("#pdf-karte")
     pg.click("#pdf-karte"); pg.wait_for_function("Set_.get('pdfKarte') === false"); assert pg.evaluate("DB.kvGet('settings', {}).then(s => s.pdfKarte)") is False
     neu(); d, hw, _ = tour_pdf(); pdf_pruefen(d, 1, "Schalter aus", 0); assert hw == 0 and not st["urls"] and pg.evaluate("window.__kl.n") == 0, st["urls"]
-    go(pg, "#/settings", "#pdf-karte"); pg.click("#pdf-karte"); pg.wait_for_function("Set_.get('pdfKarte') === true")
+    go(pg, "#/settings/karte", "#pdf-karte"); pg.click("#pdf-karte"); pg.wait_for_function("Set_.get('pdfKarte') === true")
     # ---- sehr lange Tour (etwa 560 km, 3000 Punkte): kleiner Zoom, Kachelgrenze hält
     tl = pg.evaluate("""async () => { const N = 3000, t0 = Date.UTC(2026, 6, 1, 6); const pts = Array.from({ length: N }, (_, i) => ({ lat: 48.14 - i / (N - 1) * 2.7 + 0.2 * Math.sin(i / 140), lon: 11.58 + i / (N - 1) * 0.76, ele: 500 + 300 * Math.sin(i / 300), t: t0 + i * 60000 }));
       return (await Tours.add({ name: 'München–Venedig', sport: 'bike', pts, src: 'file' })).tour.id; }""")
@@ -3362,10 +3363,10 @@ def erststart_2150(pg):
     assert "Nutzt du auch" in pg.inner_text("#mt-frage") and pg.locator("#mt-frage-nein").count() == 1 and pg.locator("#mt-frage-ja").count() == 1
     assert pg.locator(".sheet").count() == 0, "die Frage blockiert nichts"
     assert mt_spuren(pg, "#mt-frage") == [], mt_spuren(pg, "#mt-frage")
-    for r in ("#/mehr", "#/settings", "#/import"):
+    for r in ("#/mehr", "#/settings", "#/settings/zusammenarbeit", "#/import"):      # 2.22.0: die Karte steht auf der Unterseite „Zusammenarbeit“; die Übersicht sagt nichts von Meine Touren
         go(pg, r, "#view > *"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
         assert mt_spuren(pg) == [], (r, mt_spuren(pg))
-        if r == "#/settings": assert not pg.is_checked("#set-mt input") and pg.locator("#set-mt-box").count() == 1
+        if r == "#/settings/zusammenarbeit": assert not pg.is_checked("#set-mt input") and pg.locator("#set-mt-box").count() == 1
     go(pg, "#/start", "#mt-frage"); pg.wait_for_function(LEISE, timeout=30000)
     pg.click("#mt-frage-nein"); assert "ganz für sich" in toast_text(pg, "für sich")
     pg.wait_for_selector("#mt-frage", state="detached")
@@ -3413,10 +3414,10 @@ def mt_schalter_2150(pg):
     a0 = tour("A"); assert a0["up"] == 999 and a0["dist"] == 12345, a0
 
     # --- Ausschalten im Betrieb (Einstellungen): sofort, mit Meldung, ohne Löschen der Sitzung; Zahlen: eigene Rechnung ---
-    go(pg, "#/settings", "#set-mt"); leise()
-    # 2.19.0: oben die Sprungleiste, dann als erster Bereich „Zusammenarbeit“ mit der Karte „Meine Touren“ als erster Karte
-    oben = pg.evaluate("(() => { const k = [...document.querySelector('#view .pad').children]; return [k[0].id, k[1].id, k[1].querySelector('.set-k').id, document.querySelector('#set-inhalt .chip').dataset.ziel]; })()")
-    assert oben == ["set-inhalt", "set-g-mt", "set-mt-box", "set-g-mt"], ("Abschnitt ganz oben", oben)
+    go(pg, "#/settings/zusammenarbeit", "#set-mt"); leise()
+    # 2.22.0: Unterseite „Zusammenarbeit“ mit der Karte „Meine Touren“ als einziger Karte; die Übersicht nennt den Stand
+    oben = pg.evaluate("(() => { const k = [...document.querySelector('#view .pad').children]; return [k.length, k[0].id]; })()")
+    assert oben == [1, "set-mt-box"], ("Unterseite Zusammenarbeit", oben)
     assert pg.is_checked("#set-mt input") and "Ohne diese Option bleibt Mein Tourentagebuch ganz für sich." in pg.inner_text("#set-mt-box")
     pg.click("#set-mt"); assert "ganz für sich" in toast_text(pg, "für sich")
     pg.wait_for_function("() => !MT.aktiv() && Set_.get('mtWahl') === 'nein'")
@@ -3429,7 +3430,8 @@ def mt_schalter_2150(pg):
 
     # (a) jede Ansicht ohne Meine Touren
     routes = ["#/start", "#/", "#/tour/" + ids["A"], "#/tour/" + ids["B"], "#/tour/" + ids["C"], "#/rec", "#/import", "#/sources", "#/photos", "#/fuehrer", "#/stats",
-              "#/stats/rekorde", "#/stats/auswertung", "#/stats/ziele", "#/jahr", "#/mehr", "#/settings", "#/doppelt", "#/reisen", "#/plan"]
+              "#/stats/rekorde", "#/stats/auswertung", "#/stats/ziele", "#/jahr", "#/mehr", "#/settings", "#/settings/zusammenarbeit", "#/settings/sportarten", "#/settings/karte", "#/settings/aufzeichnung", "#/settings/persoenlich",
+              "#/settings/sicherung", "#/settings/app", "#/doppelt", "#/reisen", "#/plan"]
     for r in routes:
         pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", r)
         pg.wait_for_function("h => !Nav._busy && Nav.cur === '/' + (h.slice(2).split('/')[0] || '') && document.querySelector('#view').children.length > 0", arg=r); pg.wait_for_timeout(500)
@@ -3498,8 +3500,8 @@ def mt_schalter_2150(pg):
     go(pg, "#/import", "#imp-mt"); go(pg, "#/mehr", "#m-import"); assert "Meine Touren" in pg.inner_text("#m-import")
     assert pg.evaluate("Import.Alles.quellen().then(q => q.map(x => x.id))") == ["mt"]
     # Aus über die Einstellung und gleich wieder an: die Importkarte verschwindet und kommt wieder, ohne Neuladen
-    go(pg, "#/settings", "#set-mt"); pg.click("#set-mt"); toast_text(pg, "für sich"); go(pg, "#/import", "#view .list"); assert pg.locator("#imp-mt").count() == 0
-    leise(); go(pg, "#/settings", "#set-mt"); pg.click("#set-mt"); toast_text(pg, "eingeschaltet"); go(pg, "#/import", "#imp-mt"); leise()
+    go(pg, "#/settings/zusammenarbeit", "#set-mt"); pg.click("#set-mt"); toast_text(pg, "für sich"); go(pg, "#/import", "#view .list"); assert pg.locator("#imp-mt").count() == 0
+    leise(); go(pg, "#/settings/zusammenarbeit", "#set-mt"); pg.click("#set-mt"); toast_text(pg, "eingeschaltet"); go(pg, "#/import", "#imp-mt"); leise()
 
     # (e) Wanderführer aus Meine Touren holen
     pg.evaluate("""fx => { window.__fuReqs = []; window.__mtStub = o => { const u = new URL(o.url); if (u.pathname !== '/api/guides/export') return { status: 404, headers: {}, body: '{}' };
@@ -3975,7 +3977,7 @@ def flug_2160(pg):
     vor = pg.evaluate("Set_.get('flugStufe')")
     # (a) Einstellungen: Auswahl da, Vorgabe in der App „Flüssig“, Wahl gespeichert
     pg.evaluate("Set_.set('flugStufe', '')")
-    go(pg, "#/settings", "#set-flugstufe")
+    go(pg, "#/settings/karte", "#set-flugstufe")
     assert pg.evaluate("[...document.querySelectorAll('#set-flugstufe option')].map(o => o.value).join()") == "fluessig,normal,schoen"
     assert pg.eval_on_selector("#set-flugstufe", "e => e.value") == "fluessig", "Vorgabe auf dem Handy"
     pg.select_option("#set-flugstufe", "schoen"); pg.wait_for_function("async () => (await DB.kvGet('settings', {})).flugStufe === 'schoen'")
@@ -4408,7 +4410,7 @@ def update_2210(pg):
         assert not pg.locator(".sheet-back.on").count(), "kein Dialog bei " + str(k)
         st.update({"status": 200, "abort": False}); start(); assert st["hits"] == 2 and banner() == 1, "nächster Start versucht es erneut " + str(k)
     # 8. Einstellungen: Schalter und „Jetzt prüfen“
-    zurueck(); go(pg, "#/settings", "#set-update")
+    zurueck(); go(pg, "#/settings/app", "#set-update")
     assert pg.is_checked("#set-update input") and "github.com" in pg.inner_text("#set-k-update") and "Auf neue Version prüfen" in pg.inner_text("#set-update"), "Schalter an (Vorgabe) mit Erklärung"
     assert "Noch nicht geprüft" in pg.inner_text("#upd-stat")
     pg.click("#upd-now"); pg.wait_for_function("() => /Neue Version/.test(document.getElementById('upd-stat').textContent)")
@@ -4432,10 +4434,11 @@ def update_2210(pg):
 def statgruppen_2190(pg):
     """2.19.0: Sportarten-Katalog, Statistik-Gruppen und Favoriten. Vorgabe: jede Sportart einzeln, keine Gruppe. Einstellungen: Vorschläge (ein Klick), Gruppe
     abhaken/löschen, gesperrte Sportarten, unfertige Gruppe; Wirkung in Statistik-Filter, Block „Sportarten“, Bestwerte je Sportart, Auswertung, Jahresrückblick,
-    Zielen; Schneeschuh-Touren als Schneeschuh führen und zurück; Sicherung; Favoriten (Reihenfolge, Sterne, 12er-Grenze) und „Tour aufnehmen“ mit „Mehr …“,
+    Zielen; Sicherung; Favoriten (Reihenfolge, Sterne, 12er-Grenze) und „Tour aufnehmen“ mit „Mehr …“,
     zuletzt benutzte Sportart vorgewählt; Bergsteigen, Schneeschuh, Skitour überall wählbar. Gibt Layoutfehler zurück."""
     bad = []
-    go = lambda h, sel: (pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h), pg.wait_for_selector(sel), pg.wait_for_timeout(300))
+    go = lambda h, sel: (pg.evaluate("h => { if (location.hash === h) Nav.render(); else location.hash = h; }", h), pg.wait_for_selector(sel), pg.wait_for_timeout(300),
+                         pg.evaluate("() => document.querySelectorAll('#sg-box details.sg-wahl').forEach(d => { d.open = true; })"), pg.wait_for_timeout(50))      # 2.22.0: die Sportarten-Listen der Statistik-Gruppen sind eingeklappt – für die Klicks aufmachen
     ok_klick = lambda: (pg.wait_for_selector(".sheet .btn.pri"), pg.click(".sheet .btn.pri"), pg.wait_for_selector(".sheet", state="detached"))
     ids = pg.evaluate("""async () => {
       await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); await Set_.set('recSport', '');
@@ -4458,7 +4461,7 @@ def statgruppen_2190(pg):
     for weg in ("Gassigehen", "Orientierungslauf", "Schneemobil", "Angeln", "Segeln", "Stand-up-Paddling", "Golf"): assert weg not in opts, (weg, opts)      # endgültige Auswahl: 29
     assert "Ski (alle Arten)" not in opts and not any("zusammengefasst" in o for o in opts), opts
     # Einstellungen: Vorschläge, keine Gruppe
-    go("#/settings", "#sg-box")
+    go("#/settings/sportarten/statistik-gruppen", "#sg-box")
     assert pg.locator("#sg-box .sg-grp").count() == 0 and "Keine Statistik-Gruppen" in pg.inner_text("#sg-stand"), pg.inner_text("#sg-box")
     assert pg.locator("#sg-vorschlaege button").count() == 3
     pg.click("#sg-vorschlag-rad"); pg.wait_for_function("() => Set_.get('statGruppen').some(g => g.id === 'rad')")
@@ -4482,21 +4485,21 @@ def statgruppen_2190(pg):
     pg.click("#sg-del-2"); pg.wait_for_selector(".sheet[aria-label^='Statistik-Gruppe „']"); assert pg.evaluate("Set_.get('statGruppen').length") == 3, "Löschen fragt erst nach"      # 2.20.0
     ok_klick(); pg.wait_for_function("() => Set_.get('statGruppen').length === 2")
     # ältere Gruppe mit so einem Namen bleibt und zählt, der Editor bittet ums Umbenennen
-    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').concat([{ id: 'altw', name: 'Kajak / Kanu', sports: ['kayak', 'rowing'] }]))"); go("#/settings", "#sg-box")
+    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').concat([{ id: 'altw', name: 'Kajak / Kanu', sports: ['kayak', 'rowing'] }]))"); go("#/settings/sportarten/statistik-gruppen", "#sg-box")
     assert len(pg.evaluate("Set_.get('statGruppen')")) == 3 and "bitte umbenennen" in pg.inner_text("#sg-hinweis-2") and "bisherigen Namen" in pg.inner_text("#sg-hinweis-2"), pg.inner_text("#sg-box")
-    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').filter(g => g.id !== 'altw'))"); go("#/settings", "#sg-box")
+    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').filter(g => g.id !== 'altw'))"); go("#/settings/sportarten/statistik-gruppen", "#sg-box")
     # 2.20.2: Vorschlag heißt kurz; Name wird beim Anlegen vorbelegt (Sportart ankreuzen); alte Aufzählung als Name: Hinweis + Übernehmen-Knopf, nichts stillschweigend umbenannt
     assert [g["name"] for g in pg.evaluate("Set_.get('statGruppen')")][:2] == ["Rad", "Wandern (gesamt)"] and pg.input_value("#sg-name-1") == "Wandern (gesamt)"
     pg.click("#sg-add"); pg.wait_for_selector("#sg-name-2"); assert pg.input_value("#sg-name-2") == ""
     pg.click("#sg-grp-2 [data-sport=skitour] input"); pg.wait_for_function("() => document.querySelector('#sg-name-2').value === 'Skitour (gesamt)'")
     pg.click("#sg-grp-2 [data-sport=nordic] input"); pg.wait_for_function("() => Set_.get('statGruppen').length === 3 && !document.querySelector('#sg-hinweis-2')")
     assert pg.input_value("#sg-name-2") == "Skitour (gesamt)" and pg.locator("#sg-aufz-2").count() == 0 and pg.locator("#sg-hinweis-2").count() == 0, (pg.input_value("#sg-name-2"), pg.evaluate("Set_.get('statGruppen')"), pg.locator("#sg-hinweis-2").count() and pg.inner_text("#sg-hinweis-2"))
-    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').slice(0, 2).concat([{ id: 'aufz', name: 'Skitour + Langlauf', sports: ['skitour', 'nordic'] }]))"); go("#/settings", "#sg-box")
+    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').slice(0, 2).concat([{ id: 'aufz', name: 'Skitour + Langlauf', sports: ['skitour', 'nordic'] }]))"); go("#/settings/sportarten/statistik-gruppen", "#sg-box")
     assert pg.evaluate("Set_.get('statGruppen')[2].name") == "Skitour + Langlauf" and "nur eine Aufzählung" in pg.inner_text("#sg-aufz-2"), pg.inner_text("#sg-box")
     assert pg.inner_text("#sg-aufz-btn-2").strip() == "Vorschlag übernehmen: Skitour (gesamt)" and pg.locator("#sg-aufz-0, #sg-aufz-1").count() == 0
     pg.click("#sg-aufz-btn-2"); pg.wait_for_function("() => Set_.get('statGruppen')[2].name === 'Skitour (gesamt)' && !document.querySelector('#sg-aufz-2')")
     assert pg.locator("#sg-aufz-2").count() == 0 and pg.input_value("#sg-name-2") == "Skitour (gesamt)"
-    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').slice(0, 2))"); go("#/settings", "#sg-box")
+    pg.evaluate("Set_.set('statGruppen', Set_.get('statGruppen').slice(0, 2))"); go("#/settings/sportarten/statistik-gruppen", "#sg-box")
     # Statistik: Filter und Block „Sportarten“
     go("#/stats", ".kpis"); pg.select_option("select[aria-label=Zeitraum]", "2019"); pg.wait_for_timeout(200)
     opts = [re.sub(r"^[^\wÄÖÜäöü]+", "", x.strip()) for x in pg.locator("#st-sport-f .chip").all_inner_texts()]
@@ -4547,14 +4550,14 @@ def statgruppen_2190(pg):
     assert "Rad (alle Arten)" in pg.locator("#goalsport-wahl .chip").all_inner_texts() and pg.get_attribute("#goalsport-wahl .chip.on", "data-sport") == "grp:bike"
     pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")
     pg.evaluate("Goals.save([])")
-    # Schneeschuh-Touren als Sportart Schneeschuh führen und zurück
-    go("#/settings", "#ss-um")
-    assert "1 Wandern-Tour" in pg.inner_text("#ss-stand"), pg.inner_text("#ss-box")
-    pg.click("#ss-um"); ok_klick(); pg.wait_for_selector("#ss-zurueck")
-    t = pg.evaluate("id => DB.get('tours', id)", ids["s"]); assert t["sport"] == "snowshoe" and t["tags"] == ["Schneeschuh"] and t["ssUm"] == 1, t
-    pg.click("#ss-zurueck"); ok_klick(); pg.wait_for_selector("#ss-um")
-    t = pg.evaluate("id => DB.get('tours', id)", ids["s"]); assert t["sport"] == "hike" and "ssUm" not in t and t["tags"] == ["Schneeschuh"], t
-    # Favoriten: Vorgabe, Reihenfolge, Stern, Grenze
+    # 2.22.0: „Schneeschuh umstellen“ samt „Umstellung rückgängig“ ist aus den Einstellungen entfernt (Schneeschuh-Tour bleibt, wie sie ist)
+    go("#/settings/sportarten/katalog", "#akt-box")
+    assert pg.locator("#ss-box, #ss-um, #ss-zurueck, #ss-h").count() == 0 and "rückgängig" not in pg.inner_text("#view").lower() and "Schneeschuh-Touren" not in pg.inner_text("#view")
+    t = pg.evaluate("id => DB.get('tours', id)", ids["s"]); assert t["sport"] == "hike" and t["tags"] == ["Schneeschuh"] and "ssUm" not in t, t
+    # Favoriten: Vorgabe, Reihenfolge, Stern, Grenze – 2.22.0: eigene Unterseite, die Auswahl aller Sportarten ist eingeklappt
+    go("#/settings/sportarten/favoriten", "#fav-box")
+    assert not pg.is_visible("#fav-hike") and pg.locator("#fav-wahl[open]").count() == 0 and pg.locator("#fav-wahl > summary").inner_text() == "Sportarten auswählen", "Auswahl eingeklappt"
+    pg.click("#fav-wahl > summary"); pg.wait_for_selector("#fav-hike", state="visible"); pg.wait_for_timeout(100)
     assert pg.eval_on_selector_all("#fav-liste .fav-row", "els => els.map(e => e.dataset.sport)") == ["hike", "run", "bike", "skitour", "mtb"]
     pg.click("#fav-liste .fav-row[data-sport=run] button[aria-label='Laufen nach vorn']"); pg.wait_for_timeout(150)
     pg.click("#fav-mountaineering"); pg.wait_for_timeout(150); pg.click("#fav-kayak"); pg.wait_for_timeout(150)
@@ -4613,25 +4616,65 @@ def aktivitaeten_2190(pg):
     # Einstellungen bereinigen still (Laden wie beim Start)
     cl = pg.evaluate("async () => { await Set_.load(); return { g: Set_.get('statGruppen'), f: Set_.get('favAkt') }; }")
     assert cl["g"] == [{"id": "w", "name": "Gehen", "sports": ["walk", "hike"]}] and cl["f"] == ["hike", "kayak"], cl
-    # Gliederung der Einstellungen
-    go("#/settings", "#set-g-akt")
-    gl = pg.eval_on_selector_all("#view .set-g", "els => els.map(e => [e.id, e.querySelector('h2').textContent, [...e.querySelectorAll(':scope > .set-k > h3')].map(x => x.textContent)])")
-    assert [g[1] for g in gl] == ["Zusammenarbeit", "Sportarten", "Karte und Planung", "Aufzeichnung, Fotos und Videos", "Persönliches und Startseite", "Sicherung", "Über die App"], gl      # 2.20.0: Namen nach dem Leitfaden
-    assert gl[1][2] == ["Katalog", "Favoriten-Sportarten", "Statistik-Gruppen"], gl[1]
-    assert pg.locator("#view .set-k").count() == pg.locator("#view .set-k > h3").count() and pg.locator("#view .pad > h3").count() == 0, "jede Karte mit Überschrift, keine losen Überschriften"
-    assert pg.eval_on_selector_all("#set-inhalt .chip", "els => els.map(e => e.textContent)") == [g[1] for g in gl]
-    for need in ("#set-mt", "#fav-box", "#sg-box", "#ss-box", "#rc", "#set-offline", "#pdf-karte", "#set-flugstufe", "#set-vlimit", "#set-vgal", "#set-vauto", "#homeset", "#bk-save", "#bk-restore", "#bk-days", "#bk-auto", "#md-save", "#set-wipe"):
-        assert pg.locator(need).count() == 1, need
+    # Gliederung der Einstellungen (2.22.0): Übersicht mit sieben Gruppen-Zeilen und kurzem Stand, Unterseiten mit Zurück-Pfeil; keine lange Liste mehr auf der Übersicht
+    orig = pg.evaluate("async () => ({ lb: await DB.kvGet('lastBackup', null), hn: Set_.get('homeName'), hr: Set_.get('hrMax'), bd: Set_.get('backupDays') })")      # Stand der früheren Tests merken, hier definierten Stand herstellen
+    pg.evaluate("async () => { await DB.kvSet('lastBackup', null); await Set_.set('homeName', ''); await Set_.set('hrMax', ''); await Set_.set('backupDays', 7); }")
+    go("#/settings", "#set-uebersicht")
+    zeilen = pg.eval_on_selector_all("#set-uebersicht a.li", "els => els.map(e => [e.id, e.querySelector('b').textContent, e.querySelector('small').textContent, e.getAttribute('href')])")
+    assert [z[1] for z in zeilen] == ["Zusammenarbeit", "Sportarten", "Karte und Planung", "Aufzeichnung, Fotos und Videos", "Persönliches und Startseite", "Sicherung", "Über die App"], zeilen      # Namen nach dem Leitfaden
+    assert [z[3] for z in zeilen] == ["#/settings/" + k for k in ("zusammenarbeit", "sportarten", "karte", "aufzeichnung", "persoenlich", "sicherung", "app")], zeilen
+    sub = {z[0]: z[2].replace("\u00a0", " ") for z in zeilen}
+    assert sub["set-r-sportarten"] == "29 Sportarten · 2 Favoriten-Sportarten · 1 Statistik-Gruppe", sub
+    assert sub["set-r-zusammenarbeit"] in ("Eingeschaltet", "Aus – das Tagebuch bleibt ganz für sich") and sub["set-r-sicherung"] == "Letzte Sicherung: noch nie · Erinnerung: nach 7 Tagen" and sub["set-r-app"].startswith("Version ") and sub["set-r-karte"].startswith("Karte: "), sub
+    assert "Foto-Zeitfenster" in sub["set-r-aufzeichnung"] and sub["set-r-persoenlich"] == "Noch kein Heimatort", sub
+    assert "29\u00a0Sportarten" in pg.evaluate("document.querySelector('#set-r-sportarten small').textContent"), "Zahl und Einheit mit geschütztem Leerzeichen"
+    assert pg.locator("#view .set-k, #view .akt, #view .sg-grp, #view .fav-row, #view h3").count() == 0 and pg.locator("#view header.top h1").inner_text() == "Einstellungen" and pg.locator("#view header.top button[aria-label=Zurück]").count() == 1
+    assert pg.evaluate("document.querySelector('#view').scrollHeight <= document.querySelector('#view').clientHeight + 1"), "Übersicht ohne Rollen"
+    pg.evaluate("async () => { await Set_.set('homeName', 'Innsbruck'); await Set_.set('hrMax', '185'); await Set_.set('backupDays', 14); }"); go("#/settings", "#set-uebersicht")
+    sub = pg.eval_on_selector_all("#set-uebersicht a.li small", "els => els.map(e => e.textContent)")
+    assert "Heimatort: Innsbruck · Maximalpuls 185\u00a0bpm" == sub[4] and "Erinnerung: nach 14\u00a0Tagen" in sub[5], sub
+    pg.evaluate("async o => { await DB.kvSet('lastBackup', o.lb); await Set_.set('homeName', o.hn); await Set_.set('hrMax', o.hr); await Set_.set('backupDays', o.bd); }", orig)
+    # Sportarten: nur drei Zeilen (Katalog, Favoriten-Sportarten, Statistik-Gruppen) mit Stand; die langen Listen liegen eine Ebene tiefer
+    pg.click("#set-r-sportarten"); pg.wait_for_selector("#set-sportarten"); pg.wait_for_timeout(200)
+    assert pg.locator("#view header.top h1").inner_text() == "Sportarten" and pg.locator("#set-sportarten a.li").count() == 3 and pg.locator("#view .akt, #view .sg-grp, #view .fav-row, #view .set-k").count() == 0
+    zs = pg.eval_on_selector_all("#set-sportarten a.li", "els => els.map(e => [e.id, e.querySelector('b').textContent, e.querySelector('small').textContent.replace(/\\u00a0/g, ' '), e.getAttribute('href')])")
+    assert zs == [["set-r-katalog", "Katalog", "29 Sportarten in 5 Kategorien, mit Symbol und Kartenfarbe", "#/settings/sportarten/katalog"],
+                  ["set-r-favoriten", "Favoriten-Sportarten", "2 Favoriten-Sportarten: Wandern, Kajak / Kanu", "#/settings/sportarten/favoriten"],
+                  ["set-r-statistik-gruppen", "Statistik-Gruppen", "1 Statistik-Gruppe: Gehen", "#/settings/sportarten/statistik-gruppen"]], zs      # in Listen nur der Gruppenname, nie „Name = A + B“
+    assert not any(" = " in z[2] for z in zs)
+    # Unterseiten: Katalog, Favoriten, Statistik-Gruppen – Titel in der Kopfzeile, Zurück-Pfeil führt eine Ebene hoch
+    for key, titel, need in (("katalog", "Katalog", "#akt-box"), ("favoriten", "Favoriten-Sportarten", "#fav-box"), ("statistik-gruppen", "Statistik-Gruppen", "#sg-box")):
+        pg.click("#set-sportarten #set-r-" + key); pg.wait_for_selector(need)
+        assert pg.locator("#view header.top h1").inner_text() == titel and pg.locator("#view h3").count() == 0, titel
+        pg.click("#view header.top button[aria-label=Zurück]"); pg.wait_for_function("location.hash === '#/settings/sportarten'"); pg.wait_for_selector("#set-sportarten")
+    pg.click("#view header.top button[aria-label=Zurück]"); pg.wait_for_function("location.hash === '#/settings'"); pg.wait_for_selector("#set-uebersicht")
+    # direkt geöffnet (kein Verlauf): Zurück führt trotzdem eine Ebene hoch, Android-Zurücktaste ebenso
+    pg.evaluate("location.hash = '#/settings/sportarten/katalog'"); pg.wait_for_selector("#akt-box"); pg.evaluate("Nav.depth = 0")
+    pg.click("#view header.top button[aria-label=Zurück]"); pg.wait_for_function("location.hash === '#/settings/sportarten'"); pg.wait_for_selector("#set-sportarten"); pg.evaluate("Nav.depth = 0")
+    assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/settings'"); pg.wait_for_selector("#set-uebersicht"); pg.evaluate("Nav.depth = 0")
+    assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/mehr'")
+    go("#/settings/gibtsnicht", "#set-uebersicht")      # unbekannte Unterseite: die Übersicht
+    # Gruppen-Seiten: alle Einstellungen sind noch da, jede Karte mit Überschrift
+    seiten = {"zusammenarbeit": ["#set-mt"], "karte": ["#rc", "#set-offline", "#pdf-karte", "#set-flugstufe"], "aufzeichnung": ["#set-vlimit", "#set-vgal", "#set-vauto"], "persoenlich": ["#homeset"],
+              "sicherung": ["#bk-save", "#bk-restore", "#bk-days", "#bk-auto", "#md-save"], "app": ["#set-update", "#set-wipe"]}
+    for key, need in seiten.items():
+        go("#/settings/" + key, ".set-k")
+        assert pg.locator("#view .set-k").count() == pg.locator("#view .set-k > h3").count() and pg.locator("#view .pad > h3").count() == 0, key + ": jede Karte mit Überschrift"
+        for n in need: assert pg.locator(n).count() == 1, (key, n)
+    go("#/settings/sportarten/statistik-gruppen", "#sg-box"); pg.wait_for_selector("#sg-grp-0")
+    assert pg.locator("#sg-wahl-0[open]").count() == 0 and not pg.is_visible("#sg-grp-0 [data-sport=hike]") and "Sportarten ändern (2 gewählt)" in pg.inner_text("#sg-wahl-0 > summary"), "Sportarten der Gruppe eingeklappt"      # 2.22.0
+    go("#/settings/sportarten/favoriten", "#fav-box"); assert pg.locator("#fav-wahl[open]").count() == 0 and not pg.is_visible("#fav-hike")
     # Katalog: 29 nach Kategorien, je mit Symbol und Kartenfarbe
+    go("#/settings/sportarten/katalog", "#akt-box")
     kat = pg.eval_on_selector_all("#akt-box .akt-kat", "els => els.map(e => [e.querySelector('h4').textContent, e.querySelectorAll('.akt').length])")
     assert kat == [["Zu Fuß (7)", 7], ["Rad (7)", 7], ["Winter (5)", 5], ["Wasser (5)", 5], ["Outdoor und Sonstige (5)", 5]], kat
     assert pg.locator("#akt-box .akt .akt-i svg").count() == 29 and pg.locator("#akt-box .akt .akt-f").count() == 29
     pg.wait_for_selector("#akt-alt li")
     al = pg.locator("#akt-alt li").all_inner_texts()
     assert any("„dogwalk“ (1 Tour) → Spazieren / Gehen" in x for x in al) and any("„golf“ (1 Tour) → Sonstiges" in x for x in al), al
-    pg.click("#set-inhalt .chip[data-ziel=set-g-sich]"); pg.wait_for_timeout(500)
-    for sel in ("#set-g-akt", "#akt-katalog", "#set-g-sich"):
-        pg.locator(sel).scroll_into_view_if_needed(); bad += ["Einstellungen " + sel + ": " + m for m in pg.evaluate(LAYOUT_JS)]
+    for h_, sel in (("#/settings", "#set-uebersicht"), ("#/settings/sportarten", "#set-sportarten"), ("#/settings/sportarten/katalog", "#akt-katalog"), ("#/settings/sportarten/favoriten", "#fav-box"),
+                    ("#/settings/sportarten/statistik-gruppen", "#sg-box"), ("#/settings/sicherung", "#set-k-md")):
+        go(h_, sel); bad += ["Einstellungen " + h_ + ": " + m for m in pg.evaluate(LAYOUT_JS)]
     # Altdaten: Anzeige über den Rückfall, Tour unverändert
     go("#/", "a.tour")
     ch = pg.locator(".filters .chips .chip").all_inner_texts()
@@ -4744,11 +4787,11 @@ def main():
         pg.locator(".scm2 button").click(); pg.wait_for_selector(".sheet[aria-label^='Kommentar „']"); pg.click(".sheet[aria-label^='Kommentar „'] .btn.pri"); pg.wait_for_selector(".scm2", state="detached")      # 2.20.0: Löschen fragt nach
         pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
         # Heimatort suchen und speichern
-        pg.evaluate("location.hash='#/settings'"); pg.wait_for_selector("input[placeholder^='Ort oder Adresse']")
+        pg.evaluate("location.hash='#/settings/persoenlich'"); pg.wait_for_selector("input[placeholder^='Ort oder Adresse']")
         pg.fill("input[placeholder^='Ort oder Adresse']", "Hamburg"); pg.get_by_role("button", name="Suchen").click()
         pg.get_by_role("button", name="Hamburg, Deutschland").click()   # das 📍 wird zum Symbol, bleibt aber nicht im Namen
         pg.wait_for_function("DB.kvGet && Set_.get('homeName') === 'Hamburg, Deutschland' && Set_.get('homeLat') === '53.55000'")
-        for path, key in [("#/map", ".leaflet-container"), ("#/photos", ".pgrid"), ("#/stats", ".kpis"), ("#/import", ".list"), ("#/settings", "h3"), ("#/sources", ".list"), ("#/plan", ".pmap"), ("#/rec", ".bigstart"), ("#/mehr", "#m-settings")]:
+        for path, key in [("#/map", ".leaflet-container"), ("#/photos", ".pgrid"), ("#/stats", ".kpis"), ("#/import", ".list"), ("#/settings", "#set-uebersicht"), ("#/settings/sicherung", "h3"), ("#/sources", ".list"), ("#/plan", ".pmap"), ("#/rec", ".bigstart"), ("#/mehr", "#m-settings")]:
             pg.evaluate(f"location.hash='{path}'"); pg.wait_for_selector(key, timeout=5000); pg.wait_for_timeout(250)
         pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".kpis"); assert "3" in pg.inner_text(".kpis")
         pg.screenshot(path="/tmp/shot_stats.png")
@@ -4838,7 +4881,7 @@ def main():
         assert pg.evaluate("DB.count('photos')") >= 3
         pg.screenshot(path="/tmp/shot_photos.png")
         # Sicherung
-        pg.evaluate("location.hash='#/settings'"); pg.wait_for_selector("h3"); pg.get_by_text("Sicherung speichern").click(); pg.wait_for_timeout(500)
+        pg.evaluate("location.hash='#/settings/sicherung'"); pg.wait_for_selector("h3"); pg.get_by_text("Sicherung speichern").click(); pg.wait_for_timeout(500)
         assert pg.evaluate("__saved.name.endsWith('.mtl') && __saved.b64.length>100")
         # Puls: GPX mit Herzfrequenz einlesen, Kennzahlen und Anzeige prüfen
         hgpx = gpx(t0 + 86400000 * 120, lat=46.5, name="Mit Puls").replace("</trkpt>",
@@ -5251,7 +5294,9 @@ def main():
             pg.evaluate("p => { location.hash = '#' + p }", path)
             pg.wait_for_function("([p, t, h]) => Nav.cur === '/' + (p.split('/')[1] || '') && !Nav._busy && [...document.querySelectorAll('#tabs a.on')].map(a => a.dataset.p).join() === t && document.querySelector('#tabs').classList.contains('hide') === h", arg=[path, tab, hidden], timeout=10000)
         # Zurück-Taste des Handys: von einer Unterseite zurück, von einem Reiter zur Startseite, auf der Startseite verlässt sie die App
-        pg.evaluate("location.hash = '#/mehr'"); pg.wait_for_selector("#m-settings"); pg.click("#m-settings"); pg.wait_for_selector("input[placeholder^='Ort oder Adresse']")
+        pg.evaluate("location.hash = '#/mehr'"); pg.wait_for_selector("#m-settings"); pg.click("#m-settings"); pg.wait_for_selector("#set-uebersicht")
+        pg.click("#set-r-persoenlich"); pg.wait_for_selector("input[placeholder^='Ort oder Adresse']")      # 2.22.0: eine Ebene tiefer – die Zurücktaste führt genau eine Ebene zurück
+        assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/settings'"); pg.wait_for_selector("#set-uebersicht")
         assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/mehr'")
         assert pg.evaluate("window.mtBack()") is True; pg.wait_for_function("location.hash === '#/start'"); pg.wait_for_selector("#hero")
         assert pg.evaluate("window.mtBack()") is False
@@ -5365,7 +5410,7 @@ def main():
         # Gestaltung: kein Querrollen bei 360–430 px, auch mit 130 % Schrift; Tippflächen mindestens 44 px
         pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())")
         lt = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden)[0].id)")
-        bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/sources", "#/plan", "#/offline", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
+        bad = layout_check(pg, ["#/start", "#/", "#/map", "#/rec", "#/photos", "#/mehr", "#/stats", "#/stats/rekorde", "#/stats/kalender", "#/stats/auswertung", "#/stats/ziele", "#/reisen", "#/import", "#/settings", "#/settings/zusammenarbeit", "#/settings/sportarten", "#/settings/sportarten/katalog", "#/settings/sportarten/favoriten", "#/settings/sportarten/statistik-gruppen", "#/settings/karte", "#/settings/aufzeichnung", "#/settings/persoenlich", "#/settings/sicherung", "#/settings/app", "#/sources", "#/plan", "#/offline", "#/tour/" + lt, "#/story/" + lt, "#/fix/" + lt])
         bad += neue_layout(pg, neu)
         bad += layout_21(pg)
         bad += layout_22(pg)

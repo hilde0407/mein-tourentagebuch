@@ -56,6 +56,7 @@ Interne Bezeichner (Dateinamen, Funktionen, Einstellungsschlüssel, API-Pfade, E
 8. **Wiederkehrende Aktionen an einer Tour:** gleiche Namen und Reihenfolge in Knopfleiste und Menü: Bearbeiten, Schlagwörter & Alben, Teilen, Exportieren, Löschen (zuletzt, rot). Menüpunkte, die einen weiteren Dialog öffnen, enden auf „ …“.
 9. **Wegangaben in Hinweisen:** „Verwaltung → <Reiter> → <Bereich>“ bzw. „Mehr → Einstellungen → <Bereich>“, mit genau den Namen, die dort stehen.
 10. **Schreibweisen:** Auslassung „ …“ (mit Leerzeichen davor), Anführungszeichen „…“, Pfeil „→“. Knöpfe beginnen groß. Einheiten und Datum nur über die zentrale Formatfunktion: km, m, „Std.“ und „Min.“; Datum TT.MM.JJJJ, auch bei Eingaben. Mehrzahl ausschreiben statt „Foto(s)“. Symbole an Knöpfen: je App ein System (Tagebuch SVG-Symbole, keine Emoji in Knöpfen; Meine Touren wie bisher, aber dieselbe Aktion immer mit demselben Symbol).
+11. **Einstellungen gliedern (Tagebuch, seit 2.22.0):** Übersicht mit einer Zeile je Gruppe (Titel + ein Satz zum aktuellen Stand, in Listen von Statistik-Gruppen nur der Name), die Gruppe als Unterseite mit Zurück-Pfeil; lange Listen (Katalog, Favoriten, Statistik-Gruppen) liegen eine Ebene tiefer oder sind einklappbar. Zurück und Android-Zurücktaste führen genau eine Ebene hoch. Wegangaben nennen die Gruppe: „Mehr → Einstellungen → Sicherung“.
 
 ## 3. Regeln für künftige Änderungen
 - Neue Texte prüfen: steht die Sache in Tabelle 1, gilt das Wort dort.

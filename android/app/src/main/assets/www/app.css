@@ -669,10 +669,9 @@ img.tile-off{visibility:hidden}
 .fav-row .li-r{display:flex;gap:6px}
 .fav-row .btn.sm{min-width:44px;padding:4px 10px}
 /* 2.19.0: Einstellungen – Bereiche (h2) mit einheitlichen Karten (h3, Erklärzeile, Schalter, Hinweise) */
-.set-inhalt{margin:0 0 4px}
-.set-g{margin-top:30px;scroll-margin-top:64px}
-.set-g>h2{font-size:1.3rem;margin:0 0 4px}
 .set-gt{margin:0 0 4px}
+.sg-wahl{margin:4px 0}
+#fav-wahl{margin:8px 0}
 .set-k{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px 14px;margin:12px 0}
 .set-k>h3{margin:0 0 4px;font-size:1.08rem}
 .set-k h4{margin:16px 0 4px;font-size:.98rem;font-weight:600;font-family:var(--d)}
