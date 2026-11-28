@@ -337,7 +337,9 @@ const Buecher = {
     const plan = h('button', { class: 'btn pri', id: 'fu-plan', onclick: async () => {
       try {
         plan.disabled = true;
-        const r = await Tours.add({ name: bt.title, sport: 'hike', pts: pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })), status: 'planned', src: 'plan' });
+        // 2.24.1: eine Buchtour wird nur einmal zur Planung (Kennung „fuehrer:<Buch>:<Tour>“); wer sie gelöscht hat und erneut übernimmt, will sie (geloeschtOk)
+        const r = await Tours.add({ name: bt.title, sport: 'hike', pts: pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })), status: 'planned', src: 'plan', srcId: 'fuehrer:' + b.id + ':' + bt.id, geloeschtOk: true, stumm: true });
+        if (r.dup) { s.close(); toast('Diese Buchtour ist schon eine geplante Tour'); Nav.go('/tour/' + r.tour.id); return; }
         await PlanMeta.patch(r.tour.id, { quelle: { art: 'fuehrer', text: (b.name + ' – ' + bt.title).slice(0, Planhilfe.MAX_QTEXT) } });
         s.close(); toast('Als Planung übernommen'); Nav.go('/tour/' + r.tour.id);
       } catch (e) { plan.disabled = false; toastFehler('Als Planung übernehmen', e, 5000); }

@@ -3,7 +3,7 @@
 const Tours = {
   cache: null,
   async list() { if (!Tours.cache) Tours.cache = (await DB.all('tours')).sort((a, b) => (b.start || 0) - (a.start || 0)); return Tours.cache; },
-  invalidate() { Tours.cache = null; },
+  invalidate() { Tours.cache = null; Tours._steine = null; },
   autoName(sport, start) {
     if (!start) return Sports.label(sport);
     const hh = new Date(start).getHours();
@@ -22,19 +22,24 @@ const Tours = {
     if (pts.length < 2) throw new Error('Zu wenige Punkte');
     const st = Geo.stats(pts);
     const all = await Tours.list();
-    if (o.srcId) { const e = all.find(t => t.srcId === o.srcId || (t.alias && t.alias.includes(o.srcId))); if (e) return { tour: e, dup: true }; }      // alias: Kennungen zusammengeführter Doppelter (2.1.0)
-    if (st.start && !o.force) {
-      const e = all.find(t => t.status !== 'planned' && t.start && Math.abs(t.start - st.start) < 90000 && Math.abs(t.dist - st.dist) < Math.max(100, st.dist * 0.03));
-      if (e) return { tour: e, dup: true };
+    const bb = Geo.bbox(pts);
+    /* 2.24.1: zentrale Doppelt-Prüfung vor dem Anlegen (js/calc-importdup.js). Reihenfolge: gleiche Quell-Kennung oder Alias (Kennungen zusammengeführter Doppelter, 2.1.0),
+       gleicher Strecken-Abdruck, gleiche Startzeit ± 5 Minuten mit ähnlicher Strecke (vorher 90 s und 3 %), Zeit-Versatz, bei Touren ohne Zeit die gleiche Form.
+       o.force (Wiederherstellen einer Aufzeichnung): nur Kennung und Abdruck; o.bewusst (Planer, Buchtour als Planung, vom Menschen gewollt): nur die Kennung. */
+    const cand = ImportDup.kandidat(o, st, bb, pts);
+    const v = ImportDup.vorhanden(cand, all, o.bewusst ? { nur: ['kennung'] } : o.force ? { nur: ['kennung', 'abdruck'] } : null);
+    if (v) { if (!o.stumm) ImportLog.merke('vorhanden', o, st, v.tour, v.grund); return { tour: v.tour, dup: true, grund: v.grund }; }
+    if (!o.geloeschtOk && !o.force && !o.bewusst) {      // war sie schon einmal da und wurde bewusst gelöscht? Dann nicht still wieder anlegen (der Aufrufer entscheidet bzw. fragt)
+      const stn = ImportDup.geloescht(cand, await Tours.steine());
+      if (stn) { if (!o.stumm) ImportLog.merke('geloescht', o, st, null, 'geloescht'); return { tour: null, dup: false, geloescht: stn, info: ImportLog.info(o, st) }; }
     }
     const id = o.id || uid();
-    const bb = Geo.bbox(pts);
     const t = {
       id, name: (o.name && o.name.trim()) || Tours.autoName(o.sport, st.start), sport: o.sport || 'other', status: o.status || 'done',
       start: st.start || o.start || Date.now(), end: st.end, dur: st.dur, moving: st.moving, dist: o.dist || st.dist,
       up: st.up, down: st.down, calcV: Tours.CALC,
       maxAlt: st.maxAlt, minAlt: st.minAlt, lat: pts[0].lat, lon: pts[0].lon, bbox: bb, src: o.src || 'file', srcId: o.srcId || '',
-      note: o.note || '', fav: false, hidden: false, timed: !!st.start, created: Date.now(),
+      note: o.note || '', fav: false, hidden: false, timed: !!st.start, created: Date.now(), abdruck: cand.abdruck.slice(),      // 2.24.1: Strecken-Abdruck für die Doppelt-Prüfung
     };
     if (Array.isArray(o.tags) && o.tags.length) t.tags = [...new Set(o.tags.map(String).filter(Boolean))];      // z. B. „Schneeschuh“ (2.2.0)
     if (isFinite(o.up) && o.up != null) { t.upKomoot = o.up; t.downKomoot = isFinite(o.down) && o.down != null ? o.down : null; }      // Komoots Wert: nur Zusatzangabe
@@ -220,11 +225,30 @@ const Tours = {
     await DB.put('tracks', trk); await DB.put('tours', t); Tours.invalidate();
     return true;
   },
-  async remove(id) {
+  /** Tour löschen (Fotos bleiben, ohne Tour). 2.24.1: Die App merkt sich, dass sie gelöscht wurde (Stein in kv „geloescht“), damit Holen und Import sie nicht still wieder anlegen;
+      opts.stein = false nur beim Zusammenführen (die Kennungen wandern dort als alias in die bleibende Tour). */
+  async remove(id, opts) {
+    const t = await DB.get('tours', id);
     const ph = await DB.byIndex('photos', 'tour', id);
     for (const p of ph) { p.tour = ''; await DB.put('photos', p); }
+    if (t && !(opts && opts.stein === false)) await Tours.steinSetzen(t);
     await DB.del('tours', id); await DB.del('tracks', id); Tours.invalidate();
   },
+  /** 2.24.1: Tour samt Zubehör löschen (Tourseite, Planung): Notizen und Punkte der Planung (kv „pn:“, „plan:“) gehen mit, Touren, die diese Planung als Plan verknüpft hatten, verlieren die Verknüpfung. */
+  async loesche(id) {
+    const t = await DB.get('tours', id);
+    if (!t) return false;
+    await Tours.remove(id);
+    await DB.del('kv', 'pn:' + id).catch(() => {}); await DB.del('kv', 'plan:' + id).catch(() => {});
+    for (const x of (await DB.all('tours')).filter(x => x.plan === id)) { delete x.plan; await DB.put('tours', x); }
+    Tours.invalidate();
+    return true;
+  },
+  _steine: null,
+  /** Steine gelöschter Touren (kv „geloescht“, neueste zuletzt). */
+  async steine() { if (!Tours._steine) Tours._steine = (await DB.kvGet('geloescht', [])) || []; return Tours._steine; },
+  async steinSetzen(t) { Tours._steine = ImportDup.ergaenze(await Tours.steine(), ImportDup.stein(t)); await DB.kvSet('geloescht', Tours._steine); },
+  async steineFrei(frei) { Tours._steine = ImportDup.freigeben(await Tours.steine(), frei); await DB.kvSet('geloescht', Tours._steine); },
   /** Kennzahlen aus der Spur neu rechnen. opts.eigen = true: Die Spur wurde von Hand korrigiert (Geländemodell, Uhr-Höhen, Abschnitt ausgeschlossen,
       Original wiederhergestellt, „Kennzahlen neu berechnen“) – dann gilt wieder die eigene Rechnung, bis der nächste Abgleich mit Meine Touren die Zahlen neu setzt. */
   async recalc(id, opts) {

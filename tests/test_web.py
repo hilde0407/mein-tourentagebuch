@@ -417,7 +417,7 @@ def karte_281(pg, shots=None):
     pg.locator(".maptools .chip", has_text="Fotos zeigen").click(); pg.wait_for_selector(".maptools .chip.on"); assert stand()["summe"] == n_alle
     pg.locator(".maptools .chip", has_text="Fotos zeigen").click(); pg.wait_for_selector(".maptools .chip:not(.on)")
     # 6. Touren in einer Gegend (unter 1000 km): Linien wie bisher schon im ersten Ausschnitt
-    pg.evaluate("async ids => { for (const id of ids) await Tours.remove(id); }", ids)
+    pg.evaluate("async ids => { for (const id of ids) await Tours.remove(id, { stein: false }); }", ids)
     go(pg, "#/start", "#view"); go(pg, "#/map", ".map.full .leaflet-marker-icon"); ruhig()
     ab = int(pg.evaluate("document.querySelector('.map.full').dataset.linienAb"))
     sp = pg.evaluate("Tours.list().then(l => KartenPunkte.spanneKm(l.filter(t => t.status !== 'planned' && !t.hidden && t.lat != null)))")
@@ -563,11 +563,11 @@ def von_aussen(pg):
     offnen("sh-geplant")
     l = pg.evaluate("Tours.list().then(l => l.filter(t => t.name === 'Aussen').map(t => ({ s: t.status, timed: t.timed, src: t.src })))")
     assert len(l) == 1 and l[0]["s"] == "planned" and not l[0]["timed"], l
-    pg.evaluate("Tours.list().then(l => Promise.all(l.filter(t => t.name === 'Aussen').map(t => Tours.remove ? Tours.remove(t.id) : DB.del('tours', t.id)))).then(() => Tours.invalidate())")
+    pg.evaluate("Tours.list().then(l => Promise.all(l.filter(t => t.name === 'Aussen').map(t => Tours.remove ? Tours.remove(t.id, { stein: false }) : DB.del('tours', t.id)))).then(() => Tours.invalidate())")
     offnen("sh-gemacht")
     l = pg.evaluate("Tours.list().then(l => l.filter(t => t.name === 'Aussen').map(t => ({ s: t.status, timed: t.timed })))")
     assert len(l) == 1 and l[0]["s"] == "done" and l[0]["timed"], l
-    pg.evaluate("Tours.list().then(l => Promise.all(l.filter(t => t.name === 'Aussen').map(t => Tours.remove ? Tours.remove(t.id) : DB.del('tours', t.id)))).then(() => Tours.invalidate())")
+    pg.evaluate("Tours.list().then(l => Promise.all(l.filter(t => t.name === 'Aussen').map(t => Tours.remove ? Tours.remove(t.id, { stein: false }) : DB.del('tours', t.id)))).then(() => Tours.invalidate())")
     pg.evaluate("() => { Import.fetchBuf = window.__fb0; MTApp.takeShared = window.__ts0; }")      # die Nachstellung darf andere Prüfungen nicht stören
     print("Von außen geöffnet: Rückfrage gemacht/geplant/abbrechen ok")
 
@@ -657,7 +657,7 @@ def rettung_2120(pg):
     finally:
         pg.evaluate("""async id => { MTApp.openBatterySettings = window.__bat0; delete MTApp.batteryUnrestricted; delete MTApp.resumeInterrupted;
           Object.assign(window.__rec, { state: 'idle', unsent: false, interrupted: false, can_resume: false }); delete window.__rec.last_ts; window.__gpx = '';
-          try { sessionStorage.removeItem('recAutoSave'); } catch (e) {} if (id) await Tours.remove(id); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", tid)
+          try { sessionStorage.removeItem('recAutoSave'); } catch (e) {} if (id) await Tours.remove(id, { stein: false }); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", tid)
 
 
 def fotoort_2120(pg):
@@ -733,7 +733,7 @@ def fotoort_2120(pg):
         assert p2c["lat"] is None and p2c["tour"] == "" and p2c["pos"] == "none" and "camShift" not in p2c, p2c
         assert pg.evaluate("tid => DB.kvGet('fotoOrtUndo:' + tid, null)", tid) is None
     finally:
-        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) { await DB.del('kv', 'fotoOrtUndo:' + tid); await Tours.remove(tid); } await Set_.set('fotoOrtTol', '');
+        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) { await DB.del('kv', 'fotoOrtUndo:' + tid); await Tours.remove(tid, { stein: false }); } await Set_.set('fotoOrtTol', '');
           window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
@@ -1250,7 +1250,7 @@ def neue_funktionen(pg):
     pg.evaluate("async id => { const m = await PlanMeta.get(id); m.links = [{ titel: 'böse', url: 'javascript:alert(1)', art: 'karte' }, { titel: 'gut', url: 'https://ok.de', art: 'karte' }]; await DB.kvSet('pn:' + id, m); Nav.render(); }", plan)
     pg.wait_for_selector("#pn-links"); assert pg.locator("#pn-links .li").count() == 1 and "gut" in pg.inner_text("#pn-links"), "ungültige Links aus fremden Daten werden beim Lesen ausgelassen"
     # Neu-Speichern im Planer (Tour entfernen, gleiche Kennung) verliert die Notizen nicht
-    pg.evaluate("async id => { const t = await DB.get('tours', id), p = await Tours.points(id); await Tours.remove(id); await Tours.add({ id, name: t.name, sport: t.sport, pts: p, status: 'planned', src: 'plan' }); }", plan)
+    pg.evaluate("async id => { const t = await DB.get('tours', id), p = await Tours.points(id); await Tours.remove(id, { stein: false }); await Tours.add({ id, name: t.name, sport: t.sport, pts: p, status: 'planned', src: 'plan' }); }", plan)
     assert pg.evaluate("PlanMeta.get(%s).then(m => m.note.startsWith('Parkplatz'))" % json.dumps(plan))
     # --- 6. Plan und Ergebnis: manuell verknüpfen, und aus einer Aufzeichnung heraus ---
     pg.evaluate("id => { location.hash = '#/tour/' + id }", big); pg.wait_for_selector("#rueckblick"); pg.click("header.top button[aria-label=Aktionen]"); pg.get_by_text("Mit Planung vergleichen …").click(); pg.wait_for_selector(".sheet .li")
@@ -1308,7 +1308,7 @@ def neue_funktionen(pg):
     assert pg.evaluate("Goals.list().then(l => l.some(g => g.year === 2025 && g.target === 700) && l.some(g => g.id === 'gbk'))"), "ältere Ziele werden ergänzt, nichts geht verloren"
     # Dasselbe über die gepackte Datei (.mtl), wie sie wirklich gespeichert und wieder eingelesen wird; auch die Verknüpfung Plan ↔ Tour und die Links reisen mit
     pg.evaluate("window.__saved = null"); pg.evaluate("Backup.save()"); pg.wait_for_function("window.__saved && window.__saved.name.endsWith('.mtl')")
-    pg.evaluate("async ([pid, lid]) => { await DB.del('kv', 'goals2'); await DB.del('kv', 'pn:' + pid); await Tours.remove(lid); await Set_.set('birthYear', ''); await Set_.set('homeShow', {}); await Set_.set('bestN', 1); }", [plan, lid])
+    pg.evaluate("async ([pid, lid]) => { await DB.del('kv', 'goals2'); await DB.del('kv', 'pn:' + pid); await Tours.remove(lid, { stein: false }); await Set_.set('birthYear', ''); await Set_.set('homeShow', {}); await Set_.set('bestN', 1); }", [plan, lid])
     n = pg.evaluate("async () => { const u = Uint8Array.from(atob(__saved.b64), c => c.charCodeAt(0)), d = Backup.parse(u); await Backup.apply(d); return [d.v, d.tours.length, d.kv.length]; }")
     assert n[0] == 1 and n[1] > 10 and n[2] > 3, n
     assert pg.evaluate("async ([pid, lid, pn]) => { const t = await DB.get('tours', lid), m = await PlanMeta.get(pid); return !!t && t.plan === pn && m.note === 'Sicherungsnotiz' && Planhilfe.ladeLinks(m.links).length === 1 && (await Tours.points(lid)).length === 30; }", [plan, lid, plan_n])
@@ -1330,7 +1330,7 @@ def neue_funktionen(pg):
     assert old == {"added": 1, "pm": 45, "by": True, "junk": False, "goal": True, "cache": True, "cred": True, "plan": True}, old
     pg.evaluate("location.hash = '#/tour/alt18tour'"); pg.wait_for_selector(".tourp h1"); pg.wait_for_timeout(300)
     assert "Aus alter Sicherung" in pg.inner_text(".tourp") and pg.locator("#rueckblick, #planergebnis, #passt-sec").count() == 0, "alte Tour ohne neue Felder öffnet wie bisher"
-    pg.evaluate("async () => { await Tours.remove('alt18tour'); await DB.del('kv', 'plan:alt18plan'); await Set_.set('photoMargin', 20); await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); await Set_.set('homeShow', {}); await Set_.set('backupDays', 14); await DB.kvSet('lastBackup', Date.now()); }")
+    pg.evaluate("async () => { await Tours.remove('alt18tour', { stein: false }); await DB.del('kv', 'plan:alt18plan'); await Set_.set('photoMargin', 20); await DB.del('kv', 'goals2'); await DB.kvSet('goals', {}); await Set_.set('homeShow', {}); await Set_.set('backupDays', 14); await DB.kvSet('lastBackup', Date.now()); }")
     return {"big": big, "plan": plan, "linked": lid}
 
 
@@ -1432,7 +1432,7 @@ def meine_touren(pg):
     pg.wait_for_selector(".sheet", state="detached"); go(); pg.wait_for_selector("#mt-url"); pg.fill("#mt-url", "mt.test"); pg.fill("#mt-name", "Tagebuch"); pg.fill("#mt-pw", "nur-lesen-1234")
     pg.evaluate("window.__mt.log = []"); (leise(), pg.click("#mt-go")); msg = toast("importiert", 60000)
     nur = " · %d Touren nur in der App" % (1 + pg.evaluate("ids => Tours.list().then(l => l.filter(t => ids.includes(t.id) && t.status !== 'planned' && !t.hidden).length)", vorher))      # was vorher da war, und die „andere Tour zur selben Zeit“
-    assert ohne_dup(msg) == "13 Touren importiert · 3 schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server" + nur, msg
+    assert ohne_dup(msg) == "13 Touren importiert · 3 übersprungen, schon vorhanden · Name bei 2 Touren übernommen · Zahlen bei 3 Touren angeglichen · 1 ohne Strecke auf dem Server" + nur, msg
     log = pg.evaluate("window.__mt.log"); assert log[:3] == ["GET /api/me", "POST /api/login", "GET /api/tours"] and len([x for x in log if x.endswith("/gpx")]) == 14 and not [x for x in log if x.split()[0] != "GET" and "login" not in x], log
     assert not [x for x in log if "/g2/" in x or "/g4/" in x or "/987654321/" in x], "für vorhandene Touren wird keine Strecke geladen"
     kv = pg.evaluate("DB.all('kv')"); acc = [k for k in kv if k["k"] == "mt"][0]["v"]
@@ -1459,7 +1459,7 @@ def meine_touren(pg):
     assert pg.locator("#rate .star.on").count() == 5 and "5 von 5 · aus Meine Touren" in pg.inner_text("#ratecap"), pg.inner_text("#ratecap")
     # Verbundenes Blatt, Wiederholung: nichts doppelt, keine Strecke wird noch einmal geladen (außer dem Versuch für die Tour ohne Strecke)
     go(); pg.wait_for_selector("#mt-state"); assert pg.inner_text("#mt-state") == "✓ Verbunden mit mt.test als Tagebuch (nur ansehen)", pg.inner_text("#mt-state")
-    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000); (leise(), pg.click("#mt-go")); tx = toast("schon vorhanden"); assert tx == "16 schon vorhanden · 1 ohne Strecke auf dem Server" + nur, tx
+    n1 = pg.evaluate("Tours.list().then(l => l.length)"); pg.evaluate("window.__mt.log = []"); pg.wait_for_function("() => { const t = document.querySelector('#toast'); return !t || !t.classList.contains('on'); }", timeout=30000); (leise(), pg.click("#mt-go")); tx = toast("schon vorhanden"); assert tx == "16 übersprungen, schon vorhanden · 1 ohne Strecke auf dem Server" + nur, tx
     assert pg.evaluate("window.__mt.log") == ["GET /api/tours", "GET /api/tours/987654322/gpx"] and pg.evaluate("Tours.list().then(l => l.length)") == n1
     sync = "async (z) => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: z }, null)"
     # Rangfolge der Zahlen: nach einer Korrektur der Spur von Hand gilt die eigene Rechnung – bis zum nächsten Abgleich
@@ -1505,7 +1505,7 @@ def meine_touren(pg):
     assert big["r"]["dup"] == 800 and big["r"]["added"] == 0 and big["r"]["zahlen"] == 800 and big["r"]["namesMt"] == 800 and big["ok"] == 800 and big["log"] == ["GET /api/tours"] and big["ms"] < 20000, big
     assert big["r2"]["zahlen"] == 0 and big["r2"]["namesMt"] == 0 and big["r2"]["dup"] == 800, big["r2"]
     # Abbruch: langsamer Server, „Abbrechen“ im Fortschrittsblatt – der Rest kommt beim nächsten Mal, nichts doppelt
-    pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^mt:s\\d+$/.test(t.srcId))) await Tours.remove(t.id); window.__mt.delay = 250; }")
+    pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^mt:s\\d+$/.test(t.srcId))) await Tours.remove(t.id, { stein: false }); window.__mt.delay = 250; }")
     go(); pg.wait_for_selector("#mt-go"); (leise(), pg.click("#mt-go")); pg.wait_for_selector("#prog-stop"); pg.wait_for_function("/\\d+ von 12/.test(document.querySelector('.sheet p').textContent)"); pg.click("#prog-stop")
     m = toast("abgebrochen", 30000); assert "abgebrochen – der Rest kommt beim nächsten Mal" in m, m
     k = pg.evaluate("Tours.list().then(l => l.filter(t => /^mt:s\\d+$/.test(t.srcId)).length)"); assert 0 < k < 11, k
@@ -1525,7 +1525,7 @@ def meine_touren(pg):
     assert pg.evaluate("window.__mt.log") == ["POST /api/logout"] and pg.evaluate("window.__mt.sessions.size") == 0 and pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Zweifach"}
     pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_selector(".sheet", state="detached")
     # Aufräumen: alles, was dieser Abschnitt angelegt hat
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'mt'); await Set_.set('mtZahlen', true); Native.http = window.__mtReal; }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); await DB.del('kv', 'mt'); await Set_.set('mtZahlen', true); Native.http = window.__mtReal; }", vorher)
     assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
 
 
@@ -1590,7 +1590,7 @@ def uhr_hoehen(pg):
       document.querySelector('.sheet .btn.pri').click(); await new Promise(r => setTimeout(r, 400)); Import.Zepp.importAll = o; return got; }""")
     assert seen == {"ele": False}, seen
     pg.wait_for_selector(".sheet", state="detached")
-    pg.evaluate("async (keep) => { Import.Zepp.req = window.__zreq0; delete window.__zsums; for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'zepp'); await Set_.set('zeppEle', true); }", vorher)
+    pg.evaluate("async (keep) => { Import.Zepp.req = window.__zreq0; delete window.__zsums; for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); await DB.del('kv', 'zepp'); await Set_.set('zeppEle', true); }", vorher)
     assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
 
 
@@ -1601,10 +1601,10 @@ DUP_DATEN = """async () => {
   const line = (t0, n, lat, f, hr) => Array.from({ length: n }, (_, i) => Object.assign({ lat: lat + i * 0.0006 * f, lon: 11.4, ele: 900 + i * 6, t: t0 + i * MIN }, hr ? { hr: 110 + (i % 20) } : {}));
   const K = (await Tours.add({ name: 'Kramerspitz', sport: 'hike', pts: line(base, 90, 47.5, 1), src: 'komoot', srcId: 'komoot:d1', up: 640, down: 630, note: 'Schöne Runde' })).tour;
   K.pins = [{ id: 'pin1', ts: base + 30 * MIN, lat: 47.51, lon: 11.4, text: 'Gipfelkreuz' }]; K.nameKomoot = 'Kramerspitz'; await Tours.save(K);
-  const Z = (await Tours.add({ sport: 'hike', pts: line(base + 2 * MIN, 88, 47.5, 1.03, true), src: 'zepp', srcId: 'zepp:d1' })).tour;
+  const Z = (await Tours.add({ sport: 'hike', pts: line(base + 2 * MIN, 88, 47.5, 1.03, true), src: 'zepp', srcId: 'zepp:d1', force: true })).tour;      // 2.24.1: force – die Prüfung beim Anlegen würde das Paar sonst verhindern; hier geht es um Altbestand
   await DB.putMany('photos', [1, 2].map(i => ({ id: 'dupfoto' + i, name: 'd' + i + '.jpg', ts: base + i * 10 * MIN, lat: null, lon: null, w: 10, h: 10, src: 'galerie', tour: Z.id, pos: 'none', note: '' })));
   const X = (await Tours.add({ name: 'Vormittag mit dem Rad', sport: 'bike', pts: line(base + 5 * 86400000, 60, 47.7, 2), src: 'rec' })).tour;
-  const Y = (await Tours.add({ name: 'Begleitung zu Fuß', sport: 'hike', pts: line(base + 5 * 86400000 + 8 * MIN, 50, 47.7, 2.3), src: 'file' })).tour;
+  const Y = (await Tours.add({ name: 'Begleitung zu Fuß', sport: 'hike', pts: line(base + 5 * 86400000 + 8 * MIN, 50, 47.7, 2.3), src: 'file', force: true })).tour;
   return { K: K.id, Z: Z.id, X: X.id, Y: Y.id, zname: Z.name, kup: K.up }; }"""
 
 def doppelte(pg):
@@ -1644,7 +1644,7 @@ def doppelte(pg):
     bk = pg.evaluate("Backup.collect().then(b => b.kv.find(k => k.k === 'dupIgnore'))"); assert bk and bk["v"] == [key("X", "Y")], bk
     assert pg.evaluate("async (bk) => { await DB.del('kv', 'dupIgnore'); await Backup.restoreKv([bk]); return DB.kvGet('dupIgnore', []); }", bk) == [key("X", "Y")]
     pg.click("#dup-reset"); pg.wait_for_selector(box("X", "Y")); assert pg.evaluate("DB.kvGet('dupIgnore', [])") == []
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); }", vorher)
     assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
 
 
@@ -1791,12 +1791,12 @@ def aufnahme_270(pg):
     schieben(pg, 1.0); pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); rec3 = pg.evaluate("location.hash.split('/')[2]")
     assert pg.evaluate("DB.kvGet('recRoute', null)") is None, "nach der Tour mit der Route ist die Auswahl erledigt"
     # Gewählte Tour inzwischen gelöscht: deutlicher Hinweis statt stillem Verschwinden
-    pg.evaluate("id => DB.kvSet('recRoute', { kind: 'tour', id, name: 'Nachgehen R', ts: Date.now() })", plan); pg.evaluate("id => Tours.remove(id)", plan)
+    pg.evaluate("id => DB.kvSet('recRoute', { kind: 'tour', id, name: 'Nachgehen R', ts: Date.now() })", plan); pg.evaluate("id => Tours.remove(id, { stein: false })", plan)
     go(pg, "#/start", "#startrec"); pg.reload(); pg.wait_for_selector("#tabs a")
     go(pg, "#/rec", ".bigstart"); pg.wait_for_selector("#rroutegone"); assert "Nachgehen R" in pg.inner_text("#rroutegone") and "nicht mehr" in pg.inner_text("#rroutegone")
     pg.click("#rroutegone-ok"); pg.wait_for_selector("#rroutegone", state="detached"); assert pg.evaluate("DB.kvGet('recRoute', null)") is None
     # Aufräumen
-    pg.evaluate("async ids => { for (const id of ids) await Tours.remove(id); window.__rec.state = 'idle'; window.__rec.unsent = false; window.__routeName = ''; }", [rec1, rec2, rec3])
+    pg.evaluate("async ids => { for (const id of ids) await Tours.remove(id, { stein: false }); window.__rec.state = 'idle'; window.__rec.unsent = false; window.__routeName = ''; }", [rec1, rec2, rec3])
 
 WINTER_TOUREN = """async (srv) => {
   /* Touren, die es in der App schon gibt – alle mit der alten Sammel-Sportart „ski“ – und passend zu s4 (Ski alpin), s5 (Skitour), s6 (Schneeschuh), s7 (Langlauf) am Server;
@@ -1850,7 +1850,7 @@ def winter(pg):
     pg.evaluate("async id => { const t = await DB.get('tours', id); t.tags = []; await Tours.save(t); }", o["s6"])
     pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
     assert pg.evaluate("id => DB.get('tours', id).then(t => t.tags)", o["s6"]) == [], "entferntes Schlagwort kommt nicht wieder"
-    pg.evaluate("async () => { for (const t of await Tours.list()) if (t.srcId === 'mt:s8') await Tours.remove(t.id); window.__mt.edit = l => l.map(t => t.id === 's8' ? Object.assign({}, t, { sport: 'snowshoe' }) : t); }")
+    pg.evaluate("async () => { for (const t of await Tours.list()) if (t.srcId === 'mt:s8') await Tours.remove(t.id, { stein: false }); window.__mt.edit = l => l.map(t => t.id === 's8' ? Object.assign({}, t, { sport: 'snowshoe' }) : t); }")
     pg.evaluate("async () => Import.MT.importAll(await DB.kvGet('mt'), { zahlen: true }, null)")
     ns = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'mt:s8'))"); assert ns["sport"] == "snowshoe" and ns["tags"] == ["Schneeschuh"] and ns["sportMt"] == "snowshoe", ns      # neue Tour vom Server (2.19.0: Sportart Schneeschuh)
     pg.evaluate("window.__mt.edit = null")
@@ -1894,7 +1894,7 @@ def winter(pg):
     bk = pg.evaluate("async () => { const b = await Backup.collect(); const z = fflate.gunzipSync(fflate.gzipSync(new TextEncoder().encode(JSON.stringify(b)))); const d = Backup.parse(fflate.gzipSync(z)); return { sp: d.tours.map(t => t.sport), tg: d.tours.filter(t => (t.tags || []).includes('Schneeschuh')).length, sk: d.kv.map(k => k.k) }; }")
     assert {"ski", "skialpin", "skitour", "nordic", "hike"} <= set(bk["sp"]) and bk["tg"] >= 3 and "skiVer" not in bk["sk"] and "abgleich" not in bk["sk"] and "mt" not in bk["sk"], bk
     # Aufräumen
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'mt'); window.__mt.edit = null; Native.http = window.__mtReal; TourUI.filter.sport = ''; }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); await DB.del('kv', 'mt'); window.__mt.edit = null; Native.http = window.__mtReal; TourUI.filter.sport = ''; }", vorher)
     assert pg.evaluate("Tours.list().then(l => l.length)") == len(vorher)
 
 
@@ -1956,7 +1956,7 @@ def sterne(pg):
     pg.click(".sheet .btn:has-text('Zurücksetzen')"); pg.wait_for_function("() => document.querySelectorAll('a.tour').length > 2"); assert pg.input_value("#filterstars") == ""; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
     # Sicherung enthält Bewertung und Merker; Einspielen bringt sie zurück
     bk = pg.evaluate("async id => { const b = await Backup.collect(); const t = b.tours.find(t => t.id === id); return [t.stars, t.starsMan]; }", ids["b"]); assert bk == [5, 1], bk
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); await DB.del('kv', 'mt'); Native.http = window.__mtReal; }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); await DB.del('kv', 'mt'); Native.http = window.__mtReal; }", vorher)
 
 
 ALLES_STUBS = """() => { const S = window.__al = { calls: [], gate: null, mode: {} }, real = { z: Import.Zepp.importAll, k: Import.Komoot.importAll, m: Import.MT.importAll };
@@ -2066,10 +2066,10 @@ def senden(pg):
         assert "Passwort" not in json.dumps(pg.evaluate("DB.kvGet('mt', null)")) and "password" not in json.dumps(pg.evaluate("DB.kvGet('mt', null)")).lower()
     finally:
         pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
-        pg.evaluate("async () => { window.__mt.fail = null; for (const t of (await Tours.list())) if (t.name.startsWith('Sendetour')) await Tours.remove(t.id); await DB.del('kv', 'mt'); await DB.del('kv', 'mtOffen'); await Set_.set('mtAuto', false); Tours.invalidate(); }")
+        pg.evaluate("async () => { window.__mt.fail = null; for (const t of (await Tours.list())) if (t.name.startsWith('Sendetour')) await Tours.remove(t.id, { stein: false }); await DB.del('kv', 'mt'); await DB.del('kv', 'mtOffen'); await Set_.set('mtAuto', false); Tours.invalidate(); }")
     nachher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
     new_ = [i for i in nachher if i not in vorher]
-    if new_: pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i); Tours.invalidate(); }", new_)      # was „Aus Meine Touren holen“ aus dem Beispielserver mitgebracht hat
+    if new_: pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i, { stein: false }); Tours.invalidate(); }", new_)      # was „Aus Meine Touren holen“ aus dem Beispielserver mitgebracht hat
 
 
 def blaetter_setup(pg):
@@ -2110,7 +2110,7 @@ def blaetter_zustaende(pg, d):
 
 def blaetter_ende(pg, d):
     pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())")
-    pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i); await DB.del('kv', 'mt'); Tours.invalidate(); }", d["ids"])
+    pg.evaluate("async ids => { for (const i of ids) await Tours.remove(i, { stein: false }); await DB.del('kv', 'mt'); Tours.invalidate(); }", d["ids"])
 
 
 def blaetter(pg):
@@ -2159,7 +2159,7 @@ def alles(pg):
     c = pg.evaluate("Object.fromEntries(__al.calls)"); assert c["zepp"]["ele"] is False and c["komoot"]["planned"] is True and c["mt"]["zahlen"] is False, c      # gespeicherte Einstellungen
     assert pg.inner_text("#sum-head") == "3 neue Touren im Tagebuch." and pg.evaluate("document.querySelector('#sum').closest('.sheet').getAttribute('aria-label')") == "Touren geholt"
     assert pg.locator("#sum .li").count() == 3 and [x.strip() for x in pg.locator("#sum .li .li-t b").all_inner_texts()] == ["Zepp", "Komoot", "Meine Touren"]
-    z = pg.inner_text("#sum-zepp"); assert "1 Tour importiert" in z and "Puls bei 2 Touren ergänzt" in z and "5 schon vorhanden" in z, z
+    z = pg.inner_text("#sum-zepp"); assert "1 Tour importiert" in z and "Puls bei 2 Touren ergänzt" in z and "5 übersprungen, schon vorhanden" in z, z
     assert "Name bei 1 Tour von Komoot übernommen" in pg.inner_text("#sum-komoot") and "Zahlen bei 4 Touren angeglichen" in pg.inner_text("#sum-mt")
     st = pg.evaluate("DB.kvGet('abgleich')"); assert st["neu"] == 3 and st["fehler"] == 0 and abs(st["t"] - pg.evaluate("Date.now()")) < 60000, st
     pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached")
@@ -2231,7 +2231,7 @@ def alles_echt(pg):
     tx = pg.inner_text("#sum-mt"); assert "abgelaufen" in tx and "Mehr → Touren importieren → Meine Touren neu anmelden" in tx, tx
     assert pg.locator("#mt-pw, #mt-url").count() == 0, "keine Anmeldeblätter"; pg.click("#sum-ok"); pg.wait_for_selector(".sheet", state="detached")
     assert pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Tagebuch"}
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['mt', 'abgleich']) await DB.del('kv', k); Native.http = window.__mtReal; }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const k of ['mt', 'abgleich']) await DB.del('kv', k); Native.http = window.__mtReal; }", vorher)
 
 
 JAHR_SEED = """async () => {
@@ -2362,7 +2362,7 @@ def layout_22(pg):
     zu(pg)
     bad += sheet_check(pg, "Touren holen, Zusammenfassung", lambda: (go(pg, "#/start", "#startsync"), pg.evaluate("() => { __al.mode = {}; document.querySelector('#startsync').click(); }"), pg.wait_for_selector("#sum")))
     bad += sheet_check(pg, "Touren holen, mit Fehlern", lambda: (go(pg, "#/start", "#startsync"), pg.evaluate("() => { __al.mode = { komoot: { err: { message: 'Tourenliste: HTTP 401' } }, mt: { err: { message: 'Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.', relogin: true } } }; document.querySelector('#startsync').click(); }"), pg.wait_for_selector("#sum")))
-    pg.evaluate("""async (keep) => { Import.Zepp.importAll = __alReal.z; Import.Komoot.importAll = __alReal.k; Import.MT.importAll = __alReal.m; for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['mt', 'zepp', 'komoot', 'abgleich']) await DB.del('kv', k); }""", vorher)
+    pg.evaluate("""async (keep) => { Import.Zepp.importAll = __alReal.z; Import.Komoot.importAll = __alReal.k; Import.MT.importAll = __alReal.m; for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const k of ['mt', 'zepp', 'komoot', 'abgleich']) await DB.del('kv', k); }""", vorher)
     return sorted(set(bad))
 
 
@@ -2388,7 +2388,7 @@ def layout_21(pg):
     bad += sheet_check(pg, "Zepp, angemeldet", lambda: zepp(True))
     bad += sheet_check(pg, "Zepp, anmelden", lambda: zepp(False))
     bad += sheet_check(pg, "Zusammenführen", lambda: (go("#/doppelt", "section.dup .dup-a"), pg.locator("section.dup button[data-a=merge]").first.click()))
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); await DB.del('kv', 'mt'); await DB.del('kv', 'zepp'); }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); await DB.del('kv', 'mt'); await DB.del('kv', 'zepp'); }", vorher)
     return sorted(set(bad))
 
 
@@ -2570,7 +2570,7 @@ def fuehrer(pg):
     assert pl["status"] == "planned" and pl["name"] == FU_TITEL[1] and pl["dist"] > 6000 and pl["up"] > 100, pl
     assert pg.evaluate("id => PlanMeta.get(id)", pid)["quelle"] == {"art": "fuehrer", "text": "Rother Wanderführer Fantasia Süd – " + FU_TITEL[1]}
     assert pg.evaluate("Tours.list().then(l => l.length)") == npl + 1
-    pg.evaluate("id => Tours.remove(id)", pid)
+    pg.evaluate("id => Tours.remove(id, { stein: false })", pid)
     go(pg, "#/fuehrer", ".fu-book"); sync_fertig(); assert "2 von 8 gewandert" in pg.inner_text(f".fu-book[data-id='{bid}'] .fu-sub"), "eine Planung zählt nicht als gewandert"
 
     # --- 10. Tourseite und Namensvorschlag ---
@@ -2697,7 +2697,7 @@ def fuehrer(pg):
     for k in [bid] + [b["id"] for b in pg.evaluate("Buecher.liste()") if b["id"] != bid]:
         pg.evaluate("id => Buecher.entferne(id)", k)
     go(pg, "#/fuehrer", "#fu-add2"); assert pg.evaluate("DB.all('kv').then(l => l.filter(k => /^guide(pts|cover):/.test(k.k)).length)") == 0
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const k of ['guides', 'guideMatch']) await DB.del('kv', k); Buecher.coverMem = {}; }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const k of ['guides', 'guideMatch']) await DB.del('kv', k); Buecher.coverMem = {}; }", vorher)
     return sorted(set(bad))
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2872,7 +2872,7 @@ def pdf(pg, aus=None):
     # ---- Leeres Jahr: freundlich, kein PDF
     pg.evaluate("() => PdfUI.jahr(Jahr.berechne([], 2001, new Date()), [])"); assert "keine Touren" in toast_text(pg, "keine Touren")
     # ---- Aufräumen
-    pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const p of await DB.all('photos')) if (/^pdf(ph|jh)/.test(p.id)) await DB.del('photos', p.id); Tours.invalidate(); }", vorher)
+    pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const p of await DB.all('photos')) if (/^pdf(ph|jh)/.test(p.id)) await DB.del('photos', p.id); Tours.invalidate(); }", vorher)
     pg.unroute("**/thumb/pdf*")
     return bad
 
@@ -2966,7 +2966,7 @@ def pdf_karte(pg, aus=None):
     neu(); d, hw, _ = tour_pdf(tl); pdf_pruefen(d, 1, "Lange Tour", 1); assert hw == 0 and 2 <= len(st["urls"]) <= 12, len(st["urls"])
     assert all(int(u.split("/")[3]) <= 9 for u in st["urls"]), st["urls"][:3]
     # ---- Aufräumen
-    pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); Tours.invalidate(); Native.http = window.__klH0; delete window.__klH0; }", vorher)
+    pg.evaluate("async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); Tours.invalidate(); Native.http = window.__klH0; delete window.__klH0; }", vorher)
     pg.unroute("**/tile.openstreetmap.org/**", kachel)
 
 def pdf_seiten_erwartet(n, mit_fotos=False):
@@ -3083,7 +3083,7 @@ def teilen_2130(pg):
         return bad
     finally:
         pg.unroute("**/thumb/tbf*"); pg.unroute("**/photo/tbf*")
-        pg.evaluate("""async ([ids, tid]) => { if (window.__tbcall0) { window.MTApp.call = window.__tbcall0; window.__tbcall0 = null; } for (const id of ids) await DB.del('photos', id); if (tid) await Tours.remove(tid);
+        pg.evaluate("""async ([ids, tid]) => { if (window.__tbcall0) { window.MTApp.call = window.__tbcall0; window.__tbcall0 = null; } for (const id of ids) await DB.del('photos', id); if (tid) await Tours.remove(tid, { stein: false });
           document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
 
 
@@ -3331,7 +3331,7 @@ def doppelt_2140(pg):
         return bad
     finally:
         pg.unroute("**/thumb/dp*"); pg.unroute("**/photo/dp*")
-        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) { await Tours.remove(tid); const bg = await DB.kvGet('tilebg', {}); delete bg[tid]; await DB.kvSet('tilebg', bg); }
+        pg.evaluate("""async ([ids, tid]) => { for (const id of ids) await DB.del('photos', id); if (tid) { await Tours.remove(tid, { stein: false }); const bg = await DB.kvGet('tilebg', {}); delete bg[tid]; await DB.kvSet('tilebg', bg); }
           const cm = await DB.kvGet('comments', {}); ids.forEach(id => delete cm[id]); await DB.kvSet('comments', cm); await Set_.set('fotoSkipDup', true); delete window.__pickPh;
           if (window.__dpcall0) { window.MTApp.call = window.__dpcall0; window.__dpcall0 = null; }
           window.__lightbox && window.__lightbox.close(); document.querySelectorAll('.sheet-back').forEach(e => e.remove()); sheet.stack = []; }""", [ids, tid])
@@ -3542,7 +3542,7 @@ def mt_schalter_2150(pg):
 
     # aufräumen: Stubs zurück, Touren, Buch und Einstellungen wie vorher
     pg.evaluate(NETZ_WACHE_AUS)
-    pg.evaluate("""async ([ids, vor]) => { for (const k of ['A', 'B', 'C']) await Tours.remove(ids[k]); await Buecher.entferne('mt-3f2a1b2c');
+    pg.evaluate("""async ([ids, vor]) => { for (const k of ['A', 'B', 'C']) await Tours.remove(ids[k], { stein: false }); await Buecher.entferne('mt-3f2a1b2c');
       for (const k of ['mt', 'zepp', 'komoot', 'mtOffen', 'abgleich']) { if (vor[k] == null) await DB.del('kv', k); else await DB.kvSet(k, vor[k]); }
       await Set_.set('mtAuto', vor.set.mtAuto); await Set_.set('autoAbgleich', vor.set.autoAbgleich); Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); Tours.invalidate(); }""", [ids, vor])
     assert pg.evaluate("typeof window.__net0") == "undefined"
@@ -3858,8 +3858,8 @@ def abgleich_2180(pg):
         pg.evaluate("async () => { Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); }")
     finally:
         pg.evaluate(AB_SERVER_AUS); pg.evaluate(NETZ_WACHE_AUS)
-        pg.evaluate("""async ([ids, vor]) => { for (const k of Object.keys(ids)) await Tours.remove(ids[k]);
-          for (const t of await Tours.list()) if (/^Pin-Tour/.test(t.name)) await Tours.remove(t.id);
+        pg.evaluate("""async ([ids, vor]) => { for (const k of Object.keys(ids)) await Tours.remove(ids[k], { stein: false });
+          for (const t of await Tours.list()) if (/^Pin-Tour/.test(t.name)) await Tours.remove(t.id, { stein: false });
           for (const p of await DB.all('photos')) if (/^(a[1249]a{18}|b1b2c3d4e5f6a7b8c9dv|h8\\d\\daaaaaaaa|vv3a+v)$/.test(p.id)) await DB.del('photos', p.id);
           await DB.del('kv', 'mtAbgleichLauf');
           if (vor.mt == null) await DB.del('kv', 'mt'); else await DB.kvSet('mt', vor.mt); await Set_.set('mtWlan', vor.wlan); await Set_.set('mtMitNotiz', vor.mitNotiz); Set_.v.mtAktiv = true; await Set_.set('mtWahl', 'ja'); Tours.invalidate(); }""", [ids, vor])
@@ -3960,7 +3960,7 @@ def komootpaket_2180(pg):
     finally:
         pg.unroute("**/photo/kp*"); pg.unroute("**/thumb/kp*")
         pg.evaluate("() => { window.MTApp.call = window.__tbcall0; }")
-        pg.evaluate("""async ([id, an]) => { await Tours.remove(id); for (const p of ['kp1aaaaaaaaaaaaaaaaa', 'kp2aaaaaaaaaaaaaaaaa', 'kp3aaaaaaaaaaaaaaaaa']) await DB.del('photos', p);
+        pg.evaluate("""async ([id, an]) => { await Tours.remove(id, { stein: false }); for (const p of ['kp1aaaaaaaaaaaaaaaaa', 'kp2aaaaaaaaaaaaaaaaa', 'kp3aaaaaaaaaaaaaaaaa']) await DB.del('photos', p);
           Set_.v.mtAktiv = an; await Set_.set('mtWahl', an ? 'ja' : 'nein'); window.__saved = null; Tours.invalidate(); }""", [tid, an0])
     return bad
 
@@ -4290,7 +4290,7 @@ def flugvideo_2170(pg):
     pg.evaluate(FV_ZURUECK); pg.evaluate("FlugVideo.test = null; window.__fvAb = null; window.__fvAbFertig = null")
     pg.evaluate("g => { FlugVideo.GRENZEN = JSON.parse(g); }", g0)
     pg.evaluate("v => Set_.set('flugVideo', JSON.parse(v))", vor)
-    pg.evaluate("async id => { await Tours.remove(id); for (let i = 0; i < 3; i++) await DB.del('photos', 'fv2170' + String(i).padStart(4, '0')); }", tid)
+    pg.evaluate("async id => { await Tours.remove(id, { stein: false }); for (let i = 0; i < 3; i++) await DB.del('photos', 'fv2170' + String(i).padStart(4, '0')); }", tid)
     pg.unroute("**/elevation-tiles-prod/**", dem_route)
     assert pg.evaluate("window.__fvcall0") is None and pg.evaluate("FlugVideo.test") is None
 
@@ -4419,7 +4419,7 @@ def doppelt_2230(pg):
     pg.wait_for_function("document.querySelectorAll('section.dup').length === 1"); seite(); assert pg.inner_text("#dupnote").startswith("1" + nbsp + "mögliche doppelte Tour unter")
     go(pg, "#/import", "#imp-dup"); pg.wait_for_function("() => /^1/.test(document.querySelector('#imp-dup small').textContent)")
     # 8. Nichts mehr offen: Hinweis verschwindet von selbst, Aufräumen sagt „Keine doppelten Touren“
-    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); await DB.del('kv', 'dupSpaeter'); await DB.kvSet('dupBasis', 1); }", vorher)
+    pg.evaluate("async (keep) => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); for (const i of [1, 2]) await DB.del('photos', 'dupfoto' + i); await DB.del('kv', 'dupIgnore'); await DB.del('kv', 'dupSpaeter'); await DB.kvSet('dupBasis', 1); }", vorher)
     seite(); assert note() == 0
     go(pg, "#/import", "#imp-dup"); pg.wait_for_function("() => /^Keine doppelten Touren/.test(document.querySelector('#imp-dup small').textContent)")
     bad += layout_check(pg, ["#/import"], widths=((360, 100), (390, 100), (430, 100), (360, 130)))
@@ -4677,7 +4677,7 @@ def statgruppen_2190(pg):
     go("#/plan", "#plsport-wahl"); po = wahl_texte(pg, "plsport")
     assert "Bergsteigen" in po and "Schneeschuhwandern" in po and "Skitour" in po and "Ski alpin" in po and "Bikepacking" in po, po
     # aufräumen
-    pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); await Set_.set('recSport', ''); Tours.invalidate(); }", ids)
+    pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id, { stein: false }); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); await Set_.set('recSport', ''); Tours.invalidate(); }", ids)
     return bad
 
 
@@ -4798,7 +4798,7 @@ def aktivitaeten_2190(pg):
     go("#/", "a.tour")
     kl = pg.eval_on_selector_all(".filters .chips .schip", "els => els.map(e => e.dataset.sport)")
     assert [k for k in kl if k in km] == km, (kl, km)      # gleiche Auswahl und Reihenfolge (die Liste kennt auch geplante Touren)
-    pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); Tours.invalidate(); }", ids)
+    pg.evaluate("async ids => { for (const id of Object.values(ids)) await Tours.remove(id, { stein: false }); await Set_.set('statGruppen', []); await Set_.set('favAkt', Aktiv.STANDARD); Tours.invalidate(); }", ids)
     return bad
 
 
@@ -4929,7 +4929,7 @@ def wellen_2240_klein(pg):
             go(pg, r, "#view > *"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(350)
             for m in pg.evaluate(KUERZUNG_JS): bad.append(f"{w} px, {fs} %, {r}: {m}")
     pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
-    pg.evaluate("id => Tours.remove(id)", lang)
+    pg.evaluate("id => Tours.remove(id, { stein: false })", lang)
     # M10: Import-Blätter haben links „Abbrechen“, die Hauptaktion rechts; rote Hauptaktion bei Datenverlust
     go(pg, "#/import", ".list .li"); pg.wait_for_function("() => !Nav._busy")
     for titel in ("Alle aufgezeichneten", "Strava-Schnittstelle", "Zepp-Cloud", "Fahrten aus der Flow-App", "Per Export, Teilen-Menü", "z. B. von Outdooractive"):
@@ -4973,6 +4973,202 @@ def wellen_2240_klein(pg):
     pg.evaluate("UI.tourRow = window.__tourRow0; 0"); pg.evaluate(TourUI_reset)
     pg.evaluate("async () => { for (let i = 0; i < 250; i++) { await DB.del('tours', 'perf' + i); await DB.del('tracks', 'perf' + i); } Tours.invalidate(); }")
     return bad
+
+
+def b64_gpx(t0, **k):
+    import base64
+    return "data:application/gpx+xml;base64," + base64.b64encode(gpx(t0, **k).encode("utf-8")).decode()
+
+def loeschen_import_2241(pg):
+    """2.24.1: (1) geplante Touren löschen (Tourseite und Planung, gleiche Rückfrage wie gemachte Touren, nach Neuladen weg, Gelöschtes kommt beim Holen nicht wieder);
+    (2) Doppelt-Prüfung beim Import (dieselbe Datei zweimal, andere Quelle, ohne Zeit, geplant, Komoot, Meine Touren, Zepp, früher gelöscht, Liste der Übersprungenen). Gibt Layoutfehler zurück."""
+    bad = []
+    vorher = pg.evaluate("Tours.list().then(l => l.map(t => t.id))")
+    ids_neu = lambda: [t for t in pg.evaluate("Tours.list().then(l => l.map(t => t.id))") if t not in vorher]
+    anzahl = lambda: pg.evaluate("Tours.list().then(l => l.length)")
+    n0 = anzahl()
+    # ---------- 1. geplante Tour löschen: Tourseite ----------
+    ids = pg.evaluate("""async () => { const pts = Array.from({ length: 12 }, (_, i) => ({ lat: 46.2 + i * 0.001, lon: 10.1 + i * 0.001, ele: 700 + i * 5, t: null }));
+      const r = await Tours.add({ name: 'Plan Löschprobe', sport: 'hike', pts, status: 'planned', src: 'plan', bewusst: true });
+      await DB.kvSet('pn:' + r.tour.id, { note: 'Notiz' }); await DB.kvSet('plan:' + r.tour.id, { wps: [] });
+      const g = await Tours.add({ name: 'Gelaufen nach Plan', sport: 'hike', pts: pts.map((p, i) => Object.assign({}, p, { t: 1690000000000 + i * 30000 })), src: 'file' });
+      const t = await DB.get('tours', g.tour.id); t.plan = r.tour.id; await Tours.save(t); return [r.tour.id, g.tour.id]; }""")
+    plan, lief = ids
+    go(pg, "#/tour/" + plan, ".tourp"); pg.wait_for_selector(".banner")
+    assert "Geplante Tour" in pg.inner_text(".banner")
+    pg.locator("header.top button[aria-label=Aktionen]").click(); pg.wait_for_selector("#tour-del")
+    assert pg.evaluate("() => { const b = document.querySelector('#tour-del'); return b.classList.contains('danger') && !b.closest('.row').nextElementSibling; }"), "Löschen steht zuletzt und ist rot, wie bei gemachten Touren"
+    bad += sheet_check(pg, "Aktionen (geplante Tour)", lambda: None) if False else []
+    pg.click("#tour-del"); pg.wait_for_selector(".sheet[aria-label='Geplante Tour „Plan Löschprobe“ löschen?']")
+    q = pg.inner_text(".sheet[aria-label='Geplante Tour „Plan Löschprobe“ löschen?']"); assert "Zurückholen lässt sie sich nur aus einer Sicherung" in q and "von diesem Handy gelöscht" in q, q
+    assert pg.locator(".sheet .btn.pri.danger", has_text="Löschen").count() == 1 and pg.locator(".sheet .btn", has_text="Abbrechen").count() == 1
+    assert pg.evaluate("() => { const b = [...document.querySelectorAll('.sheet .row.end .btn')].map(x => x.textContent.trim()); return b[0] === 'Abbrechen' && b[1] === 'Löschen'; }"), "Abbrechen links, Löschen rechts"
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("id => DB.get('tours', id).then(Boolean)", plan), "Abbrechen löscht nichts"
+    pg.locator("header.top button[aria-label=Aktionen]").click(); pg.wait_for_selector("#tour-del"); pg.click("#tour-del"); pg.wait_for_selector(".sheet .btn.pri.danger")
+    pg.click(".sheet .btn.pri.danger"); pg.wait_for_function("location.hash === '#/'"); assert toast_text(pg, "gelöscht") == "Geplante Tour gelöscht"
+    r = pg.evaluate("""async ([id, lief]) => ({ tour: !!(await DB.get('tours', id)), spur: !!(await DB.get('tracks', id)), pn: await DB.kvGet('pn:' + id, null), pl: await DB.kvGet('plan:' + id, null),
+      plan: (await DB.get('tours', lief)).plan || null, steine: (await DB.kvGet('geloescht', [])).filter(s => s.n === 'Plan Löschprobe').length }); """, [plan, lief])
+    assert r == {"tour": False, "spur": False, "pn": None, "pl": None, "plan": None, "steine": 1}, r
+    # nach Neuladen der Oberfläche: weiterhin weg, auch in der Liste „Geplant“
+    pg.reload(); pg.wait_for_selector("#tabs a"); pg.wait_for_function("() => !Nav._busy")
+    assert pg.evaluate("id => Promise.all([DB.get('tours', id), Tours.list()]).then(([t, l]) => !t && !l.some(x => x.id === id))", plan), "nach Neuladen weg"
+    go(pg, "#/", "#touradd"); pg.evaluate("TourUI.filter.planned = true; Nav.render()"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
+    assert "Plan Löschprobe" not in pg.inner_text("#view"); pg.evaluate("TourUI.filter.planned = false")
+    # ---------- 2. Planung selbst ----------
+    p2 = pg.evaluate("""async () => { const pts = Array.from({ length: 12 }, (_, i) => ({ lat: 46.3 + i * 0.001, lon: 10.2 + i * 0.001, ele: 700, t: null }));
+      return (await Tours.add({ name: 'Plan im Planer', sport: 'hike', pts, status: 'planned', src: 'plan', bewusst: true })).tour.id; }""")
+    go(pg, "#/plan/" + p2, ".pmap"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_selector("#plan-del")
+    assert pg.evaluate("() => { const b = document.querySelector('#plan-del'); return b.classList.contains('danger') && b.textContent.includes('Tour löschen …'); }")
+    assert pg.evaluate("() => { const s = document.querySelector('.ppanel .btn.pri').getBoundingClientRect(), d = document.querySelector('#plan-del').getBoundingClientRect(); return d.top > s.bottom; }"), "unter der Speichern-Zeile"
+    pg.click("#plan-del"); pg.wait_for_selector(".sheet[aria-label='Geplante Tour „Plan im Planer“ löschen?']")
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("id => DB.get('tours', id).then(Boolean)", p2)
+    pg.click("#plan-del"); pg.wait_for_selector(".sheet .btn.pri.danger"); pg.click(".sheet .btn.pri.danger"); pg.wait_for_function("location.hash === '#/'")
+    assert toast_text(pg, "gelöscht") == "Geplante Tour gelöscht" and not pg.evaluate("id => DB.get('tours', id).then(Boolean)", p2)
+    pg.wait_for_timeout(500); assert pg.locator(".sheet").count() == 0, "keine zweite Rückfrage „Planung verwerfen?“: " + pg.evaluate("[...document.querySelectorAll('.sheet')].map(s => s.getAttribute('aria-label'))").__repr__()
+    # eine neue, noch nicht gespeicherte Planung hat keinen Löschknopf (dafür „Leeren“)
+    go(pg, "#/plan", ".pmap"); assert pg.locator("#plan-del").count() == 0
+    # gemachte Tour: dieselbe Rückfrage und Meldung (Wortlaut „Tour …“)
+    g = pg.evaluate("""async () => { const pts = Array.from({ length: 12 }, (_, i) => ({ lat: 46.4 + i * 0.001, lon: 10.3 + i * 0.001, ele: 700, t: 1691000000000 + i * 30000 }));
+      return (await Tours.add({ name: 'Gemacht Löschprobe', sport: 'hike', pts, src: 'komoot', srcId: 'komoot:5551' })).tour.id; }""")
+    go(pg, "#/tour/" + g, ".tourp"); pg.locator("header.top button[aria-label=Aktionen]").click(); pg.wait_for_selector("#tour-del"); pg.click("#tour-del")
+    pg.wait_for_selector(".sheet[aria-label='Tour „Gemacht Löschprobe“ löschen?']"); q = pg.inner_text(".sheet[aria-label='Tour „Gemacht Löschprobe“ löschen?']")
+    assert "Die Fotos bleiben erhalten" in q and "Beim Holen aus Komoot kommt sie nicht wieder" in q and "nur aus einer Sicherung" in q, q
+    pg.click(".sheet .btn.pri.danger"); pg.wait_for_function("location.hash === '#/'"); assert toast_text(pg, "gelöscht") == "Tour gelöscht"
+    # ---------- 3. Gelöschtes kommt beim Holen nicht wieder (Komoot, geplant) ----------
+    k = pg.evaluate("""async () => {
+      const mk = i => Array.from({ length: 12 }, (_, k) => ({ lat: 46.6 + i * 0.05 + k * 0.0006, lon: 10.5 + k * 0.0005, lng: 10.5 + k * 0.0005, alt: 900 + k }));
+      let coords = [];
+      Import.Komoot.tours = async (acc, type) => type === 'tour_planned' ? [{ id: 7001, name: 'Komoot geplant', sport: 'hike', distance: 800 }] : [{ id: 7002, name: 'Komoot gemacht', sport: 'hike', date: new Date(1692000000000).toISOString(), distance: 1300 }];
+      Import.Komoot.coords = async (acc, id) => { coords.push(id); return mk(id === 7001 ? 1 : 2).map(c => ({ lat: c.lat, lng: c.lng, alt: c.alt, t: 0 })); };
+      const acc = { user: 'u', token: 't' }, out = {};
+      out.r1 = await Import.Komoot.importAll(acc, { planned: true }, null); out.c1 = coords.slice(); coords = [];
+      const pl = (await Tours.list()).find(t => t.srcId === 'komoot:7001'), ge = (await Tours.list()).find(t => t.srcId === 'komoot:7002');
+      out.planned = pl && pl.status; out.ids = [pl.id, ge.id];
+      out.r2 = await Import.Komoot.importAll(acc, { planned: true }, null); out.c2 = coords.slice(); coords = [];      // zweiter Lauf: nichts mehr
+      window.__k = { acc, get c() { return coords; }, set c(v) { coords = v; } };
+      return out; }""")
+    assert k["r1"]["added"] == 2 and sorted(k["c1"]) == [7001, 7002] and k["planned"] == "planned", k
+    assert k["r2"]["added"] == 0 and k["r2"]["dup"] == 2 and k["c2"] == [] and k["r2"]["geloescht"] == [], k      # zweimal holen: nichts doppelt, nichts geladen
+    pid, gid = k["ids"]
+    pg.evaluate("id => Tours.loesche(id)", pid)      # die geplante Tour wird gelöscht (Weg wie oben), die gemachte bleibt
+    k2 = pg.evaluate("""async () => { const r = await Import.Komoot.importAll(window.__k.acc, { planned: true }, null), c = window.__k.c.slice(); window.__k.c = [];
+      return { added: r.added, dup: r.dup, gel: r.geloescht.map(e => e.name), c, txt: Import.describe(r), n: (await Tours.list()).filter(t => t.srcId === 'komoot:7001').length }; }""")
+    assert k2["added"] == 0 and k2["gel"] == ["Komoot geplant"] and k2["c"] == [] and k2["n"] == 0, k2      # bleibt gelöscht; die Strecke wurde gar nicht erst geladen
+    assert k2["txt"] == "1 übersprungen, schon vorhanden · 1 früher gelöscht, nicht wieder importiert", k2["txt"]
+    # automatisch (Hintergrund-Abgleich): keine Frage; von Hand: Rückfrage, Abbrechen lässt es gelöscht
+    pg.wait_for_timeout(400); assert pg.locator(".sheet").count() == 0, pg.evaluate("[...document.querySelectorAll('.sheet')].map(s => s.getAttribute('aria-label'))")
+    pg.evaluate("""() => { window.__fr = null; Import.Komoot.importAll(window.__k.acc, { planned: true }, null).then(r => Import.frageGeloeschte(r, () => Import.Komoot.importAll(window.__k.acc, { planned: true }, null))).then(x => { window.__fr = x || 'abgebrochen'; }); }""")
+    pg.wait_for_selector(".sheet[aria-label='Gelöschte Tour importieren?']"); q = pg.inner_text(".sheet[aria-label='Gelöschte Tour importieren?']")
+    assert "Diese Tour war schon vorhanden und wurde gelöscht – trotzdem importieren?" in q and "Komoot geplant" in q, q
+    assert pg.evaluate("() => { const b = [...document.querySelectorAll('.sheet .row.end .btn')].map(x => x.textContent.trim()); return b[0] === 'Abbrechen' && b[1] === 'Importieren'; }")
+    bad += sheet_check_open(pg, "Gelöschte Tour importieren?")
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_function("window.__fr === 'abgebrochen'"); assert pg.evaluate("Tours.list().then(l => l.filter(t => t.srcId === 'komoot:7001').length)") == 0
+    pg.evaluate("""() => { window.__fr = null; Import.Komoot.importAll(window.__k.acc, { planned: true }, null).then(r => Import.frageGeloeschte(r, () => Import.Komoot.importAll(window.__k.acc, { planned: true }, null))).then(x => { window.__fr = x || 'abgebrochen'; }); }""")
+    pg.wait_for_selector(".sheet[aria-label='Gelöschte Tour importieren?']"); pg.click(".sheet .btn.pri:has-text('Importieren')"); pg.wait_for_function("window.__fr && window.__fr.added !== undefined")
+    assert pg.evaluate("window.__fr.added") == 1 and pg.evaluate("Tours.list().then(l => l.filter(t => t.srcId === 'komoot:7001' && t.status === 'planned').length)") == 1, "nach Rückfrage wieder da"
+    assert pg.evaluate("DB.kvGet('geloescht', []).then(l => l.filter(s => s.n === 'Komoot geplant').length)") == 0, "der Stein ist frei"
+    # ---------- 4. Dateien: dieselbe Datei zweimal, andere Namen, ohne Zeit, geplant ----------
+    t0 = 1693000000000
+    f = pg.evaluate("""async ([a, b]) => { const enc = s => new TextEncoder().encode(s);
+      const r1 = await Import.fromData('lauf.gpx', enc(a), 'file'), r2 = await Import.fromData('lauf-kopie (1).gpx', enc(a), 'file'), r3 = await Import.fromData('ganz-anders.gpx', enc(b), 'file');
+      return { r1: [r1.added, r1.dup], r2: [r2.added, r2.dup], r3: [r3.added, r3.dup], n: (await Tours.list()).filter(t => /Dateilauf/.test(t.name)).length, txt: Import.describe(r2), ab: (await Tours.list()).find(t => t.name === 'Dateilauf').abdruck }; }""",
+        [gpx(t0, lat=45.5, lon=9.5, name="Dateilauf"), gpx(t0 + 86400000, lat=45.6, lon=9.6, name="Dateilauf zwei")])
+    assert f["r1"] == [1, 0] and f["r2"] == [0, 1] and f["r3"] == [1, 0] and f["n"] == 2 and f["txt"] == "1 übersprungen, schon vorhanden", f      # (Name enthält „Dateilauf“ bei beiden)
+    assert f["ab"] and f["ab"][0].startswith("spur:"), f
+    # gleiche Tour aus anderer Quelle: Startzeit ± 3 Minuten, Strecke 5 % länger (vorher: 90 s und 3 %), am gleichen Ort
+    g2 = pg.evaluate("""async (x) => { const enc = s => new TextEncoder().encode(s); const r = await Import.fromData('uhr.gpx', enc(x), 'file'); return [r.added, r.dup, (await Tours.list()).filter(t => /Dateilauf/.test(t.name)).length]; }""",
+        gpx(t0 + 180000, n=63, lat=45.5, lon=9.5, name="Dateilauf von der Uhr"))
+    assert g2 == [0, 1, 2], g2
+    # ... aber nicht, wenn sie an einem anderen Ort liegt oder 20 Minuten später beginnt und länger ist (gleiche Länge und Dauer wäre ein Zeit-Versatz)
+    g3 = pg.evaluate("""async ([x, y]) => { const enc = s => new TextEncoder().encode(s); const a = await Import.fromData('woanders.gpx', enc(x), 'file'), b = await Import.fromData('spaeter.gpx', enc(y), 'file'); return [a.added, b.added]; }""",
+        [gpx(t0 + 60000, lat=47.5, lon=10.5, name="Woanders"), gpx(t0 + 1200000, n=75, lat=45.5, lon=9.5, name="Später")])
+    assert g3 == [1, 1], g3
+    # ohne Zeit (Routen-Datei) zweimal, gemacht und geplant
+    nz = re.sub(r"<time>[^<]*</time>", "", gpx(t0, n=40, lat=44.5, lon=8.5, name="Ohne Zeit"))
+    h = pg.evaluate("""async x => { const enc = s => new TextEncoder().encode(s);
+      const a = await Import.fromData('route.gpx', enc(x), 'file'), b = await Import.fromData('route2.gpx', enc(x), 'file');
+      const pa = await Import.fromData('plan.gpx', enc(x), 'plan', { status: 'planned', src: 'plan', ohneZeit: true }), pb = await Import.fromData('plan2.gpx', enc(x), 'plan', { status: 'planned', src: 'plan', ohneZeit: true });
+      return [[a.added, a.dup], [b.added, b.dup], [pa.added, pa.dup], [pb.added, pb.dup]]; }""", nz)
+    assert h == [[1, 0], [0, 1], [1, 0], [0, 1]], h      # die geplante Tour zählt neben der gemachten ohne Zeit als eigene Tour, aber nicht doppelt
+    # ---------- 5. Dateien über den Import (Auswahlfenster), Abschlussmeldung, Liste, früher gelöscht ----------
+    pg.evaluate("t => { window.__pick = [{ name: 'import.gpx', url: t }]; }", b64_gpx(t0 + 7 * 86400000, lat=44.1, lon=7.5, name="Import Probe"))
+    go(pg, "#/import", "#imp-dup"); datei = lambda: pg.get_by_text("Dateien (GPX, FIT, TCX, ZIP)").first.click()
+    pg.wait_for_function(LEISE, timeout=30000); datei(); assert "1 Tour importiert" in toast_text(pg, "importiert")
+    pg.wait_for_function(LEISE, timeout=30000); datei(); assert ohne_dup(toast_text(pg, "übersprungen")) == "1 übersprungen, schon vorhanden"
+    assert anzahl() == pg.evaluate("Tours.list().then(l => l.length)") and pg.evaluate("Tours.list().then(l => l.filter(t => /Import Probe/.test(t.name)).length)") == 1, "zweimal dieselbe Datei: eine Tour"
+    pg.wait_for_function(LEISE, timeout=30000)
+    # Liste „Beim Import übersprungen“ unter Aufräumen
+    go(pg, "#/import", "#imp-skip"); t = pg.inner_text("#imp-skip"); assert "Beim Import übersprungen" in t and "zuletzt" in t and "schon vorhanden oder früher gelöscht" in t, t
+    pg.click("#imp-skip"); pg.wait_for_selector(".sheet[aria-label='Beim Import übersprungen']"); pg.wait_for_selector("#skip-list .li")
+    zeilen = pg.locator("#skip-list .li").all_inner_texts(); assert any("Import Probe" in z and "schon vorhanden" in z for z in zeilen), zeilen
+    bad += sheet_check_open(pg, "Beim Import übersprungen"); zu(pg)
+    # früher gelöscht: Import von Hand fragt, Abbrechen lässt die Tour gelöscht, „Importieren“ legt sie an
+    pg.evaluate("async () => { const t = (await Tours.list()).find(t => /Import Probe/.test(t.name)); await Tours.loesche(t.id); }")
+    datei(); assert "1 früher gelöscht, nicht wieder importiert" in toast_text(pg, "früher gelöscht")
+    pg.wait_for_selector(".sheet[aria-label='Gelöschte Tour importieren?']"); assert "„Import Probe“" in pg.inner_text(".sheet[aria-label='Gelöschte Tour importieren?']")
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("Tours.list().then(l => l.filter(t => /Import Probe/.test(t.name)).length)") == 0
+    pg.wait_for_function(LEISE, timeout=30000); datei(); pg.wait_for_selector(".sheet[aria-label='Gelöschte Tour importieren?']"); pg.click(".sheet .btn.pri:has-text('Importieren')")
+    assert "1 gelöschte Tour importiert" in toast_text(pg, "gelöschte Tour importiert")
+    assert pg.evaluate("Tours.list().then(l => l.filter(t => /Import Probe/.test(t.name)).length)") == 1
+    # ---------- 6. Meine Touren zweimal, Zepp, Strava ----------
+    base = 1694000000000
+    mt = pg.evaluate("""async (base) => {
+      const acc = { base: 'https://mt.test', token: 'x', name: 'u' }; let gp = [];
+      const L = [{ id: 'q1', name: 'MT Eins', sport: 'hike', start_ts: base / 1000, dist_m: 1500, up_m: 50, down_m: 50, dur_s: 1800 }, { id: 'q2', name: 'MT Zwei', sport: 'hike', start_ts: base / 1000 + 86400, dist_m: 1700, up_m: 20, down_m: 20, dur_s: 1900 }];
+      Import.MT.tours = async () => L;
+      Import.MT.gpx = async (a, id) => { gp.push(id); const k = id === 'q1' ? 0 : 1, t0 = base + k * 86400000; return '<gpx><trk><trkseg>' + Array.from({ length: 30 }, (_, i) => `<trkpt lat="${43.5 + k * 0.3 + i * 0.0005}" lon="${7 + i * 0.0004}"><ele>500</ele><time>${new Date(t0 + i * 30000).toISOString()}</time></trkpt>`).join('') + '</trkseg></trk></gpx>'; };
+      const r1 = await Import.MT.importAll(acc, { zahlen: true }, null), g1 = gp.slice(); gp = [];
+      const r2 = await Import.MT.importAll(acc, { zahlen: true }, null), g2 = gp.slice(); gp = [];
+      const n = (await Tours.list()).filter(t => /^mt:q/.test(t.srcId || '')).length;
+      // eine davon löschen: der automatische Abgleich bringt sie nicht zurück und lädt ihre Strecke nicht
+      const q2 = (await Tours.list()).find(t => t.srcId === 'mt:q2'); await Tours.loesche(q2.id);
+      const r3 = await Import.MT.importAll(acc, { zahlen: true }, null), g3 = gp.slice(); gp = [];
+      return { r1: [r1.added, r1.dup], r2: [r2.added, r2.dup], g1, g2, n, r3: [r3.added, r3.geloescht.map(e => e.name)], g3, n3: (await Tours.list()).filter(t => /^mt:q/.test(t.srcId || '')).length }; }""", base)
+    assert mt["r1"] == [2, 0] and mt["r2"] == [0, 2] and mt["g1"] == ["q1", "q2"] and mt["g2"] == [] and mt["n"] == 2, mt      # zweimal „Touren holen“: eine Tour je Eintrag, nichts neu geladen
+    assert mt["r3"] == [0, ["MT Zwei"]] and mt["g3"] == [] and mt["n3"] == 1, mt
+    ze = pg.evaluate("""async (base) => {
+      const acc = { token: 't', user: 'u' }, s = { trackid: String(base / 1000 + 5 * 86400), type: 1, dis: '2000', run_time: '1200', source: 'x' }; let det = 0;
+      Import.Zepp.req = async (a, ep) => { if (/history/.test(ep)) return { data: { summary: [s], next: -1 } }; det++; return { data: { longitude_latitude: '', time: '' } }; };
+      Import.Zepp.decode = () => Array.from({ length: 30 }, (_, i) => ({ lat: 42.5 + i * 0.0005, lon: 6 + i * 0.0004, ele: 400, t: (base / 1000 + 5 * 86400) * 1000 + i * 30000, hr: null }));
+      const r1 = await Import.Zepp.importAll(acc, () => {}, { ele: false }); const d1 = det; det = 0;
+      const r2 = await Import.Zepp.importAll(acc, () => {}, { ele: false }), d2 = det;      // zweiter Lauf: nur der einmalige Versuch, Puls nachzutragen (Tour.zhr), keine neue Tour
+      const z = (await Tours.list()).find(t => t.srcId === 'zepp:' + s.trackid); await Tours.loesche(z.id);
+      const r3 = await Import.Zepp.importAll(acc, () => {}, { ele: false });
+      return { r1: [r1.added, r1.dup], d1, r2: [r2.added, r2.dup], det: det - d2, r3: [r3.added, r3.geloescht.length], n: (await Tours.list()).filter(t => t.srcId === 'zepp:' + s.trackid).length }; }""", base)
+    assert ze["r1"][0] == 1 and ze["r2"][0] == 0 and ze["r3"] == [0, 1] and ze["n"] == 0 and ze["det"] == 0, ze
+    # ---------- 7. Zusammenführen (Doppelte prüfen) legt keinen Stein an; Altbestand ohne Abdruck wird über Zeit und Ort erkannt ----------
+    alt = pg.evaluate("""async (base) => { const pts = Array.from({ length: 30 }, (_, i) => ({ lat: 41.5 + i * 0.0005, lon: 5 + i * 0.0004, ele: 300, t: base + 9 * 86400000 + i * 30000 }));
+      const a = await Tours.add({ name: 'Altbestand', sport: 'hike', pts, src: 'file', force: true }); const t = await DB.get('tours', a.tour.id); delete t.abdruck; await Tours.save(t);
+      const b = await Tours.add({ name: 'Neu aus Datei', sport: 'hike', pts: pts.map(p => Object.assign({}, p, { t: p.t + 100000 })), src: 'file' });
+      return [a.tour.id, b.dup, b.grund, b.tour.id]; }""", base)
+    assert alt[1] is True and alt[2] == "zeit" and alt[3] == alt[0], alt
+    n_st = pg.evaluate("DB.kvGet('geloescht', []).then(l => l.length)")
+    pg.evaluate("""async (base) => { const pts = Array.from({ length: 30 }, (_, i) => ({ lat: 41.2 + i * 0.0005, lon: 5.2 + i * 0.0004, ele: 300, t: base + 10 * 86400000 + i * 30000 }));
+      const a = await Tours.add({ name: 'Zusammen A', sport: 'hike', pts, src: 'komoot', srcId: 'komoot:9001', force: true }), b = await Tours.add({ name: 'Zusammen B', sport: 'hike', pts: pts.map(p => Object.assign({}, p, { t: p.t + 40000 })), src: 'zepp', srcId: 'zepp:9002', force: true });
+      await Dup.merge(a.tour.id, b.tour.id); }""", base)
+    assert pg.evaluate("DB.kvGet('geloescht', []).then(l => l.length)") == n_st, "Zusammenführen legt keinen Stein an"
+    assert pg.evaluate("Tours.list().then(l => { const t = l.find(x => x.name === 'Zusammen A'); return t.alias.includes('zepp:9002') && t.abdruck.length === 2; })"), "Kennung und Abdruck beider bleiben"
+    # ---------- 8. Aufzeichnung und Planer legen nicht still etwas Anderes an ----------
+    rec = pg.evaluate("""async () => { const pts = Array.from({ length: 30 }, (_, i) => ({ lat: 40.5 + i * 0.0005, lon: 4 + i * 0.0004, ele: 300, t: 1695000000000 + i * 30000 }));
+      const a = await Tours.add({ name: 'Rec', sport: 'hike', pts, src: 'rec', geloeschtOk: true }); await Tours.loesche(a.tour.id);
+      const b = await Tours.add({ name: 'Rec neu', sport: 'hike', pts, src: 'rec', geloeschtOk: true });      // eben beendete Aufzeichnung: immer gewollt, auch wenn dieselbe Spur früher gelöscht wurde
+      const c = await Tours.add({ name: 'Rec zweimal', sport: 'hike', pts, src: 'rec', geloeschtOk: true });
+      return [!!b.tour && !b.dup, c.dup]; }""")
+    assert rec == [True, True], rec
+    # ---------- 9. Sicherung: Steine reisen mit und werden zusammengeführt ----------
+    sich = pg.evaluate("""async () => { const st = await DB.kvGet('geloescht', []); const d = await Backup.collect(); const e = d.kv.find(k => k.k === 'geloescht');
+      const imp = d.kv.find(k => k.k === 'importSkip');
+      await DB.kvSet('geloescht', []); Tours._steine = null; await Backup.restoreKv([e]);
+      const nach = await DB.kvGet('geloescht', []); await Backup.restoreKv([e]); const zweimal = await DB.kvGet('geloescht', []);
+      return { vorher: st.length, inSicherung: e ? e.v.length : -1, nach: nach.length, zweimal: zweimal.length, ohneListe: !imp }; }""")
+    assert sich["inSicherung"] == sich["vorher"] > 0 and sich["nach"] == sich["vorher"] and sich["zweimal"] == sich["vorher"] and sich["ohneListe"], sich
+    # ---------- aufräumen: die Tests legen keine bleibenden Touren an ----------
+    pg.evaluate("""async keep => { for (const t of await Tours.list()) if (!keep.includes(t.id)) await Tours.remove(t.id, { stein: false }); await DB.kvSet('geloescht', []); Tours._steine = null; await DB.kvSet('importSkip', []); window.__pick = []; }""", vorher)
+    assert anzahl() == n0
+    bad += layout_check(pg, ["#/import"], widths=((360, 100), (390, 100), (430, 100), (360, 130)))
+    return sorted(set(bad))
 
 
 def main():
@@ -5090,7 +5286,7 @@ def main():
         pg.wait_for_selector("#planergebnis"); assert "Geplant A" in pg.inner_text("#planergebnis") and "geplant" in pg.inner_text("#planergebnis")
         # Gesicherte Aufzeichnung wiederherstellen (Tour war gelöscht)
         pg.evaluate("window.__routeName = ''")
-        pg.evaluate("t => Tours.remove(t)", tid)
+        pg.evaluate("t => Tours.remove(t, { stein: false })", tid)
         pg.evaluate("g => { window.__baks=[{file:'rec_20260101_100000.gpx',size:2048,ts:1767261600000}]; window.__bakgpx=g }", gpx(t0 + 86400000 * 200, n=30, lat=46.5, name=""))
         pg.evaluate("location.hash='#/rec'"); pg.wait_for_selector("#baks"); pg.wait_for_selector("#gpxroute"); pg.click("#baks"); pg.locator(".sheet .li").first.click()
         pg.get_by_role("button", name="Wiederherstellen", exact=True).click()
@@ -5225,7 +5421,7 @@ def main():
           const kt = (id, name, i, extra) => Object.assign({ id, name, sport: 'hike', date: new Date(b2 + i * 86400000 + 60000).toISOString(), distance: Geo.stats(mk(i)).dist * 1.02 }, extra || {});
           let liste = [kt(900, 'Barranco de Azuaje', 1), kt(901, 'Komoot-Name B', 2), kt(902, 'Tamadaba-Runde', 3), kt(903, 'Nur bei Komoot', 9), kt(904, 'Falsche Länge', 1, { date: new Date(b2 + 86400000 + 200000).toISOString(), distance: 99000 })];
           Import.Komoot.tours = async () => liste;
-          Import.Komoot.coords = async (acc, id) => { coords.push(id); return mk(id === 903 ? 9 : 12).map(c => ({ lat: c.lat, lng: c.lon, alt: c.ele, t: c.t - (b2 + (id === 903 ? 9 : 12) * 86400000) })); };
+          Import.Komoot.coords = async (acc, id) => { coords.push(id); const ix = id === 903 ? 9 : id === 904 ? 13 : 12; return mk(ix).map(c => ({ lat: c.lat, lng: c.lon, alt: c.ele, t: c.t - (b2 + ix * 86400000) })); };      // 2.24.1: 904 liegt an einem anderen Ort (gleiche Startzeit und Länge am gleichen Ort wäre dieselbe Tour)
           const acc = { user: 'u', token: 't' }, get = async id => DB.get('tours', id);
           const r1 = await Import.Komoot.importAll(acc, { planned: false }, null), c1 = coords.slice(); coords = [];
           const s1 = { z: (await get(z.id)).name, zk: (await get(z.id)).komootId, m: (await get(m.id)).name, mk: (await get(m.id)).komootId, w: (await get(w.id)).name, txt: Import.describe(r1) };
@@ -5239,7 +5435,7 @@ def main():
           const s4 = (await get(z.id)).name;
           const all = await Tours.list();
           const out = { auto, autoW, r1, c1, s1, r2, c2, r3: r3.names, s3, r4: r4.names, s4, neu: all.filter(t => t.srcId === 'komoot:903').length, falsch: all.filter(t => t.srcId === 'komoot:904').length };
-          for (const t of all.filter(t => [z.id, m.id, w.id].includes(t.id) || /^komoot:90[34]$/.test(t.srcId || ''))) await Tours.remove(t.id);
+          for (const t of all.filter(t => [z.id, m.id, w.id].includes(t.id) || /^komoot:90[34]$/.test(t.srcId || ''))) await Tours.remove(t.id, { stein: false });
           return out;
         }""")
         assert "Wandern" in kn["auto"] and "Spazieren" in kn["autoW"], kn
@@ -5253,7 +5449,7 @@ def main():
         kid = pg.evaluate("Tours.list().then(l => l.find(t => t.srcId === 'komoot:555').id)")
         pg.evaluate("id => { location.hash = '#/tour/' + id }", kid); pg.wait_for_selector(".tourp .facts"); assert "Komoot nennt" in pg.inner_text(".tourp .facts") and "4.321 m" in pg.inner_text(".tourp .facts"), pg.inner_text(".tourp .facts")
         pg.evaluate("location.hash = '#/start'")
-        pg.evaluate("async () => { for (const t of await Tours.list()) if (/^K (alt|neu|ohne)/.test(t.name)) await Tours.remove(t.id); }")
+        pg.evaluate("async () => { for (const t of await Tours.list()) if (/^K (alt|neu|ohne)/.test(t.name)) await Tours.remove(t.id, { stein: false }); }")
 
         # Einmalige Neuberechnung (Version 2.0.1): alte Werte bleiben als upAlt, Touren ohne Höhen bleiben, Zepp „Spazieren“ → Wandern, zweiter Lauf tut nichts
         mg = pg.evaluate("""async () => {
@@ -5308,7 +5504,7 @@ def main():
           const kvk = data.kv.map(k => k.k);
           const old = JSON.parse(JSON.stringify(data)); old.tours.forEach(t => { if (t.id.startsWith('mg')) { delete t.calcV; delete t.upAlt; delete t.downAlt; } });
           const oa = old.tours.find(t => t.id === 'mgA'); oa.up = 7777; oa.down = 6666; oa.upKomoot = undefined; delete oa.upKomoot; delete oa.downKomoot; oa.upSrc = 'komoot';
-          for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) { await Tours.remove(id); }
+          for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) { await Tours.remove(id, { stein: false }); }
           await Backup.apply(Backup.parse(fflate.gzipSync(new TextEncoder().encode(JSON.stringify(old)))));
           for (let i = 0; i < 100 && (await DB.kvGet('calcVer', 0)) < 2; i++) await new Promise(r => setTimeout(r, 50));
           const b = await DB.get('tours', 'mgA');
@@ -5316,7 +5512,7 @@ def main():
         }""")
         assert bk["fields"] == [9999, 9999, 2] and "calcVer" not in bk["kvk"] and "calcNote" not in bk["kvk"], bk
         assert bk["ver"] == 2 and bk["upAlt"] == 7777 and bk["upKomoot"] == 7777 and abs(bk["up"] - ou) < 0.01 and bk["sport"] == "hike", bk
-        pg.evaluate("async () => { for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) await Tours.remove(id); await DB.kvSet('calcNote', null); }")
+        pg.evaluate("async () => { for (const id of ['mgA', 'mgB', 'mgC', 'mgD', 'mgE', 'mgF', 'mgG', 'mgH']) await Tours.remove(id, { stein: false }); await DB.kvSet('calcNote', null); }")
 
         # 2.0.3: Die Tourenliste merkt sich die Rollposition – Tour öffnen, zurückgehen, gleiche Stelle; der Reiter „Touren“ führt wieder nach oben
         pg.evaluate("""async gs => { const enc = s => new TextEncoder().encode(s); for (const [n, g] of gs) await Import.fromData(n, enc(g), 'file'); }""",
@@ -5332,7 +5528,7 @@ def main():
         pg.wait_for_function("y => location.hash === '#/' && document.querySelectorAll('#view a.tour').length === 14 && Math.abs(document.querySelector('#view').scrollTop - y) <= 2", arg=y0)
         pg.click("#tabs a[data-p='/']"); pg.wait_for_function("() => document.querySelector('#view').scrollTop === 0 && document.querySelectorAll('#view a.tour').length === 14")
         pg.fill("#view input[type=search]", "")
-        pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^Rollprobe/.test(t.name))) await Tours.remove(t.id); }")
+        pg.evaluate("async () => { for (const t of (await Tours.list()).filter(t => /^Rollprobe/.test(t.name))) await Tours.remove(t.id, { stein: false }); }")
 
         # 2.0.2: Spur aus einer FIT-Datei mit vorzeichenlos gelesener Länge (344,4° statt −15,6°) und Punkten ohne Position (180°/180°) wird berichtigt
         fx = pg.evaluate("""async () => {
@@ -5348,7 +5544,7 @@ def main():
           const r = await Tours.migrate(), r2 = await Tours.migrate();
           const a = await DB.get('tours', id), trk = await DB.get('tracks', id), b = await DB.get('tours', 'fxB'), note = await DB.kvGet('calcNote', null);
           const out = { vorher: st0.dist, r, r2, dist: a.dist, lon: a.lon, bbox: a.bbox, n: trk.lat.length, hr: trk.hr.length, seg: trk.seg.length, maxLon: Math.max(...trk.lon), maxLat: Math.max(...trk.lat), b: b.dist, note, ver: await DB.kvGet('posVer', 0) };
-          await Tours.remove(id); await Tours.remove('fxB'); await DB.kvSet('calcNote', null);
+          await Tours.remove(id, { stein: false }); await Tours.remove('fxB', { stein: false }); await DB.kvSet('calcNote', null);
           return out;
         }""")
         assert fx["vorher"] > 1e7 and 2000 < fx["dist"] < 3000, fx                      # vorher zehntausende Kilometer, danach die echten gut 2 km
@@ -5368,7 +5564,7 @@ def main():
           await DB.kvSet('calcVer', 0);
           const t0 = performance.now(); const r = await Tours.migrate(); const ms = performance.now() - t0;
           const one = await DB.get('tours', 'lz5');
-          for (const id of ids) await Tours.remove(id);
+          for (const id of ids) await Tours.remove(id, { stein: false });
           await DB.kvSet('calcNote', null);
           return { ms, up: r.up, n: r.n, one: one.up };
         }""")
@@ -5648,6 +5844,7 @@ def main():
         up_bad = update_2210(pg)
         dd_bad = doppelt_2230(pg)
         ad_bad = audit_2240(pg) + wellen_2240_mittel(pg) + wellen_2240_klein(pg)
+        li_bad = loeschen_import_2241(pg)      # 2.24.1: geplante Touren löschen; Doppelt-Prüfung beim Import
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)
@@ -5685,7 +5882,7 @@ def main():
         bad += sg_bad
         bad += up_bad
         bad += dd_bad
-        bad += ad_bad
+        bad += ad_bad + li_bad
         # … auch in den wichtigsten Blättern (Filter, Neue Tour, Aktionen der Tour) und während einer Aufzeichnung
         pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Filter: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.click("#filterok"); pg.wait_for_selector(".sheet", state="detached")
         pg.click("#touradd"); pg.wait_for_selector(".sheet-back.on"); pg.wait_for_timeout(250); bad += ["Neue Tour: " + m for m in pg.evaluate(LAYOUT_JS)]; pg.evaluate("window.mtBack()"); pg.wait_for_selector(".sheet", state="detached")

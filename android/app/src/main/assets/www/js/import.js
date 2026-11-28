@@ -4,22 +4,26 @@ const Import = {
   /** Gemeinsamer Abschluss: parst Daten und speichert alle Sportarten. */
   async fromData(name, data, src, extra) {
     const acts = await Parse.any(name, data);
-    const res = { added: 0, dup: 0, fail: 0 };
+    const res = { added: 0, dup: 0, fail: 0, geloescht: [] };
     if (!acts.length) { res.fail = 1; return res; }
     for (const a of acts) {
       try {
         const pts = extra && extra.ohneZeit ? a.pts.map(p => Object.assign({}, p, { t: null })) : a.pts;      // Geplantes hat keine Zeiten (wie im Planer)
-        const r = await Tours.add(Object.assign({ name: a.name, sport: a.sport, tags: a.tags, pts, src }, extra || {}));
-        if (r.dup) res.dup++; else res.added++;
+        const args = Object.assign({ name: a.name, sport: a.sport, tags: a.tags, pts, src }, extra || {});
+        const r = await Tours.add(args);
+        if (r.dup) res.dup++;
+        else if (r.geloescht) res.geloescht.push(Object.assign({ stein: r.geloescht, args }, r.info));      // 2.24.1: früher gelöscht – nicht still wieder anlegen; der Aufrufer fragt (Import.frageGeloeschte)
+        else res.added++;
       } catch (e) { res.fail++; }
     }
     return res;
   },
-  sum(a, b) { return { added: a.added + b.added, dup: a.dup + b.dup, fail: a.fail + b.fail }; },
+  sum(a, b) { return { added: a.added + b.added, dup: a.dup + b.dup, fail: a.fail + b.fail, geloescht: (a.geloescht || []).concat(b.geloescht || []) }; },
   describe(r) {
     const p = [];
     if (r.added) p.push(r.added + (r.added === 1 ? ' Tour importiert' : ' Touren importiert'));
-    if (r.dup) p.push(r.dup + ' schon vorhanden');
+    if (r.dup) p.push(ImportDup.textVorhanden(r.dup));      // 2.24.1: „3 übersprungen, schon vorhanden“
+    if (r.geloescht && r.geloescht.length) p.push(ImportDup.textGeloescht(r.geloescht.length));
     if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
     if (r.names) p.push('Name bei ' + r.names + (r.names === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
     if (r.namesMt) p.push('Name bei ' + r.namesMt + (r.namesMt === 1 ? ' Tour' : ' Touren') + ' übernommen');
@@ -39,7 +43,7 @@ const Import = {
     return Import.cacheFiles(files, onProgress);
   },
   async cacheFiles(files, onProgress, extra) {
-    let tot = { added: 0, dup: 0, fail: 0 };
+    let tot = { added: 0, dup: 0, fail: 0, geloescht: [] };
     for (let i = 0; i < files.length; i++) {
       if (onProgress) onProgress(i + 1, files.length, files[i].name);
       try {
@@ -140,13 +144,18 @@ const Import = {
       const mine = await Tours.list();
       const mineK = new Map(mine.map(t => [t.srcId, t]));
       const byKid = new Map(mine.filter(t => t.komootId).map(t => [t.komootId, t]));
-      const res = { added: 0, dup: 0, fail: 0, names: 0 };
-      const todo = [];
+      const res = { added: 0, dup: 0, fail: 0, names: 0, geloescht: [] };
+      const todo = [], steine = await Tours.steine();
       // Schon vorhandene Touren: Name von Komoot übernehmen; Komoots Höhenwert nur als Zusatzangabe aufbewahren (der Aufstieg bleibt die eigene Rechnung)
       for (const [t, ty] of list) {
         const own = mineK.get('komoot:' + t.id);
         const e = own || byKid.get(String(t.id)) || (ty === 'tour_recorded' ? Import.Komoot.match(t, mine) : null);
-        if (!e) { todo.push([t, ty]); continue; }
+        if (!e) {
+          const start = t.date ? Date.parse(t.date) : NaN;      // 2.24.1: früher gelöscht? (vor dem Laden der Strecke, damit gelöschte nicht bei jedem Holen wiederkommen)
+          const stn = ImportDup.geloescht({ kennungen: ['komoot:' + t.id], zeit: ty === 'tour_recorded' && isFinite(start), start, dist: +t.distance || 0, planned: ty === 'tour_planned' }, steine);
+          if (stn) { res.geloescht.push({ stein: stn, name: t.name, start: isFinite(start) ? start : 0, dist: +t.distance || 0 }); ImportLog.merkeStein(t.name, start, +t.distance, 'komoot'); continue; }
+          todo.push([t, ty]); continue;
+        }
         res.dup++;
         let ch = false;
         if (!own && e.komootId !== String(t.id)) { e.komootId = String(t.id); ch = true; }
@@ -167,6 +176,7 @@ const Import = {
           const start = t.date ? Date.parse(t.date) : null;
           const pts = items.map(c => ({ lat: c.lat, lon: c.lng, ele: c.alt, t: start && c.t != null && ty === 'tour_recorded' ? start + c.t : null }));
           const r = await Tours.add({ name: t.name, sport: Sports.norm(t.sport), tags: Sports.tags(t.sport), pts, src: 'komoot', srcId: 'komoot:' + t.id, up: t.elevation_up, down: t.elevation_down, status: ty === 'tour_planned' ? 'planned' : 'done', start });
+          if (r.geloescht) { res.geloescht.push(Object.assign({ stein: r.geloescht }, r.info)); continue; }
           if (r.dup) {
             res.dup++;      // die Spur gab es schon (erst an der Spur erkannt): Name und Komoot-Kennung nachtragen, damit sie beim nächsten Mal nicht wieder geladen wird
             const e = r.tour; let ch = false;
@@ -359,8 +369,8 @@ const Import = {
         if (e.mtId) byMt.set(String(e.mtId), e);
         if (e.komootId) byK.set(String(e.komootId), e);
       }
-      const res = { added: 0, dup: 0, fail: 0, namesMt: 0, zahlen: 0, ohne: 0 };
-      const used = new Set(), pairs = [], rest = [], todo = [];
+      const res = { added: 0, dup: 0, fail: 0, namesMt: 0, zahlen: 0, ohne: 0, geloescht: [] };
+      const used = new Set(), pairs = [], rest = [], todo = [], steine = await Tours.steine();
       for (const t of list) {      // 1. sichere Zuordnung über Kennungen (auch die Komoot-Nummer, wenn die Tour am Server von Komoot stammt)
         const id = String(t.id), e = bySrc.get('mt:' + id) || byMt.get(id) || (t.source === 'komoot' && byK.get(id) && !byK.get(id).mtId ? byK.get(id) : null);
         if (e && !used.has(e.id)) { used.add(e.id); pairs.push([t, e]); }
@@ -369,7 +379,10 @@ const Import = {
       }
       for (const t of rest) {      // 2. Zuordnung über Startzeit und Länge
         const e = M.match(t, mine, used);
-        if (e) { used.add(e.id); pairs.push([t, e]); } else todo.push(t);
+        if (e) { used.add(e.id); pairs.push([t, e]); continue; }
+        const stn = ImportDup.geloescht({ kennungen: ['mt:' + t.id], zeit: !!t.start_ts, start: t.start_ts * 1000, dist: +t.dist_m || 0, dur: +t.dur_s || 0 }, steine);      // 2.24.1: früher gelöscht?
+        if (stn) { res.geloescht.push({ stein: stn, name: t.name || '', start: t.start_ts * 1000, dist: +t.dist_m || 0 }); ImportLog.merkeStein(t.name, t.start_ts * 1000, +t.dist_m, 'mt'); continue; }
+        todo.push(t);
       }
       let batch = [], eigen = [];
       const flush = async () => {
@@ -403,6 +416,7 @@ const Import = {
           if (!acts.length || acts[0].pts.length < 2) { res.ohne++; continue; }
           const start = t.start_ts * 1000;
           const r = await Tours.add({ name: t.name, sport: M.sport(t.sport), pts: acts[0].pts, src: 'mt', srcId: 'mt:' + id, start, note: String(t.note || '').trim() });
+          if (r.geloescht) { res.geloescht.push(Object.assign({ stein: r.geloescht }, r.info)); continue; }
           const e = r.tour;
           if (r.dup && (e.mtId || /^mt:/.test(e.srcId || '')) && e.srcId !== 'mt:' + id && e.mtId !== id) {      // am Server doppelt: die Tour der App gehört schon zu einem anderen Eintrag – nur die Kennung merken
             res.dup++; e.alias = [...new Set((e.alias || []).concat('mt:' + id))]; await Tours.save(e); continue;
@@ -462,17 +476,28 @@ const Import = {
       for (let p = 1; ; p++) { const a = await Import.Strava.get(acc, `/athlete/activities?per_page=100&page=${p}`); list = list.concat(a); if (a.length < 100) break; }
       const have = new Set(); (await Tours.list()).forEach(t => { have.add(t.srcId); (t.alias || []).forEach(a => have.add(a)); });
       const todo = list.filter(a => !have.has('strava:' + a.id) && !a.manual && a.start_latlng !== null);
-      const res = { added: 0, dup: list.length - todo.length, fail: 0 };
+      const res = { added: 0, dup: list.length - todo.length, fail: 0, geloescht: [] };
+      const steine = await Tours.steine();
       for (let i = 0; i < todo.length; i++) {
         const a = todo[i];
         if (onProgress) onProgress(i + 1, todo.length, a.name);
         try {
+          // 2.24.1: vor dem Laden der Strecke (Strava erlaubt nur 100 Abfragen je 15 Minuten): gibt es die Tour aus anderer Quelle schon, oder wurde sie gelöscht?
+          const cd = { kennungen: ['strava:' + a.id], zeit: true, start: Date.parse(a.start_date), dist: +a.distance || 0, dur: +a.elapsed_time || 0 };
+          const vorh = isFinite(cd.start) ? ImportDup.vorhanden(cd, await Tours.list(), { nur: ['zeit', 'versatz'] }) : null;
+          if (vorh) {
+            res.dup++; ImportLog.merkeVorhanden(a.name, cd.start, cd.dist, vorh.tour, vorh.grund, 'strava');
+            vorh.tour.alias = [...new Set((vorh.tour.alias || []).concat('strava:' + a.id))]; await Tours.save(vorh.tour);      // Kennung merken: beim nächsten Mal gleich erkannt
+            continue;
+          }
+          const stn = ImportDup.geloescht(cd, steine);
+          if (stn) { res.geloescht.push({ stein: stn, name: a.name, start: cd.start, dist: cd.dist }); ImportLog.merkeStein(a.name, cd.start, cd.dist, 'strava'); continue; }
           const s = await Import.Strava.get(acc, `/activities/${a.id}/streams?keys=latlng,time,altitude&key_by_type=true`);
           const ll = (s.latlng || {}).data || [], tm = (s.time || {}).data || [], al = (s.altitude || {}).data || [];
           const st = Date.parse(a.start_date);
           const pts = ll.map((c, k) => ({ lat: c[0], lon: c[1], ele: al[k] != null ? al[k] : null, t: st + (tm[k] || 0) * 1000 }));
           const r = await Tours.add({ name: a.name, sport: Sports.norm(a.sport_type || a.type), tags: Sports.tags(a.sport_type || a.type), pts, src: 'strava', srcId: 'strava:' + a.id });
-          if (r.dup) res.dup++; else res.added++;
+          if (r.geloescht) res.geloescht.push(Object.assign({ stein: r.geloescht }, r.info)); else if (r.dup) res.dup++; else res.added++;
         } catch (e) { if (/Limit/.test(e.message)) { res.limit = e.message; break; } res.fail++; }
       }
       await Photos.assignAll();
@@ -598,14 +623,19 @@ const Import = {
         nxt = j.data.next; if (nxt == null || nxt === -1) break;
       }
       const mine = await Tours.list();
-      const res = { added: 0, dup: 0, fail: 0, hr: 0, eleUhr: 0 };
-      const types = Import.Zepp.TYPEN;
+      const res = { added: 0, dup: 0, fail: 0, hr: 0, eleUhr: 0, geloescht: [] };
+      const types = Import.Zepp.TYPEN, steine = await Tours.steine();
       // Jede Zepp-Aktivität: gibt es sie schon (auch als Komoot-/Datei-Tour), nur Puls und Uhr-Höhen nachtragen – sonst neu laden
       const vonZepp = t => t.src === 'zepp' || /^zepp:/.test(t.srcId || '');      // trägt die Uhr-Höhen von Anfang an
       const todo = [], seen = new Set();
       for (const s of sums) {
         const t = Z.match(s, mine);
-        if (!t) { todo.push({ s, t: null }); continue; }
+        if (!t) {
+          const start = parseInt(s.trackid, 10) * 1000, dist = parseFloat(s.dis) || 0;      // 2.24.1: früher gelöscht?
+          const stn = ImportDup.geloescht({ kennungen: ['zepp:' + s.trackid], zeit: isFinite(start), start, dist, dur: parseFloat(s.run_time) || 0 }, steine);
+          if (stn) { res.geloescht.push({ stein: stn, name: Tours.autoName(types[s.type] || 'other', start), start, dist }); ImportLog.merkeStein(Tours.autoName(types[s.type] || 'other', start), start, dist, 'zepp'); continue; }
+          todo.push({ s, t: null }); continue;
+        }
         const hr = !t.hrAvg && !t.zhr, ele = opts.ele !== false && !t.elevSrc && !t.elevFix && !t.zele && !vonZepp(t) && !seen.has(t.id);
         if (hr || ele) { todo.push({ s, t, hr, ele }); seen.add(t.id); }
         else res.dup++;
@@ -635,7 +665,7 @@ const Import = {
           }
           if (pts.length < 2) { res.dup++; continue; }
           const r = await Tours.add({ sport: types[s.type] || 'other', tags: Import.Zepp.SCHNEESCHUH.includes(+s.type) ? [Sports.SCHNEESCHUH] : [], pts, src: 'zepp', srcId: 'zepp:' + s.trackid });
-          if (r.dup) res.dup++; else res.added++;
+          if (r.geloescht) res.geloescht.push(Object.assign({ stein: r.geloescht }, r.info)); else if (r.dup) res.dup++; else res.added++;
         } catch (e) { res.fail++; }
       }
       await Photos.assignAll();
@@ -705,7 +735,7 @@ const Import = {
   /* ---------------- überwachter Ordner (Garmin-Sync, Syncthing, Cloud-Ordner …) ---------------- */
   async scanFolders(onProgress) {
     const folders = await DB.kvGet('trackFolders', []);
-    let tot = { added: 0, dup: 0, fail: 0 };
+    let tot = { added: 0, dup: 0, fail: 0, geloescht: [] };
     for (const f of folders) {
       let items;
       try { items = (await Native.json('folderScan', { tree: f.tree, since: f.since || 0 })).filter(i => i.kind === 'track'); } catch (e) { continue; }
@@ -718,4 +748,59 @@ const Import = {
     await DB.kvSet('trackFolders', folders);
     return tot;
   },
+};
+
+/* ---------------- 2.24.1: Doppelt-Prüfung beim Import – Liste der Übersprungenen, Frage zu gelöschten Touren ----------------
+   Die Prüfung selbst steht in js/calc-importdup.js und läuft in Tours.add (js/store.js) und – vor dem Laden einer Strecke – in den Importen von Komoot, Strava, Zepp und Meine Touren.
+   Was beim Import übersprungen wird (schon vorhanden oder früher gelöscht), sammelt der Puffer und kommt am Ende des Imports in kv „importSkip“ (neueste zuerst, höchstens 100;
+   nicht in der Sicherung): Mehr → Import → Aufräumen → „Beim Import übersprungen“. */
+const ImportLog = {
+  puffer: [], tiefe: 0, MAX: 100,
+  info(o, st) { return { name: (o.name && o.name.trim()) || Tours.autoName(o.sport, st && st.start), start: (st && st.start) || o.start || 0, dist: o.dist || (st && st.dist) || 0 }; },
+  merke(art, o, st, tour, grund) { const i = ImportLog.info(o, st); ImportLog.puffer.push(ImportDup.logEintrag(art, i.name, i.start, i.dist, tour && tour.id, tour && tour.name, grund, o.src)); },
+  merkeVorhanden(name, start, dist, tour, grund, quelle) { ImportLog.puffer.push(ImportDup.logEintrag('vorhanden', name, isFinite(start) ? start : 0, dist, tour && tour.id, tour && tour.name, grund, quelle)); },
+  merkeStein(name, start, dist, quelle) { ImportLog.puffer.push(ImportDup.logEintrag('geloescht', name, isFinite(start) ? start : 0, dist, '', '', 'geloescht', quelle)); },
+  /** Einen Import ausführen; wenn der äußerste fertig ist, die gesammelten Übersprungenen speichern. */
+  async lauf(fn) {
+    ImportLog.tiefe++;
+    try { return await fn(); }
+    finally { if (--ImportLog.tiefe === 0) await ImportLog.sichern().catch(e => console.error('Import-Liste', e)); }
+  },
+  async sichern() {
+    const neu = ImportLog.puffer.splice(0);
+    if (!neu.length) return;
+    await DB.kvSet('importSkip', ImportDup.logMit(await DB.kvGet('importSkip', []), neu, ImportLog.MAX));
+  },
+  liste() { return DB.kvGet('importSkip', []).then(l => (Array.isArray(l) ? l : [])); },
+  async leeren() { await DB.kvSet('importSkip', []); },
+  /** Eintraege (aus Import.frageGeloeschte) aus der Liste streichen, wenn sie doch importiert wurden. */
+  async streiche(eintraege) {
+    const l = await ImportLog.liste();
+    await DB.kvSet('importSkip', l.filter(x => !(x.art === 'geloescht' && eintraege.some(e => e.name === x.n && (e.start || 0) === (x.s || 0)))));
+  },
+};
+for (const [o, k] of [[Import, 'cacheFiles'], [Import, 'fromUrl'], [Import.Komoot, 'importAll'], [Import.MT, 'importAll'], [Import.Strava, 'importAll'], [Import.Zepp, 'importAll']]) {
+  const f = o[k]; o[k] = function () { const a = arguments, self = this; return ImportLog.lauf(() => f.apply(self, a)); };
+}
+
+/** 2.24.1: Nach einem von Hand angestoßenen Import: Touren, die schon einmal da waren und gelöscht wurden, bleiben gelöscht – es sei denn, man will sie.
+    Beim automatischen Holen (Hintergrund) wird nie gefragt; sie bleiben gelöscht und stehen in der Liste „Beim Import übersprungen“.
+    res.geloescht: [{ name, start, dist, stein, args? }]; erneut(): derselbe Import noch einmal (für Einträge ohne args), gibt dessen Ergebnis zurück.
+    Gibt { added } zurück oder null, wenn nichts gefragt oder abgelehnt wurde. */
+Import.frageGeloeschte = async function (res, erneut) {
+  const l = (res && res.geloescht) || [], n = l.length;
+  if (!n) return null;
+  const namen = l.slice(0, 5).map(e => '„' + (e.name || 'Tour') + '“' + (e.start ? ' (' + F.date(e.start) + ')' : '')).join(', ') + (n > 5 ? ' …' : '');
+  const frage = n === 1 ? 'Diese Tour war schon vorhanden und wurde gelöscht – trotzdem importieren?' : n + ' Touren waren schon vorhanden und wurden gelöscht – trotzdem importieren?';
+  if (!await confirmBox(n === 1 ? 'Gelöschte Tour importieren?' : 'Gelöschte Touren importieren?', frage + ' ' + namen, 'Importieren')) return null;
+  let added = 0, nochmal = false;
+  await Tours.steineFrei(l.map(e => e.stein));
+  for (const e of l) {
+    if (e.args) { try { const r = await Tours.add(Object.assign({}, e.args, { geloeschtOk: true })); if (r.tour && !r.dup) added++; } catch (x) { console.error('Import', x); } }
+    else nochmal = true;
+  }
+  if (nochmal && erneut) { const r2 = await erneut(); added += (r2 && r2.added) || 0; }
+  Tours.invalidate(); await Photos.assignAll();
+  await ImportLog.streiche(l);
+  return { added };
 };

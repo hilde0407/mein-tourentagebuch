@@ -268,7 +268,7 @@ Views['/rec'] = async root => {
         const gpx = MTApp.backupGpx(b.file);
         const a = Parse.gpx(gpx)[0];
         if (!a || a.pts.length < 2) throw new Error('Datei enthält keine Spur');
-        const r = await Tours.add({ name: '', sport: Sports.norm(a.rawSport) || 'hike', pts: a.pts, src: 'rec', force: true });
+        const r = await Tours.add({ name: '', sport: Sports.norm(a.rawSport) || 'hike', pts: a.pts, src: 'rec', force: true });      // 2.24.1: force = Wiederherstellen von Hand: nur gleiche Kennung/Strecke gilt als schon vorhanden, gelöschte dürfen zurück
         await Photos.assignAll();
         toast(r.dup ? 'Diese Tour gibt es schon.' : 'Tour wiederhergestellt');
         Nav.go('/tour/' + r.tour.id);
@@ -418,7 +418,7 @@ Views['/rec'] = async root => {
         if (!acts.length || acts[0].pts.length < 2) throw new Error('Zu wenige Punkte');
         const a = acts[0];
         const sport = Sports.norm(st.sport || a.rawSport) === 'other' && st.sport ? st.sport : Sports.norm(st.sport || a.rawSport);
-        const r = await Tours.add({ name: st.name || a.name, sport, pts: a.pts, src: 'rec' });
+        const r = await Tours.add({ name: st.name || a.name, sport, pts: a.pts, src: 'rec', geloeschtOk: true });      // 2.24.1: eine eben beendete Aufzeichnung ist immer gewollt; nur ein schon gespeichertes Duplikat wird erkannt
         if (r.dup) {
           // Gleiche Spur gibt es schon: nichts doppelt anlegen, die Aufzeichnung bleibt als Sicherung erhalten
           await handlePhotoQueue(); await Photos.assignAll();

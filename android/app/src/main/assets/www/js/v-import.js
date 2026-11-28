@@ -14,12 +14,21 @@ const AllesUI = {
     const dup = r && r.neu ? await Dup.hinweis().catch(() => null) : null;      // 2.23.0: mögliche Doppelte unter den neuen Touren
     const done = () => { if (after) after(); };
     if (err || !r) { toastFehler('Touren holen', err, 7000); done(); return; }
+    const gel = r.items.reduce((a, i) => a.concat((i.res && i.res.geloescht) || []), []);      // 2.24.1: früher gelöscht, nicht wieder importiert
     const kopf = r.stopped ? 'Abgebrochen – der Rest kommt beim nächsten Mal.' : r.neu ? (r.neu === 1 ? '1 neue Tour' : r.neu + ' neue Touren') + ' im Tagebuch.' : 'Das Tagebuch ist auf dem neuesten Stand.';
     const s = sheet(r.stopped ? 'Touren holen abgebrochen' : 'Touren geholt', h('div', { id: 'sum' },
       h('p', { id: 'sum-head' }, kopf),
       dup ? h('p', { id: 'sum-dup', class: 'muted' }, dup.text + ' unter den neuen Touren – du findest sie auf der Startseite und unter Mehr → Import → Aufräumen → „Doppelte Touren prüfen“.') : null,
       UI.list(r.items.map(i => UI.row({ id: 'sum-' + i.id, title: i.name, sub: Abgleich.quellZeile(i, Import.describe), trail: i.err ? 'Fehler' : null }))),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'sum-ok', onclick: () => s.close() }, 'Fertig'))), { onclose: done });
+      gel.length ? h('p', { id: 'sum-gel', class: 'muted' }, ImportDup.textGeloescht(gel.length) + '. Wenn du sie doch haben willst: „Gelöschte importieren …“. Alles Übersprungene steht unter Mehr → Import → Aufräumen → „Beim Import übersprungen“.') : null,
+      h('div', { class: 'row end wrap' },
+        gel.length ? h('button', { class: 'btn', id: 'sum-gel-go', onclick: async () => {
+          s.close();
+          const qs = await Import.Alles.quellen(), ids = new Set(r.items.filter(i => i.res && i.res.geloescht && i.res.geloescht.length).map(i => i.id));
+          const x = await Import.frageGeloeschte({ geloescht: gel }, async () => { let n = 0; for (const q of qs.filter(q => ids.has(q.id))) { try { n += ((await Import.Alles.eine(q, {}, () => {})) || {}).added || 0; } catch (e) { toastFehler(q.name, e); } } return { added: n }; });
+          if (x) toast(x.added === 1 ? '1 gelöschte Tour importiert' : x.added + ' gelöschte Touren importiert', 5000);
+        } }, 'Gelöschte importieren …') : null,
+        h('button', { class: 'btn pri', id: 'sum-ok', onclick: () => s.close() }, 'Fertig'))), { onclose: done });
   },
 };
 
@@ -35,6 +44,11 @@ Views['/import'] = async root => {
       let msg = r && r.added != null ? Import.describe(r) + (r.limit ? ' – ' + r.limit : '') : String(r);
       Tours.invalidate(); if (r && r.added) msg += await Dup.satz();      // 2.23.0: mögliche Doppelte unter den neuen Touren – ein Satz, kein Dialog
       toast(msg, 7000);
+      // 2.24.1: früher gelöschte Touren bleiben gelöscht – bei einem Import von Hand wird einmal gefragt (alle zusammen)
+      if (r && r.geloescht && r.geloescht.length) {
+        const x = await Import.frageGeloeschte(r, () => PhotoSources.progress(title, (upd, txt) => fn(upd, txt), opts));
+        if (x) toast(x.added === 1 ? '1 gelöschte Tour importiert' : x.added + ' gelöschte Touren importiert', 5000);
+      }
     } catch (e) { err = e; toastFehler(title, e, 8000); }
     if (opts && opts.after) opts.after(err);
   };
@@ -54,6 +68,24 @@ Views['/import'] = async root => {
   /* 2.23.0: „Doppelte Touren prüfen“ zeigt den Stand („3 mögliche doppelte Touren“ bzw. „Keine doppelten Touren“); billig berechnet, ohne Fotos */
   const dupRow = UI.row({ icon: 'swap', title: 'Doppelte Touren prüfen', sub: 'Gleiche Tour aus mehreren Quellen finden und zusammenführen', href: '#/doppelt', id: 'imp-dup' });
   Dup.stand().then(st => { const sub = dupRow.querySelector('.li-s, small, .sub'); if (sub) sub.textContent = st.text + ' · Gleiche Tour aus mehreren Quellen zusammenführen'; dupRow.dataset.n = st.n; }).catch(() => {});
+  /* 2.24.1: Liste „Beim Import übersprungen“ (schon vorhanden oder früher gelöscht); gehört zum Gerät, nicht zur Sicherung */
+  const skipRow = UI.row({ icon: 'list', title: 'Beim Import übersprungen', sub: 'Nichts übersprungen', id: 'imp-skip', onclick: () => skipBlatt().catch(e => toastFehler('Liste öffnen', e)) });
+  const skipSub = l => { const sub = skipRow.querySelector('small'); if (sub) sub.textContent = l.length ? (l.length === 1 ? '1 Tour' : l.length + ' Touren') + ' · zuletzt ' + F.date(l[0].am) + ' · schon vorhanden oder früher gelöscht' : 'Nichts übersprungen'; };
+  ImportLog.liste().then(skipSub).catch(() => {});
+  async function skipBlatt() {
+    const l = await ImportLog.liste(), da = new Set((await Tours.list()).map(t => t.id)), liste = h('div', { class: 'list', id: 'skip-list' });
+    for (const e of l) {
+      const grund = e.art === 'geloescht' ? 'früher gelöscht, nicht importiert' : 'schon vorhanden' + (e.mn ? ' als „' + e.mn + '“' : '') + (ImportDup.GRUND[e.g] ? ' (' + ImportDup.GRUND[e.g] + ')' : '');
+      const sub = [e.s ? F.date(e.s) : '', e.d ? F.km(e.d) : '', grund].filter(Boolean).join(' · ');
+      liste.append(e.mit && da.has(e.mit) ? UI.row({ title: e.n || 'Tour', sub, onclick: () => { s.close(); Nav.go('/tour/' + e.mit); } }) : UI.row({ title: e.n || 'Tour', sub }));
+    }
+    const s = sheet('Beim Import übersprungen', h('div', null,
+      h('p', { class: 'muted small' }, 'Diese Touren hat die App beim Import nicht angelegt, weil es sie schon gab oder weil du sie gelöscht hast. Die letzten 100 stehen hier.'),
+      l.length ? liste : h('p', { class: 'muted', id: 'skip-leer' }, 'Beim Import wurde noch nichts übersprungen.'),
+      h('div', { class: 'row end' },
+        l.length ? h('button', { class: 'btn', id: 'skip-clear', onclick: async () => { if (await confirmBox('Liste leeren?', 'Die Liste der beim Import übersprungenen Touren wird geleert. Die Touren selbst bleiben unberührt.', 'Leeren')) { await ImportLog.leeren(); s.close(); skipSub([]); toast('Liste geleert'); } } }, 'Liste leeren') : null,
+        h('button', { class: 'btn pri', onclick: () => s.close() }, 'Fertig'))));
+  }
   body.append(allBox, h('p', { class: 'muted' }, 'Importierte Touren werden auf diesem Handy gespeichert. Doppelte Touren werden erkannt und übersprungen – du kannst jeden Import beliebig oft wiederholen.'),
     h('div', { class: 'list' },
       card('file', 'Dateien (GPX, FIT, TCX, ZIP)', 'Auch ganze Exporte von Strava, Garmin, Suunto, Polar, Wahoo …', () => run('Import', upd => Import.pickFiles(upd))),
@@ -64,7 +96,7 @@ Views['/import'] = async root => {
       card('bike', 'Bosch eBike Flow', 'Fahrten aus der Flow-App', bosch),
       card('compass', 'Garmin, Suunto, Polar, Wahoo, Coros …', 'Per Export, Teilen-Menü oder überwachtem Ordner', others),
       card('link', 'Link auf eine GPX-Datei', 'z. B. von Outdooractive, Wikiloc, RideWithGPS, Gipfelbuch', link)),
-    UI.section('Aufräumen', UI.list([dupRow, UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
+    UI.section('Aufräumen', UI.list([dupRow, skipRow, UI.row({ icon: 'photo', title: 'Doppelte Fotos prüfen', sub: 'Gleiche Fotos und Videos finden und aufräumen', href: '#/fotodoppelt', id: 'imp-fotodup' })])));
 
   /* „Meine Touren“ (eigener Server): verbinden, abgleichen, trennen. Gemerkt wird nur der Sitzungsschlüssel (kv „mt“), nie das Passwort. */
   async function mt() {

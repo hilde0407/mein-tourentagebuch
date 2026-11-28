@@ -7,7 +7,7 @@
    Ältere Sicherungen ohne diese Angaben laden unverändert. */
 const Backup = {
   /** Nicht in die Sicherung: Zugangsdaten (auch die Sitzung bei „Meine Touren“, kv „mt“) und Zwischenspeicher. */
-  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich', 'guideMatch', 'mtOffen', 'recRoute', 'autoBackupDay', 'dupBasis', 'dupSpaeter'],
+  SKIP: ['komoot', 'strava', 'zepp', 'mt', 'smb', 'webdav', 'heroMap', 'tilebg', 'lastBackup', 'backupSnooze', 'calcVer', 'calcNote', 'posVer', 'skiVer', 'abgleich', 'guideMatch', 'mtOffen', 'recRoute', 'autoBackupDay', 'dupBasis', 'dupSpaeter', 'importSkip'],
   /** Diese Einträge werden beim Einspielen zurückgeholt, wenn es sie auf dem Gerät noch nicht gibt (Planung und Notizen einer Tour: die Sicherung gilt). */
   RESTORE_KEYS: ['goals', 'goals2', 'comments', 'places', 'tripHidden', 'tripNames', 'tripPeriod', 'tripRegion', 'tripSet', 'dupIgnore'],
   RESTORE_PREFIX: ['plan:', 'pn:'],
@@ -78,6 +78,9 @@ const Backup = {
             if (JSON.stringify(Set_.v[k]) === JSON.stringify(Set_.defaults[k]) && JSON.stringify(wert) !== JSON.stringify(Set_.defaults[k])) { Set_.v[k] = wert; ch++; }
           }
           if (ch) { await DB.kvSet('settings', Set_.v); n++; }
+        } else if (e.k === 'geloescht') {      // 2.24.1: Steine gelöschter Touren: beide Listen zusammen (neueste zuletzt) – eine gelöschte Tour kommt nach dem Einspielen nicht durch einen Import wieder
+          const alt = (await DB.kvGet('geloescht', [])) || [], neu = (Array.isArray(e.v) ? e.v : []).filter(s => s && typeof s.n === 'string' && !alt.some(a => a.am === s.am && a.n === s.n));
+          if (neu.length) { await DB.kvSet('geloescht', alt.concat(neu).sort((a, b) => (a.am || 0) - (b.am || 0)).slice(-ImportDup.MAX_STEINE)); Tours._steine = null; n++; }
         } else if (e.k === 'goals' || e.k === 'goals2') {
           if (await Goals.mergeFrom(e.k, e.v)) n++;
         } else if (e.k === 'guides') { if (await Buecher.mergeFrom(e.v)) n++; }      // 2.4.0: Wanderführer: neue Bücher kommen dazu, vorhandene bleiben
@@ -96,7 +99,8 @@ const Backup = {
       const nb = ((data.kv || []).find(k => k && k.k === 'guides') || { v: [] }).v.length;
       if (!await confirmBox('Sicherung einspielen?', `${data.tours.length} Touren und ${data.photos.length} Foto-Einträge${nb ? ' sowie ' + nb + (nb === 1 ? ' Wanderführer (Buch)' : ' Wanderführer (Bücher)') : ''} werden hinzugefügt. Vorhandene Daten bleiben erhalten. (Die Foto- und Videodateien selbst sind nicht Teil dieser Sicherung – sie kommen über „Fotos und Videos wiederherstellen“ zurück.)`, 'Einspielen')) return;
       await Backup.apply(data);
-      toast('Sicherung eingespielt'); Nav.render();
+      const dp = await Dup.stand().catch(() => null);      // 2.24.1: eine eingespielte Sicherung fügt hinzu; liegt dieselbe Tour dann zweimal vor, steht es hier
+      toast('Sicherung eingespielt' + (dp && dp.n ? ' · ' + dp.text + ' – prüfen unter Mehr → Import → Aufräumen' : ''), dp && dp.n ? 6000 : undefined); Nav.render();
     } catch (e) { toastFehler('Wiederherstellen', e, 7000); }
   },
   async apply(data) {

@@ -50,7 +50,7 @@ const Dup = {
     ph.forEach(p => { p.tour = keepId; });
     if (ph.length) await DB.putMany('photos', ph);
     await Tours.save(t);
-    await Tours.remove(dropId);
+    await Tours.remove(dropId, { stein: false });      // 2.24.1: die Kennungen sind schon als alias in der bleibenden Tour; kein Stein nötig
     const ign = ((await DB.kvGet('dupIgnore', [])) || []).filter(k => !k.split('|').includes(dropId));
     await DB.kvSet('dupIgnore', ign);
     return { tour: t, fotos: ph.length };

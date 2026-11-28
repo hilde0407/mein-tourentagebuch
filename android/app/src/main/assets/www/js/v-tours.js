@@ -2,6 +2,18 @@
 /* zeilen: wie viele Touren die Liste gerade zeigt (2.24.0: zuerst 100, dann „Weitere Touren anzeigen“; bleibt beim Zurückkehren aus einer Tour erhalten) */
 const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '', region: '', stars: '' }, zeilen: 100, SCHRITT: 100 };
 
+/** 2.24.1: Tour löschen – ein Weg für Tourseite und Planung, für gemachte und geplante Touren: dieselbe Rückfrage (Titel „Tour „…“ löschen?“, Hinweis auf die Sicherung),
+    dieselbe Meldung. Gibt true zurück, wenn gelöscht wurde. Die App merkt sich das Löschen: Holen aus Komoot, Strava, Zepp oder Meine Touren und Importe legen die Tour nicht still wieder an. */
+TourUI.loeschen = async function (t) {
+  const geplant = t.status === 'planned', quelle = ['komoot', 'strava', 'zepp', 'mt'].includes(t.src) ? Tours.QUELLE[t.src] : '';
+  const text = (geplant ? 'Die geplante Tour wird von diesem Handy gelöscht.' : 'Die Tour wird von diesem Handy gelöscht. Die Fotos bleiben erhalten.')
+    + (quelle ? ' Beim Holen aus ' + quelle + ' kommt sie nicht wieder.' : '') + ' Zurückholen lässt sie sich nur aus einer Sicherung.';
+  if (!await confirmBox((geplant ? 'Geplante Tour „' : 'Tour „') + t.name + '“ löschen?', text, 'Löschen')) return false;
+  try { await Tours.loesche(t.id); } catch (e) { toastFehler('Löschen', e); return false; }
+  toast(geplant ? 'Geplante Tour gelöscht' : 'Tour gelöscht');
+  return true;
+};
+
 /** Umriss der Strecke als kleines Bild. `box` setzt die Größe (Vorgabe: Kachel in der Liste). */
 function previewSvg(pts, color, box) {
   const W = (box && box.w) || 84, H = (box && box.h) || 64, pad = (box && box.pad) || 8, sw = (box && box.sw) || 2.4;
@@ -353,7 +365,7 @@ Views['/tour'] = async (root, [id]) => {
         it('download', 'Komoot-Paket …', () => KomootPaket.dialog(t), null, 'kp-menu'),      // 2.18.0: Export zum Selbst-Hochladen – unabhängig von Meine Touren
         SendenCalc.sichtbar(t, mtAcc) ? it('server', 'An Meine Touren senden …', () => Senden.dialog(t, () => Nav.render()), null, 'mt-senden-tour') : null,
         MedienAbgleich.sichtbar(t, mtAcc) ? it('swap', 'Mit Meine Touren abgleichen …', () => MedienAbgleich.tour(t, () => Nav.render()), null, 'mt-abgleich-tour') : null]),
-      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', id: 'tour-del', onclick: async () => { s.close(); if (await confirmBox('Tour „' + t.name + '“ löschen?', 'Die Tour wird von diesem Handy gelöscht. Die Fotos bleiben erhalten. Zurückholen lässt sie sich nur aus einer Sicherung.', 'Löschen')) { await Tours.remove(id); await DB.del('kv', 'pn:' + id).catch(() => {}); toast('Tour gelöscht'); Nav.go('/'); } } }, '🗑️ Tour löschen …'))));
+      h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', id: 'tour-del', onclick: async () => { s.close(); if (await TourUI.loeschen(t)) Nav.go('/'); } }, '🗑️ Tour löschen …'))));
   }
   async function suggestNames() {
     const box = h('div', { class: 'list menu' });

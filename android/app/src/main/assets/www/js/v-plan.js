@@ -94,7 +94,9 @@ Views['/plan'] = async (root, [editId]) => {
       h('button', { class: 'btn sm', onclick: async () => { wps.reverse(); await rebuild(); } }, '⇄ Umkehren'),
       h('button', { class: 'btn sm', onclick: async () => { if (await confirmBox('Planung leeren?', 'Alle gesetzten Punkte werden entfernt.', 'Leeren')) { wps = []; legs = []; redraw(); } } }, '🗑 Leeren'),
       h('button', { class: 'btn sm', onclick: exportGpx }, '📤 Als GPX exportieren')),
-    h('div', { class: 'row' }, h('button', { class: 'btn pri grow', onclick: save }, editing ? 'Änderungen speichern' : 'Tour speichern'), h('button', { class: 'btn grow', onclick: saveAndGo }, '● Speichern & starten')));
+    h('div', { class: 'row' }, h('button', { class: 'btn pri grow', onclick: save }, editing ? 'Änderungen speichern' : 'Tour speichern'), h('button', { class: 'btn grow', onclick: saveAndGo }, '● Speichern & starten')),
+    // 2.24.1: eine geplante Tour lässt sich auch hier löschen – gleicher Knopf, gleiche Rückfrage wie in der Tourseite (⋮ → „Tour löschen …“)
+    ...(editing ? [h('div', { class: 'row', style: { marginTop: '18px' } }, h('button', { class: 'btn danger grow', id: 'plan-del', onclick: async () => { if (await TourUI.loeschen(editing)) { gesichert = stand(); Nav.sperre = null; Nav.go('/'); } } }, '🗑️ Tour löschen …'))] : []));      // (nicht append(null): das schreibt „null“ auf die Seite, 2.24.0 H1)
   void chips; void profileName;
 
   async function pointsOrWarn() { const p = allPts(); if (p.length < 2) { toast('Bitte mindestens zwei Punkte setzen.'); return null; } return p; }
@@ -106,7 +108,7 @@ Views['/plan'] = async (root, [editId]) => {
     try {
       // 2.24.0: eine bestehende Tour wird geändert, nicht gelöscht und neu angelegt – Notiz, Lieblingstour, Schlagwörter und Bewertung bleiben
       if (editing) tour = await Tours.ersetzeStrecke(editing.id, { name: nm, sport, pts: plain });
-      else tour = (await Tours.add({ name: nm.trim(), sport, pts: plain, status: 'planned', src: 'plan' })).tour;
+      else tour = (await Tours.add({ name: nm.trim(), sport, pts: plain, status: 'planned', src: 'plan', bewusst: true })).tour;      // 2.24.1: bewusst – eine gleiche Strecke zweimal zu planen ist erlaubt
       await DB.kvSet('plan:' + tour.id, { wps });
     } catch (e) { toastFehler('Speichern', e); return null; }
     gesichert = stand();

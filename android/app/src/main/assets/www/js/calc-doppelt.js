@@ -84,6 +84,8 @@
     if (!t.plan && drop.plan) t.plan = drop.plan;
     const alias = [...new Set([...(keep.alias || []), drop.srcId, ...(drop.alias || [])].filter(x => x && x !== keep.srcId))];
     if (alias.length) t.alias = alias;
+    const abd = [...new Set([...(keep.abdruck || []), ...(drop.abdruck || [])])];      // 2.24.1: Strecken-Abdrücke beider (Doppelt-Prüfung beim Import)
+    if (abd.length) t.abdruck = abd;
     const nr = (x, re) => { for (const s of x) { const m = re.exec(s || ''); if (m) return m[1]; } return null; };
     if (!t.komootId && !/^komoot:/.test(keep.srcId || '')) { const k = drop.komootId || nr([drop.srcId].concat(drop.alias || []), /^komoot:(.+)$/); if (k) t.komootId = String(k); }
     if (t.upKomoot == null && drop.upKomoot != null) { t.upKomoot = drop.upKomoot; t.downKomoot = drop.downKomoot != null ? drop.downKomoot : null; }

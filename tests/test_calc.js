@@ -2075,3 +2075,109 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   await leistung([[28.0, -15.6], [47.5, 11.2], [50.1, 8.4], [43.2, 6.3]], [0.3, 0.4], 'gestreut', 20000);
   await leistung([[47.5, 11.2]], [0.08, 0.1], 'ein Gebiet (ungünstigster Fall)', 30000);
 })().then(() => { console.log('OK (' + n + ' Prüfungen)'); }, e => { console.error(e); process.exit(1); });
+
+/* ---------- Doppelt-Prüfung vor dem Anlegen (2.24.1): Kennung, Abdruck, Zeit, Versatz, Form; Steine gelöschter Touren ---------- */
+(() => {
+  const I = require(W + 'calc-importdup.js'), MIN = 60000, T0 = day(2026, 8, 14, 9);
+  const t = (id, start, dist, durMin, x) => Object.assign({ id, start, end: start + durMin * MIN, dur: durMin * 60, dist, status: 'done', timed: true, created: 1000, name: id, bbox: [47, 11, 47.1, 11.1] }, x);
+  const c = (o) => Object.assign({ kennungen: [], abdruck: [], zeit: true, start: T0, dist: 10000, dur: 3600, planned: false, bbox: [47, 11, 47.1, 11.1] }, o);
+  const pts = (n, f, t0) => Array.from({ length: n }, (_, i) => ({ lat: 47 + i * 0.0006 * (f || 1), lon: 11.2 + i * 0.0001, ele: 800, t: t0 == null ? null : t0 + i * 30000 }));
+
+  // Abdruck: gleiche Punkte = gleicher Abdruck; andere Zahl, anderer Verlauf oder andere Startzeit = anderer
+  const a1 = I.abdruck(pts(60, 1, T0));
+  ok(/^spur:[0-9a-f]{14}$/.test(a1), 'Form des Abdrucks');
+  ok(a1 === I.abdruck(pts(60, 1, T0)), 'derselbe Verlauf: derselber Abdruck');
+  ok(a1 !== I.abdruck(pts(61, 1, T0)) && a1 !== I.abdruck(pts(60, 1.01, T0)) && a1 !== I.abdruck(pts(60, 1, T0 + 1000)) && a1 !== I.abdruck(pts(60, 1, null)), 'andere Punkte, Verlauf oder Zeit: anderer Abdruck');
+  ok(I.abdruck([]) === '' && I.abdruck([{ lat: 1, lon: 1 }]) === '', 'zu wenige Punkte');
+  ok(I.abdruck(pts(60, 1, T0)) === I.abdruck(pts(60, 1, T0).map(p => Object.assign({}, p, { ele: 5 }))), 'Höhe zählt nicht');
+
+  // Kennungen einer Tour: srcId, alias, Komoot- und Meine-Touren-Nummer
+  ok(JSON.stringify(I.kennungen({ srcId: 'komoot:1', alias: ['zepp:2', 'komoot:1'], komootId: '7', mtId: '9' })) === JSON.stringify(['komoot:1', 'zepp:2', 'komoot:7', 'mt:9']), 'kennungen');
+  ok(I.kennungen(null).length === 0 && I.kennungen({}).length === 0, 'keine Kennungen');
+
+  // vorhanden: Kennung (auch alias, Komoot-/MT-Nummer), Abdruck
+  const bestand = [t('k', T0 + 7 * 86400000, 5000, 60, { srcId: 'komoot:11', alias: ['zepp:22'], mtId: '33', abdruck: ['spur:aaaaaaaaaaaaaa'] })];
+  for (const [k, g] of [['komoot:11', 'kennung'], ['zepp:22', 'kennung'], ['mt:33', 'kennung']]) { const v = I.vorhanden(c({ kennungen: [k] }), bestand); ok(v && v.tour.id === 'k' && v.grund === g, 'Kennung ' + k); }
+  ok(!I.vorhanden(c({ kennungen: ['komoot:12'] }), bestand), 'andere Kennung');
+  { const v = I.vorhanden(c({ abdruck: ['spur:aaaaaaaaaaaaaa'] }), bestand); ok(v && v.grund === 'abdruck', 'gleicher Abdruck'); }
+  ok(!I.vorhanden(c({ abdruck: ['spur:bbbbbbbbbbbbbb'] }), bestand), 'anderer Abdruck');
+  ok(!I.vorhanden(c({}), []) && !I.vorhanden(c({}), null), 'nichts vorhanden');
+  // nur: bewusst = nur Kennung, force = Kennung und Abdruck
+  ok(!I.vorhanden(c({ abdruck: ['spur:aaaaaaaaaaaaaa'] }), bestand, { nur: ['kennung'] }) && I.vorhanden(c({ abdruck: ['spur:aaaaaaaaaaaaaa'] }), bestand, { nur: ['kennung', 'abdruck'] }), 'nur');
+
+  // Zeit: Start ± 5 Minuten und Länge ± 10 % (mindestens 300 m); vorher 90 s und 3 %
+  const z = [t('z', T0, 10000, 60)];
+  const zg = o => { const v = I.vorhanden(c(o), z); return v ? v.grund : null; };
+  ok(zg({ start: T0 + 4 * MIN, dist: 10900 }) === 'zeit', '4 min, + 9 %');
+  ok(zg({ start: T0 + 5 * MIN, dist: 10000 }) === 'zeit', 'genau 5 min');
+  ok(zg({ start: T0 + 5 * MIN + 1000, dist: 10000, dur: 1800 }) === null, 'über 5 min (andere Dauer: kein Versatz)');
+  ok(zg({ start: T0, dist: 11200 }) === null, '12 % daneben');
+  ok(zg({ start: T0 + 2 * MIN, dist: 10500 }) === 'zeit', 'früher: 90 s und 3 % reichten nicht (2 min, 5 %)');
+  ok(zg({ start: T0 - 4 * MIN, dist: 9100 }) === 'zeit', 'auch früher gestartet');
+  // gleiche Startzeit und Länge, aber ein anderer Ort (über 5 km): nicht dieselbe Tour
+  ok(zg({ start: T0, dist: 10000, lat: 47.0, lon: 11.0 }) === 'zeit' && zg({ start: T0, dist: 10000, lat: 47.03, lon: 11.0 }) === 'zeit', 'gleicher Ort (ohne Ort in der Tour oder 3 km)');
+  { const zo = [t('zo', T0, 10000, 60, { lat: 47.0, lon: 11.0 })], g = o => { const v = I.vorhanden(c(o), zo); return v ? v.grund : null; };
+    ok(g({ lat: 47.01, lon: 11.01 }) === 'zeit' && g({ lat: 47.1, lon: 11.0 }) === null && g({ lat: 47.0, lon: 11.1 }) === null && g({ lat: 47.1, lon: 11.0, start: T0 + 120 * MIN, dist: 10050, dur: 3600 }) === null, 'Ort: 1,4 km ja, 11 km nein, auch beim Versatz');
+    ok(I.geloescht(c({ lat: 47.1, lon: 11.0 }), [I.stein(zo[0])]) === null && I.geloescht(c({ lat: 47.001, lon: 11.0 }), [I.stein(zo[0])]) !== null, 'Stein: Ort zählt auch'); }
+  // Versatz: Länge 1 %, Dauer 60 s, Start bis 3 h daneben (Zeitzone einer Quelle)
+  ok(zg({ start: T0 + 120 * MIN, dist: 10050, dur: 3600 + 30 }) === 'versatz', '2 h versetzt, gleiche Länge und Dauer');
+  ok(zg({ start: T0 + 120 * MIN, dist: 10300, dur: 3600 }) === null && zg({ start: T0 + 120 * MIN, dist: 10000, dur: 3700 }) === null && zg({ start: T0 + 181 * MIN, dist: 10000, dur: 3600 }) === null, 'Versatz: Länge, Dauer, über 3 h');
+  // was nicht zählt: Kandidat mit Zeit gegen geplante oder zeitlose Touren; Kandidat ohne Zeit gegen Touren mit Zeit
+  for (const x of [{ status: 'planned' }, { timed: false }]) ok(!I.vorhanden(c({}), [t('q', T0, 10000, 60, x)]), 'zeitlose zählt nicht für Zeit: ' + JSON.stringify(x));
+  ok(!I.vorhanden(c({ zeit: false, start: null }), z), 'Kandidat ohne Zeit gegen Tour mit Zeit');
+  ok(I.vorhanden(c({}), [t('h', T0, 10000, 60, { hidden: true })]).grund === 'zeit', 'ausgeblendete Tour ist trotzdem vorhanden');
+
+  // Form (ohne Zeit): gleiche Umgrenzung (± 100 m) und Länge (± 2 %), nur gleiche Art (geplant ↔ geplant)
+  const pl = [t('p', 0, 8000, 0, { status: 'planned', timed: false, start: T0 })];
+  const pg = o => { const v = I.vorhanden(c(Object.assign({ zeit: false, start: null, planned: true, dist: 8000 }, o)), pl); return v ? v.grund : null; };
+  ok(pg({}) === 'form', 'geplant gegen geplant: gleiche Form');
+  ok(pg({ dist: 8150 }) === 'form' && pg({ dist: 8300 }) === null, 'Länge ± 2 %');
+  ok(pg({ bbox: [47.0005, 11, 47.1, 11.1] }) === 'form' && pg({ bbox: [47.003, 11, 47.1, 11.1] }) === null, 'Umgrenzung ± 100 m');
+  ok(pg({ planned: false }) === null, 'gemacht ohne Zeit gegen geplant: keine Form');
+  ok(!I.vorhanden(c({ zeit: false, start: null, planned: true, dist: 8000, bbox: null }), pl), 'ohne Umgrenzung kein Urteil');
+
+  // Rangfolge: die Kennung gewinnt vor dem Abdruck, der vor der Zeit
+  { const l = [t('1', T0, 10000, 60), t('2', T0 + 86400000, 10000, 60, { abdruck: ['spur:x'] }), t('3', T0 + 2 * 86400000, 10000, 60, { srcId: 'strava:1' })];
+    const v = I.vorhanden(c({ kennungen: ['strava:1'], abdruck: ['spur:x'] }), l); ok(v.tour.id === '3' && v.grund === 'kennung', 'Kennung vor Abdruck vor Zeit');
+    ok(I.vorhanden(c({ abdruck: ['spur:x'] }), l).tour.id === '2', 'Abdruck vor Zeit'); }
+
+  // kandidat: aus Aufrufer-Angaben, Kennzahlen und Punkten
+  { const p = pts(40, 1, T0), k = I.kandidat({ srcId: 'komoot:5', status: 'done', kennungen: ['mt:6'] }, { start: T0, dist: 9000, dur: 1200 }, [1, 2, 3, 4], p);
+    ok(k.kennungen.join() === 'komoot:5,mt:6' && k.abdruck[0] === I.abdruck(p) && k.zeit && k.dist === 9000 && !k.planned, 'kandidat');
+    const q = I.kandidat({ status: 'planned' }, { start: T0, dist: 9000 }, [1, 2, 3, 4], p); ok(!q.zeit && q.planned, 'geplant hat keine Zeit');
+    ok(q.abdruck[0] === 'plan:' + I.abdruck(p) && q.abdruck[0] !== k.abdruck[0], 'geplant und gemacht: verschiedene Abdrücke derselben Strecke');
+    ok(!I.kandidat({}, { start: null, dist: 1 }, null, p).zeit, 'ohne Startzeit keine Zeit'); }
+
+  // Steine: Kennung, Abdruck, Zeit, Form – wie bei vorhanden; neueste zuletzt, höchstens MAX_STEINE; Freigeben
+  const gel = t('g', T0, 10000, 60, { srcId: 'komoot:77', alias: ['zepp:88'], name: 'Gelöscht', abdruck: ['spur:g'] });
+  const s1 = I.stein(gel, 5000);
+  ok(s1.n === 'Gelöscht' && s1.am === 5000 && s1.z === true && s1.s === T0 && s1.k.join() === 'komoot:77,zepp:88' && s1.a[0] === 'spur:g' && !s1.p, 'Stein');
+  const steine = I.ergaenze([], s1);
+  ok(I.geloescht(c({ kennungen: ['zepp:88'] }), steine) === steine[0], 'Stein: Kennung (alias)');
+  ok(I.geloescht(c({ abdruck: ['spur:g'] }), steine) === steine[0], 'Stein: Abdruck');
+  ok(I.geloescht(c({ start: T0 + 3 * MIN, dist: 10300 }), steine) === steine[0], 'Stein: Zeit und Länge');
+  ok(I.geloescht(c({ start: T0 + 90 * MIN, dist: 10300 }), steine) === null && I.geloescht(c({ kennungen: ['komoot:78'], start: T0 + 86400000 }), steine) === null, 'Stein: anderes trifft nicht');
+  { const ge2 = I.stein(t('gp', 0, 8000, 0, { status: 'planned', timed: false, start: T0, srcId: 'komoot:90' }), 1);
+    ok(ge2.p && !ge2.z && ge2.s === 0 && ge2.dt === T0, 'Stein einer geplanten Tour');
+    const st2 = [ge2];
+    ok(I.geloescht(c({ kennungen: ['komoot:90'], zeit: false, start: null, planned: true }), st2) === ge2, 'geplante Tour: Kennung');
+    ok(I.geloescht(c({ zeit: false, start: null, planned: true, dist: 8000 }), st2) === ge2, 'geplante Tour: Form');
+    ok(I.geloescht(c({ zeit: false, start: null, planned: false, dist: 8000 }), st2) === null, 'geplanter Stein trifft keine gemachte Tour'); }
+  { let l = []; for (let i = 0; i < I.MAX_STEINE + 20; i++) l = I.ergaenze(l, I.stein(t('x' + i, T0, 1, 1, { name: 'n' + i }), i));
+    ok(l.length === I.MAX_STEINE && l[l.length - 1].n === 'n' + (I.MAX_STEINE + 19) && l[0].am === 20, 'höchstens ' + I.MAX_STEINE + ', die ältesten fallen weg');
+    const l2 = I.ergaenze(l, l[l.length - 1]); ok(l2.length === l.length, 'derselbe Stein wird ersetzt, nicht doppelt');
+    ok(I.freigeben(steine, [s1]).length === 0 && I.freigeben(steine, []).length === 1 && I.freigeben(steine, [I.stein(gel, 6000)]).length === 1, 'freigeben'); }
+
+  // Texte und Liste der Übersprungenen
+  ok(I.textVorhanden(3) === '3 übersprungen, schon vorhanden' && I.textGeloescht(2) === '2 früher gelöscht, nicht wieder importiert', 'Texte');
+  { const e = (art, n, s) => I.logEintrag(art, n, s, 1000, 'id', 'mit', 'zeit', 'file', 1);
+    const l = I.logMit([e('vorhanden', 'alt', 1), e('vorhanden', 'doppelt', 2)], [e('vorhanden', 'neu1', 3), e('vorhanden', 'neu2', 4), e('vorhanden', 'doppelt', 2)], 100);
+    ok(l.map(x => x.n).join() === 'doppelt,neu2,neu1,alt', 'neueste zuerst, gleicher Eintrag ersetzt: ' + l.map(x => x.n));
+    ok(I.logMit([], Array.from({ length: 150 }, (_, i) => e('vorhanden', 'n' + i, i)), 100).length === 100, 'höchstens 100');
+    ok(I.logEintrag('geloescht', null, null, null).n === '' && I.logEintrag('geloescht', 'x').art === 'geloescht', 'Eintrag ohne Angaben'); }
+
+  // zusammen(): die Abdrücke beider Touren bleiben (ein späterer Import erkennt beide Dateien wieder)
+  { const D = require(W + 'calc-doppelt.js'), AB = require(W + 'calc-abgleich.js');
+    const m = D.zusammen(t('a', T0, 1, 1, { abdruck: ['spur:1'] }), t('b', T0, 1, 1, { abdruck: ['spur:2', 'spur:1'] }), {});
+    ok(m.abdruck.join() === 'spur:1,spur:2', 'Abdrücke werden vereinigt'); void AB; }
+})();
