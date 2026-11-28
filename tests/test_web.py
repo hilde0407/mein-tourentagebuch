@@ -1512,7 +1512,7 @@ def meine_touren(pg):
     pg.evaluate("window.__mt.delay = 0"); r = pg.evaluate(sync, True); assert r["added"] == 11 - k and pg.evaluate("Tours.list().then(l => l.filter(t => /^mt:s\\d+$/.test(t.srcId)).length)") == 11, r
     # Abgelaufene Sitzung: freundliche Meldung ohne Schlüssel, Schlüssel vergessen, das Anmeldeblatt kommt mit Adresse und Name wieder
     pg.wait_for_selector(".sheet", state="detached"); pg.evaluate("window.__mt.sessions.clear()"); go(); pg.wait_for_selector("#mt-go"); (leise(), pg.click("#mt-go"))
-    m = toast("abgelaufen"); assert m == "Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden." and "SITZUNG" not in m, m
+    m = toast("abgelaufen"); assert m == "Meine Touren nicht möglich: Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden." and "SITZUNG" not in m, m
     pg.wait_for_selector("#mt-pw"); assert pg.input_value("#mt-url") == "https://mt.test" and pg.input_value("#mt-name") == "Tagebuch" and pg.evaluate("DB.kvGet('mt')") == {"base": "https://mt.test", "name": "Tagebuch"}
     # Zwei-Faktor: falscher Code → Meldung; richtiger Code → verbunden
     for code, want in (("000000", "Der Code stimmt nicht"), ("123456", "schon vorhanden")):
@@ -3534,7 +3534,7 @@ def mt_schalter_2150(pg):
         pg.wait_for_selector(".sheet", state="detached"); assert pg.locator("#fu-im-sum").count() == 0, (st, m)
     pg.evaluate("window.__fuStatus = 401; window.__fuNetz = false"); leise()
     go(pg, "#/fuehrer", "#fu-mt"); pg.click("#fu-mt"); pg.wait_for_selector("#fu-mt-go"); pg.click("#fu-mt-go")
-    assert toast_text(pg, "abgelaufen") == "Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden."
+    _m = toast_text(pg, "abgelaufen"); assert _m.endswith("Die Anmeldung bei Meine Touren ist abgelaufen. Bitte neu anmelden.") and " nicht möglich: " in _m, _m
     pg.wait_for_function("() => !Nav._busy && Nav.cur === '/fuehrer' && document.querySelector('#fu-xfer') && !document.querySelector('#fu-mt')")
     assert pg.evaluate("DB.kvGet('mt', null).then(a => [a.base, !!a.token])") == ["https://mt.test", False]
     assert all("mt.test" in u for u in pg.evaluate("window.__netlog"))
