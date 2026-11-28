@@ -121,6 +121,7 @@ input[type=checkbox]{flex:none;width:24px;height:24px;margin:0;accent-color:var(
 .chips.wrap{flex-wrap:wrap;overflow:visible;padding:4px 0;margin:0}
 .chip{position:relative;flex:none;display:inline-flex;align-items:center;gap:6px;min-height:calc(var(--tipp) - 4px);padding:0 14px;border-radius:999px;border:1px solid var(--edge);background:transparent;cursor:pointer;font-size:.94rem;font-weight:500;color:var(--ink);text-decoration:none;white-space:nowrap}
 .chip::after{content:"";position:absolute;inset:-3px 0}      /* Rand 1 px: Trefferfläche 44 + 2 × 2 = 48 px */
+.chip.rand3::after{inset:-5px 0}
 .chip.on{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:600}
 .chip svg.ic{width:17px;height:17px;margin-left:-2px}
 /* Umschalter */
@@ -133,7 +134,7 @@ input[type=checkbox]{flex:none;width:24px;height:24px;margin:0;accent-color:var(
 .sec{margin-top:28px}
 .sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
 .sec-h h3{margin:0}
-.sec-l{flex:none;display:inline-flex;align-items:center;min-height:var(--tipp);margin:-14px 0;font-weight:600;font-size:.94rem;text-decoration:none}
+.sec-l{position:relative;z-index:1;flex:none;display:inline-flex;align-items:center;min-height:var(--tipp);margin:-14px 0;font-weight:600;font-size:.94rem;text-decoration:none}
 .sec-l::after{content:"";width:7px;height:7px;border-right:2px solid;border-top:2px solid;transform:rotate(45deg);margin-left:6px}
 .sec-s{margin:-4px 0 10px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.9rem,1fr));gap:16px 12px;margin:14px 0}
@@ -431,7 +432,7 @@ button.li-i.vthumb{width:var(--tipp);height:var(--tipp)}.vthumb{position:relativ
 .cm b{display:block;margin-bottom:6px;font:600 1.05rem var(--d)}.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
 .cd{aspect-ratio:1;display:grid;place-items:center;font-size:.76rem;font-weight:500;border-radius:5px;background:var(--soft);color:var(--muted);border:0;font-style:normal;padding:0}.cd.none{background:none}
 .cd.l1{background:#cfe3d4;color:#0c2526}.cd.l2{background:#8fc4a6;color:#0c2526}.cd.l3{background:#2f7c60;color:#fff}.cd.l4{background:#0f4a47;color:#fff}
-button.cd{position:relative;cursor:pointer;font-weight:700}button.cd::after{content:"";position:absolute;inset:-2px}      /* 2.24.0: Trefferfläche 48 px, auch wenn die Zelle bei 360 px 44 px misst */
+button.cd{position:relative;cursor:pointer;font-weight:700}button.cd::after{content:"";position:absolute;inset:-1px}      /* 2.24.0: Trefferfläche bis zum Nachbarn (Raster 44 px + 3 px Abstand), ohne dass sich Flächen überlagern */
 @media (prefers-color-scheme:dark){.cd.l1{background:#244a43;color:#e6eeea}.cd.l2{background:#2a6f5a;color:#fff}.cd.l3{background:#54b192;color:#061a17}.cd.l4{background:#9be6c8;color:#061a17}}
 .tblw{overflow-x:auto;margin:0 calc(var(--gut) * -1);padding:0 var(--gut)}
 .cstat{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}.cstat th,.cstat td{padding:9px 6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}.cstat th{font-weight:500;color:var(--muted);font-size:.84rem}.cstat th:first-child,.cstat td:first-child{text-align:left;padding-left:0;font-weight:600}.cstat td:last-child,.cstat th:last-child{padding-right:0}
