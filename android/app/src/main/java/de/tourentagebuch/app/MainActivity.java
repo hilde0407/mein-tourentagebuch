@@ -149,6 +149,8 @@ public class MainActivity extends Activity {
     private void handleIntent(Intent in) {
         if (in == null) return;
         String act = in.getAction();
+        /* 2.24.3: Wird die App aus der Liste der letzten Apps wieder geöffnet, liefert Android denselben „Öffnen mit“-Auftrag (z. B. WhatsApp-Anhang) noch einmal; der gehört nicht noch einmal importiert. */
+        if ((in.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return;
         final ArrayList<Uri> uris = new ArrayList<>();
         if (Intent.ACTION_SEND.equals(act)) {
             Uri u = in.getParcelableExtra(Intent.EXTRA_STREAM);

@@ -50,7 +50,7 @@ const Dup = {
     ph.forEach(p => { p.tour = keepId; });
     if (ph.length) await DB.putMany('photos', ph);
     await Tours.save(t);
-    await Tours.remove(dropId, { stein: false });      // 2.24.1: die Kennungen sind schon als alias in der bleibenden Tour; kein Stein nötig
+    await Tours.remove(dropId, { stein: false }); await DB.del('kv', 'pn:' + dropId).catch(() => {}); await DB.del('kv', 'plan:' + dropId).catch(() => {});      // 2.24.3: bei geplanten Touren gehen Notizen und Punkte der Planung mit; 2.24.1: die Kennungen sind schon als alias in der bleibenden Tour; kein Stein nötig
     const ign = ((await DB.kvGet('dupIgnore', [])) || []).filter(k => !k.split('|').includes(dropId));
     await DB.kvSet('dupIgnore', ign);
     return { tour: t, fotos: ph.length };
@@ -62,7 +62,7 @@ const Dup = {
     return { tour, fotos };
   },
   async ignore(key) { const l = (await DB.kvGet('dupIgnore', [])) || []; for (const k of [].concat(key)) if (!l.includes(k)) l.push(k); await DB.kvSet('dupIgnore', l); },
-  GRUND: { start: 'gleiche Startzeit', zeit: 'gleiche Zeitspanne', versatz: 'gleiche Strecke und Dauer, Uhrzeit versetzt' },
+  GRUND: { start: 'gleiche Startzeit', zeit: 'gleiche Zeitspanne', versatz: 'gleiche Strecke und Dauer, Uhrzeit versetzt', form: 'gleiche Strecke ohne Zeit' },
 };
 
 Views['/doppelt'] = async root => {
@@ -81,15 +81,17 @@ Views['/doppelt'] = async root => {
   if (st.extra) body.append(h('p', { class: 'muted small', id: 'dup-n2' }, st.extra));
   const eintrag = (t, rolle) => {
     const quelle = Tours.QUELLE[t.src] || t.src || 'Datei', was = Doppelt.hat(t, { fotos: fotos[t.id] || 0, hand: Dup.hand(t) });
+    /* 2.24.3: geplante Touren lassen sich hier einzeln löschen (gleicher Knopf, gleiche Rückfrage wie auf der Tourseite) */
+    const del = t.status === 'planned' ? h('button', { class: 'btn sm danger', 'data-a': 'del', 'aria-label': 'Geplante Tour „' + t.name + '“ löschen', onclick: async () => { if (await TourUI.loeschen(t)) Nav.render(); } }, 'Löschen') : null;
     return h('div', { class: 'dup-e' }, UI.tourRow(t, { year: true, photos: fotos[t.id] || 0 }),
-      h('p', { class: 'dup-m small' }, h('b', null, rolle), ' · ', h('span', { class: 'quelle' }, 'Quelle ' + quelle), (was.length ? ' · ' + was.join(', ') : ' · keine weiteren Angaben')));
+      h('p', { class: 'dup-m small' }, h('b', null, rolle), ' · ', h('span', { class: 'quelle' }, 'Quelle ' + quelle), (was.length ? ' · ' + was.join(', ') : ' · keine weiteren Angaben')), del);
   };
   gruppen.forEach(g => {
     let keep = g.keep, drops = g.drops;
     const gross = g.members.length > 2, box = h('section', { class: 'sec dup' + (gross ? ' dup-gruppe' : ''), 'data-key': g.key, 'data-n': g.members.length });
     const draw = () => {
       box.innerHTML = '';
-      box.append(h('div', { class: 'sec-h' }, h('h3', null, F.date(keep.start))),
+      box.append(h('div', { class: 'sec-h' }, h('h3', null, keep.status === 'planned' ? 'Geplante Tour „' + keep.name + '“' : F.date(keep.start))),
         h('p', { class: 'muted small sec-s' }, gross ? 'Dieselbe Tour liegt ' + g.members.length + '\u00a0Mal vor · Grund: ' + Dup.GRUND[g.grund] : 'Grund: ' + Dup.GRUND[g.grund]),
         h('div', { class: 'dup-l' }, eintrag(keep, 'Bleibt'), drops.map(d => eintrag(d, 'Wird gelöscht'))),
         h('div', { class: 'row wrap dup-a' },

@@ -4,25 +4,25 @@ const Import = {
   /** Gemeinsamer Abschluss: parst Daten und speichert alle Sportarten. */
   async fromData(name, data, src, extra) {
     const acts = await Parse.any(name, data);
-    const res = { added: 0, dup: 0, fail: 0, geloescht: [] };
+    const res = { added: 0, dup: 0, fail: 0, geloescht: [], dupPlan: [] };
     if (!acts.length) { res.fail = 1; return res; }
     for (const a of acts) {
       try {
         const pts = extra && extra.ohneZeit ? a.pts.map(p => Object.assign({}, p, { t: null })) : a.pts;      // Geplantes hat keine Zeiten (wie im Planer)
         const args = Object.assign({ name: a.name, sport: a.sport, tags: a.tags, pts, src }, extra || {});
         const r = await Tours.add(args);
-        if (r.dup) res.dup++;
+        if (r.dup) { res.dup++; if (args.status === 'planned' && r.tour) res.dupPlan.push(r.tour.name); }      // 2.24.3: bei geplanten Touren nennt die Meldung den Namen
         else if (r.geloescht) res.geloescht.push(Object.assign({ stein: r.geloescht, args }, r.info));      // 2.24.1: früher gelöscht – nicht still wieder anlegen; der Aufrufer fragt (Import.frageGeloeschte)
         else res.added++;
       } catch (e) { res.fail++; }
     }
     return res;
   },
-  sum(a, b) { return { added: a.added + b.added, dup: a.dup + b.dup, fail: a.fail + b.fail, geloescht: (a.geloescht || []).concat(b.geloescht || []) }; },
+  sum(a, b) { return { added: a.added + b.added, dup: a.dup + b.dup, fail: a.fail + b.fail, geloescht: (a.geloescht || []).concat(b.geloescht || []), dupPlan: (a.dupPlan || []).concat(b.dupPlan || []) }; },
   describe(r) {
     const p = [];
     if (r.added) p.push(r.added + (r.added === 1 ? ' Tour importiert' : ' Touren importiert'));
-    if (r.dup) p.push(ImportDup.textVorhanden(r.dup));      // 2.24.1: „3 übersprungen, schon vorhanden“
+    if (r.dup) p.push(ImportDup.textVorhanden(r.dup) + (r.dup === 1 && r.dupPlan && r.dupPlan.length === 1 ? ': „' + r.dupPlan[0] + '“' : ''));      // 2.24.1: „3 übersprungen, schon vorhanden“
     if (r.geloescht && r.geloescht.length) p.push(ImportDup.textGeloescht(r.geloescht.length));
     if (r.hr) p.push('Puls bei ' + r.hr + (r.hr === 1 ? ' Tour ergänzt' : ' Touren ergänzt'));
     if (r.names) p.push('Name bei ' + r.names + (r.names === 1 ? ' Tour' : ' Touren') + ' von Komoot übernommen');
@@ -43,7 +43,7 @@ const Import = {
     return Import.cacheFiles(files, onProgress);
   },
   async cacheFiles(files, onProgress, extra) {
-    let tot = { added: 0, dup: 0, fail: 0, geloescht: [] };
+    let tot = { added: 0, dup: 0, fail: 0, geloescht: [], dupPlan: [] };
     for (let i = 0; i < files.length; i++) {
       if (onProgress) onProgress(i + 1, files.length, files[i].name);
       try {

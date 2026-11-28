@@ -4981,6 +4981,85 @@ def b64_gpx(t0, **k):
     import base64
     return "data:application/gpx+xml;base64," + base64.b64encode(gpx(t0, **k).encode("utf-8")).decode()
 
+def planung_doppelt_2243(pg):
+    """2.24.3: Dieselbe Strecke zweimal von außen als geplante Tour geöffnet: die zweite wird übersprungen („schon vorhanden: „Name““, Liste „Beim Import übersprungen“);
+    schon doppelt vorhandene geplante Touren stehen in „Doppelte Touren prüfen“ und lassen sich dort und in der Liste „Geplant“ löschen. Gibt Layoutfehler zurück."""
+    bad = []
+    pg.evaluate("() => { window.__fb1 = Import.fetchBuf; window.__ts1 = MTApp.takeShared; }")
+    g = gpx(1705000000000, n=40, lat=44.7, lon=8.9, name="Doppelplan")
+    zaehler = [0]
+    def offnen(was):
+        zaehler[0] += 1      # WhatsApp: bei jedem Öffnen anderer Name und andere Adresse im Zwischenspeicher, gleicher Inhalt
+        pg.evaluate("""([g, k]) => { window.__tn = 0; Import.fetchBuf = async () => new TextEncoder().encode(g);
+          MTApp.takeShared = () => { window.__tn++; return window.__tn === 1 ? JSON.stringify([{ name: 'WhatsApp Document ' + k + '.gpx', url: '/cache/imp/' + k + '_x.gpx', path: '/x/' + k }]) : '[]'; };
+          window.__shared = handleShared(); }""", [g, zaehler[0]])
+        pg.wait_for_selector(".sheet #sh-geplant"); pg.click(".sheet #" + was); pg.wait_for_selector(".sheet", state="detached")
+        pg.evaluate("window.__shared"); pg.wait_for_timeout(300)
+    n = lambda: pg.evaluate("Tours.list().then(l => l.filter(t => t.name === 'Doppelplan' && t.status === 'planned').length)")
+    offnen("sh-geplant"); assert n() == 1
+    offnen("sh-geplant"); assert n() == 1, "zweimal geöffnet: nur eine geplante Tour"
+    assert toast_text(pg, "schon vorhanden") == "1 übersprungen, schon vorhanden: „Doppelplan“", pg.inner_text("#toast")
+    sk = pg.evaluate("DB.kvGet('importSkip', []).then(l => l.filter(e => e.art === 'vorhanden' && e.n === 'Doppelplan').length)"); assert sk == 1, sk
+    # schon doppelt vorhanden (z. B. aus einer älteren Version): zwei geplante Touren gleicher Form
+    ids = pg.evaluate("""async () => { const pts = Array.from({ length: 20 }, (_, i) => ({ lat: 44.9 + i * 0.001, lon: 9.1 + i * 0.001, ele: 500, t: null })), out = [];
+      for (const nm of ['Alt Plan A', 'Alt Plan B']) out.push((await Tours.add({ name: nm, sport: 'hike', pts, status: 'planned', src: 'plan', bewusst: true })).tour.id);
+      return out; }""")
+    d0 = pg.evaluate("Dup.find().then(r => r.gruppen.filter(g => g.members.some(t => t.status === 'planned')).length)"); assert d0 == 1, d0
+    go(pg, "#/doppelt", "section.dup"); pg.wait_for_function("() => !Nav._busy")
+    box = pg.locator("section.dup", has_text="Alt Plan"); assert box.count() == 1, pg.inner_text("#view")
+    t = box.inner_text(); assert "gleiche Strecke ohne Zeit" in t and "Geplante Tour" in t and "Bleibt" in t and "Wird gelöscht" in t, t
+    assert box.locator("[data-a=del]").count() == 2 and box.locator("[data-a=merge]").count() == 1
+    bad += ["Doppelte Touren (geplant): " + m for m in pg.evaluate(LAYOUT_JS)]
+    box.locator("[data-a=del]").nth(1).click(); pg.wait_for_selector(".sheet[aria-label^='Geplante Tour „Alt Plan']")
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("ids => Promise.all(ids.map(i => DB.get('tours', i))).then(l => l.filter(Boolean).length)", ids) == 2, "Abbrechen löscht nichts"
+    box.locator("[data-a=del]").nth(1).click(); pg.wait_for_selector(".sheet .btn.pri.danger"); pg.click(".sheet .btn.pri.danger")
+    assert toast_text(pg, "gelöscht") == "Geplante Tour gelöscht"
+    pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
+    assert pg.evaluate("ids => Promise.all(ids.map(i => DB.get('tours', i))).then(l => l.filter(Boolean).length)", ids) == 1, "eine gelöscht"
+    assert pg.evaluate("Dup.find().then(r => r.gruppen.filter(g => g.members.some(t => t.status === 'planned')).length)") == 0, "keine Gruppe mehr"
+    # Liste „Geplant“: Löschen je Zeile (gleiche Rückfrage), nach Neuaufbau weg
+    go(pg, "#/", "#touradd"); pg.evaluate("TourUI.filter.planned = true; Nav.render()"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_selector(".trow")
+    nz = pg.locator(".trow").count(); assert nz >= 2
+    bad += ["Liste Geplant: " + m for m in pg.evaluate(LAYOUT_JS)]
+    rest = pg.evaluate("ids => Promise.all(ids.map(i => DB.get('tours', i))).then(l => l.filter(Boolean)[0])", ids)
+    z = pg.locator(f".trow[data-id='{rest['id']}'] .trow-del"); assert z.count() == 1 and z.get_attribute("aria-label") == f"Geplante Tour „{rest['name']}“ löschen"
+    z.click(); pg.wait_for_selector(".sheet[aria-label='Geplante Tour „%s“ löschen?']" % rest["name"]); pg.click(".sheet .btn.pri.danger")
+    assert toast_text(pg, "gelöscht") == "Geplante Tour gelöscht"; pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
+    assert pg.locator(".trow").count() == nz - 1 and pg.evaluate("id => DB.get('tours', id).then(Boolean)", rest["id"]) is False
+    # Seite „Geplante Touren“ (Mehr → Unterwegs): alle geplanten Touren, Doppelte gekennzeichnet, Löschen je Zeile und für mehrere
+    g3 = pg.evaluate("""async () => { const mk = i => Array.from({ length: 20 }, (_, k) => ({ lat: 43.2 + i * 0.1 + k * 0.001, lon: 7.3 + k * 0.001, ele: 300, t: null })), out = [];
+      for (const [nm, i] of [['Alt Plan Gp1', 0], ['Alt Plan Gp2', 0], ['Alt Plan Gp3', 2]]) out.push((await Tours.add({ name: nm, sport: 'hike', pts: mk(i), status: 'planned', src: 'plan', bewusst: true })).tour.id);
+      return out; }""")
+    go(pg, "#/mehr", "#m-geplant"); assert "Geplante Touren" in pg.inner_text("#m-geplant")
+    pg.click("#m-geplant"); pg.wait_for_selector("#gp-list .trow"); pg.wait_for_function("() => !Nav._busy")
+    assert pg.inner_text("header.top h1, header.top .t, header.top").count("Geplante Touren") >= 1
+    zl = lambda i: pg.locator(f"#gp-list .trow[data-id='{i}']")
+    assert all(zl(i).count() == 1 for i in g3)
+    assert "mögliche doppelte Tour" in zl(g3[0]).inner_text() and "mögliche doppelte Tour" in zl(g3[1]).inner_text() and "mögliche doppelte Tour" not in zl(g3[2]).inner_text(), "Doppelte gekennzeichnet"
+    assert pg.locator("#gp-dup").count() == 1
+    bad += ["Geplante Touren: " + m for m in pg.evaluate(LAYOUT_JS)]
+    assert pg.locator("#gp-del-n").is_hidden()
+    zl(g3[0]).locator("input").check(); zl(g3[1]).locator("input").check()
+    assert "2" in pg.inner_text("#gp-del-n") and pg.locator("#gp-del-n").is_visible()
+    pg.click("#gp-del-n"); pg.wait_for_selector(".sheet[aria-label='2 geplante Touren löschen?']"); q = pg.inner_text(".sheet")
+    assert "Alt Plan Gp1" in q and "Zurückholen lässt sie sich nur aus einer Sicherung" in q, q
+    assert pg.evaluate("() => { const b = [...document.querySelectorAll('.sheet .row.end .btn')].map(x => x.textContent.trim()); return b[0] === 'Abbrechen' && b[1] === 'Löschen'; }")
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached")
+    assert pg.evaluate("ids => Promise.all(ids.map(i => DB.get('tours', i))).then(l => l.filter(Boolean).length)", g3) == 3, "Abbrechen löscht nichts"
+    pg.click("#gp-del-n"); pg.wait_for_selector(".sheet .btn.pri.danger"); pg.click(".sheet .btn.pri.danger")
+    assert toast_text(pg, "2 geplante Touren gelöscht") == "2 geplante Touren gelöscht"; pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
+    assert pg.evaluate("ids => Promise.all(ids.map(i => DB.get('tours', i))).then(l => l.map(Boolean))", g3) == [False, False, True]
+    zl(g3[2]).locator("[data-a=del]").click(); pg.wait_for_selector(".sheet[aria-label='Geplante Tour „Alt Plan Gp3“ löschen?']"); pg.click(".sheet .btn.pri.danger")
+    assert toast_text(pg, "^Geplante Tour gelöscht$") == "Geplante Tour gelöscht"; pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(300)
+    assert zl(g3[2]).count() == 0 and not pg.evaluate("id => DB.get('tours', id).then(Boolean)", g3[2])
+    # aufräumen: die Probe-Touren gehen, die Steine auch (andere Prüfungen sollen nicht stolpern)
+    pg.evaluate("""async () => { for (const t of (await Tours.list()).filter(t => /^(Doppelplan|Alt Plan)/.test(t.name))) await Tours.remove(t.id, { stein: false });
+      await Tours.steineFrei((await Tours.steine()).filter(s => /^(Doppelplan|Alt Plan)/.test(s.n))); TourUI.filter.planned = false; Tours.invalidate(); }""")
+    pg.evaluate("() => { Import.fetchBuf = window.__fb1; MTApp.takeShared = window.__ts1; }")
+    print("2.24.3: geplante Touren doppelt: Import übersprungen, Doppelt-Gruppe, Löschen ok")
+    return bad
+
 def loeschen_import_2241(pg):
     """2.24.1: (1) geplante Touren löschen (Tourseite und Planung, gleiche Rückfrage wie gemachte Touren, nach Neuladen weg, Gelöschtes kommt beim Holen nicht wieder);
     (2) Doppelt-Prüfung beim Import (dieselbe Datei zweimal, andere Quelle, ohne Zeit, geplant, Komoot, Meine Touren, Zepp, früher gelöscht, Liste der Übersprungenen). Gibt Layoutfehler zurück."""
@@ -5740,7 +5819,7 @@ def main():
         # Jede bisherige Funktion bleibt erreichbar: „Mehr“ führt zu Planen, Karte, Reisen, Statistik, Import, Foto-Quellen, Einstellungen
         pg.click("#tabs a[data-p='/mehr']"); pg.wait_for_selector("#m-settings")
         hrefs = pg.evaluate("[...document.querySelectorAll('#view a.li')].map(a => a.getAttribute('href'))")
-        assert hrefs == ["#/plan", "#/map", "#/offline", "#/fuehrer", "#/reisen", "#/stats", "#/jahr", "#/import", "#/sources", "#/settings"], hrefs
+        assert hrefs == ["#/plan", "#/geplant", "#/map", "#/offline", "#/fuehrer", "#/reisen", "#/stats", "#/jahr", "#/import", "#/sources", "#/settings"], hrefs
         # Reisen liegt unter „Mehr“; die Leiste bleibt dort sichtbar und „Mehr“ markiert, auf Arbeitsseiten verschwindet sie
         pg.click("#m-reisen"); pg.wait_for_selector("text=Mehrtagestouren"); pg.wait_for_function("document.querySelector(\"#tabs a[data-p='/mehr']\").classList.contains('on') && !document.querySelector('#tabs').classList.contains('hide')", timeout=10000)
         anyid = pg.evaluate("Tours.list().then(l => l[0].id)")
@@ -5846,7 +5925,7 @@ def main():
         up_bad = update_2210(pg)
         dd_bad = doppelt_2230(pg)
         ad_bad = audit_2240(pg) + wellen_2240_mittel(pg) + wellen_2240_klein(pg)
-        li_bad = loeschen_import_2241(pg)      # 2.24.1: geplante Touren löschen; Doppelt-Prüfung beim Import
+        li_bad = loeschen_import_2241(pg) + planung_doppelt_2243(pg)      # 2.24.1: geplante Touren löschen; Doppelt-Prüfung beim Import; 2.24.3: geplante Touren doppelt
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

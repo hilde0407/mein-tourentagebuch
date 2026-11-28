@@ -498,7 +498,8 @@ button.cd{position:relative;cursor:pointer;font-weight:700}button.cd::after{cont
 .dup-l{border-top:1px solid var(--line)}
 .dup-e{border-bottom:1px solid var(--line)}
 .dup-e a.tour{border-bottom:0;padding-bottom:4px}
-.dup-m{margin:0 0 12px 84px;color:var(--muted)}.dup-m b{color:var(--ink)}
+.dup-m{margin:0 0 6px 84px;color:var(--muted)}.dup-e>.btn{margin:0 0 12px 84px}
+.trow{display:flex;align-items:center;border-bottom:1px solid var(--line)}.trow a.tour{flex:1;min-width:0;border-bottom:0}.trow-del{color:var(--muted)}.dup-m b{color:var(--ink)}
 .dup-a{margin-top:12px}.dup-a .btn{flex:1 1 auto}
 
 /* ---------- 2.2.0: Bewertung, Alles abgleichen ---------- */
@@ -720,3 +721,5 @@ img.tile-off{visibility:hidden}
 body:has(.sheet-back.on) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 12px)}
 /* 2.24.0: Wischleisten (Chips, Reiter) laufen am rechten Rand weich aus – so sieht man, dass es weitergeht (die letzten 16 px sind der leere Rand) */
 .chips:not(.wrap),.mapchips,.tabbar{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
+
+.gp-z{flex-wrap:wrap}.gp-z a.tour{flex:1 1 0}.gp-chk{cursor:pointer}.gp-chk input{width:22px;height:22px;margin:0}.gp-badge{flex-basis:100%;margin:-6px 0 8px 60px;color:var(--muted)}.gp-bar{margin:8px 0}

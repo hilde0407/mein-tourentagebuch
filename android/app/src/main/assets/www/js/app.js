@@ -7,9 +7,9 @@ const Nav = {
   tabs: [['/start', 'Start', 'home'], ['/', 'Touren', 'tours'], ['/rec', 'Aufzeichnen', 'rec'], ['/photos', 'Fotos', 'photo'], ['/mehr', 'Mehr', 'more']],
   /* Welcher Reiter ist auf welcher Seite markiert */
   home: { '/tour': '/', '/map': '/', '/story': '/', '/fix': '/', '/flug': '/',
-    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/fotodoppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr', '/offline': '/mehr' },
+    '/reisen': '/mehr', '/reise': '/mehr', '/album': '/mehr', '/stats': '/mehr', '/jahr': '/mehr', '/import': '/mehr', '/doppelt': '/mehr', '/geplant': '/mehr', '/fotodoppelt': '/mehr', '/settings': '/mehr', '/sources': '/mehr', '/plan': '/mehr', '/fuehrer': '/mehr', '/offline': '/mehr' },
   /* Seiten, auf denen man an einer Sache arbeitet: ohne untere Leiste, mit „Zurück“ */
-  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/fotodoppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan', '/offline'],
+  deep: ['/tour', '/story', '/settings', '/import', '/doppelt', '/geplant', '/fotodoppelt', '/sources', '/reise', '/album', '/fix', '/flug', '/plan', '/offline'],
   go(path) { if (location.hash === '#' + path) Nav.render(); else location.hash = '#' + path; },
   back() { if (history.length > 1 && Nav.depth > 0) { history.back(); } else Nav.go(Nav.oben() || Nav.home[Nav.cur] || '/start'); },
   /** 2.22.0: Eine Ebene höher innerhalb der Einstellungen (/settings/<gruppe>/<seite> → /settings/<gruppe> → /settings), sonst nichts. */
@@ -80,6 +80,7 @@ Views['/mehr'] = async root => {
   root.append(topbar('Mehr'), h('div', { class: 'pad' },
     UI.section('Unterwegs', UI.list([
       UI.row({ icon: 'route', title: 'Tour planen', sub: 'Wegpunkte setzen, Route auf Wegen, Höhenprofil', href: '#/plan', id: 'm-plan' }),
+      UI.row({ icon: 'route', title: 'Geplante Touren', sub: 'Alle geplanten Touren an einem Ort, einzeln oder mehrere löschen', href: '#/geplant', id: 'm-geplant' }),
       UI.row({ icon: 'map', title: 'Karte', sub: 'Alle Touren auf einer Karte', href: '#/map', id: 'm-map' }),
       UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Kartenausschnitt vor der Tour laden – für unterwegs ohne Netz', href: '#/offline', id: 'm-offline' }),
       UI.row({ icon: 'book', title: 'Wanderführer', sub: 'Bücher mit GPX-Dateien: welche Touren du schon gewandert bist', href: '#/fuehrer', id: 'm-fuehrer' })])),
@@ -157,7 +158,7 @@ async function handleShared() {
     if (tracks.length) {
       const was = await frageGemachtGeplant(tracks.length);      // 2.6.2: von außen geöffnete Strecken nicht blind als „gemacht“ speichern
       if (!was) { try { await Native.call('clearCache'); } catch (e) { /* egal */ } toast('Nicht übernommen'); }
-      else { toast('Import läuft …'); const r = await Import.cacheFiles(tracks, null, was === 'planned' ? { status: 'planned', src: 'plan', ohneZeit: true } : null); toast(Import.describe(r) + (r.added && was !== 'planned' ? await Dup.satz() : ''), 6000); await Import.frageGeloeschte(r, null); Tours.invalidate(); if (Nav.cur === '/' || Nav.cur === '/start') Nav.render(); }
+      else { toast('Import läuft …'); const r = await Import.cacheFiles(tracks, null, was === 'planned' ? { status: 'planned', src: 'plan', ohneZeit: true } : null); toast(Import.describe(r) + (r.added ? await Dup.satz() : ''), 6000); await Import.frageGeloeschte(r, null); Tours.invalidate(); if (Nav.cur === '/' || Nav.cur === '/start') Nav.render(); }
     }
     if (photos.length) {
       const m = await Native.json('importFiles', { paths: photos.map(f => f.path), src: 'geteilt' });

@@ -170,7 +170,11 @@ Views['/'] = async root => {
       for (const end = Math.min(items.length, gezeigt + n); gezeigt < end; gezeigt++) {
         const { t, g, kopf } = items[gezeigt];
         if (kopf) list.append(h('h3', { class: 'month' }, g.mo, h('small', null, (g.ts.length === 1 ? '1 Tour' : g.ts.length + ' Touren') + ' · ' + F.km(g.ts.reduce((a, x) => a + x.dist, 0)))));
-        list.append(UI.tourRow(t, { io, photos: pc[t.id], stage: stageOf[t.id] }));
+        const zeile = UI.tourRow(t, { io, photos: pc[t.id], stage: stageOf[t.id] });
+        /* 2.24.3: geplante Touren lassen sich auch aus der Liste löschen (gleiche Rückfrage und Meldung wie auf der Tourseite) */
+        if (t.status !== 'planned') list.append(zeile);
+        else list.append(h('div', { class: 'trow', 'data-id': t.id }, zeile,
+          h('button', { class: 'ico trow-del', 'aria-label': 'Geplante Tour „' + t.name + '“ löschen', title: 'Löschen', html: Ico.svg('trash'), onclick: async () => { if (await TourUI.loeschen(t)) { Tours.invalidate(); Nav.render(); } } })));
       }
       TourUI.zeilen = Math.max(TourUI.zeilen, gezeigt);
       if (gezeigt < items.length) { moreBtn.textContent = 'Weitere Touren anzeigen (' + (items.length - gezeigt) + ')'; list.append(moreBtn); }

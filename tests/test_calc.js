@@ -2180,4 +2180,24 @@ const folgt = (buch, tour) => Fu.vergleiche(buchP(buch), prep(tour));
   { const D = require(W + 'calc-doppelt.js'), AB = require(W + 'calc-abgleich.js');
     const m = D.zusammen(t('a', T0, 1, 1, { abdruck: ['spur:1'] }), t('b', T0, 1, 1, { abdruck: ['spur:2', 'spur:1'] }), {});
     ok(m.abdruck.join() === 'spur:1,spur:2', 'Abdrücke werden vereinigt'); void AB; }
+
+  // 2.24.3: geplante Touren in den Doppelt-Gruppen (Form, ohne Zeit) – nur untereinander, nie mit gemachten Touren
+  { const D = require(W + 'calc-doppelt.js');
+    const pl = (id, dist, bb, extra) => Object.assign({ id, name: 'Plan ' + id, status: 'planned', timed: false, start: T0 + 5000, dist, bbox: bb, created: 1 }, extra || {});
+    const bb = [47.0, 11.0, 47.03, 11.02];
+    const a = pl('p1', 4000, bb), b = pl('p2', 4040, bb.map(x => x + 0.0004), { created: 2 });
+    const gs = D.gruppen([a, b], {});
+    ok(gs.length === 1 && gs[0].members.length === 2 && gs[0].grund === 'form' && gs[0].keep.id === 'p1' && gs[0].drops[0].id === 'p2', 'zwei gleiche geplante Touren = eine Gruppe (Form)');
+    ok(D.stand(gs).text === '1\u00a0mögliche doppelte Tour', 'zählt als eine mögliche doppelte Tour');
+    ok(D.gruppen([a, pl('p3', 4000, bb.map(x => x + 0.01))], {}).length === 0, 'andere Umgrenzung (über 100 m): keine Gruppe');
+    ok(D.gruppen([a, pl('p4', 4400, bb)], {}).length === 0, 'andere Länge (über 2 %): keine Gruppe');
+    ok(D.gruppen([a, pl('p5', 4000, bb, { hidden: true })], {}).length === 0, 'ausgeblendete geplante Tour zählt nicht');
+    ok(D.gruppen([a, pl('p6', 4000, bb, { status: 'done', timed: true, start: T0 })], {}).length === 0, 'geplant und gemacht sind zwei Touren');
+    ok(D.gruppen([a, pl('p7', 4000, bb, { start: T0 + 99999 })], {}).length === 1, 'die (zufällige) Anlegezeit spielt keine Rolle');
+    const c3 = D.gruppen([a, b, pl('p8', 4000, bb, { created: 3 })], {});
+    ok(c3.length === 1 && c3[0].members.length === 3 && c3[0].drops.length === 2, 'dreimal: eine Gruppe mit drei Einträgen');
+    ok(D.gruppen([a, b], { ignore: [D.key('p1', 'p2')] }).length === 0, '„Keine Doppelten“ gilt auch für geplante Touren');
+    const mit = pl('p9', 4000, bb, { note: 'Notiz', created: 9 });
+    ok(D.gruppen([a, mit], {})[0].keep.id === 'p9', 'mehr Angaben = bleibt');
+    ok(D.gruppen([a, b, pl('x1', 5000, bb, { status: 'done', timed: true, start: T0 })], {}).length === 1 && D.grund(a, b) === 'form' && D.grund(a, a) === null, 'grund()'); }
 })();

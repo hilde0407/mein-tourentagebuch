@@ -4,17 +4,20 @@
      „start“:   die Startzeiten höchstens 5 Minuten auseinanderliegen, oder
      „zeit“:    sich die Zeitspannen stark überlappen (mindestens 80 % der kürzeren Tour), oder
      „versatz“: Länge (± 1 %) und Dauer (± 60 s) gleich sind und der Start bis zu 3 Stunden daneben liegt (Zeitzonen-Versatz einer Quelle).
-   Geplante, ausgeblendete und Touren ohne Zeit bleiben außen vor. Entschieden wird nie von selbst: Die Funktionen liefern nur Vorschläge.
+   Geplante Touren (2.24.3) haben keine Zeit; sie werden nur untereinander verglichen, nach der Form: „form“ = Umgrenzung (± 100 m) und Länge (± 2 %) gleich.
+   Ausgeblendete und gemachte Touren ohne Zeit bleiben außen vor. Entschieden wird nie von selbst: Die Funktionen liefern nur Vorschläge.
    Läuft im Browser (globales `Doppelt`) und in Node. */
 (function (root) {
   const MIN5 = 300000, H3 = 3 * 3600000;
   const ende = t => (t.end && t.end > t.start ? t.end : t.start + (t.dur || 0) * 1000);
   const key = (a, b) => [String(a), String(b)].sort().join('|');
   const zaehlt = t => !!t && t.status !== 'planned' && !t.hidden && t.timed !== false && typeof t.start === 'number' && isFinite(t.start) && t.start > 0;
+  const geplant = t => !!t && t.status === 'planned' && !t.hidden && Array.isArray(t.bbox) && t.bbox.length === 4 && t.dist > 0;
   const laenge = (a, b, anteil, mind) => a.dist > 0 && b.dist > 0 && Math.abs(a.dist - b.dist) <= Math.max(mind, anteil * Math.max(a.dist, b.dist));
 
   /** Warum könnten a und b dieselbe Tour sein? 'start' | 'zeit' | 'versatz' | null. */
   function grund(a, b) {
+    if (geplant(a) || geplant(b)) return geplant(a) && geplant(b) && a.id !== b.id && a.bbox.every((x, i) => Math.abs(x - b.bbox[i]) <= 0.001) && laenge(a, b, 0.02, 50) ? 'form' : null;
     if (!zaehlt(a) || !zaehlt(b) || a.id === b.id || !laenge(a, b, 0.1, 300)) return null;
     const d = Math.abs(a.start - b.start);
     if (d <= MIN5) return 'start';
@@ -61,6 +64,14 @@
         const aBleibt = wa !== wb ? wa > wb : (a.created || 0) !== (b.created || 0) ? (a.created || 0) < (b.created || 0) : String(a.id) < String(b.id);
         out.push(aBleibt ? { keep: a, drop: b, grund: g, key: k, wk: wa, wd: wb } : { keep: b, drop: a, grund: g, key: k, wk: wb, wd: wa });
       }
+    }
+    const pl = (tours || []).filter(geplant);      // 2.24.3: geplante Touren untereinander (es sind wenige, also alle Paare)
+    for (let i = 0; i < pl.length; i++) for (let j = i + 1; j < pl.length; j++) {
+      const a = pl[i], b = pl[j], k = key(a.id, b.id);
+      if (!grund(a, b) || ign.has(k)) continue;
+      const wa = wert(a, info(a)), wb = wert(b, info(b));
+      const aBleibt = wa !== wb ? wa > wb : (a.created || 0) !== (b.created || 0) ? (a.created || 0) < (b.created || 0) : String(a.id) < String(b.id);
+      out.push(aBleibt ? { keep: a, drop: b, grund: 'form', key: k, wk: wa, wd: wb } : { keep: b, drop: a, grund: 'form', key: k, wk: wb, wd: wa });
     }
     return out.sort((x, y) => y.keep.start - x.keep.start);
   }
@@ -142,6 +153,6 @@
     return { n, gross, text: n ? text(n) : 'Keine doppelten Touren', extra: gross ? 'davon ' + gross + '\u00a0mit drei oder mehr Einträgen' : '' };
   };
 
-  const api = { grund, wert, hat, paare, zusammen, key, ende, gruppen, mitNeuen, offen, text, stand };
+  const api = { geplant, grund, wert, hat, paare, zusammen, key, ende, gruppen, mitNeuen, offen, text, stand };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Doppelt = api;
 })(typeof window !== 'undefined' ? window : globalThis);
