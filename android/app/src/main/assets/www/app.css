@@ -161,7 +161,7 @@ input[type=checkbox]{flex:none;width:24px;height:24px;margin:0;accent-color:var(
 div.li{cursor:default}
 .li:active{background:var(--soft)}
 .li-i{flex:none;display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:var(--soft);color:var(--ink);font-size:1.2rem;overflow:hidden}
-.li-i.cov{padding:0}.li-i.cov img{width:44px;height:44px;object-fit:cover;display:block}
+.li-i.cov{padding:0}.li-i.cov img{width:100%;height:100%;object-fit:cover;display:block}
 .li-i svg.ic{vertical-align:0}
 .li-t{flex:1;min-width:0}
 .li-t b{display:block;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
@@ -397,7 +397,7 @@ button.ygoal:active{background:var(--soft)}
 /* 2.9.0: Video auf der Kachel: Abspiel-Symbol und Dauer, dunkle Unterlage (lesbar auf hellen und dunklen Bildern, in Hell und Dunkel gleich) */
 .vmark{position:absolute;left:4px;bottom:4px;display:inline-flex;align-items:center;gap:3px;padding:2px 7px 2px 4px;border-radius:10px;background:rgba(0,0,0,.74);color:#fff;font-size:.78rem;font-weight:700;line-height:1.35;font-variant-numeric:tabular-nums;pointer-events:none}
 .vmark-i{display:grid;place-items:center}.vmark-i svg{display:block}
-.vthumb{position:relative;border:0;cursor:pointer}.vthumb-i{position:absolute;inset:0;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 0 2px #000)}
+button.li-i.vthumb{width:var(--tipp);height:var(--tipp)}.vthumb{position:relative;border:0;cursor:pointer}.vthumb-i{position:absolute;inset:0;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 0 2px #000)}
 .pt-pano{position:absolute;left:5px;top:4px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 0 2px #000)}
 /* 2.9.0: Blätter, die aus dem Vollbild geöffnet werden (Details, Löschen, Tour wählen), liegen über ihm – vorher lagen sie dahinter (z-index 100 < 150) */
 .lb ~ .sheet-back{z-index:160}
