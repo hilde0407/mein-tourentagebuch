@@ -1629,7 +1629,7 @@ def doppelte(pg):
     pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("Tours.list().then(l => l.length)") == n0
     # Zusammenführen: Fotos und Puls wandern zur bleibenden Tour, Kennung der gelöschten bleibt als alias
     pg.click(box("K", "Z") + " button[data-a=merge]"); pg.wait_for_selector(".sheet .btn.pri:has-text('Zusammenführen')"); pg.click(".sheet .btn.pri:has-text('Zusammenführen')")
-    pg.wait_for_function("document.querySelector('#toast') && /Zusammengeführt/.test(document.querySelector('#toast').textContent)"); assert pg.inner_text("#toast") == "Zusammengeführt · 2 Fotos übernommen"
+    pg.wait_for_function("document.querySelector('#toast') && /Touren zusammengeführt/.test(document.querySelector('#toast').textContent)"); assert pg.inner_text("#toast") == "Touren zusammengeführt · 2 Fotos übernommen"
     pg.wait_for_function("document.querySelectorAll('section.dup').length === 1"); assert pg.inner_text("#dup-n") == "1 mögliche doppelte Tour"
     r = pg.evaluate("""async (d) => { const k = await DB.get('tours', d.K), z = await DB.get('tours', d.Z), ph = await DB.byIndex('photos', 'tour', d.K), trk = await DB.get('tracks', d.K);
       const again = await Tours.add({ sport: 'hike', src: 'zepp', srcId: 'zepp:d1', pts: [{ lat: 1, lon: 1, t: 1e12 }, { lat: 1.01, lon: 1, t: 1e12 + 60000 }] });
