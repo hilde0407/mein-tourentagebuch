@@ -161,7 +161,7 @@ Views['/offline'] = async root => {
     startBtn.disabled = !p.ok;
     if (!nameIn.value || nameIn.dataset.auto) { if (art === 'karte') { nameIn.value = 'Ausschnitt ' + F.dshort(Date.now()); nameIn.dataset.auto = '1'; } }
   }
-  map.on('moveend', () => { if (art === 'karte') rechne(); });
+  map.on('moveend', () => { if (art === 'karte' && MapKit.lebt(map)) rechne(); });
 
   async function starten() {
     if (!plan.args || startBtn.disabled) return;
@@ -209,7 +209,7 @@ Views['/offline'] = async root => {
   drawArt(); drawStufe();
   setTimeout(() => { map.invalidateSize(); rechne(); }, 50);
   await zeige();
-  return () => { map.remove(); };
+  return () => { MapKit.abbauen(map); };
 };
 // Beim Start die Liste der Hülle einmal holen (für „ohne Netz die Wanderkarte zeigen“ und den Hinweis in der Aufnahme)
 if (window.MTApp) setTimeout(() => { Offline.liste().catch(() => {}); }, 1500);

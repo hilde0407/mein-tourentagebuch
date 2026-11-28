@@ -407,7 +407,7 @@ Views['/tour'] = async (root, [id]) => {
     try { const r = await Native.json('saveFile', { name, mime: 'application/gpx+xml', text: Geo.gpx(t.name, t.sport, pts, wp) }); toast('GPX exportiert: ' + r); }
     catch (e) { const a = h('a', { href: URL.createObjectURL(new Blob([Geo.gpx(t.name, t.sport, pts)], { type: 'application/gpx+xml' })), download: name }); document.body.append(a); a.click(); a.remove(); }
   }
-  return () => window.removeEventListener('photos-changed', reloadPhotos);
+  return () => { window.removeEventListener('photos-changed', reloadPhotos); MapKit.abbauen(map); };
 };
 
 /** Route an die Hülle geben (Sprachansagen) und zur Aufzeichnung wechseln. */

@@ -345,7 +345,7 @@ const Buecher = {
       } catch (e) { plan.disabled = false; toastFehler('Als Planung übernehmen', e, 5000); }
     } }, 'Als Planung übernehmen');
     const s = sheet(bt.title, h('div', { class: 'fu-kb' }, h('p', { class: 'muted small' }, 'Aus dem Buch: ' + b.name),
-      UI.figs([[F.km(bt.km * 1000), 'Strecke'], bt.up != null ? ['↑ ' + F.m(bt.up), 'Aufstieg'] : null]), mapEl, h('div', { class: 'row end' }, plan)), { onclose: () => { try { if (map) map.remove(); } catch (e) { /* schon weg */ } } });
+      UI.figs([[F.km(bt.km * 1000), 'Strecke'], bt.up != null ? ['↑ ' + F.m(bt.up), 'Aufstieg'] : null]), mapEl, h('div', { class: 'row end' }, plan)), { onclose: () => { MapKit.abbauen(map); } });
     try {
       map = MapKit.create(mapEl);
       const layer = MapKit.line(pts, '#1565c0', 5).addTo(map);

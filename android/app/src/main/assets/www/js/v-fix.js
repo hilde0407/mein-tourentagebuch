@@ -206,6 +206,7 @@ Views['/fix'] = async (root, [id]) => {
       h('button', { class: 'btn pri', id: 'fx-spike', disabled: !found.spike.length, onclick: async () => { await Fix.removePoints(id, new Set(found.spike)); await done(found.spike.length + ' Ausreißer entfernt'); } }, 'Ausreißer entfernen'),
       h('button', { class: 'btn pri', id: 'fx-fast', disabled: !found.fast.length, onclick: async () => { await Fix.excludeRuns(id, found.fast); await done('Schnelle Abschnitte ausgeschlossen'); } }, 'Schnelle Abschnitte ausschließen'),
       trk && trk.orig ? h('button', { class: 'btn', id: 'fx-restore', onclick: async () => { if (await confirmBox('Original wiederherstellen?', 'Der Track wird wieder so, wie er importiert oder aufgezeichnet wurde.', 'Wiederherstellen')) { await Fix.restoreTrack(id); await done('Original wiederhergestellt'); } } }, 'Original wiederherstellen') : null));
+  return () => MapKit.abbauen(map);
 };
 
 /* Namensvorschläge: Orte (Start, Ziel, weitester Punkt) und Gipfel in der Nähe des höchsten Punkts. */

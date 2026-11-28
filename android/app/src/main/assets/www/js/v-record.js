@@ -185,7 +185,7 @@ Views['/rec'] = async root => {
   if (!window.MTApp) { box.append(UI.empty({ icon: 'rec', title: 'Nur in der Android-App', text: 'Die GPS-Aufzeichnung läuft im Hintergrund und braucht die installierte App.' })); return; }
   let timer = null, map = null, line = null, me = null, lastPts = 0;
   const stat = () => { try { return JSON.parse(MTApp.status()); } catch (e) { return { state: 'idle' }; } };
-  let stop_ = () => { clearInterval(timer); timer = null; if (map) { map.remove(); map = null; } };
+  let stop_ = () => { clearInterval(timer); timer = null; if (map) { MapKit.abbauen(map); map = null; } };
 
   async function idle(st) {
     stop_(); box.innerHTML = '';

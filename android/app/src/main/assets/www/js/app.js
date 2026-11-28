@@ -36,6 +36,7 @@ const Nav = {
       Nav.sperre = null;
     }
     if (Nav.cleanup) { try { Nav.cleanup(); } catch (e) { /* weiter */ } Nav.cleanup = null; }
+    const gen = Nav.gen = (Nav.gen || 0) + 1;      // 2.24.2: Wurde währenddessen schon weiternavigiert, baut die ALTE Seite ihre Aufräumfunktion sofort selbst ab (sonst blieb eine Karte übrig)
     const root = $('#view');
     /* Rollposition je Adresse merken: Wer aus der Tourenliste eine Tour öffnet und zurückgeht, steht wieder an derselben Stelle (2.0.3).
        „Zurück“ erkennt man daran, dass die neue Adresse die vorletzte im eigenen Verlauf ist. */
@@ -49,7 +50,7 @@ const Nav = {
     $$('#tabs a').forEach(a => { const on = a.dataset.p === tab; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     $('#tabs').classList.toggle('hide', deep); root.classList.toggle('notabs', deep);
     Nav.syncRec();
-    try { Nav.cleanup = await route(root, parts.slice(1).map(decodeURIComponent)); }
+    try { const c = await route(root, parts.slice(1).map(decodeURIComponent)); if (gen === Nav.gen) Nav.cleanup = c; else if (typeof c === 'function') { try { c(); } catch (e2) { /* weiter */ } } }
     catch (e) { root.append(UI.empty({ title: 'Anzeigen nicht möglich', text: String(e.message || e) })); console.error(e); }
     if (isBack && Nav.pos[raw] && Nav.raw === raw) root.scrollTop = Nav.pos[raw];
   },

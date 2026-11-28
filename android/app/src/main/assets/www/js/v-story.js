@@ -94,5 +94,5 @@ Views['/story'] = async (root, [id]) => {
       try { const n = await Places.name(e.pos[0], e.pos[1]); if (n && alive) { e.place = n; const box = tl.querySelector(`.stev[data-e="${i}"] .splc`); if (box) box.textContent = '📌 ' + n; } } catch (er) { return; }
     }
   })();
-  return () => { alive = false; };
+  return () => { alive = false; MapKit.abbauen(map); };
 };

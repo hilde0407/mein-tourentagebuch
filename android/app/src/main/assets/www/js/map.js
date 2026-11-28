@@ -39,6 +39,16 @@ const MapKit = {
   LEER: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
   init() {
     if (MapKit.CachedTiles) return;
+    /* 2.24.2: Leaflet-Eigenart beim Abbau mit Canvas-Zeichnung: Beim map.remove() wird zuerst die Zeichenfläche entfernt, danach die Linien darauf;
+       jede entfernte Linie plant noch ein Neuzeichnen (requestAnimationFrame) auf der schon gelöschten Fläche: „Cannot read properties of undefined (reading 'clearRect')“.
+       Ein Neuzeichnen ohne Zeichenfläche oder Karte tut jetzt nichts. */
+    if (L.Canvas && !L.Canvas.prototype._mtGuard) {
+      L.Canvas.prototype._mtGuard = true;
+      for (const n of ['_redraw', '_update']) {
+        const o = L.Canvas.prototype[n];
+        L.Canvas.prototype[n] = function () { if (!this._ctx || !this._map) return undefined; return o.apply(this, arguments); };
+      }
+    }
     MapKit.CachedTiles = L.TileLayer.extend({
       createTile(coords, done) {
         const img = document.createElement('img');
@@ -74,6 +84,19 @@ const MapKit = {
     L.control.zoom({ position: 'topright' }).addTo(m);
     return m;
   },
+  /** 2.24.2: Karte sicher abbauen (der EINE Weg statt einzelner remove()-Aufrufe): Ortung und Animationen anhalten, alle Ereignisse abmelden,
+   *  erst dann entfernen. Verhindert „Cannot read properties of undefined (reading '_leaflet_pos')“, wenn ein Zoom-/Schiebe-Ereignis
+   *  nach dem Seitenwechsel noch einmal feuert. Mehrfaches Aufrufen schadet nicht. */
+  abbauen(m) {
+    if (!m || m._tot) return;
+    m._tot = true;
+    try { m.stopLocate(); } catch (e) { /* egal */ }
+    try { m.stop(); } catch (e) { /* egal */ }
+    try { m.off(); } catch (e) { /* egal */ }
+    try { m.remove(); } catch (e) { /* schon weg */ }
+  },
+  /** Lebt die Karte noch (nicht abgebaut, Oberfläche geladen)? Für Ereignis-Handler. */
+  lebt(m) { return !!(m && !m._tot && m._loaded && m._mapPane); },
   async cacheCount() { try { return (await (await caches.open(MapKit.cacheName)).keys()).length; } catch (e) { return 0; } },
   async clearCache() { try { await caches.delete(MapKit.cacheName); } catch (e) { /* egal */ } },
 

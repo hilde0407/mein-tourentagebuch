@@ -69,10 +69,11 @@ Views['/map'] = async root => {
     if (ts.length === 1) map.setView([start[ts[0].id].lat, start[ts[0].id].lon], 13);
     else map.fitBounds(allBounds(ts), { padding: [30, 30], maxZoom: 13 });
   }
-  const ausschnitt = (pad) => { const b = map.getBounds().pad(pad || 0); return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; };
+  const ausschnitt = (pad) => { if (!MapKit.lebt(map)) return null; const b = map.getBounds().pad(pad || 0); return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; };
 
   /** Startpunkte bzw. Gruppen neu bilden (bei jedem Zoomen und Verschieben). Nur Gruppen nahe dem Ausschnitt werden als Marker angelegt. */
   function gruppen() {
+    if (!MapKit.lebt(map)) return;
     punkte.clearLayers();
     const ts = sichtbar(), z = map.getZoom(), v = ausschnitt(0.5);
     const pts = ts.map(t => ({ lat: start[t.id].lat, lon: start[t.id].lon, t }));
@@ -105,6 +106,7 @@ Views['/map'] = async root => {
   /** Strecken im Ausschnitt zeichnen, sobald nah genug gezoomt ist; weiter weg werden sie ausgeblendet. Spuren werden nur bei Bedarf geladen. */
   async function zeichneLinien() {
     const my = ++ltoken;
+    if (!MapKit.lebt(map)) return;
     if (map.getZoom() < linienAb) { linien.clearLayers(); return; }
     const v = ausschnitt(0.25), ts = sichtbar();
     const inView = ts.filter(t => KP.imAusschnitt(t.bbox || [start[t.id].lat, start[t.id].lon, start[t.id].lat, start[t.id].lon], v));
@@ -124,7 +126,7 @@ Views['/map'] = async root => {
     }
   }
 
-  function neu() { gruppen(); zeichneLinien(); }
+  function neu() { if (!MapKit.lebt(map)) return; gruppen(); zeichneLinien(); }
   map.on('moveend', neu);       // kommt auch nach jedem Zoomen (Leaflet: zoomend, dann moveend)
 
   async function draw() {
@@ -145,5 +147,5 @@ Views['/map'] = async root => {
     Nav.go('/offline');
   }
   await draw();
-  return () => { token++; ltoken++; try { map.stopLocate(); } catch (e) {} map.remove(); };
+  return () => { token++; ltoken++; MapKit.abbauen(map); };
 };

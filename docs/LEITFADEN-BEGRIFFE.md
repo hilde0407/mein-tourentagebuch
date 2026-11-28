@@ -1,6 +1,6 @@
 # Leitfaden: Begriffe und Bedienlogik (Meine Touren und Mein Tourentagebuch)
 
-Stand 28.11.2026 (Tagebuch 2.24.1; Kopie des bestätigten Leitfadens, an die Fassung aus Meine Touren 3.70.1 angeglichen). Gilt für beide Apps, für alle sichtbaren Texte (Knöpfe, Überschriften, Hinweise, Meldungen, Tooltips, aria-label), das Handbuch und die Versionsnotizen. Von Volker entschieden sind die mit ★ markierten Punkte; der Rest folgt dem, was in den Apps heute überwiegt (Inventur vom 25.11.2026). Regeln 15 bis 17 und Abschnitt 4 gelten nur im Tourentagebuch.
+Stand 28.11.2026 (Tagebuch 2.24.2; Kopie des bestätigten Leitfadens, an die Fassung aus Meine Touren 3.70.1 angeglichen). Gilt für beide Apps, für alle sichtbaren Texte (Knöpfe, Überschriften, Hinweise, Meldungen, Tooltips, aria-label), das Handbuch und die Versionsnotizen. Von Volker entschieden sind die mit ★ markierten Punkte; der Rest folgt dem, was in den Apps heute überwiegt (Inventur vom 25.11.2026). Regeln 15 bis 17 und Abschnitt 4 gelten nur im Tourentagebuch.
 
 Interne Bezeichner (Dateinamen, Funktionen, Einstellungsschlüssel, API-Pfade, Element-IDs) bleiben unverändert. Begriffe fremder Dienste bleiben, wie der Dienst sie nennt (Strava „Aktivitäten“, Suunto „Workouts“ nur, wenn der Dienst genau so genannt wird).
 

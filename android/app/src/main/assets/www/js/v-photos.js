@@ -790,7 +790,7 @@ Views['/photos'] = async root => {
     all.forEach(p => { p.tourName = p.tour && tours[p.tour] ? tours[p.tour].name : ''; });
     seg.innerHTML = '';
     [['all', `Alle (${all.length})`], ['free', `Ohne Tour (${all.filter(p => !p.tour).length})`], ['map', 'Karte']].forEach(([k, l]) => seg.append(h('button', { class: mode === k ? 'on' : '', 'aria-pressed': mode === k ? 'true' : 'false', onclick: () => { mode = k; draw(); } }, l)));
-    if (map) { map.remove(); map = null; }
+    if (map) { MapKit.abbauen(map); map = null; }
     body.innerHTML = '';
     const list = (mode === 'free' ? all.filter(p => !p.tour) : all).slice().reverse();
     if (!all.length) { body.append(UI.empty({ icon: 'photo', title: 'Noch keine Fotos', text: 'Hol Fotos aus der Galerie, einem Ordner, vom NAS oder aus Nextcloud. Die App ordnet sie über die Aufnahmezeit der passenden Tour zu und zeigt sie auf der Karte.', actions: [h('button', { class: 'btn pri', onclick: () => PhotoSources.sheet(null, null) }, 'Fotos hinzufügen')] })); return; }
@@ -816,7 +816,7 @@ Views['/photos'] = async root => {
   };
   const re = () => draw(); window.addEventListener('photos-changed', re);
   await draw();
-  return () => { window.removeEventListener('photos-changed', re); if (map) map.remove(); };
+  return () => { window.removeEventListener('photos-changed', re); MapKit.abbauen(map); };
 };
 
 Views['/sources'] = async root => {

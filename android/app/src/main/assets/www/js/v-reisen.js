@@ -257,6 +257,7 @@ async function groupPage(root, title, tours, opts) {
   }
   if (bounds.length) map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24] }); else mapEl.hidden = true;
   setTimeout(() => { try { if (map.getContainer().isConnected) map.invalidateSize(); } catch (e) { /* Ansicht schon verlassen */ } }, 200);
+  return () => MapKit.abbauen(map);
 }
 
 Views['/reise'] = async (root, [id]) => {
@@ -267,7 +268,7 @@ Views['/reise'] = async (root, [id]) => {
   const r = id.startsWith('m:') ? (await Reisen.multiday(all)).find(x => x.id === id) : Reisen.applyPeriod(Reisen.detect(all, home, cfg), all, ed.period).find(x => x.id === id);
   if (!r) { root.append(topbar('Reise', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Diese Reise gibt es nicht mehr (Erkennung oder Heimatort geändert).'))); return; }
   if (!r.multi && !names[id] && !(id in places)) { try { places[id] = await Reisen.place(r); } catch (e) { /* offline: Zeitraum */ } }
-  await groupPage(root, Reisen.title(r, names, places), r.tours, {
+  return await groupPage(root, Reisen.title(r, names, places), r.tours, {
     multi: r.multi ? r : null,
     rename: async () => {
       const v = await askText('Name der Reise', 'Name', names[id] || '', 'Speichern'); if (v == null) return;
@@ -297,7 +298,7 @@ Views['/album'] = async (root, [tag0]) => {
   const tag = decodeURIComponent(tag0 || '');
   const ts = (await Tours.list()).filter(t => !t.hidden && (t.tags || []).includes(tag));
   if (!ts.length) { root.append(topbar('Album', { back: true }), h('div', { class: 'empty' }, h('p', null, 'Dieses Album ist leer.'))); return; }
-  await groupPage(root, tag, ts, {
+  return await groupPage(root, tag, ts, {
     rename: async () => {
       const v = ((await askText('Name des Albums', 'Name', tag, 'Speichern')) || '').trim(); if (!v || v === tag) return;
       for (const t of ts) { t.tags = [...new Set(t.tags.map(g => g === tag ? v : g))]; await Tours.save(t); }

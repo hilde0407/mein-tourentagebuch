@@ -1780,7 +1780,9 @@ def aufnahme_270(pg):
     go(pg, "#/rec", ".bigtime"); pg.wait_for_selector("#rroute:not([hidden])"); assert int(pg.get_attribute(".rmap", "data-route") or 0) > 1
     # Volkers Fall: Route wählen, während noch eine (alte) Aufzeichnung läuft; deren Beenden löscht die Route in der Hülle – die Auswahl bleibt trotzdem
     pg.evaluate("DB.kvSet('recRoute', null); window.__routeName = ''; window.__rec.start = Date.now() - 600000")      # die alte Aufzeichnung lief schon vor der Auswahl
-    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan); pg.locator(".banner button", has_text="Mit Ansagen starten").click()
+    pg.evaluate("id => { location.hash = '#/tour/' + id }", plan); pg.wait_for_selector(".banner button")
+    pg.wait_for_function("[...document.querySelectorAll('.banner button')].some(b => /Mit Ansagen starten/.test(b.textContent))")
+    pg.evaluate("() => [...document.querySelectorAll('.banner button')].find(b => /Mit Ansagen starten/.test(b.textContent)).click()")      # 2.24.2: ein Klick im Seitenkontext (die Seite baut sich hier unter Last mehrmals neu auf; Playwrights Klick lief ins Leere)
     pg.wait_for_function("location.hash === '#/rec'"); pg.wait_for_selector("#rroute:not([hidden])"); assert "Nachgehen R" in pg.inner_text("#rroute")
     pg.evaluate("g => { window.__gpx = g }", gpx(t0 + 86400000 * 3, n=30, lat=46.8, name=""))
     schieben(pg, 1.0); pg.wait_for_function("location.hash.startsWith('#/tour/')", timeout=8000); rec2 = pg.evaluate("location.hash.split('/')[2]")
@@ -5894,6 +5896,33 @@ def main():
             for k in range(3):
                 pg.evaluate("k => { document.querySelector('#view').scrollTop = k * 400 }", k); pg.wait_for_timeout(60); bad += [f"Aufzeichnung {w} px {fs} %: " + m for m in pg.evaluate(LAYOUT_JS)]
         pg.evaluate("document.getElementById('fs-test').textContent = ''; window.__rec.state = 'idle'; window.__rec.unsent = false"); pg.set_viewport_size({"width": 390, "height": 800})
+        # 2.24.2: Karte öffnen und sofort wegnavigieren (Zoom-/Schiebe-Animation, Timer, Ereignisse nach dem Abbau) – kein Seitenfehler
+        n_err = len(errs)
+        pg.set_viewport_size({"width": 390, "height": 800}); pg.wait_for_timeout(300)
+        pg.evaluate("location.hash = '#/map'"); pg.wait_for_function("document.querySelector('.map') && document.querySelector('.map').__karte", timeout=8000)
+        # (a) deterministisch: Karte abbauen, danach feuern alte Ereignisse und Timer – abgemeldet und geschützt
+        r = pg.evaluate("""async () => {
+          const el = document.querySelector('.map'), m = el.__karte.map, out = {};
+          m.setView([47.3, 11.3], 12, { animate: true }); m.setZoom(14, { animate: true }); m.panBy([200, 100], { animate: true });
+          out.vorher = MapKit.lebt(m);
+          MapKit.abbauen(m); MapKit.abbauen(m);
+          out.nachher = MapKit.lebt(m);
+          for (const ev of ['moveend', 'zoomend', 'resize', 'locationfound', 'zoomanim']) { try { m.fire(ev, { latlng: L.latLng(47, 11) }); } catch (e) { out.fehler = ev + ': ' + e.message; } }
+          await new Promise(r => setTimeout(r, 700));
+          out.rest = document.querySelectorAll('.leaflet-container').length;
+          return out; }""")
+        assert r["vorher"] and not r["nachher"] and "fehler" not in r, r
+        # (b) schnell wechseln: Karte → sofort anderswohin, mit laufender Animation, in verschiedenen Abständen (auch ohne auf das Rendern zu warten)
+        for i, (ziel, warte) in enumerate([("#/", 0), ("#/stats", 30), ("#/", 120), ("#/tour/" + lt, 250), ("#/plan", 400), ("#/", 5)] * 3):
+            pg.evaluate("location.hash = '#/map'")
+            if i % 2: pg.wait_for_timeout(warte)
+            pg.evaluate("""() => { const el = document.querySelector('.map'); const m = el && el.__karte && el.__karte.map; if (m) { try { m.setZoom(m.getZoom() + 2, { animate: true }); m.panBy([300, 200], { animate: true }); } catch (e) {} } }""")
+            pg.wait_for_timeout(warte if i % 2 == 0 else 0)
+            pg.evaluate("z => { location.hash = z }", ziel)
+            pg.wait_for_timeout(60)
+        pg.evaluate("location.hash = '#/'"); pg.wait_for_selector("#filterbtn"); pg.wait_for_timeout(900)
+        assert pg.evaluate("document.querySelectorAll('.leaflet-container').length") == 0, "übrig gebliebene Karte nach dem Seitenwechsel"
+        assert len(errs) == n_err, "Seitenfehler beim Wegnavigieren von der Karte:\n" + "\n".join(errs[n_err:])
         assert not bad, "\n".join(sorted(set(bad)))
         b.close()
     assert not errs, "\n".join(errs)
