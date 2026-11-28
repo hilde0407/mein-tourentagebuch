@@ -376,7 +376,7 @@ Views['/rec'] = async root => {
       // Aufstieg und Abstieg nebeneinander (gleiche Rechnung in der Hülle: Mittel über 3 Höhen, Schwelle 3 m); Tempo steht klein in der Statuszeile
       grid.append(UI.figs([[F.km(s.dist_m), 'Strecke'], [s.alt_m != null ? F.m(s.alt_m) : '–', 'Höhe'], ['↑ ' + F.m(s.up_m), 'Aufstieg'], [s.down_m != null ? '↓ ' + F.m(s.down_m) : '↓ –', 'Abstieg']], { big: true, cols: 2 }));
       const sig = s.fix_age_s >= 0 && s.fix_age_s < 20;
-      const tempo = s.state !== 'paused' && s.speed_ms ? (s.speed_ms * 3.6).toFixed(1).replace('.', ',') + ' km/h · ' : '';
+      const tempo = s.state !== 'paused' && s.speed_ms ? F.kmh(s.speed_ms) + ' · ' : '';
       gps.textContent = s.state === 'paused' ? 'Pausiert – es wird nichts mitgeschrieben.' : tempo + (sig ? 'GPS-Signal gut' + (s.fix_acc_m > 0 ? ', auf ' + s.fix_acc_m + ' m genau' : '') : 'GPS-Signal wird gesucht …');
       if (shown !== s.state) {      // nur bei Wechsel neu beschriften – die Taste selbst bleibt dasselbe Element (sonst gingen Berührungen verloren)
         shown = s.state;

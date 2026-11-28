@@ -197,7 +197,7 @@ const Ausw = {
     const sm = (a, k) => a.reduce((x, t) => x + (t[k] || 0), 0);
     body.append(...Ausw.sec('Statistik nach Sportart'), h('div', { class: 'tblw' }, h('table', { class: 'cstat' },
       h('thead', null, h('tr', null, ['Sportart', 'Touren', 'km', 'Aufstieg m', 'Ø km', 'Bewegungszeit'].map(x => h('th', null, x)))),
-      h('tbody', null, rows.map(([k, a]) => h('tr', { 'data-sport': k }, h('td', { title: StatGruppen.titel(k, gr) || null }, StatGruppen.icon(k, gr) + ' ' + StatGruppen.beschriftung(k, gr)), h('td', null, String(a.length)), h('td', null, (sm(a, 'dist') / 1000).toFixed(0)), h('td', null, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', null, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', null, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
+      h('tbody', null, rows.map(([k, a]) => h('tr', { 'data-sport': k }, h('td', { title: StatGruppen.titel(k, gr) || null }, StatGruppen.icon(k, gr) + ' ' + StatGruppen.beschriftung(k, gr)), h('td', { 'data-l': 'Touren' }, String(a.length)), h('td', { 'data-l': 'km' }, Math.round(sm(a, 'dist') / 1000).toLocaleString('de-DE')), h('td', { 'data-l': 'Aufstieg m' }, Math.round(sm(a, 'up')).toLocaleString('de-DE')), h('td', { 'data-l': 'Ø km' }, (sm(a, 'dist') / a.length / 1000).toFixed(1).replace('.', ',')), h('td', { 'data-l': 'Bewegungszeit' }, F.dur(sm(a, 'moving') || sm(a, 'dur')))))))));
     // Leistung über die Jahre
     const all = ctx.all.filter(t => Sports.passt(ctx.sport, t.sport));
     const perf = [];

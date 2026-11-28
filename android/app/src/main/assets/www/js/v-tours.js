@@ -1,5 +1,6 @@
 'use strict';
-const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '', region: '', stars: '' } };
+/* zeilen: wie viele Touren die Liste gerade zeigt (2.24.0: zuerst 100, dann „Weitere Touren anzeigen“; bleibt beim Zurückkehren aus einer Tour erhalten) */
+const TourUI = { filter: { q: '', sport: '', fav: false, planned: false, year: '', region: '', stars: '' }, zeilen: 100, SCHRITT: 100 };
 
 /** Umriss der Strecke als kleines Bild. `box` setzt die Größe (Vorgabe: Kachel in der Liste). */
 function previewSvg(pts, color, box) {
@@ -90,7 +91,8 @@ Views['/'] = async root => {
     if (!e.isIntersecting) return; io.unobserve(e.target);
     UI.thumb(e.target, e.target.__t, tilebg, saveBg).catch(() => { /* Zeile bleibt ohne Bild */ });
   }), { rootMargin: '300px' });
-  const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Touren suchen', oninput: e => { F_.q = e.target.value; draw(); } });
+  let qT = 0;
+  const q = h('input', { type: 'search', placeholder: 'Touren suchen …', value: F_.q, 'aria-label': 'Touren suchen', oninput: e => { F_.q = e.target.value; clearTimeout(qT); qT = setTimeout(() => draw(), 150); }, onsearch: () => { clearTimeout(qT); draw(); } });      // 2.24.0: Eingabe entprellt (150 ms), Enter und das Löschkreuz sofort
   // Selten gebraucht (Jahr, Region): hinter „Filter“, der Zähler zeigt, wie viele davon gesetzt sind
   const yearSel = h('select', { 'aria-label': 'Jahr', onchange: e => { F_.year = e.target.value; draw(); } }, h('option', { value: '' }, 'Gesamte Zeit'), years.map(y => h('option', { value: y, selected: String(y) === String(F_.year) }, y)));
   const regSel = h('select', { 'aria-label': 'Region', onchange: e => { F_.region = e.target.value; draw(); } });
@@ -112,10 +114,12 @@ Views['/'] = async root => {
   function addMenu() {
     UI.menu('Neue Tour', [
       ['route', 'Tour planen', () => Nav.go('/plan'), 'Route auf der Karte zeichnen', 'newplan'],
-      ['download', 'Touren importieren', () => Nav.go('/import'), 'Dateien, Komoot, Strava, Zepp, Bosch Flow, Garmin', 'newimport'],
+      ['download', 'Touren importieren', () => Nav.go('/import'), MTCalc.importSub(MT.aktiv()), 'newimport'],
       ['rec', 'Aufzeichnung starten', () => Nav.go('/rec'), 'Mit GPS mitschreiben', 'newrec']]);
   }
-  const draw = () => {
+  const moreBtn = h('button', { class: 'btn', id: 'tours-mehr' });
+  const draw = keep => {
+    if (keep !== true) TourUI.zeilen = TourUI.SCHRITT;      // Suche, Filter oder Auswahl geändert: wieder von vorn
     chips.innerHTML = '';
     const chip = (label, on, fn) => chips.append(UI.chip(label, on, fn));
     chip('★ Lieblingstouren', F_.fav, () => { F_.fav = !F_.fav; draw(); });      // 2.20.0: „Favoriten“ heißen nur noch die Favoriten-Sportarten
@@ -146,19 +150,35 @@ Views['/'] = async root => {
       if (!g || g.mo !== mo) groups.push(g = { mo, ts: [] });
       g.ts.push(t);
     });
-    groups.forEach(g => {
-      list.append(h('h3', { class: 'month' }, g.mo, h('small', null, (g.ts.length === 1 ? '1 Tour' : g.ts.length + ' Touren') + ' · ' + F.km(g.ts.reduce((a, t) => a + t.dist, 0)))));
-      g.ts.forEach(t => list.append(UI.tourRow(t, { io, photos: pc[t.id], stage: stageOf[t.id] })));
-    });
+    // 2.24.0: nicht alle Zeilen auf einmal – zuerst TourUI.zeilen (100), der Rest auf Wunsch; die Monatsüberschriften zählen trotzdem alle Touren des Monats
+    const items = groups.flatMap(g => g.ts.map((t, i) => ({ t, g, kopf: i === 0 })));
+    let gezeigt = 0;
+    const zeige = n => {
+      moreBtn.remove();
+      for (const end = Math.min(items.length, gezeigt + n); gezeigt < end; gezeigt++) {
+        const { t, g, kopf } = items[gezeigt];
+        if (kopf) list.append(h('h3', { class: 'month' }, g.mo, h('small', null, (g.ts.length === 1 ? '1 Tour' : g.ts.length + ' Touren') + ' · ' + F.km(g.ts.reduce((a, x) => a + x.dist, 0)))));
+        list.append(UI.tourRow(t, { io, photos: pc[t.id], stage: stageOf[t.id] }));
+      }
+      TourUI.zeilen = Math.max(TourUI.zeilen, gezeigt);
+      if (gezeigt < items.length) { moreBtn.textContent = 'Weitere Touren anzeigen (' + (items.length - gezeigt) + ')'; list.append(moreBtn); }
+    };
+    moreBtn.onclick = () => { const y = $('#view').scrollTop; zeige(TourUI.SCHRITT); $('#view').scrollTop = y; };
+    zeige(Math.max(TourUI.zeilen, TourUI.SCHRITT));
   };
-  root.append(topbar('Touren', { actions: [h('a', { class: 'btn sm hbtn', id: 'tomap', href: '#/map', html: Ico.svg('map') + '<span>Karte</span>' }),
+  root.append(topbar('Touren', { actions: [h('a', { class: 'btn sm hbtn', id: 'tomap', hidden: !all.length, href: '#/map', html: Ico.svg('map') + '<span>Karte</span>' }),
     h('button', { class: 'ico', id: 'touradd', 'aria-label': 'Neue Tour: planen, importieren oder aufzeichnen', onclick: addMenu }, '＋')] }),
-    h('div', { class: 'filters' }, h('div', { class: 'row' }, q, fbtn), chips, sum), list);
-  fillRegions(); draw();
+    h('div', { class: 'filters', hidden: !all.length }, h('div', { class: 'row' }, q, fbtn), chips, sum), list);      // 2.24.0: ohne Touren nur der Willkommens-Leerzustand, keine Suche, Filter und Karte
+  fillRegions(); draw(true);
   let gone = false;
-  Reisen.resolveRegions(all, cells, () => { if (!gone) { fillRegions(); if (F_.region) draw(); } }, () => gone);
-  Reisen.multiday(all).then(ms => { if (gone || !ms.length) return; ms.forEach(r => r.tours.forEach(q => { stageOf[q.id] = Reisen.stage(r, q); })); draw(); }).catch(() => {});
-  return () => { gone = true; io.disconnect(); };
+  Reisen.resolveRegions(all, cells, () => { if (!gone) { fillRegions(); if (F_.region) draw(true); } }, () => gone);
+  // Etappen („Tag 2 · Etappe 2/5“) kommen später: nur die betroffenen Zeilen ergänzen, die Liste nicht noch einmal aufbauen (2.24.0)
+  Reisen.multiday(all).then(ms => { if (gone || !ms.length) return; ms.forEach(r => r.tours.forEach(q => {
+    const txt = Reisen.stage(r, q); stageOf[q.id] = txt;
+    const row = list.querySelector('a.tour[href="#/tour/' + q.id + '"] .tb'); if (!row || row.querySelector('.stage')) return;
+    row.insertBefore(h('small', { class: 'stage' }, txt), row.querySelector('.met'));
+  })); }).catch(() => {});
+  return () => { gone = true; clearTimeout(qT); io.disconnect(); };
 };
 
 Views['/tour'] = async (root, [id]) => {

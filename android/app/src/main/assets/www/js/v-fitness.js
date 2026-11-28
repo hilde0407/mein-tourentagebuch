@@ -57,7 +57,7 @@ Ausw.fitness = async function (body, ts, ctx) {
     const now = new Date(), r = await FitUI.compute(ctx.all, now);
     const note = h('p', { class: 'muted small', id: 'fit-note' }, 'Orientierung, keine medizinische Aussage.');
     if (r.status === 'kein_geburtsjahr') {
-      wrap.append(UI.section('Fitness-Einordnung', [h('p', null, 'Die Einordnung vergleicht deine letzten 12 Wochen mit dem, was für dein Alter üblich und empfohlen ist. Dafür brauche ich dein Geburtsjahr, nur das Jahr.'),
+      wrap.append(UI.section('Fitness-Einordnung', [h('p', null, 'Die Einordnung vergleicht deine letzten 12 Wochen mit dem, was für dein Alter üblich und empfohlen ist. Dafür braucht die App dein Geburtsjahr, nur das Jahr.'),
         FitUI.yearBox(draw), h('p', { class: 'muted small' }, 'Es bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.')]), note);
       return;
     }

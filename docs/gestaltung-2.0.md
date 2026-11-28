@@ -28,7 +28,7 @@ Import, Statistik, Reisen und Einstellungen sind zweite Reihe.
    nie als Schrift oder dünne Linie auf Papier (dort wäre es in der Sonne unsichtbar). Rot heißt: Aufzeichnung läuft,
    Beenden, Löschen. Sonst ist die Seite Papier und Tinte; in Diagrammen ist der laufende Monat tintenschwarz.
 4. **Lesbar in der Sonne, bedienbar mit dem Daumen.** Tinte auf Papier (14 : 1), keine grauen Flächen als Träger von
-   Information, Tippflächen mindestens 44 px, die Hauptknöpfe unten.
+   Information, Tippflächen mindestens 48 px (ab 2.24.0, CSS-Variable `--tipp`), die Hauptknöpfe unten.
 
 ## Farben
 
@@ -71,7 +71,7 @@ nur die Reiter und die Laufzeit der Aufzeichnung.
 
 - Einheit 4 px. Abstände: 4 · 8 · 12 · 16 · 24 · 32.
 - Seitenrand 16 px. Abschnitt zu Abschnitt 28 px. Überschrift zu Inhalt 8 px.
-- Tippfläche mindestens 44 px; Hauptknöpfe 52 px, „Aufzeichnung starten“ 64 px.
+- Tippfläche mindestens 48 px (`--tipp`, ab 2.24.0; vorher 44 px); Hauptknöpfe 52 px, „Aufzeichnung starten“ 64 px.
 - Rundungen nach Rang, nicht überall dieselbe: Bilder und Balken 6 px, Knöpfe und Felder 12 px, Blatt oben 20 px,
   Chips ganz rund.
 - Schatten nur unter dem, was schwebt (Kartenknöpfe, Blatt, Meldung).
@@ -248,7 +248,7 @@ und im leeren Zustand („Buch anlegen“). Titelbilder wählt der Mensch selbst
 ## Prüfungen
 
 - `node tests/test_calc.js` – Rechenlogik (Ziele, Rückblick, Planungshilfe, Fitness, Jahr, Wanderführer) gegen Werte aus den Vorbildern bzw. eigene Grenzfälle.
-- `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 44 px (per Treffertest) – auch für die neuen Abschnitte und Blätter (`neue_layout`).
+- `python3 tests/test_web.py` – Abläufe, dazu am Ende: kein Querrollen bei 360/390/430 px und mit 130 % Schrift, Tippflächen mindestens 48 px (per Treffertest) – auch für die neuen Abschnitte und Blätter (`neue_layout`).
 - Neue Seiten und Blätter kommen in die Gestaltungsprüfung (`layout_21` als Muster) und in `audit_kontrast.py`.
 - `python3 tests/audit_kontrast.py --fail` – Kontrast aller Knöpfe, Felder und Texte in Hell und Dunkel (4,5 : 1; große Schrift 3 : 1).
 

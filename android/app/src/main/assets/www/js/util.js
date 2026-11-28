@@ -24,14 +24,17 @@ const anz = (n, eins, viele) => n + ' ' + (n === 1 ? eins : viele);
 
 /* Zentrale Formate (2.20.0; 2.20.1: Zahl und Einheit mit geschütztem Leerzeichen U+00A0, nie getrennt; Leitfaden Regel 10): km und m mit Komma, Dauer „1:05 Std.“ bzw. „45 Min.“, Datum TT.MM.JJJJ. Eigene Formate in Ansichten nicht neu erfinden. */
 const F = {
-  km: m => m == null ? '–' : (m < 1000 ? Math.round(m) + '\u00a0m' : (m / 1000).toFixed(m < 100000 ? 1 : 0).replace('.', ',') + '\u00a0km'),
-  km2: m => m == null ? '–' : (m / 1000).toFixed(1).replace('.', ','),
+  km: m => { if (m == null) return '–'; if (m < 1000) return Math.round(m) + '\u00a0m'; const d = m < 100000 ? 1 : 0; return (m / 1000).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) + '\u00a0km'; },      // 2.24.0: Tausenderpunkt ab 1.000 km, wie F.m
+  km2: m => m == null ? '–' : (m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  /** 2.24.0: Koordinaten mit Komma und Himmelsrichtung: „47,12300° N · 9,10000° O“ (n Nachkommastellen) – nur zur Anzeige. */
+  koord: (lat, lon, n) => { const f = v => Math.abs(v).toLocaleString('de-DE', { minimumFractionDigits: n == null ? 5 : n, maximumFractionDigits: n == null ? 5 : n }); return f(lat) + '\u00a0° ' + (lat < 0 ? 'S' : 'N') + ' · ' + f(lon) + '\u00a0° ' + (lon < 0 ? 'W' : 'O'); },
   m: m => m == null || isNaN(m) ? '–' : Math.round(m).toLocaleString('de-DE') + '\u00a0m',
   dur: s => { if (s == null || isNaN(s)) return '–'; s = Math.round(s); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60); return hh ? hh + ':' + String(mm).padStart(2, '0') + '\u00a0Std.' : mm + '\u00a0Min.'; },
   clock: s => { s = Math.round(s || 0); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; return (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0'); },
   date: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',
   dshort: ms => ms ? new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–',      // 2.20.0: TT.MM.JJJJ (bis 2.19 zweistellige Jahreszahl)
   time: ms => ms ? new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '–',
+  kmh: ms => (ms * 3.6).toFixed(1).replace('.', ',') + '\u00a0km/h',      // 2.24.0: Tempo aus m/s
   speed: (m, s) => s > 0 ? (m / s * 3.6).toFixed(1).replace('.', ',') + '\u00a0km/h' : '–',
   size: b => b > 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + '\u00a0MB' : Math.round(b / 1024) + '\u00a0KB',
 };
@@ -61,12 +64,26 @@ function sheet(title, content, opts) {
   const before = document.activeElement;
   back.append(box); document.body.append(back);
   requestAnimationFrame(() => back.classList.add('on'));
-  const onKey = e => { if (e.key === 'Escape' && sheet.stack[sheet.stack.length - 1] === api) { e.stopPropagation(); close(); } };
+  /* 2.24.0: Fokusfalle – was hinter dem Blatt liegt, ist solange „inert“ (kein Fokus, keine Antippen, für TalkBack verborgen); dazu hält die Tab-Taste den Fokus im Blatt */
+  const hinten = Array.from(document.body.children).filter(e => e !== back && e.id !== 'toast' && !e.inert && !/^(SCRIPT|STYLE|LINK)$/.test(e.tagName));
+  hinten.forEach(e => { e.inert = true; });
+  const fokussierbar = () => Array.from(box.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])')).filter(x => x.offsetParent !== null || x === document.activeElement);
+  const onKey = e => {
+    if (sheet.stack[sheet.stack.length - 1] !== api) return;
+    if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+    if (e.key !== 'Tab') return;
+    const f = fokussierbar(), ak = document.activeElement;
+    if (!f.length) { e.preventDefault(); return; }
+    if (!box.contains(ak) || ak === box) { e.preventDefault(); (e.shiftKey ? f[f.length - 1] : f[0]).focus(); }
+    else if (e.shiftKey && ak === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && ak === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  };
   document.addEventListener('keydown', onKey);
   let closed = false;
   function close() {
     if (closed) return; closed = true;
     document.removeEventListener('keydown', onKey);
+    hinten.forEach(e => { e.inert = false; });
     back.classList.remove('on'); setTimeout(() => back.remove(), 180); sheet.stack = sheet.stack.filter(x => x !== api);
     try { if (before && before.isConnected && before.focus) before.focus({ preventScroll: true }); } catch (e) { /* egal */ }
     if (opts && opts.onclose) opts.onclose();
@@ -76,12 +93,13 @@ function sheet(title, content, opts) {
   try { box.focus({ preventScroll: true }); } catch (e) { /* egal */ }
   return api;
 }
-function confirmBox(title, text, okLabel) {
+/** Rückfrage; Hauptaktion rot bei Löschen/Verwerfen/Leeren oder mit opts.gefahr (Daten gehen verloren, z. B. „Zusammenführen“, „Ersetzen“). */
+function confirmBox(title, text, okLabel, opts) {
   return new Promise(res => {
     let done = false;
     const s = sheet(title, h('div', null, h('p', null, text),
       h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => { done = true; s.close(); res(false); } }, 'Abbrechen'),
-        h('button', { class: 'btn pri' + (/^(Löschen|Verwerfen|Leeren)$/.test(okLabel || '') ? ' danger' : ''), onclick: () => { done = true; s.close(); res(true); } }, okLabel || 'Weiter'))), { onclose: () => { if (!done) res(false); } });      // 2.20.0: kein „OK“; Löschen rot (Leitfaden Regel 1)
+        h('button', { class: 'btn pri' + ((opts && opts.gefahr) || /^(Löschen|Verwerfen|Leeren)$/.test(okLabel || '') ? ' danger' : ''), onclick: () => { done = true; s.close(); res(true); } }, okLabel || 'Weiter'))), { onclose: () => { if (!done) res(false); } });      // 2.20.0: kein „OK“; Löschen rot (Leitfaden Regel 1)
   });
 }
 /** Von außen geöffnete Strecke: gemacht oder geplant? Gibt 'done', 'planned' oder null (Abbrechen) zurück. */

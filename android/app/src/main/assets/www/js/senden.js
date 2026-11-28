@@ -111,7 +111,7 @@ const Senden = {
       h('p', { id: 'send-grund-t' }, g.grund),
       h('div', { class: 'row end wrap' },
         g.code === 'betrachter' || g.code === 'verbindung' ? h('a', { class: 'btn', id: 'send-zu-mt', href: '#/import', onclick: () => s.close() }, 'Zu „Touren importieren“') : null,
-        h('button', { class: 'btn pri', id: 'send-ok', onclick: () => s.close() }, 'Schließen'))));
+        h('button', { class: 'btn pri', id: 'send-ok', onclick: () => s.close() }, 'Fertig'))));
   },
   /** Gemeinsame Vorabprüfung der Verbindung: gibt das Konto zurück oder null (dann wurde schon erklärt). */
   async konto(t) {

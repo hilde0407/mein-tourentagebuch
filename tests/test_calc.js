@@ -67,6 +67,7 @@ for (const c of E.form) {
 ok(PH.form(10, 100, 2, 'hike', ft.slice(0, 4), fnow).status === 'zu_wenig' && PH.form(10, 100, 2, 'hike', ft.slice(0, 4), fnow).km === null, 'zu wenig Touren: kein Teilwert');
 ok(PH.gleicheGruppe('hike', 'mountaineering') && PH.gleicheGruppe('mtb', 'racebike') && !PH.gleicheGruppe('hike', 'bike') && PH.gleicheGruppe('walk', 'walk') && !PH.gleicheGruppe('walk', 'hike') && PH.gleicheGruppe('other', 'other'), 'Sportgruppen');
 ok(Math.abs(PH.schaetzDauer('hike', 9, 500) - (9 / 4.5 + 1)) < 1e-9 && Math.abs(PH.schaetzDauer('bike', 32, 450) - (2 + 0.5)) < 1e-9, 'Dauerschätzung wie im Planer');
+ok(PH.zeitName('hike') === 'Gehzeit' && PH.zeitName('skitour') === 'Gehzeit' && PH.zeitName('mtb') === 'Fahrzeit' && PH.zeitName('ebike') === 'Fahrzeit' && PH.zeitName('bikepacking') === 'Fahrzeit', 'Geschätzte Zeit: Gehzeit zu Fuß, Fahrzeit mit dem Rad (Leitfaden)');
 
 /* ---------- Links ---------- */
 for (const c of E.links) {

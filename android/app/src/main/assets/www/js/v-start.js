@@ -76,7 +76,7 @@ Home.add('actions', 10, async () => {
     Home.live() ? UI.sign('Aufzeichnung läuft – öffnen', { href: '#/rec', id: 'startrec', cls: 'live' }) : UI.sign('Aufzeichnung starten', { href: '#/rec', id: 'startrec' }),
     h('div', { class: 'acts' },
       h('a', { class: 'btn', id: 'startplan', href: '#/plan', html: Ico.svg('route') + '<span>Tour planen</span>' }),
-      h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Importieren</span>' })),
+      h('a', { class: 'btn', id: 'startimport', href: '#/import', html: Ico.svg('download') + '<span>Touren importieren</span>' })),
     qs.length ? h('div', { class: 'sync' }, h('button', { class: 'btn sm', id: 'startsync', html: Ico.svg('refresh', 18) + '<span>Touren holen</span>', onclick: () => AllesUI.start(() => Nav.render()) }),
       h('small', { class: 'muted', id: 'lastsync' }, Abgleich.zeile(last) || 'Noch nicht abgeglichen')) : null);
 });
@@ -192,7 +192,7 @@ Views['/start'] = async root => {
     root.append(topbar('Start', { logo: true }), h('div', { class: 'pad' }, welcomeHero(), MT.frageBox()));      // 2.20.0: Seitentitel = Name des Reiters      // 2.15.0: beim Erststart die Frage unter dem Willkommen
     return;
   }
-  const body = h('div', { class: 'home' });
+  const body = h('div', { class: 'home' }, h('h1', { class: 'vh', id: 'start-h' }, 'Start'));      // 2.24.0: Seitentitel = Name des Reiters (Leitfaden), für Hilfstechnik; sichtbar bleibt der Aufmacher
   root.append(body);
   const now = new Date(), ctx = { all, now, year: now.getFullYear() };
   for (const b of Home.blocks) {

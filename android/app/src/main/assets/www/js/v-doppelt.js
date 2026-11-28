@@ -69,7 +69,7 @@ Views['/doppelt'] = async root => {
   const body = h('div', { class: 'pad' });
   root.append(topbar('Doppelte Touren prüfen', { back: true }), body);
   const { gruppen, fotos, ign } = await Dup.find();
-  body.append(h('p', { class: 'muted' }, 'Gesucht werden Touren mit gleicher Startzeit oder Zeitspanne und ähnlicher Strecke – zum Beispiel dieselbe Tour aus Komoot und von der Uhr. Du entscheidest bei jeder Tour selbst; von allein wird nichts zusammengeführt.'));
+  body.append(h('p', { class: 'muted' }, 'Dieselbe Tour aus mehreren Quellen, etwa Komoot und Uhr. Du entscheidest selbst; von allein wird nichts zusammengeführt.'));
   const reset = ign.length ? h('button', { class: 'btn', id: 'dup-reset', onclick: async () => { await DB.kvSet('dupIgnore', []); Nav.render(); } }, 'Gemerkte Paare wieder zeigen') : null;
   if (!gruppen.length) {
     body.append(UI.empty({ icon: 'check', title: 'Keine doppelten Touren gefunden',
@@ -93,9 +93,9 @@ Views['/doppelt'] = async root => {
         h('p', { class: 'muted small sec-s' }, gross ? 'Dieselbe Tour liegt ' + g.members.length + '\u00a0Mal vor · Grund: ' + Dup.GRUND[g.grund] : 'Grund: ' + Dup.GRUND[g.grund]),
         h('div', { class: 'dup-l' }, eintrag(keep, 'Bleibt'), drops.map(d => eintrag(d, 'Wird gelöscht'))),
         h('div', { class: 'row wrap dup-a' },
-          h('button', { class: 'btn', 'data-a': 'merge', onclick: async () => {
+          h('button', { class: 'btn pri', 'data-a': 'merge', onclick: async () => {
             const wer = drops.length === 1 ? `„${drops[0].name}“` : drops.slice(0, -1).map(d => `„${d.name}“`).join(', ') + ` und „${drops[drops.length - 1].name}“`;
-            if (!await confirmBox('Touren zusammenführen?', `„${keep.name}“ bleibt. Fotos, Notiz, Pins und Zuordnungen von ${wer} wandern dorthin, dann ${drops.length === 1 ? `wird ${wer}` : `werden ${drops.length}\u00a0Touren`} gelöscht. Das lässt sich nicht rückgängig machen.`, 'Zusammenführen')) return;
+            if (!await confirmBox('Touren zusammenführen?', `„${keep.name}“ bleibt. Fotos, Notiz, Pins und Zuordnungen von ${wer} wandern dorthin, dann ${drops.length === 1 ? `wird ${wer}` : `werden ${drops.length}\u00a0Touren`} gelöscht. Das lässt sich nicht rückgängig machen.`, 'Zusammenführen', { gefahr: true })) return;
             try { const r = await Dup.mergeAlle(keep.id, drops.map(d => d.id)); toast('Touren zusammengeführt' + (r.fotos ? ' · ' + r.fotos + (r.fotos === 1 ? ' Foto' : ' Fotos') + ' übernommen' : ''), 5000); } catch (e) { toastFehler('Zusammenführen', e, 6000); }
             Nav.render();
           } }, 'Zusammenführen'),

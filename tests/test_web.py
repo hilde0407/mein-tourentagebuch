@@ -69,8 +69,8 @@ LAYOUT_JS = """() => {
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const hit = (x, y) => { const e = document.elementFromPoint(x, y); return !!e && (e === el || el.contains(e)); };
     if (!hit(cx, cy)) return;
-    const miss = [[0, -21], [0, 21], [-21, 0], [21, 0]].filter(([dx, dy]) => !hit(cx + dx, cy + dy));
-    if (miss.length) out.push('Tippfläche unter 44 px: <' + el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).join('.') : '') + '> „' + (el.innerText || el.getAttribute('aria-label') || el.placeholder || '').trim().slice(0, 28) + '“ ' + Math.round(r.width) + '×' + Math.round(r.height));
+    const miss = [[0, -23], [0, 23], [-23, 0], [23, 0]].filter(([dx, dy]) => !hit(cx + dx, cy + dy));
+    if (miss.length) out.push('Tippfläche unter 48 px: <' + el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).join('.') : '') + '> „' + (el.innerText || el.getAttribute('aria-label') || el.placeholder || '').trim().slice(0, 28) + '“ ' + Math.round(r.width) + '×' + Math.round(r.height));
   });
   return [...new Set(out)];
 }"""
@@ -4872,6 +4872,108 @@ def wellen_2240_mittel(pg):
     return []
 
 
+KUERZUNG_JS = """() => {
+  /* abgeschnittener Text (text-overflow: ellipsis mit Überlauf), nicht umbrechende Kopfzeilentitel, Tabellen breiter als die Ansicht */
+  const out = [], v = document.querySelector('#view'), vw = v.clientWidth;
+  document.querySelectorAll('#view *, .sheet *').forEach(e => {
+    if (!e.offsetParent || e.closest('.leaflet-container')) return;
+    const cs = getComputedStyle(e);
+    if (cs.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1 && e.matches('.seg *, .chip, .tabbtn, header.top *, .sec-h *, label, .btn')) out.push('abgeschnitten: <' + e.tagName.toLowerCase() + '.' + e.className + '> „' + (e.textContent || '').trim().slice(0, 40) + '“');
+  });
+  document.querySelectorAll('header.top h1').forEach(e => { if (e.scrollHeight > e.clientHeight + 2) out.push('Titel abgeschnitten: „' + e.textContent.trim().slice(0, 50) + '“'); });
+  document.querySelectorAll('#view table').forEach(t => { if (t.getBoundingClientRect().right > vw + 1) out.push('Tabelle breiter als die Ansicht: ' + t.className); });
+  document.querySelectorAll('#view .seg button, #view .seg a').forEach(b => { if (b.scrollWidth > b.clientWidth + 1) out.push('Segment abgeschnitten: „' + b.textContent.trim() + '“'); });
+  return out;
+}"""
+
+def wellen_2240_klein(pg):
+    """2.24.0, Welle 3 (Niedrig/Mittel): M3 Fehlertext, M6 nichts abgeschnitten bei 130 %, M7 Quellenangabe frei, M8 Einzelfelder bestätigen, M9 Begriffe/Formate,
+    M10 Abbrechen in Import-Blättern, rote Hauptaktion, Fokusfalle, M11 Tourenliste begrenzt und entprellt."""
+    bad = []
+    # M3: „<Vorgang> nicht möglich: <Grund>“, kein ✓
+    assert pg.evaluate("fehlerText('Import', new Error('Zu wenige Punkte.'))") == "Import nicht möglich: Zu wenige Punkte"
+    assert pg.evaluate("fehlerText('Senden', new Error('Anmeldung abgelaufen. Bitte neu anmelden.'))") == "Senden nicht möglich: Anmeldung abgelaufen. Bitte neu anmelden."
+    assert pg.evaluate("fehlerText('Teilen', null)") == "Teilen nicht möglich: unbekannter Fehler"
+    # M9: Formate – Tausenderpunkt bei km, Koordinaten mit Komma
+    assert pg.evaluate("[F.km(1234567), F.km(98600), F.km(640), F.km2(1234567), F.m(6368)]") == ["1.235\u00a0km", "98,6\u00a0km", "640\u00a0m", "1.234,6", "6.368\u00a0m"], pg.evaluate("[F.km(1234567), F.km(98600), F.km2(1234567)]")
+    assert pg.evaluate("F.koord(47.1, 9.1, 5)") == "47,10000\u00a0° N · 9,10000\u00a0° O" and pg.evaluate("F.koord(-33.5, -70.25, 3)") == "33,500\u00a0° S · 70,250\u00a0° W"
+    assert pg.evaluate("F.kmh(3)") == "10,8\u00a0km/h"
+    # M9: Planung nennt die geschätzte Zeit Gehzeit bzw. Fahrzeit
+    go(pg, "#/plan", ".pmap"); pg.wait_for_function("() => !Nav._busy")
+    box = pg.locator(".pmap").bounding_box()
+    pg.mouse.click(box["x"] + 120, box["y"] + 120); pg.wait_for_selector(".pmap .mk", timeout=10000); pg.mouse.click(box["x"] + 200, box["y"] + 160); pg.wait_for_function("() => document.querySelectorAll('.pmap .mk').length === 2")
+    pg.wait_for_function("() => document.querySelector('.pinfo').innerText.includes('Gehzeit')"); t = pg.inner_text(".pinfo"); assert "Geschätzte Gehzeit" in t and "Dauer, geschätzt" not in t, t
+    wahl(pg, "plsport", "bike"); pg.wait_for_function("() => document.querySelector('.pinfo').innerText.includes('Fahrzeit')")
+    pg.evaluate("Nav.sperre = null; location.hash = '#/start'"); pg.wait_for_function("() => !Nav._busy")
+    # M8: Einzelfelder in Einstellungen speichern beim Verlassen und sagen es
+    go(pg, "#/settings/persoenlich", "input[type=number]"); pg.wait_for_function("() => !Nav._busy")
+    f = pg.locator("input[type=number]").first
+    f.fill("300"); f.blur(); assert "Maximalpuls speichern nicht möglich" in toast_text(pg, "nicht möglich") and pg.evaluate("Set_.get('hrMax') || ''") in ("", None)
+    f.fill("185"); f.blur(); assert toast_text(pg, "Maximalpuls gespeichert") and str(pg.evaluate("Set_.get('hrMax')")) == "185"
+    f.fill(""); f.blur(); assert toast_text(pg, "Maximalpuls entfernt")
+    go(pg, "#/settings/karte", "input[placeholder^='https://…/{z}']"); pg.wait_for_function("() => !Nav._busy")
+    k = pg.locator("input[placeholder^='https://…/{z}']"); k.fill("https://tiles.example.org/{z}/{x}/{y}.png"); k.blur(); assert toast_text(pg, "Kachel-Adresse gespeichert")
+    k.fill(""); k.blur(); assert toast_text(pg, "Kachel-Adresse entfernt")
+    # M7: Quellenangabe der Karte liegt über der Aufzeichnen-Scheibe
+    for w, fs in ((390, 100), (360, 130)):
+        pg.set_viewport_size({"width": w, "height": 800}); pg.evaluate("fs => { let s = document.getElementById('fs-test'); if (!s) { s = document.createElement('style'); s.id = 'fs-test'; document.head.append(s); } s.textContent = fs === 100 ? '' : 'html{font-size:' + fs + '% !important}'; }", fs)
+        go(pg, "#/map", ".map.full .leaflet-control-attribution"); pg.wait_for_timeout(500)
+        a = pg.evaluate("() => { const a = document.querySelector('.leaflet-control-attribution').getBoundingClientRect(), r = document.querySelector('#tabs a.rec .ti').getBoundingClientRect(); return [a.bottom, r.top]; }")
+        assert a[0] <= a[1] - 3, (w, fs, a)
+    # M6: bei 130 % Schrift nichts abgeschnitten (Segmente, Reiter, Titel, Chips, Tabellen)
+    lang = pg.evaluate("""async () => { const pts = Array.from({ length: 12 }, (_, i) => ({ lat: 47.0 + i * 0.001, lon: 11.0 + i * 0.001, ele: 700 + i * 5, t: 1700000000000 + i * 60000 }));
+      const r = await Tours.add({ name: 'Eine sehr lange Tour mit einem Namen über viele Zeilen hinweg 2024', sport: 'hike', pts, src: 'file', force: true }); return r.tour.id; }""")
+    for w, fs in ((360, 130), (390, 130)):
+        pg.set_viewport_size({"width": w, "height": 800}); pg.evaluate("fs => { document.getElementById('fs-test').textContent = 'html{font-size:' + fs + '% !important}'; }", fs)
+        for r in ("#/offline", "#/photos", "#/settings/sicherung", "#/stats/auswertung", "#/stats/rekorde", "#/story/" + lang, "#/settings/persoenlich", "#/stats/ziele"):
+            go(pg, r, "#view > *"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(350)
+            for m in pg.evaluate(KUERZUNG_JS): bad.append(f"{w} px, {fs} %, {r}: {m}")
+    pg.evaluate("document.getElementById('fs-test').textContent = ''"); pg.set_viewport_size({"width": 390, "height": 800})
+    pg.evaluate("id => Tours.remove(id)", lang)
+    # M10: Import-Blätter haben links „Abbrechen“, die Hauptaktion rechts; rote Hauptaktion bei Datenverlust
+    go(pg, "#/import", ".list .li"); pg.wait_for_function("() => !Nav._busy")
+    for titel in ("Alle aufgezeichneten", "Strava-Schnittstelle", "Zepp-Cloud", "Fahrten aus der Flow-App", "Per Export, Teilen-Menü", "z. B. von Outdooractive"):
+        pg.locator("#view .list .li", has_text=titel).first.click(); pg.wait_for_selector(".sheet-back.on")
+        bs = [x.strip() for x in pg.locator(".sheet .row .btn:visible").all_inner_texts()]; assert "Abbrechen" in bs, (titel, bs)
+        pg.locator(".sheet .row .btn:visible", has_text="Abbrechen").first.click(); pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("() => { confirmBox('Touren zusammenführen?', 'x', 'Zusammenführen', { gefahr: true }); }"); pg.wait_for_selector(".sheet .btn.pri.danger"); assert pg.locator(".sheet .row .btn").first.inner_text() == "Abbrechen"
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached")
+    pg.evaluate("() => { confirmBox('Original ersetzen?', 'x', 'Weiter'); }"); pg.wait_for_selector(".sheet .btn.pri"); assert pg.locator(".sheet .btn.pri.danger").count() == 0
+    pg.click(".sheet .btn:has-text('Abbrechen')"); pg.wait_for_selector(".sheet", state="detached")
+    # M10: Fokusfalle – Tab bleibt im Blatt, was dahinter liegt ist inert
+    go(pg, "#/", "#filterbtn"); pg.wait_for_function("() => !Nav._busy"); pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on")
+    assert pg.evaluate("document.querySelector('#view').inert && document.querySelector('#tabs').inert")
+    for i in range(14):
+        pg.keyboard.press("Tab"); assert pg.evaluate("!!document.activeElement.closest('.sheet')"), ("Fokus verlässt das Blatt", i)
+    for i in range(6):
+        pg.keyboard.press("Shift+Tab"); assert pg.evaluate("!!document.activeElement.closest('.sheet')"), ("Fokus verlässt das Blatt (rückwärts)", i)
+    pg.keyboard.press("Escape"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("!document.querySelector('#view').inert && !document.querySelector('#tabs').inert")
+    # M11: Tourenliste – nur 100 Zeilen, „Weitere Touren anzeigen“, Suche entprellt, Liste beim Öffnen nur einmal aufgebaut
+    pg.evaluate("""async () => { const n = 250, base = Date.UTC(2023, 0, 1), arr = [], trk = [];
+      for (let i = 0; i < n; i++) { const st = base + i * 86400000 * 1.5; arr.push({ id: 'perf' + i, name: 'Perf Tour ' + i, sport: 'hike', status: 'done', start: st, end: st + 3600000, dur: 3600, moving: 3000, dist: 5000 + i, up: 100, down: 100, lat: 47, lon: 11, bbox: [46.9, 10.9, 47.1, 11.1], src: 'file', srcId: 'perf' + i, note: '', fav: false, hidden: false, timed: true, created: 0, calcV: Tours.CALC });
+        trk.push({ id: 'perf' + i, lat: [47, 47.01], lon: [11, 11.01], ele: [1000, 1010], t: [st, st + 3600000], seg: [0, 0] }); }
+      await DB.putMany('tours', arr); await DB.putMany('tracks', trk); Tours.invalidate(); window.__rows = 0; const r0 = UI.tourRow; UI.tourRow = function () { window.__rows++; return r0.apply(this, arguments); }; window.__tourRow0 = r0; }""")
+    TourUI_reset = "TourUI.zeilen = 100; TourUI.filter.q = ''; TourUI.filter.sport = ''; TourUI.filter.fav = false; TourUI.filter.planned = false; TourUI.filter.year = ''; TourUI.filter.region = ''; TourUI.filter.stars = ''"
+    pg.evaluate(TourUI_reset); go(pg, "#/start", "#view > *"); pg.wait_for_function("() => !Nav._busy"); pg.evaluate("window.__rows = 0"); go(pg, "#/", "a.tour"); pg.wait_for_function("() => !Nav._busy"); pg.wait_for_timeout(600)
+    assert pg.locator("a.tour").count() == 100 and pg.evaluate("window.__rows") == 100, (pg.locator("a.tour").count(), pg.evaluate("window.__rows"))
+    N = pg.evaluate("Tours.list().then(l => l.filter(t => t.status !== 'planned' && !t.hidden).length)"); assert N > 200
+    assert f"Weitere Touren anzeigen ({N - 100})" in pg.inner_text("#tours-mehr"), pg.inner_text("#tours-mehr")
+    assert pg.locator(".month").count() >= 1 and f"{N} Touren" in pg.inner_text(".sumline"), pg.inner_text(".sumline")      # Summenzeile über alle, nicht nur die gezeigten
+    pg.click("#tours-mehr"); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 200"); pg.click("#tours-mehr"); pg.wait_for_function("n => document.querySelectorAll('a.tour').length === n && !document.querySelector('#tours-mehr')", arg=N)
+    # zurück aus einer Tour: gleiche Länge der Liste und Stelle
+    pg.evaluate("window.__rows = 0"); pg.evaluate("document.querySelector('#view').scrollTop = 4000"); y0 = pg.evaluate("document.querySelector('#view').scrollTop")
+    pg.locator("a.tour").nth(120).scroll_into_view_if_needed(); pg.locator("a.tour").nth(120).click(); pg.wait_for_function("() => location.hash.startsWith('#/tour/')"); pg.wait_for_function("() => !Nav._busy")
+    pg.go_back(); pg.wait_for_function("() => location.hash === '#/' && document.querySelectorAll('a.tour').length > 200"); pg.wait_for_function("() => !Nav._busy")
+    # Suche: schnelles Tippen baut die Liste nicht je Taste neu auf
+    pg.evaluate("window.__rows = 0"); pg.click("input[type=search]"); pg.keyboard.type("Perf Tour 24", delay=15); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 11")      # 24, 240–249
+    assert pg.evaluate("window.__rows") <= 300, ("Suche baut zu oft neu auf", pg.evaluate("window.__rows"))
+    assert pg.locator("#tours-mehr").count() == 0, "weniger als 100 Treffer: kein „Weitere Touren anzeigen“"
+    pg.fill("input[type=search]", ""); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 100")      # Suche geändert: wieder von vorn
+    pg.evaluate("UI.tourRow = window.__tourRow0; 0"); pg.evaluate(TourUI_reset)
+    pg.evaluate("async () => { for (let i = 0; i < 250; i++) { await DB.del('tours', 'perf' + i); await DB.del('tracks', 'perf' + i); } Tours.invalidate(); }")
+    return bad
+
+
 def main():
     srv = socketserver.TCPServer(("127.0.0.1", 0), Q); port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -4910,8 +5012,8 @@ def main():
         pg.evaluate("location.hash='#/'"); pg.wait_for_selector("a.tour")
         assert pg.locator("a.tour").count() == 3, pg.inner_text("#view")
         assert "Hüttenrunde" in pg.inner_text("#view")
-        pg.fill("input[type=search]", "zweite"); assert pg.locator("a.tour").count() == 1
-        pg.fill("input[type=search]", "")
+        pg.fill("input[type=search]", "zweite"); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 1")      # 2.24.0: Suche entprellt (150 ms)
+        pg.fill("input[type=search]", ""); pg.wait_for_function("() => document.querySelectorAll('a.tour').length === 3")
         pg.locator("a.tour", has_text="Hüttenrunde").click(); pg.wait_for_selector(".tourp .kpis.big")
         txt = pg.inner_text("#view"); assert "Höhenprofil" in txt and "Aufstieg" in txt, txt
         # Tourseite: Titel unter der Karte, die drei wichtigsten Zahlen groß (Strecke, Aufstieg, Dauer), der Rest als leise Tabelle
@@ -5544,7 +5646,7 @@ def main():
         sg_bad = statgruppen_2190(pg) + aktivitaeten_2190(pg)
         up_bad = update_2210(pg)
         dd_bad = doppelt_2230(pg)
-        ad_bad = audit_2240(pg) + wellen_2240_mittel(pg)
+        ad_bad = audit_2240(pg) + wellen_2240_mittel(pg) + wellen_2240_klein(pg)
         panorama_280(pg)
         neu = neue_funktionen(pg)
         fu_bad = fuehrer(pg)

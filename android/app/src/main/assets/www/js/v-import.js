@@ -118,7 +118,7 @@ Views['/import'] = async root => {
       h('label', { class: 'fld' }, 'Name', nm), h('label', { class: 'fld' }, 'Passwort', pw),
       h('p', { class: 'muted small' }, 'Empfohlen: in Meine Touren unter „Konto & Freigaben“ einen Betrachter (nur ansehen) anlegen und hier verwenden. Das Passwort wird nicht gespeichert, nur ein Sitzungsschlüssel auf diesem Handy. Er kommt in keine Sicherung.'),
       zahlen, zHint,
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', id: 'mt-go', onclick: async () => {
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn pri', id: 'mt-go', onclick: async () => {
         let base; try { base = M.base(url.value); } catch (e) { toastFehler('Verbinden', e, 6000); return; }
         if (/^http:/.test(base) && !M.privat(base) && !await confirmBox('Unverschlüsselt verbinden?', 'Die Adresse beginnt mit http. Name und Passwort gehen dann unverschlüsselt durch das Netz und können mitgelesen werden. Sicherer ist eine Adresse mit https.', 'Trotzdem verbinden')) return;
         const name = nm.value, pass = pw.value;
@@ -143,7 +143,7 @@ Views['/import'] = async root => {
       c ? h('p', null, '✓ Verbunden mit Komoot als ' + c.email) : null,
       c ? null : h('label', { class: 'fld' }, 'E-Mail', em), c ? null : h('label', { class: 'fld' }, 'Passwort', pw),
       h('label', { class: 'sw' }, pl, h('span', null, 'Auch geplante Touren holen')),
-      h('div', { class: 'row end' }, c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'komoot'); s.close(); komoot(); } }, 'Verbindung trennen') : null,
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), c ? h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'komoot'); s.close(); komoot(); } }, 'Verbindung trennen') : null,
         h('button', { class: 'btn pri', onclick: async () => {
           s.close(); await Set_.set('komootPlanned', !!pl.checked);      // „Touren holen“ (alle Quellen) nutzt dieselbe Wahl
           await run('Komoot', async (upd, txt) => {
@@ -157,14 +157,14 @@ Views['/import'] = async root => {
     const c = await DB.kvGet('strava', null), id = h('input', { inputmode: 'numeric', value: c ? c.id : Set_.get('stravaId') || '', placeholder: 'Client-ID' }), sec = h('input', { type: 'password', placeholder: 'Client-Secret', value: c ? c.secret : '' });
     const code = h('input', { placeholder: 'Adresse oder Code einfügen' });
     const s = sheet('Strava', h('div', null,
-      c ? h('div', null, h('p', null, '✓ Verbunden mit Strava' + (c.name ? ' als ' + c.name : '')), h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'strava'); s.close(); strava(); } }, 'Verbindung trennen'),
+      c ? h('div', null, h('p', null, '✓ Verbunden mit Strava' + (c.name ? ' als ' + c.name : '')), h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'strava'); s.close(); strava(); } }, 'Verbindung trennen'),
         h('button', { class: 'btn pri', onclick: () => { s.close(); run('Strava', upd => Import.Strava.importAll(c, upd)); } }, 'Touren holen'))) :
       h('div', null,
         h('ol', { class: 'steps' }, h('li', null, 'Auf strava.com/settings/api eine eigene Anwendung anlegen (Domain für die Weiterleitung: ', h('code', null, 'localhost'), ').'), h('li', null, 'Client-ID und Client-Secret hier eintragen.'), h('li', null, '„Bei Strava erlauben“ tippen und zustimmen. Die Seite danach lässt sich nicht öffnen – das ist normal.'), h('li', null, 'Die Adresse dieser Seite (enthält code=…) hier einfügen.')),
         h('label', { class: 'fld' }, 'Client-ID', id), h('label', { class: 'fld' }, 'Client-Secret', sec),
         h('button', { class: 'btn', onclick: async () => { if (!id.value.trim()) { toast('Bitte Client-ID eintragen'); return; } await Set_.set('stravaId', id.value.trim()); Native.available() ? MTApp.openUrl(Import.Strava.authUrl(id.value.trim())) : window.open(Import.Strava.authUrl(id.value.trim())); } }, 'Bei Strava erlauben'),
         h('label', { class: 'fld' }, 'Adresse / Code', code),
-        h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => { try { const acc = await Import.Strava.exchange(id.value.trim(), sec.value.trim(), Import.Strava.parseCode(code.value)); s.close(); run('Strava', upd => Import.Strava.importAll(acc, upd)); } catch (e) { toastFehler('Strava verbinden', e, 7000); } } }, 'Verbinden & Touren holen'))),
+        h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: async () => { try { const acc = await Import.Strava.exchange(id.value.trim(), sec.value.trim(), Import.Strava.parseCode(code.value)); s.close(); run('Strava', upd => Import.Strava.importAll(acc, upd)); } catch (e) { toastFehler('Strava verbinden', e, 7000); } } }, 'Verbinden & Touren holen'))),
       h('p', { class: 'muted small' }, 'Tipp: Strava erlaubt 100 Abfragen je 15 Minuten. Bei sehr vielen Aktivitäten einfach später erneut starten. Alternativ den kompletten Strava-Export (ZIP) über „Dateien“ importieren.')));
   }
   async function zepp() {
@@ -179,14 +179,14 @@ Views['/import'] = async root => {
       h('p', { class: 'muted small' }, 'Touren aus Komoot, Dateien oder eigener Aufzeichnung bekommen beim Holen die Barometerhöhen der Uhr. Rückholbar an der Tour: „Originalhöhen wiederherstellen“. Mit dem Geländemodell korrigierte Touren bleiben, wie sie sind.'));
     const run0 = (acc0) => { s.close(); run('Zepp', async (upd, txt) => { let acc = acc0; txt.textContent = 'Touren holen …'; return Import.Zepp.importAll(acc, upd, zo()); }); };
     const loggedIn = h('div', null, h('p', null, '✓ Verbunden mit Zepp' + (c && c.viaToken ? ' (mit Token)' : '')),
-      h('div', { class: 'row end wrap' },
+      h('div', { class: 'row end wrap' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'),
         h('button', { class: 'btn', onclick: async () => { await DB.del('kv', 'zepp'); s.close(); zepp(); } }, 'Verbindung trennen'),
         h('button', { class: 'btn', onclick: async () => { try { await Import.Zepp.req(c, '/v1/sport/run/history.json', {}); toast('Zugang funktioniert'); } catch (e) { toastFehler('Zugang testen', e, 8000); } } }, 'Zugang testen'),
         h('button', { class: 'btn', onclick: () => { s.close(); run('Höhe korrigieren', async (upd, txt) => { txt.textContent = 'Touren aus Zepp holen …'; const r = await Fix.zeppEleAll(c, upd); return `Höhe korrigiert (aus der Uhr): ${r.done} von ${r.total} passenden Touren` + (r.none ? `, ${r.none} ohne brauchbare Höhendaten` : '') + (r.fail ? `, ${r.fail} nicht möglich` : ''); }); } }, '⌚ Höhe aller Touren korrigieren'),
         h('button', { class: 'btn pri', onclick: () => run0(c) }, 'Touren holen')));
     const pass = h('div', null, h('p', { class: 'muted' }, 'Für Konten mit E-Mail und Passwort.'),
       h('label', { class: 'fld' }, 'E-Mail', em), h('label', { class: 'fld' }, 'Passwort', pw),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Touren holen …'; return Import.Zepp.importAll(acc, upd, zo()); }); } }, 'Anmelden & Touren holen')));
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: () => { s.close(); run('Zepp', async (upd, txt) => { txt.textContent = 'Anmelden …'; const acc = await Import.Zepp.login(em.value.trim(), pw.value); txt.textContent = 'Touren holen …'; return Import.Zepp.importAll(acc, upd, zo()); }); } }, 'Anmelden & Touren holen')));
     const inApp = Native.available() ? h('div', null,
       h('p', { class: 'muted' }, 'Für Konten mit Google-, Apple- oder Mi-Anmeldung (ohne Passwort): Die App öffnet die Zepp-Anmeldeseite, du meldest dich wie gewohnt an, die App übernimmt das Zugangs-Token selbst.'),
       h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
@@ -205,7 +205,7 @@ Views['/import'] = async root => {
         Native.available() ? h('button', { class: 'btn', onclick: () => MTApp.openUrl('https://user.huami.com/privacy2/index.html?platform_app=com.xiaomi.hm.health&loginPlatform=web') }, 'Zepp-Seite öffnen') : null),
       h('label', { class: 'fld' }, 'Token', tk), h('label', { class: 'fld' }, 'Server (nur falls nötig)', hs),
       h('p', { class: 'muted small' }, 'Das Token wird nur auf diesem Handy gespeichert und läuft nach einiger Zeit ab; dann einfach ein neues holen. Es gibt Zugriff auf deine Zepp-Daten – nicht weitergeben.'),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: async () => {
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: async () => {
         let acc; try { toast('Token wird geprüft …'); acc = await Import.Zepp.useToken(tk.value, hs.value); } catch (e) { toastFehler('Token prüfen', e, 9000); return; }
         run0(acc); } }, 'Prüfen & Touren holen')));
     const sel = h('div', { class: 'row' }, ['Mit Token', 'E-Mail / Passwort'].map((n, i) => h('button', { class: 'btn' + (i ? '' : ' pri'), onclick: e => { tok.hidden = !!i; pass.hidden = !i; [...sel.children].forEach((b, j) => b.classList.toggle('pri', j === i)); } }, n)));
@@ -218,7 +218,7 @@ Views['/import'] = async root => {
       h('p', null, 'Bosch bietet keine öffentliche Schnittstelle für Fahrten. So kommen sie trotzdem in die App:'),
       h('ol', { class: 'steps' }, h('li', null, 'In der Flow-App die Fahrt öffnen.'), h('li', null, 'Teilen/Exportieren wählen (GPX-Datei).'), h('li', null, 'Als Ziel „Mein Tourentagebuch“ wählen – die Fahrt wird sofort übernommen.')),
       h('p', { class: 'muted' }, 'Oder die exportierten Dateien hier auswählen. Alternativ in den Flow-Einstellungen die Verbindung zu Komoot/Strava nutzen und von dort importieren.'),
-      h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Import', upd => Import.pickFiles(upd)); } }, 'Dateien wählen'))));
+      h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: () => { s.close(); run('Import', upd => Import.pickFiles(upd)); } }, 'Dateien wählen'))));
   }
   async function others() {
     const folders = await DB.kvGet('trackFolders', []);
@@ -227,12 +227,12 @@ Views['/import'] = async root => {
       h('p', null, h('b', null, 'Datenexport: '), 'Vollständige Exporte (ZIP) über „Dateien“ importieren. Alle Touren darin werden übernommen.'),
       h('p', null, h('b', null, 'Überwachter Ordner: '), 'Ein Ordner, in den z. B. Syncthing, ein Cloud-Dienst oder die Garmin-Sync-App neue Dateien legt. Neue GPX/FIT/TCX-Dateien werden mit „Jetzt importieren“ übernommen.'),
       folders.length ? h('div', { class: 'list' }, folders.map((f, i) => h('div', { class: 'li' }, h('span', { class: 'li-i' }, '📁'), h('span', { class: 'li-t' }, h('b', null, decodeURIComponent(f.name))), h('button', { class: 'ico', 'aria-label': 'Ordner entfernen', onclick: async () => { if (!await confirmBox('Ordner „' + decodeURIComponent(f.name) + '“ entfernen?', 'Die App schaut dort nicht mehr nach neuen Dateien. Die Dateien im Ordner und die schon importierten Touren bleiben.', 'Entfernen')) return; folders.splice(i, 1); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, '✕')))) : null,
-      h('div', { class: 'row end wrap' }, h('button', { class: 'btn', onclick: async () => { const f = await Native.json('pickFolder'); if (!f.tree) return; folders.push({ tree: f.tree, name: f.name, since: 0 }); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, 'Ordner hinzufügen'),
+      h('div', { class: 'row end wrap' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn', onclick: async () => { const f = await Native.json('pickFolder'); if (!f.tree) return; folders.push({ tree: f.tree, name: f.name, since: 0 }); await DB.kvSet('trackFolders', folders); s.close(); others(); } }, 'Ordner hinzufügen'),
         folders.length ? h('button', { class: 'btn pri', onclick: () => { s.close(); run('Ordner importieren', upd => Import.scanFolders(upd)); } }, 'Jetzt importieren') : null)));
   }
   function link() {
     const u = h('input', { type: 'url', placeholder: 'https://…', autocapitalize: 'off' });
-    const s = sheet('Link importieren', h('div', null, h('label', { class: 'fld' }, 'Adresse der GPX-Datei', u), h('div', { class: 'row end' }, h('button', { class: 'btn pri', onclick: () => { s.close(); run('Link', async () => Import.fromUrl(u.value.trim())); } }, 'Importieren'))));
+    const s = sheet('Link importieren', h('div', null, h('label', { class: 'fld' }, 'Adresse der GPX-Datei', u), h('div', { class: 'row end' }, h('button', { class: 'btn', onclick: () => s.close() }, 'Abbrechen'), h('button', { class: 'btn pri', onclick: () => { s.close(); run('Link', async () => Import.fromUrl(u.value.trim())); } }, 'Importieren'))));
   }
 };
 
@@ -344,9 +344,9 @@ Views['/settings'] = async (root, args) => {
      #/settings → #/settings/<gruppe> → bei „Sportarten“ weiter #/settings/sportarten/<katalog|favoriten|statistik-gruppen>. */
   const sel = (label, key, opts) => h('label', { class: 'fld' }, label, h('select', { onchange: async e => { await Set_.set(key, e.target.value); } }, opts.map(([v, l]) => h('option', { value: v, selected: String(Set_.get(key)) === String(v) }, l))));
   const homeBox = () => {      // Heimatort suchen und übernehmen (Kartenmitte der Planung, Wetter, Vorschläge)
-    const q = h('input', { type: 'text', placeholder: 'Ort oder Adresse suchen …', value: Set_.get('homeName') || '', autocapitalize: 'off' }),
+    const q = h('input', { type: 'text', placeholder: 'Ort oder Adresse', 'aria-label': 'Ort oder Adresse suchen', value: Set_.get('homeName') || '', autocapitalize: 'off' }),
       res = h('div'), st = h('p', { class: 'muted small' });
-    const show = () => { st.textContent = Set_.get('homeLat') ? `📍 ${Set_.get('homeName') || ''} (${(+Set_.get('homeLat')).toFixed(3)}, ${(+Set_.get('homeLon')).toFixed(3)})` : 'Noch kein Heimatort eingetragen.'; };
+    const show = () => { st.textContent = Set_.get('homeLat') ? `📍 ${Set_.get('homeName') || ''} (${F.koord(+Set_.get('homeLat'), +Set_.get('homeLon'), 3)})` : 'Noch kein Heimatort eingetragen.'; };
     const search = async () => {
       const t = q.value.trim(); if (t.length < 2) return;
       res.textContent = 'Suche …';
@@ -365,11 +365,16 @@ Views['/settings'] = async (root, args) => {
     q.addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
     show();
     return h('div', null, h('div', { class: 'row' }, q, h('button', { class: 'btn sm', onclick: search }, 'Suchen'),
-      h('button', { class: 'btn sm', 'aria-label': 'Heimatort entfernen', onclick: async () => { for (const k of ['homeName', 'homeLat', 'homeLon']) await Set_.set(k, ''); q.value = ''; res.innerHTML = ''; show(); } }, '✕')), res, st);
+      h('button', { class: 'btn sm', 'aria-label': 'Heimatort entfernen', onclick: async () => { if (!Set_.get('homeLat')) return; for (const k of ['homeName', 'homeLat', 'homeLon']) await Set_.set(k, ''); q.value = ''; res.innerHTML = ''; show(); toast('Heimatort entfernt'); } }, '✕')), res, st);
   };
-  const inp = (label, key, ph, type) => h('label', { class: 'fld' }, label, h('input', { type: type || 'text', value: Set_.get(key) || '', placeholder: ph || '', autocapitalize: 'off', onchange: async e => { await Set_.set(key, e.target.value.trim()); } }));
+  /* 2.24.0: Einzelfelder speichern beim Verlassen des Felds und sagen es sichtbar („Maximalpuls gespeichert“; Leitfaden Regel 4/5, Tagebuch-Ausnahme in Abschnitt 4) */
+  const inp = (label, key, ph, type, was) => h('label', { class: 'fld' }, label, h('input', { type: type || 'text', value: Set_.get(key) || '', placeholder: ph || '', autocapitalize: 'off', onchange: async e => {
+    const v = e.target.value.trim(), alt = String(Set_.get(key) || '');
+    if (v === alt) return;
+    if (key === 'hrMax' && v && !(+v >= 120 && +v <= 230)) { e.target.value = alt; toastFehler('Maximalpuls speichern', 'erlaubt sind 120 bis 230 bpm'); return; }
+    await Set_.set(key, v); toast((was || label) + (v ? ' gespeichert' : ' entfernt')); } }));
   const remind = h('div'), lastEl = () => $('#lastbk');
-  const drawRemind = () => { remind.innerHTML = ''; remind.append(UI.chips([[7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage'], [0, 'Aus']].map(([d, l]) => UI.chip(l, +Set_.get('backupDays') === d, async () => { await Set_.set('backupDays', d); drawRemind(); })), { id: 'bk-days' })); };
+  const drawRemind = () => { remind.innerHTML = ''; remind.append(UI.chips([[7, '7 Tage'], [14, '14 Tage'], [30, '30 Tage'], [0, 'Aus']].map(([d, l]) => UI.chip(l, +Set_.get('backupDays') === d, async () => { await Set_.set('backupDays', d); drawRemind(); })), { id: 'bk-days', wrap: true })); };
   drawRemind();
   const showLast = async () => { const t = await DB.kvGet('lastBackup', null); if (lastEl()) lastEl().textContent = 'Letzte Sicherung: ' + (t ? F.dshort(t) : 'noch nie'); };
   // 2.10.0: Sicherung der Foto- und Videodateien (Medien) und automatische Tagessicherung in einen Ordner
@@ -405,8 +410,10 @@ Views['/settings'] = async (root, args) => {
       karte: () => karte('akt-fav', 'fav-h', null, 'Für „Tour aufzeichnen“: Diese Sportarten stehen dort als Knöpfe (in dieser Reihenfolge, höchstens ' + Aktiv.MAX + '); alle anderen findest du dort unter „Mehr …“. Die zuletzt benutzte bleibt vorgewählt.',
         FavUI.box()) },
     'statistik-gruppen': { titel: 'Statistik-Gruppen', icon: 'chart', sub: () => { const r = StatGruppen.sauber(Set_.get('statGruppen')) || []; return r.length ? nz(r.length, 'Statistik-Gruppe', 'Statistik-Gruppen') + ': ' + r.slice(0, 2).map(x => x.name).join(', ') + (r.length > 2 ? ' …' : '') : 'Keine – jede Sportart steht für sich'; },
-      karte: () => karte('akt-sg', 'sg-h', null, 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Eine Statistik-Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort als „Name = Sportart + Sportart …“. Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (alle)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2. Die Touren selbst behalten ihre Sportart.',
-        StatGrpUI.box()) },
+      karte: () => karte('akt-sg', 'sg-h', null, 'Jede Sportart steht in der Statistik für sich – außer du fasst hier selbst welche zusammen. Die Touren behalten ihre Sportart.',
+        h('div', null, h('details', { id: 'sg-mehr' }, h('summary', null, 'Mehr dazu'),
+          h('p', { class: 'muted small' }, 'Eine Statistik-Gruppe gilt in der Übersicht, den Bestwerten je Sportart, der Auswertung, dem Jahresrückblick, als Filter und bei den Zielen – dort steht nur ihr Name, die Zusammensetzung („Name = Sportart + Sportart …“) im Tooltip.'),
+          h('p', { class: 'muted small' }, 'Der Name darf nicht wie eine Sportart heißen (z. B. nicht „Wandern“, aber „Wandern (gesamt)“). Jede Sportart kann in höchstens einer Gruppe stehen, eine Gruppe braucht mindestens 2 Sportarten.')), StatGrpUI.box())) },
   };
   const gruppen = [
     bereich('zusammenarbeit', 'set-g-mt', 'Zusammenarbeit', null, () => [MT.einstellung()], 'link'),      // 2.15.0: ganz oben – „Mit Meine Touren zusammenarbeiten“
@@ -416,7 +423,7 @@ Views['/settings'] = async (root, args) => {
         h('div', { class: 'fld' }, 'Streckenfarbe', h('div', { class: 'chips wrap', id: 'rc' }, [['', 'Nach Sportart'], ['#e53935', 'Rot'], ['#fb8c00', 'Orange'], ['#fdd835', 'Gelb'], ['#43a047', 'Grün'], ['#1e88e5', 'Blau'], ['#8e24aa', 'Violett'], ['#d81b60', 'Pink'], ['#212121', 'Schwarz']].map(([c, n]) =>
           h('button', { class: 'chip' + ((Set_.get('routeColor') || '') === c ? ' on' : ''), 'aria-label': 'Streckenfarbe ' + n, style: c ? { borderColor: c, borderWidth: '3px' } : {}, onclick: async e => { await Set_.set('routeColor', c); $('#rc').querySelectorAll('.chip').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } }, n)))),
         sel('Kartenquelle', 'tiles', Object.entries(MapKit.providers).map(([k, v]) => [k, v.name])),
-        inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}'), inp('Schlüssel (für {key})', 'tileKey', ''),
+        inp('Eigene Kachel-Adresse', 'tileUrl', 'https://…/{z}/{x}/{y}.png?key={key}', null, 'Kachel-Adresse'), inp('Schlüssel (für {key})', 'tileKey', '', null, 'Schlüssel'),
         hint('Hinweis: Die öffentlichen OpenStreetMap-Kartenserver sind nur für leichte, private Nutzung gedacht. Für intensiven Einsatz bitte einen eigenen Anbieter eintragen.'),
         UI.list([UI.row({ icon: 'download', title: 'Offline-Karten', sub: 'Ausschnitte für unterwegs laden, gesehene Kacheln merken', href: '#/offline', id: 'set-offline' })])),
       karte('set-k-pdf', 'set-pdf-h', 'Karte im Tour-PDF', 'Statt der Streckenskizze ein echter Kartenausschnitt im Tour-PDF.',
@@ -428,7 +435,7 @@ Views['/settings'] = async (root, args) => {
           FlugCalc.WAHL.map(([v, l]) => h('option', { value: v, selected: FlugCalc.stufe(Set_.get('flugStufe'), Flug.handy()) === v }, l)))),
         hint('„Flüssig“ rechnet mit weniger Bildpunkten und einfacherem Gelände, damit der Flug auch auf Handys ruhig läuft. „Schön“ zeichnet schärfer und mit Geländeschatten. Ruckelt der Flug, schaltet die App von selbst eine Stufe herunter.')),
       karte('set-k-routing', 'set-routing-h', 'Routing', 'Server und Profil für „Wegen folgen“ in der Planung.',
-        inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking'))], 'map'),
+        inp('Routing-Server (BRouter)', 'routeUrl', 'https://brouter.de/brouter', null, 'Routing-Server'), inp('Profil überschreiben (optional)', 'routeProfile', 'z. B. trekking', null, 'Profil'))], 'map'),
     bereich('aufzeichnung', 'set-g-aufn', 'Aufzeichnung, Fotos und Videos', null, () => [
       // 2.12.0: Akku-Optimierung – ehrlich: die App kann sie nicht selbst ausschalten (keine Sonderberechtigung), nur die Einstellung öffnen
       karte('set-k-rec', 'set-rec-h', 'Aufzeichnung', null,
@@ -437,7 +444,7 @@ Views['/settings'] = async (root, args) => {
         window.MTApp ? h('button', { class: 'btn', id: 'set-akku', onclick: () => MTApp.openBatterySettings() }, 'Akku-Einstellungen öffnen') : hint('Nur in der Android-App.')),
       karte('set-k-fotos', 'set-fotos-h', 'Fotos', 'Welche Fotos zu einer Tour gehören.',
         sel('Zeitfenster um die Tour', 'photoMargin', [[0, 'genau'], [10, '10 Minuten'], [20, '20 Minuten'], [45, '45 Minuten'], [90, '90 Minuten']]),
-        h('button', { class: 'btn', onclick: async () => { const n = await Photos.assignAll(true); toast((n === 1 ? '1 Foto' : n + ' Fotos') + ' neu zugeordnet'); } }, 'Alle Fotos neu zuordnen')),
+        h('button', { class: 'btn', onclick: async () => { if (!await confirmBox('Alle Fotos neu zuordnen?', 'Jedes Foto wird nach seiner Aufnahmezeit einer Tour neu zugeordnet. Zuordnungen, die du von Hand geändert hast, gehen dabei verloren.', 'Neu zuordnen', { gefahr: true })) return; const n = await Photos.assignAll(true); toast((n === 1 ? '1 Foto' : n + ' Fotos') + ' neu zugeordnet'); } }, 'Alle Fotos neu zuordnen')),
       // 2.9.0: Videos aufnehmen – die Hülle bekommt die Werte über Videos.prefs()
       karte('set-k-video', 'set-video-h', 'Videos', 'Aufnahme, Galerie und Umwandeln von Videos.',
         h('label', { class: 'fld' }, 'Längste Video-Aufnahme', h('select', { id: 'set-vlimit', onchange: async e => { await Set_.set('videoLimit', e.target.value); Videos.prefs(); } },
@@ -450,7 +457,7 @@ Views['/settings'] = async (root, args) => {
     bereich('persoenlich', 'set-g-ich', 'Persönliches und Startseite', null, () => [
       karte('set-k-home', 'set-home-h', 'Heimatort', 'Kartenmitte der Planung, Wetter und Vorschläge.', homeBox()),
       karte('set-k-puls', 'set-puls-h', 'Puls und Fitness', 'Bleibt auf diesem Handy und kommt in keine Diashow und keinen Export.',
-        inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number'),
+        inp('Maximalpuls (bpm)', 'hrMax', 'z. B. 185', 'number', 'Maximalpuls'),
         hint('Danach richten sich die fünf Pulszonen. Ohne Angabe wird mit 190 bpm gerechnet. Die Pulswerte selbst kommen aus den importierten Dateien (GPX, TCX, FIT) oder von Zepp.'),
         FitUI.yearBox(null, { label: 'Geburtsjahr', sofort: true }),      // 2.20.0: speichert wie der Maximalpuls beim Verlassen des Felds
         hint('Das Geburtsjahr braucht die Fitness-Einordnung in der Statistik (nur das Jahr).')),
@@ -483,7 +490,7 @@ Views['/settings'] = async (root, args) => {
     bereich('app', 'set-g-app', 'Über die App', null, () => [
       karte('set-k-update', 'set-update-h', 'Updates', 'Beim Start fragt die App höchstens alle 12 Stunden bei github.com nach, ob es eine neue Version gibt. Übertragen wird nur diese Anfrage, keine Touren, Fotos oder Angaben zu dir. Heruntergeladen wird nichts von selbst; Android fragt vor der Installation selbst nach.',
         UI.toggle('Auf neue Version prüfen', Set_.get('updateCheck') !== false, v => Set_.set('updateCheck', !!v), { id: 'set-update' }),
-        h('h4', { id: 'upd-h' }, 'Auf Updates prüfen'), Update.zeile()),
+        h('h4', { id: 'upd-h' }, 'Jetzt auf neue Version prüfen'), Update.zeile()),
       karte('set-k-ueber', 'set-ueber-h', 'Version und Lizenzen', 'Mein Tourentagebuch ' + (window.MTApp ? MTApp.version() : '(Browser)') + ' · Kartendaten © OpenStreetMap-Mitwirkende · Leaflet (BSD-2), fflate (MIT), OkHttp (Apache-2.0), smbj (Apache-2.0)',
         window.MTApp ? h('div', { class: 'row wrap' }, h('button', { class: 'btn sm', onclick: () => { const s = sheet('Protokoll', h('pre', { class: 'log' }, MTApp.logText() || '(leer)')); void s; } }, 'Protokoll')) : null),
       karte('set-k-wipe', 'set-wipe-h', 'Alle Daten löschen', 'Touren, Spuren und Foto-Einträge werden unwiderruflich von diesem Handy gelöscht. Vorher eine Sicherung machen.',

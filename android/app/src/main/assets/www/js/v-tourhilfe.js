@@ -45,7 +45,7 @@ const TourHelp = {
     const rows = [
       UI.row({ title: 'Strecke', trail: h('b', null, F.km(t.dist)), sub: 'geplant ' + F.km(p.dist) + diff(t.dist, p.dist, F.km) }),
       p.up != null && t.up != null ? UI.row({ title: 'Aufstieg', trail: h('b', null, F.m(t.up)), sub: 'geplant ' + F.m(p.up) + diff(t.up, p.up, F.m) }) : null,
-      gelH != null ? UI.row({ title: 'Dauer', trail: h('b', null, F.dur(gelH * 3600)), sub: 'geschätzt ' + F.dur(estH * 3600) + diff(gelH, estH, v => F.dur(v * 3600)) }) : null].filter(Boolean);
+      gelH != null ? UI.row({ title: 'Dauer', trail: h('b', null, F.dur(gelH * 3600)), sub: 'geschätzte ' + Planhilfe.zeitName(Sports.anzeige(t.sport)) + ' ' + F.dur(estH * 3600) + diff(gelH, estH, v => F.dur(v * 3600)) }) : null].filter(Boolean);
     return UI.section('Planung und Ergebnis', [UI.list(rows), h('div', { class: 'row wrap' }, h('a', { class: 'btn sm', href: '#/tour/' + p.id }, 'Zur Planung „' + p.name + '“'),
       h('button', { class: 'btn sm', id: 'unlinkplan', onclick: async () => { const x = await DB.get('tours', t.id); delete x.plan; await Tours.save(x); delete t.plan; toast('Verknüpfung gelöst'); Nav.render(); } }, 'Verknüpfung lösen'))], { id: 'planergebnis' });
   },
@@ -91,7 +91,7 @@ const TourHelp = {
     } else {
       const W = { km: ['Strecke', { unter: 'kürzer als üblich', aehnlich: 'ähnlich wie üblich', ueber: 'länger als üblich' }, v => F.km(v * 1000)],
         up: ['Aufstieg', { unter: 'weniger als üblich', aehnlich: 'ähnlich wie üblich', ueber: 'mehr als üblich' }, v => F.m(v)],
-        dauer: ['Dauer (geschätzt)', { unter: 'kürzer als üblich', aehnlich: 'ähnlich wie üblich', ueber: 'länger als üblich' }, v => F.dur(v * 3600)] };
+        dauer: ['Geschätzte ' + Planhilfe.zeitName(Sports.anzeige(t.sport)), { unter: 'kürzer als üblich', aehnlich: 'ähnlich wie üblich', ueber: 'länger als üblich' }, v => F.dur(v * 3600)] };
       const rows = ['km', 'up', 'dauer'].filter(k => f[k]).map(k => { const x = f[k], w = W[k]; return UI.row({ title: w[0] + ': ' + w[1][x.einordnung], sub: w[2](x.wert) + ', üblich ' + w[2](x.median) + ' (' + x.verhaeltnis_median_pct + ' %)' + ' · ' + x.perzentil + ' % deiner Touren sind kleiner' }); });
       form.append(UI.list(rows));
       const mx = ['km', 'up'].filter(k => f[k]).map(k => (k === 'km' ? 'Strecke' : 'Aufstieg') + ' ' + f[k].vs_max_pct + ' %');
@@ -114,7 +114,7 @@ const TourHelp = {
       if (r.status === 'keine_position') { out.append(h('p', { class: 'muted' }, 'Für diese Tour ist kein Startpunkt bekannt.')); return; }
       if (r.status === 'keine_dauer') { out.append(h('p', { class: 'muted' }, 'Ohne Strecke lässt sich die Dauer nicht schätzen.')); return; }
       const back = TourHelp.hm(r.rueckkehr_min) + (r.rueckkehr_tag_plus > 0 ? ' (am Folgetag)' : '');
-      const facts = [['Start', TourHelp.hm(r.start_min)], ['Dauer geschätzt', F.dur(r.dauer_min * 60)], ['Pausenpuffer', F.dur(r.puffer_min * 60)], ['Rückkehr', back]];
+      const facts = [['Start', TourHelp.hm(r.start_min)], ['Geschätzte ' + Planhilfe.zeitName(Sports.anzeige(t.sport)), F.dur(r.dauer_min * 60)], ['Pausenpuffer', F.dur(r.puffer_min * 60)], ['Rückkehr', back]];
       let say, cls = '';
       if (r.status === 'polar_tag') say = 'Polartag: Die Sonne geht an diesem Tag nicht unter.';
       else if (r.status === 'polar_nacht') say = 'Polarnacht: Die Sonne geht an diesem Tag nicht auf.';

@@ -45,7 +45,7 @@ Views['/story'] = async (root, [id]) => {
   ev.push({ ts: t.end || t.start, kind: 'end', txt: 'Ziel', pos: pts.length ? [pts[pts.length - 1].lat, pts[pts.length - 1].lon] : null });
   ev.sort((a, b) => a.ts - b.ts);
   const icon = k => ({ start: '🏁', end: '🎯', ph: '📷' })[k];
-  const rel = ts => { const m = Math.max(0, Math.round((ts - t.start) / 60000)); return `+${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h`; };
+  const rel = ts => { const m = Math.max(0, Math.round((ts - t.start) / 60000)); return '+' + F.dur(m * 60); };
   const mapEl = h('div', { class: 'map tmap' });
   const tl = h('div', { class: 'stl pad' });
   const cmText = e => e.ph.flatMap(p => CM[p.id] || []).map(c => h('div', { class: 'scm' }, '💬 ' + c.text));

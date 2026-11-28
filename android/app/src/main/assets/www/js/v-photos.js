@@ -169,7 +169,7 @@ const Lightbox = {
           h('button', { class: 'btn sm', id: 'lb-dconv', onclick: () => { s.close(); convertNow(p); } }, 'Umwandeln (HEVC → H.264)'),
           h('button', { class: 'btn sm', id: 'lb-dtrim', onclick: () => { s.close(); VideoTrim.open(p, nachSchnitt); } }, '✂ Zuschneiden')) : null,
         PanoCalc.ist(p) ? h('p', { id: 'lb-panotag' }, h('span', { class: 'tag-pano', html: Ico.svg('pano', 18) + '<span>Panorama</span>' }), ' ' + p.w + ' × ' + p.h + ' Pixel') : null,
-        h('p', null, p.lat != null ? `📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'zeit' ? ' (aus der Tourzeit ergänzt' + (p.camShift ? ', Uhrzeit ' + FotoOrtCalc.versatzText(p.camShift) : '') + ')' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
+        h('p', null, p.lat != null ? `📍 ${F.koord(p.lat, p.lon, 5)}` + (p.pos === 'track' ? ' (aus der Tour berechnet)' : p.pos === 'zeit' ? ' (aus der Tourzeit ergänzt' + (p.camShift ? ', Uhrzeit ' + FotoOrtCalc.versatzText(p.camShift) : '') + ')' : p.pos === 'start' ? ' (Standort beim Öffnen der Kamera)' : '') : '📍 Keine Position'),
         tour ? h('p', null, '🥾 ', h('a', { href: '#/tour/' + tour.id, onclick: () => { s.close(); close(); } }, tour.name)) : h('p', null, 'Keiner Tour zugeordnet'),
         h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: async () => { s.close(); const t = await pickTour(); if (t !== undefined) { p.tour = t ? t.id : ''; await DB.put('photos', p); toast('Zugeordnet'); window.dispatchEvent(new Event('photos-changed')); } } }, 'Tour wählen'),
@@ -414,7 +414,7 @@ const VideoTrim = {
     async function los() {
       const a = snapA(), e = endE();
       if (!VideoCalc.schnittOk(a, e, dur)) return;
-      if (st.ersetzen && !await confirmBox('Original ersetzen?', 'Das Video wird durch den Ausschnitt ' + VideoCalc.zeitText(a) + '–' + VideoCalc.zeitText(e) + ' ersetzt. Der Rest ist danach weg (eine Kopie in der Galerie bleibt, falls es eine gibt).', 'Ersetzen')) return;
+      if (st.ersetzen && !await confirmBox('Original ersetzen?', 'Das Video wird durch den Ausschnitt ' + VideoCalc.zeitText(a) + '–' + VideoCalc.zeitText(e) + ' ersetzt. Der Rest ist danach weg (eine Kopie in der Galerie bleibt, falls es eine gibt).', 'Ersetzen', { gefahr: true })) return;
       let r;
       try { r = await Native.json('videoTrim', { id: p.id, startMs: a, endMs: e, replace: st.ersetzen }); }
       catch (x) { toastFehler('Zuschneiden', x, 7000); return; }

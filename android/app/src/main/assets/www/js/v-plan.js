@@ -74,7 +74,7 @@ Views['/plan'] = async (root, [editId]) => {
     const st = Geo.stats(pts.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele, t: null })));
     const hrs = Planhilfe.schaetzDauer(sport, st.dist / 1000, st.up);
     info.innerHTML = '';
-    info.append(UI.figs([[F.km(st.dist), 'Strecke'], ['↑ ' + F.m(st.up), 'Aufstieg'], ['↓ ' + F.m(st.down), 'Abstieg'], [F.dur(hrs * 3600), 'Dauer, geschätzt']], { cols: 4 }));
+    info.append(UI.figs([[F.km(st.dist), 'Strecke'], ['↑ ' + F.m(st.up), 'Aufstieg'], ['↓ ' + F.m(st.down), 'Abstieg'], [F.dur(hrs * 3600), 'Geschätzte ' + Planhilfe.zeitName(Sports.anzeige(sport))]], { cols: 4 }));
     if (pts.length > 1) MapKit.profile(prof, pts, null); else prof.getContext('2d').clearRect(0, 0, prof.width, prof.height);
     hint.style.display = wps.length ? 'none' : '';
   }

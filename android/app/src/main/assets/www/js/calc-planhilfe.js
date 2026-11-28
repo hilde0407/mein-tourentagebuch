@@ -117,6 +117,9 @@
      Ski alpin mit Liften: hohes Tempo, Aufstieg fast ohne Zeit (der Lift trägt). */
   const TEMPO = { snowshoe: 4.5, nordicwalking: 4.8, trailrun: 9, gravel: 16, emtb: 20, snowboard: 18, hike: 4.5, walk: 4.8, run: 9, mtb: 14, bike: 16, ebike: 20, racebike: 24, ski: 5, skitour: 5, nordic: 9, skialpin: 18 };
   const AUFSTIEG = { snowshoe: 500, nordicwalking: 500, trailrun: 700, snowboard: 3000, hike: 500, walk: 500, run: 700, ski: 400, skitour: 400, nordic: 600, skialpin: 3000 };
+  /** 2.24.0 (Leitfaden Tabelle 1): geschätzte Zeit einer geplanten Tour heißt „Gehzeit“ (zu Fuß, auch Ski und Schneeschuh) bzw. „Fahrzeit“ (Rad). */
+  const RAD = ['bike', 'racebike', 'mtb', 'ebike', 'gravel', 'emtb', 'bikepacking'];
+  const zeitName = sport => (RAD.includes(sport) ? 'Fahrzeit' : 'Gehzeit');
   /** Grobe Dauer eines Plans in Stunden (Tempo je Sportart plus Aufstieg) – dieselbe Schätzung wie im Planer. */
   function schaetzDauer(sport, km, up) {
     const v = TEMPO[sport] || 5, r = AUFSTIEG[sport] || 900;
@@ -169,6 +172,6 @@
 
   const api = { MIN_N, MONATE, LINK_ARTEN, QUELLEN, MAX_LINKS, MAX_URL, MAX_TITEL, MAX_QTEXT, MAX_NOTIZ, START_STANDARD, PUFFER_STANDARD, SPORT_GRP, TEMPO, AUFSTIEG,
     pyRound, median, gruppe, gleicheGruppe, pruefeUrl, pruefeLinks, ladeLinks, pruefeQuelle, pruefeNotiz, pruefeDatum, pruefeStart, pruefePuffer,
-    metrik, form, schaetzDauer, eqtDec, sonne, polarArt, tageslicht };
+    metrik, form, schaetzDauer, zeitName, eqtDec, sonne, polarArt, tageslicht };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Planhilfe = api;
 })(typeof window !== 'undefined' ? window : globalThis);
