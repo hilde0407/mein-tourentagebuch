@@ -68,9 +68,9 @@ def main():
                     for item in pg.evaluate(JS): bad.setdefault(("import:" + name, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
                     pg.evaluate("(sheet.stack || []).slice().forEach(x => x.close())"); pg.wait_for_timeout(200)
                 except Exception as e: print("übersprungen:", name, str(e)[:60])
-            pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector(".chips")
+            pg.evaluate("location.hash='#/stats'"); pg.wait_for_selector("#st-tabs")
             for tabname in ("Bestwerte", "Kalender", "Auswertung", "Ziele", "Fitness"):
-                pg.get_by_role("button", name=tabname, exact=True).click(); pg.wait_for_timeout(500)
+                pg.get_by_role("tab", name=tabname, exact=True).click(); pg.wait_for_timeout(500)
                 for item in pg.evaluate(JS): bad.setdefault(("Statistik " + tabname, item["txt"], item["cls"], item["fg"], item["bg"], scheme), item)
             # Funktionen aus „Meine Touren“ (2.0.0): Rückblick, Plan und Ergebnis, Planungshilfe, Fitness, Ziele, Startseite mit allen Bausteinen
             def scan(label):

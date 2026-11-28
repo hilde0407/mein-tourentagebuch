@@ -67,6 +67,9 @@ function sheet(title, content, opts) {
   /* 2.24.0: Fokusfalle – was hinter dem Blatt liegt, ist solange „inert“ (kein Fokus, keine Antippen, für TalkBack verborgen); dazu hält die Tab-Taste den Fokus im Blatt */
   const hinten = Array.from(document.body.children).filter(e => e !== back && e.id !== 'toast' && !e.inert && !/^(SCRIPT|STYLE|LINK)$/.test(e.tagName));
   hinten.forEach(e => { e.inert = true; });
+  const freigeben = () => { hinten.forEach(e => { e.inert = false; }); wache.disconnect(); };
+  const wache = new MutationObserver(() => { if (!back.isConnected) freigeben(); });      // wird das Blatt von außen aus der Seite genommen, bleibt nichts gesperrt
+  wache.observe(document.body, { childList: true });
   const fokussierbar = () => Array.from(box.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])')).filter(x => x.offsetParent !== null || x === document.activeElement);
   const onKey = e => {
     if (sheet.stack[sheet.stack.length - 1] !== api) return;
@@ -83,7 +86,7 @@ function sheet(title, content, opts) {
   function close() {
     if (closed) return; closed = true;
     document.removeEventListener('keydown', onKey);
-    hinten.forEach(e => { e.inert = false; });
+    freigeben();
     back.classList.remove('on'); setTimeout(() => back.remove(), 180); sheet.stack = sheet.stack.filter(x => x !== api);
     try { if (before && before.isConnected && before.focus) before.focus({ preventScroll: true }); } catch (e) { /* egal */ }
     if (opts && opts.onclose) opts.onclose();

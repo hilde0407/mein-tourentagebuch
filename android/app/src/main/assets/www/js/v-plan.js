@@ -121,5 +121,5 @@ Views['/plan'] = async (root, [editId]) => {
   }
   if (wps.length > 1) await rebuild(); else redraw();
   if (editing && wps.length) map.fitBounds(L.latLngBounds(wps.map(w => [w.lat, w.lon])), { padding: [40, 40] });
-  return () => { Nav.sperre = null; map.remove(); };
+  return () => { Nav.sperre = null; try { map.stopLocate(); } catch (e) {} map.remove(); };
 };

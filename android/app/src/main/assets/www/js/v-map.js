@@ -145,5 +145,5 @@ Views['/map'] = async root => {
     Nav.go('/offline');
   }
   await draw();
-  return () => { token++; ltoken++; map.remove(); };
+  return () => { token++; ltoken++; try { map.stopLocate(); } catch (e) {} map.remove(); };
 };

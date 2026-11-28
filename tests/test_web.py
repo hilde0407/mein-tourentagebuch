@@ -4948,6 +4948,7 @@ def wellen_2240_klein(pg):
     for i in range(6):
         pg.keyboard.press("Shift+Tab"); assert pg.evaluate("!!document.activeElement.closest('.sheet')"), ("Fokus verlässt das Blatt (rückwärts)", i)
     pg.keyboard.press("Escape"); pg.wait_for_selector(".sheet", state="detached"); assert pg.evaluate("!document.querySelector('#view').inert && !document.querySelector('#tabs').inert")
+    pg.click("#filterbtn"); pg.wait_for_selector(".sheet-back.on"); pg.evaluate("document.querySelectorAll('.sheet-back').forEach(e => e.remove())"); pg.wait_for_function("() => !document.querySelector('#view').inert && !document.querySelector('#tabs').inert")      # von außen entfernt: nichts bleibt gesperrt
     # M11: Tourenliste – nur 100 Zeilen, „Weitere Touren anzeigen“, Suche entprellt, Liste beim Öffnen nur einmal aufgebaut
     pg.evaluate("""async () => { const n = 250, base = Date.UTC(2023, 0, 1), arr = [], trk = [];
       for (let i = 0; i < n; i++) { const st = base + i * 86400000 * 1.5; arr.push({ id: 'perf' + i, name: 'Perf Tour ' + i, sport: 'hike', status: 'done', start: st, end: st + 3600000, dur: 3600, moving: 3000, dist: 5000 + i, up: 100, down: 100, lat: 47, lon: 11, bbox: [46.9, 10.9, 47.1, 11.1], src: 'file', srcId: 'perf' + i, note: '', fav: false, hidden: false, timed: true, created: 0, calcV: Tours.CALC });
